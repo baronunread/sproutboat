@@ -7,8 +7,8 @@ github:
       name: Sofia Test
       email: sofia@example.test
   oauth_apps:
-    - client_id: porffer-local
-      client_secret: porffer-local-secret
-      name: Porffer local dashboard
+    - client_id: sproutboat-local
+      client_secret: sproutboat-local-secret
+      name: Sproutboat local dashboard
       redirect_uris:
-        - https://dashboard.porffer.localhost/api/auth/callback/github
+        - https://dashboard.sproutboat.localhost/api/auth/callback/github

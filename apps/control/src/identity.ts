@@ -11,12 +11,12 @@ export type Actor = {
 export type Profile = { userId: string; username: string; createdAt: string };
 
 const slug = /^[a-z0-9](?:[a-z0-9-]{1,30}[a-z0-9])?$/;
-const reservedUsernames = new Set(["www", "api", "admin", "status", "docs", "support", "cli", "dashboard", "porffer"]);
+const reservedUsernames = new Set(["www", "api", "admin", "status", "docs", "support", "cli", "dashboard", "sproutboat"]);
 let database: Database | undefined;
 
 function db(): Database {
   if (!database) {
-    database = new Database(process.env.PORFFER_DATABASE_PATH || "/var/lib/porffer/porffer.sqlite");
+    database = new Database(process.env.SPROUTBOAT_DATABASE_PATH || "/var/lib/sproutboat/sproutboat.sqlite");
     database.run("CREATE TABLE IF NOT EXISTS profiles (user_id TEXT PRIMARY KEY, username TEXT NOT NULL UNIQUE COLLATE NOCASE, created_at TEXT NOT NULL)");
   }
   return database;
@@ -49,8 +49,8 @@ export function reserveUsername(userId: string, username: string): Profile {
 }
 
 export async function actorFor(request: Request): Promise<Actor | undefined> {
-  const bootstrapToken = process.env.PORFFER_BOOTSTRAP_TOKEN;
-  const bootstrapUsername = process.env.PORFFER_BOOTSTRAP_USERNAME;
+  const bootstrapToken = process.env.SPROUTBOAT_BOOTSTRAP_TOKEN;
+  const bootstrapUsername = process.env.SPROUTBOAT_BOOTSTRAP_USERNAME;
   const suppliedBootstrapToken = request.headers.get("x-api-key") || request.headers.get("authorization")?.replace(/^Bearer\s+/, "");
   if (bootstrapToken && bootstrapUsername && suppliedBootstrapToken === bootstrapToken && validUsername(bootstrapUsername)) {
     return { id: `bootstrap:${bootstrapUsername}`, username: bootstrapUsername, authentication: "bootstrap", isOperator: false };
@@ -60,7 +60,7 @@ export async function actorFor(request: Request): Promise<Actor | undefined> {
   const user = session?.user as { id?: unknown; email?: unknown } | undefined;
   if (!user || typeof user.id !== "string") return undefined;
   const profile = profileForUser(user.id);
-  const operators = new Set((process.env.PORFFER_OPERATOR_EMAILS || "").split(",").map((email) => email.trim().toLowerCase()).filter(Boolean));
+  const operators = new Set((process.env.SPROUTBOAT_OPERATOR_EMAILS || "").split(",").map((email) => email.trim().toLowerCase()).filter(Boolean));
   return profile ? { id: profile.userId, username: profile.username, authentication: "session", isOperator: typeof user.email === "string" && operators.has(user.email.toLowerCase()) } : undefined;
 }
 

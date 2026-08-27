@@ -1,5 +1,5 @@
 {
-  "$schema": "https://porffer.dev/schema.json",
+  "$schema": "https://sproutboat.com/schema.json",
   "name": "hello",
   "main": "src/index.js",
   "compatibility_date": "2026-08-26"

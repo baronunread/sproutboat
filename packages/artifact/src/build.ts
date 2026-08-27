@@ -1,14 +1,14 @@
 import { createHash } from "node:crypto";
 import { chmod, mkdir, readFile, stat, unlink, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
-import type { PorfferConfig } from "../../config/src/config";
+import type { SproutboatConfig } from "../../config/src/config";
 import { ARTIFACT_SCHEMA_VERSION, ABI_VERSION, CAPABILITY_PROFILE, type ArtifactManifest } from "./manifest";
 
 const root = resolve(import.meta.dir, "../../..");
 
 export type BuildInput = {
   projectDir: string;
-  config: PorfferConfig;
+  config: SproutboatConfig;
   sourcePath: string;
 };
 
@@ -34,10 +34,10 @@ async function run(command: string[], label: string, input?: string): Promise<st
 }
 
 async function localBuildImage(): Promise<{ immutable: string; reference: string }> {
-  const reference = process.env.PORFFER_BUILD_IMAGE_REF || "porffer/build:dev";
-  const configured = process.env.PORFFER_BUILD_IMAGE;
+  const reference = process.env.SPROUTBOAT_BUILD_IMAGE_REF || "sproutboat/build:dev";
+  const configured = process.env.SPROUTBOAT_BUILD_IMAGE;
   if (configured) {
-    if (!/@sha256:[a-f0-9]{64}$/.test(configured)) throw new Error("PORFFER_BUILD_IMAGE must name an immutable Linux build-image digest");
+    if (!/@sha256:[a-f0-9]{64}$/.test(configured)) throw new Error("SPROUTBOAT_BUILD_IMAGE must name an immutable Linux build-image digest");
     return { immutable: configured, reference };
   }
   const imageId = (await run(["docker", "image", "inspect", "--format", "{{.Id}}", reference], "local build image inspection")).trim();
@@ -50,7 +50,7 @@ export async function buildArtifact(input: BuildInput): Promise<BuildOutput> {
   const source = await readFile(input.sourcePath);
   const sourceHash = digest(source);
   const artifactId = sourceHash.slice("sha256:".length, 24);
-  const artifactDir = resolve(input.projectDir, ".porffer/dist", artifactId);
+  const artifactDir = resolve(input.projectDir, ".sproutboat/dist", artifactId);
   const bundlePath = resolve(artifactDir, "bundle.js");
   const workerPath = resolve(artifactDir, "worker");
   await mkdir(artifactDir, { recursive: true });

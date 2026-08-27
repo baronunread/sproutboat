@@ -14,7 +14,9 @@ async function loadRoutes(path: string): Promise<Map<string, string>> {
   return result;
 }
 
-const routesPath = resolve(process.env.PORFFER_ROUTE_SNAPSHOT || "routes.json");
+const routesPath = resolve(process.env.SPROUTBOAT_ROUTE_SNAPSHOT || "routes.json");
+const marketingHostname = (process.env.SPROUTBOAT_DEPLOYMENT_DOMAIN || "sproutboat.com").toLowerCase();
+const marketingPage = Bun.file(resolve(import.meta.dir, "../../../apps/marketing/index.html"));
 async function snapshotMtime(path: string): Promise<number> {
   try { return (await stat(path)).mtimeMs; }
   catch (error) {
@@ -27,7 +29,7 @@ let routes = new Map<string, string>();
 let routesMtimeMs = await snapshotMtime(routesPath);
 if (routesMtimeMs > 0) routes = await loadRoutes(routesPath);
 const port = Number(process.env.PORT || 8080);
-const logPath = process.env.PORFFER_LOG_PATH;
+const logPath = process.env.SPROUTBOAT_LOG_PATH;
 
 async function log(event: Record<string, unknown>): Promise<void> {
   if (!logPath) return;
@@ -54,6 +56,7 @@ const server = Bun.serve({
     try { await refreshRoutes(); }
     catch (error) { console.error(`route snapshot reload failed: ${error instanceof Error ? error.message : String(error)}`); }
     const host = request.headers.get("host")?.split(":")[0]?.toLowerCase();
+    if (host === marketingHostname) return new Response(marketingPage, { headers: { "content-type": "text/html; charset=utf-8" } });
     const workerPath = host ? routes.get(host) : undefined;
     if (!workerPath) {
       await log({ hostname: host || null, status: 404, durationMs: Math.round(performance.now() - started) });
@@ -72,7 +75,7 @@ const server = Bun.serve({
   },
 });
 
-console.log(`Porffer edge router listening on http://localhost:${server.port}`);
+console.log(`Sproutboat edge router listening on http://localhost:${server.port}`);
 
 process.on("SIGHUP", async () => {
   routesMtimeMs = await snapshotMtime(routesPath);

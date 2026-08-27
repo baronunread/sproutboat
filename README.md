@@ -1,26 +1,26 @@
-# Porffer POC
+# Sproutboat POC
 
 This repository contains both the Phase 0 compatibility harness and the first
-Porffer POC: a locally compiled Linux artifact, an artifact-only control API,
+Sproutboat POC: a locally compiled Linux artifact, an artifact-only control API,
 an isolated edge runtime, and provider-neutral VPS configuration.
 
 ## POC quick start
 
-Requirements: Bun, Docker, and a local Linux/amd64 Porffer build image. Build
+Requirements: Bun, Docker, and a local Linux/amd64 Sproutboat build image. Build
 the image once from the repository root. The CLI reads the Docker image digest
 automatically and records that immutable identity in each artifact:
 
 ```sh
-docker build --platform linux/amd64 -t porffer/build:dev -f build-image/Dockerfile .
+docker build --platform linux/amd64 -t sproutboat/build:dev -f build-image/Dockerfile .
 ```
 
 ```sh
-bun run porffer -- init hello
-bun run porffer -- dev hello --port 8788
+bun run sproutboat -- init hello
+bun run sproutboat -- dev hello --port 8788
 curl -H 'Host: hello.localhost' http://127.0.0.1:8788/
 ```
 
-`porffer build`, `deploy --dry-run`, `deploy --artifact`, `tail`, `versions
+`sproutboat build`, `deploy --dry-run`, `deploy --artifact`, `tail`, `versions
 list`, `rollback`, and `delete --yes` are available. The real-domain VPS flow
 is documented in [infra/README.md](infra/README.md).
 
@@ -35,27 +35,27 @@ bun run dev:local
 ```
 
 On Portless's first run, trust its local certificate authority. Open
-`https://dashboard.porffer.localhost/`, select **Sign in with GitHub**, use the
+`https://dashboard.sproutboat.localhost/`, select **Sign in with GitHub**, use the
 seeded `andrea` account, and reserve the `andrea` namespace.
 
 In another terminal, create and authorize a project:
 
 ```sh
-bun run porffer -- init hello
-bun run porffer -- login --api-url https://control.porffer.localhost
+bun run sproutboat -- init hello
+bun run sproutboat -- login --api-url https://control.sproutboat.localhost
 ```
 
 The login command opens the dashboard. Select **Approve CLI login**, then
 deploy and verify the result:
 
 ```sh
-bun run porffer -- deploy hello
-open https://hello.andrea.porffer.localhost
-bun run porffer -- versions list hello
-bun run porffer -- tail hello
+bun run sproutboat -- deploy hello
+open https://hello.andrea.sproutboat.localhost
+bun run sproutboat -- versions list hello
+bun run sproutboat -- tail hello
 ```
 
-The dashboard is at `https://dashboard.porffer.localhost/dashboard`. Control
+The dashboard is at `https://dashboard.sproutboat.localhost/dashboard`. Control
 is API-only; it has no user-facing dashboard.
 
 ### Reset local state
@@ -64,8 +64,8 @@ Stop the launcher with `Ctrl-C`, then remove local state and saved CLI
 credentials before starting it again:
 
 ```sh
-rm -rf .local/porffer
-rm -rf /Users/andreabruno/.config/porffer
+rm -rf .local/sproutboat
+rm -rf /Users/andreabruno/.config/sproutboat
 bun run dev:local
 ```
 

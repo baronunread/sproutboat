@@ -1,15 +1,15 @@
 [Unit]
-Description=Porffer dashboard
+Description=Sproutboat dashboard
 After=network-online.target
 Wants=network-online.target
 
 [Service]
 Type=simple
-User=porffer-web
-Group=porffer
-WorkingDirectory=/opt/porffer
+User=sproutboat-web
+Group=sproutboat
+WorkingDirectory=/opt/sproutboat
 Environment=PORT=3000
-ExecStart=/opt/porffer/bun/bin/bun apps/web/dist/server/server.js
+ExecStart=/opt/sproutboat/bun/bin/bun apps/web/dist/server/server.js
 Restart=always
 RestartSec=2
 NoNewPrivileges=true

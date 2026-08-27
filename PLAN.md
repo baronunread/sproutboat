@@ -1,21 +1,21 @@
-# Porffer POC — final implementation plan
+# Sproutboat POC — final implementation plan
 
 Status: approved implementation plan, 2026-08-26.
 
-This document is the handoff for the first working Porffer platform. It favors
+This document is the handoff for the first working Sproutboat platform. It favors
 one complete, honest vertical slice over breadth.
 
 ## 1. Product definition
 
-Porffer is an experimental hosting platform for small JavaScript functions
+Sproutboat is an experimental hosting platform for small JavaScript functions
 compiled locally with [Porffor](https://porffor.dev/).
 
-- `porffer.dev` is the public website and documentation.
-- `dashboard.porffer.dev` is the authenticated dashboard, CLI login, and
+- `sproutboat.com` is the public website and documentation.
+- `dashboard.sproutboat.com` is the authenticated dashboard, CLI login, and
   same-origin control API.
-- `porffer` is the Wrangler-shaped CLI.
-- `https://<project>.<username>.porffer.dev` is the default deployment URL.
-- Porffer is the product; Porffor is the compiler/runtime project it uses.
+- `sproutboat` is the Wrangler-shaped CLI.
+- `https://<project>.<username>.sproutboat.com` is the default deployment URL.
+- Sproutboat is the product; Porffor is the compiler/runtime project it uses.
 
 The initial promise is deliberately narrow:
 
@@ -37,7 +37,7 @@ versioned test data rather than hard-code a percentage.
 
 ### Included
 
-- GitHub sign-in at `dashboard.porffer.dev`.
+- GitHub sign-in at `dashboard.sproutboat.com`.
 - One unique username namespace per account.
 - Browser-based CLI authorization.
 - Wrangler-like project initialization, local development, checks, builds,
@@ -45,7 +45,7 @@ versioned test data rather than hard-code a percentage.
 - Local Rolldown bundling and local Porffor compilation.
 - Upload of a Linux x86-64 binary, manifest, and configuration only.
 - One provider-neutral x86-64 Linux VPS.
-- Generated `<project>.<username>.porffer.dev` URLs with HTTPS.
+- Generated `<project>.<username>.sproutboat.com` URLs with HTTPS.
 - Immutable artifacts and atomic version activation.
 - Runtime limits, sandboxed execution, bounded logs, backups, and an audit log.
 - A small dashboard for projects, deployments, runtime status, and CLI setup.
@@ -63,40 +63,40 @@ versioned test data rather than hard-code a percentage.
 
 ## 3. User flow
 
-1. The developer visits `porffer.dev`, the static marketing and documentation
+1. The developer visits `sproutboat.com`, the static marketing and documentation
    site served by Cloudflare Pages, and sees the experimental status before
    signing in.
 2. They sign in with GitHub and select an available lowercase username. This
-   reserves `<username>.porffer.dev` as their namespace.
-3. They install the CLI and run `porffer login`, which opens the browser to
+   reserves `<username>.sproutboat.com` as their namespace.
+3. They install the CLI and run `sproutboat login`, which opens the browser to
    approve a device-style authorization request.
 4. The CLI stores the resulting user-owned credential locally; it can operate
-   only on that account's projects. `PORFFER_TOKEN` remains an explicit
+   only on that account's projects. `SPROUTBOAT_TOKEN` remains an explicit
    override for CI and other non-interactive automation.
-5. They run `porffer init hello`, write a supported handler, and use
-   `porffer dev` locally.
-6. `porffer deploy` bundles, checks, compiles, and smoke-tests locally. If any
+5. They run `sproutboat init hello`, write a supported handler, and use
+   `sproutboat dev` locally.
+6. `sproutboat deploy` bundles, checks, compiles, and smoke-tests locally. If any
    step fails, it sends no deployment request and uploads zero bytes.
 7. After a successful local build, the CLI uploads only the artifact package.
 8. The server validates and smoke-tests the artifact inside the production
    sandbox, activates it, and returns:
-   `https://hello.<username>.porffer.dev`.
+   `https://hello.<username>.sproutboat.com`.
 9. The developer uses the CLI or dashboard to inspect versions and logs or to
    roll back.
 
 The happy path should look like this:
 
 ```console
-$ open https://dashboard.porffer.dev
+$ open https://dashboard.sproutboat.com
 Create a user-owned CLI key
 Logged in as andrea
 
-$ porffer init hello
-Created hello/porffer.jsonc
+$ sproutboat init hello
+Created hello/sproutboat.jsonc
 Created hello/src/index.js
 
 $ cd hello
-$ porffer deploy
+$ sproutboat deploy
 Bundling with Rolldown...
 Compiling with Porffor alpha 2...
 Running compatibility checks...
@@ -104,44 +104,44 @@ Uploading artifact...
 Activating version 01K4F9...
 
 Deployed hello
-https://hello.andrea.porffer.dev
+https://hello.andrea.sproutboat.com
 ```
 
 ## 4. CLI contract
 
-The binary and package are named `porffer`. Command names should match
+The binary and package are named `sproutboat`. Command names should match
 Wrangler where the platform has a real equivalent.
 
 ### POC commands
 
 | Command | Behavior |
 | --- | --- |
-| `porffer login` | Open browser authorization and securely save a scoped CLI credential locally |
-| `porffer logout` | Revoke and remove the local token |
-| `porffer whoami` | Show account, username namespace, and API endpoint |
-| `porffer init [name]` | Create a starter handler and `porffer.jsonc` |
-| `porffer dev [--port]` | Build and run locally with the production ABI |
-| `porffer check` | Validate config, source surface, and local prerequisites |
-| `porffer build` | Produce a deployable artifact without uploading |
-| `porffer deploy` | Build locally, then upload and activate on success |
-| `porffer deploy --dry-run` | Build and report sizes without uploading |
-| `porffer deploy --artifact <path>` | Upload a previously built artifact |
-| `porffer tail [--status]` | Stream bounded deployment logs |
-| `porffer versions list` | List immutable versions |
-| `porffer versions view <id>` | Show one manifest and deployment status |
-| `porffer rollback [id]` | Atomically reactivate a stored version |
-| `porffer delete` | Delete the project after explicit confirmation |
+| `sproutboat login` | Open browser authorization and securely save a scoped CLI credential locally |
+| `sproutboat logout` | Revoke and remove the local token |
+| `sproutboat whoami` | Show account, username namespace, and API endpoint |
+| `sproutboat init [name]` | Create a starter handler and `sproutboat.jsonc` |
+| `sproutboat dev [--port]` | Build and run locally with the production ABI |
+| `sproutboat check` | Validate config, source surface, and local prerequisites |
+| `sproutboat build` | Produce a deployable artifact without uploading |
+| `sproutboat deploy` | Build locally, then upload and activate on success |
+| `sproutboat deploy --dry-run` | Build and report sizes without uploading |
+| `sproutboat deploy --artifact <path>` | Upload a previously built artifact |
+| `sproutboat tail [--status]` | Stream bounded deployment logs |
+| `sproutboat versions list` | List immutable versions |
+| `sproutboat versions view <id>` | Show one manifest and deployment status |
+| `sproutboat rollback [id]` | Atomically reactivate a stored version |
+| `sproutboat delete` | Delete the project after explicit confirmation |
 
 `secret`, custom-domain, storage, and environment commands are reserved for a
 later phase. Do not ship placeholder commands that imply unsupported features.
 
 ### Configuration
 
-`porffer.jsonc` is intentionally familiar:
+`sproutboat.jsonc` is intentionally familiar:
 
 ```jsonc
 {
-  "$schema": "https://porffer.dev/schema.json",
+  "$schema": "https://sproutboat.com/schema.json",
   "name": "hello",
   "main": "src/index.js",
   "compatibility_date": "2026-08-26",
@@ -162,7 +162,7 @@ The server never receives source code. The default build uses a versioned local
 OCI image so every developer produces the server target consistently:
 
 ```text
-ghcr.io/porffer/build:<toolchain-id>
+ghcr.io/sproutboat/build:<toolchain-id>
 target: linux/amd64
 network: disabled
 source mount: read-only
@@ -173,15 +173,15 @@ On macOS, Windows, or ARM, Docker or Podman supplies the Linux x86-64 build
 environment. Native Linux x86-64 builds may be added as an optimization only
 when they produce the same manifest and behavior.
 
-`porffer build` performs:
+`sproutboat build` performs:
 
-1. Parse and validate `porffer.jsonc`.
+1. Parse and validate `sproutboat.jsonc`.
 2. Bundle the entry point with pinned Rolldown.
-3. Add the versioned Porffer runtime shim.
+3. Add the versioned Sproutboat runtime shim.
 4. Reject syntax and APIs outside `http-sync-v0`.
 5. Compile with the pinned Porffor source identity.
 6. Run fixed compatibility probes and the artifact smoke test.
-7. Write `.porffer/dist/<artifact-id>/manifest.json` and `worker`.
+7. Write `.sproutboat/dist/<artifact-id>/manifest.json` and `worker`.
 
 The manifest contains:
 
@@ -218,12 +218,12 @@ initially.
 
 ```mermaid
 flowchart TB
-    Browser[Browser] --> Pages[Cloudflare Pages\nporffer.dev]
+    Browser[Browser] --> Pages[Cloudflare Pages\nsproutboat.com]
     Browser --> Caddy[Caddy :80/:443]
-    CLI[porffer CLI] --> Caddy
-    Caddy -->|dashboard.porffer.dev| Dashboard[TanStack Start dashboard]
+    CLI[sproutboat CLI] --> Caddy
+    Caddy -->|dashboard.sproutboat.com| Dashboard[TanStack Start dashboard]
     Dashboard -->|same-origin API| Control[Bun control service]
-    Caddy -->|project.user.porffer.dev| Edge[Bun edge router]
+    Caddy -->|project.user.sproutboat.com| Edge[Bun edge router]
     Control --> DB[(SQLite WAL)]
     Control --> Store[Immutable artifact directory]
     Control --> Snapshot[Atomic route snapshot]
@@ -261,12 +261,12 @@ run as locked-down systemd services.
 
 ### Host routing and TLS
 
-- `porffer.dev` and `www.porffer.dev` are Cloudflare Pages custom domains. They
+- `sproutboat.com` and `www.sproutboat.com` are Cloudflare Pages custom domains. They
   serve only public, static marketing and documentation content.
-- `dashboard.porffer.dev` points directly to the VPS and is served by Caddy.
+- `dashboard.sproutboat.com` points directly to the VPS and is served by Caddy.
   Caddy serves the React dashboard and forwards same-origin `/api` and `/v1`
   requests to the authenticated Control service.
-- A wildcard DNS record for `*.porffer.dev` points to the VPS for deployment
+- A wildcard DNS record for `*.sproutboat.com` points to the VPS for deployment
   hosts. The exact dashboard record takes precedence over the wildcard.
 - Keep the dashboard and wildcard records DNS-only. Caddy uses Cloudflare
   DNS-01 validation to issue the exact TLS certificates required for nested
@@ -277,10 +277,10 @@ run as locked-down systemd services.
 - On-demand certificate issuance must use an internal `ask` endpoint that
   returns success only for an active route. This prevents arbitrary certificate
   requests against the platform's ACME limits.
-- `porffer.dev` serves user code and receives no dashboard/session cookies.
+- `sproutboat.com` serves user code and receives no dashboard/session cookies.
 - Better Auth cookies are secure, HTTP-only, SameSite, and host-scoped to
-  `dashboard.porffer.dev`; cross-subdomain cookies are disabled.
-- Add `porffer.dev` to the Public Suffix List before public multi-tenant launch.
+  `dashboard.sproutboat.com`; cross-subdomain cookies are disabled.
+- Add `sproutboat.com` to the Public Suffix List before public multi-tenant launch.
 
 ### Control plane
 
@@ -323,15 +323,15 @@ later measured optimization, not a POC promise.
 ## 7. Authentication and CLI authorization
 
 The POC uses GitHub OAuth only. Better Auth manages the website OAuth account,
-secure session, CSRF protection, rate limiting, and user-owned API keys. Porffer
+secure session, CSRF protection, rate limiting, and user-owned API keys. Sproutboat
 adds a unique namespace selection after the first login.
 
-The POC uses a short-lived device-style flow for `porffer login`:
+The POC uses a short-lived device-style flow for `sproutboat login`:
 
 1. CLI creates an authorization request with a high-entropy verifier.
 2. API returns a secret device code, short user code, browser URL, polling
    interval, and expiry.
-3. CLI opens `https://dashboard.porffer.dev/cli/authorize?code=...` and polls a token
+3. CLI opens `https://dashboard.sproutboat.com/cli/authorize?code=...` and polls a token
    endpoint with the secret device code in the request body, never the URL.
 4. The website requires a valid GitHub-backed session and displays the exact
    requested CLI scopes.
@@ -440,7 +440,7 @@ Cloudflare's assets or page composition: calm infrastructure UI, warm neutral
 surfaces, compact navigation, thin borders, clear status labels, monospace for
 commands, and restrained decoration.
 
-Purple is the Porffer accent because *porffor* is Welsh for purple. It is a hint,
+Orange is the Sproutboat deployment signal, with blue reserved for routes and telemetry. It is a hint,
 not a purple wash:
 
 - Use purple for the single primary action, links, focus rings, selected
@@ -476,10 +476,10 @@ and code blocks in every appearance.
 Reading order:
 
 1. Persistent experimental banner.
-2. Compact header: Porffer, Product, Current support, GitHub, Sign in.
+2. Compact header: Sproutboat, Product, Current support, GitHub, Sign in.
 3. Hero with one primary action and one descriptive secondary link.
 4. Three-step flow: build locally, upload the artifact, deploy to HTTPS.
-5. Terminal example showing `porffer deploy` and the resulting URL.
+5. Terminal example showing `sproutboat deploy` and the resulting URL.
 6. Current runtime card generated from compatibility data.
 7. Honest limitations and breaking-change section.
 8. Footer crediting and linking to the Porffor compiler project.
@@ -492,16 +492,16 @@ Recommended homepage copy:
 
 **Persistent banner**
 
-> Experimental alpha — Porffer uses the rapidly evolving Porffor compiler.
+> Experimental alpha — Sproutboat uses the rapidly evolving Porffor compiler.
 > Supported APIs are limited, and updates may include breaking changes.
 
 **Hero**
 
 > JavaScript functions, compiled before they reach the server.
 
-> Porffer is an experimental hosting platform powered by Porffor. Build
+> Sproutboat is an experimental hosting platform powered by Porffor. Build
 > locally, upload only successful artifacts, and deploy to your own
-> `porffer.dev` URL.
+> `sproutboat.com` URL.
 
 Primary action: `Sign in with GitHub`
 
@@ -513,12 +513,12 @@ Secondary link: `Read the current limitations`
 
 > Porffor is under active development. Some JavaScript and Web APIs are not
 > available yet, and a new compiler release may require you to rebuild a
-> deployment. Porffer pins every deployed artifact so an update never silently
+> deployment. Sproutboat pins every deployed artifact so an update never silently
 > changes code already running.
 
 **Footer note**
 
-> Porffer is an independent experiment built with the Porffor compiler.
+> Sproutboat is an independent experiment built with the Porffor compiler.
 
 ### Dashboard pages
 
@@ -544,13 +544,13 @@ be dismissible during the POC.
 apps/
   web/                 TanStack Start developer dashboard and operator console
   control/             Bun API, auth, database, artifact validation
-  cli/                 porffer CLI
+  cli/                 sproutboat CLI
 services/
   edge/                hostname router and route snapshot loader
   supervisor/          sandbox lifecycle and ABI bridge
 packages/
   artifact/            manifest schema, hashing, archive validation
-  config/              porffer.jsonc parser and schema
+  config/              sproutboat.jsonc parser and schema
   protocol/            control, edge, and runtime ABI types
   ui/                  shared accessible UI primitives and tokens
   test-fixtures/       accepted, rejected, timeout, and abuse artifacts
@@ -596,7 +596,7 @@ Do not introduce Kubernetes or a queue merely to prepare for hypothetical load.
 
 ## 14. Provider-neutral server operations
 
-Porffer must not depend on a VPS vendor. A server is eligible when it provides:
+Sproutboat must not depend on a VPS vendor. A server is eligible when it provides:
 
 - x86-64 CPU for the first artifact target.
 - A supported Debian-stable or Ubuntu-LTS installation with systemd.
@@ -613,8 +613,8 @@ all:
     poc-1:
       ansible_host: 203.0.113.10
       ansible_user: root
-      porffer_role: all-in-one
-      porffer_region: eu-central
+      sproutboat_role: all-in-one
+      sproutboat_region: eu-central
 ```
 
 - `all-in-one`: control, Caddy, edge, supervisor, SQLite, and artifact store.
@@ -660,7 +660,7 @@ earlier contracts.
 ### Phase A — Freeze contracts
 
 1. Create the monorepo layout and shared TypeScript configuration.
-2. Write `artifact-v1`, `abi-v1`, `http-sync-v0`, and `porffer.jsonc` schemas.
+2. Write `artifact-v1`, `abi-v1`, `http-sync-v0`, and `sproutboat.jsonc` schemas.
 3. Define the provider-neutral server inventory and node-enrollment contract.
 4. Turn the existing passing corpus into the first accepted capability suite at
    `tests/porffor/capabilities/`.
@@ -740,15 +740,15 @@ without shell access to the server.
 
 The POC is complete only when all of the following are demonstrated:
 
-1. Visit `porffer.dev`, see the experimental warning, then sign in with GitHub
-   at `dashboard.porffer.dev` and
+1. Visit `sproutboat.com`, see the experimental warning, then sign in with GitHub
+   at `dashboard.sproutboat.com` and
    reserve `andrea`.
-2. Run `porffer login` and approve the exact scopes in the browser.
-3. Run `porffer init hello` and deploy a passing handler.
+2. Run `sproutboat login` and approve the exact scopes in the browser.
+3. Run `sproutboat init hello` and deploy a passing handler.
 4. Receive and successfully request
-   `https://hello.andrea.porffer.dev` over valid HTTPS.
-5. Introduce a compile error and prove `porffer deploy` uploads zero bytes.
-6. Inspect logs with `porffer tail`.
+   `https://hello.andrea.sproutboat.com` over valid HTTPS.
+5. Introduce a compile error and prove `sproutboat deploy` uploads zero bytes.
+6. Inspect logs with `sproutboat tail`.
 7. Deploy a second version and roll back to the first without rebuilding.
 8. Restart the control service and confirm the deployment still serves.
 9. Reboot the VPS and confirm routes and active versions recover.

@@ -1,11 +1,11 @@
 ---
-- name: Provision the provider-neutral Porffer POC host
+- name: Provision the provider-neutral Sproutboat POC host
   hosts: all
   become: true
   gather_facts: true
   vars:
-    porffer_root: /opt/porffer
-    porffer_state: /var/lib/porffer
+    sproutboat_root: /opt/sproutboat
+    sproutboat_state: /var/lib/sproutboat
 
   pre_tasks:
     - name: Require a supported Linux x86-64 systemd host
@@ -14,17 +14,17 @@
           - ansible_system == 'Linux'
           - ansible_architecture in ['x86_64', 'amd64']
           - ansible_service_mgr == 'systemd'
-        fail_msg: Porffer requires Linux x86-64 with systemd.
+        fail_msg: Sproutboat requires Linux x86-64 with systemd.
 
     - name: Require an ACME account email
       ansible.builtin.assert:
-        that: porffer_acme_email is defined and porffer_acme_email | length > 3
-        fail_msg: Set porffer_acme_email in inventory before provisioning.
+        that: sproutboat_acme_email is defined and sproutboat_acme_email | length > 3
+        fail_msg: Set sproutboat_acme_email in inventory before provisioning.
 
     - name: Require a scoped Cloudflare DNS token
       ansible.builtin.assert:
-        that: porffer_cloudflare_api_token is defined and porffer_cloudflare_api_token | length > 20
-        fail_msg: Set porffer_cloudflare_api_token in inventory before provisioning.
+        that: sproutboat_cloudflare_api_token is defined and sproutboat_cloudflare_api_token | length > 20
+        fail_msg: Set sproutboat_cloudflare_api_token in inventory before provisioning.
 
   tasks:
     - name: Install host dependencies
@@ -40,54 +40,54 @@
           - unzip
         state: present
 
-    - name: Create the Porffer service group
+    - name: Create the Sproutboat service group
       ansible.builtin.group:
-        name: porffer
+        name: sproutboat
         system: true
 
     - name: Create service identities
       ansible.builtin.user:
         name: '{{ item }}'
-        group: porffer
-        groups: '{{ "docker" if item == "porffer-edge" else omit }}'
-        append: '{{ item == "porffer-edge" }}'
+        group: sproutboat
+        groups: '{{ "docker" if item == "sproutboat-edge" else omit }}'
+        append: '{{ item == "sproutboat-edge" }}'
         system: true
         create_home: false
         shell: /usr/sbin/nologin
       loop:
-        - porffer-control
-        - porffer-edge
-        - porffer-web
+        - sproutboat-control
+        - sproutboat-edge
+        - sproutboat-web
 
     - name: Create immutable-artifact and application directories
       ansible.builtin.file:
         path: '{{ item.path }}'
         state: directory
         owner: '{{ item.owner }}'
-        group: porffer
+        group: sproutboat
         mode: '{{ item.mode }}'
       loop:
-        - { path: '{{ porffer_root }}', owner: root, mode: '0755' }
-        - { path: '{{ porffer_state }}', owner: porffer-control, mode: '0750' }
-        - { path: '{{ porffer_state }}/artifacts', owner: porffer-control, mode: '0750' }
-        - { path: '{{ porffer_state }}/logs', owner: porffer-edge, mode: '0770' }
-        - { path: /etc/porffer, owner: root, mode: '0750' }
+        - { path: '{{ sproutboat_root }}', owner: root, mode: '0755' }
+        - { path: '{{ sproutboat_state }}', owner: sproutboat-control, mode: '0750' }
+        - { path: '{{ sproutboat_state }}/artifacts', owner: sproutboat-control, mode: '0750' }
+        - { path: '{{ sproutboat_state }}/logs', owner: sproutboat-edge, mode: '0770' }
+        - { path: /etc/sproutboat, owner: root, mode: '0750' }
 
     - name: Copy the release tree
       ansible.posix.synchronize:
         src: ../../
-        dest: '{{ porffer_root }}/'
+        dest: '{{ sproutboat_root }}/'
         delete: true
         rsync_opts:
           - '--exclude=.git'
           - '--exclude=node_modules'
           - '--exclude=.phase0'
-          - '--exclude=.porffer'
+          - '--exclude=.sproutboat'
 
     - name: Install Bun under the application root
-      ansible.builtin.shell: curl -fsSL https://bun.sh/install | BUN_INSTALL={{ porffer_root }}/bun bash
+      ansible.builtin.shell: curl -fsSL https://bun.sh/install | BUN_INSTALL={{ sproutboat_root }}/bun bash
       args:
-        creates: '{{ porffer_root }}/bun/bin/bun'
+        creates: '{{ sproutboat_root }}/bun/bin/bun'
 
     - name: Install xcaddy for the Cloudflare DNS module build
       ansible.builtin.command: go install github.com/caddyserver/xcaddy/cmd/xcaddy@latest
@@ -97,37 +97,37 @@
         creates: /usr/local/bin/xcaddy
 
     - name: Build Caddy with the Cloudflare DNS module
-      ansible.builtin.command: /usr/local/bin/xcaddy build --with github.com/caddy-dns/cloudflare --output /usr/local/bin/caddy-porffer
+      ansible.builtin.command: /usr/local/bin/xcaddy build --with github.com/caddy-dns/cloudflare --output /usr/local/bin/caddy-sproutboat
       args:
-        chdir: '{{ porffer_root }}'
-        creates: /usr/local/bin/caddy-porffer
+        chdir: '{{ sproutboat_root }}'
+        creates: /usr/local/bin/caddy-sproutboat
 
     - name: Install locked application dependencies
-      ansible.builtin.command: '{{ porffer_root }}/bun/bin/bun install --frozen-lockfile'
+      ansible.builtin.command: '{{ sproutboat_root }}/bun/bin/bun install --frozen-lockfile'
       args:
-        chdir: '{{ porffer_root }}'
+        chdir: '{{ sproutboat_root }}'
 
     - name: Build the Linux runtime image locally
-      ansible.builtin.command: docker build --platform linux/amd64 -t porffer/build:stable -f build-image/Dockerfile .
+      ansible.builtin.command: docker build --platform linux/amd64 -t sproutboat/build:stable -f build-image/Dockerfile .
       args:
-        chdir: '{{ porffer_root }}'
+        chdir: '{{ sproutboat_root }}'
 
     - name: Build the dashboard
-      ansible.builtin.command: '{{ porffer_root }}/bun/bin/bun run web:build'
+      ansible.builtin.command: '{{ sproutboat_root }}/bun/bin/bun run web:build'
       args:
-        chdir: '{{ porffer_root }}'
+        chdir: '{{ sproutboat_root }}'
 
     - name: Initialize atomic route and deployment registries
       ansible.builtin.copy:
         content: '[]\n'
         dest: '{{ item }}'
-        owner: porffer-control
-        group: porffer
+        owner: sproutboat-control
+        group: sproutboat
         mode: '0640'
         force: false
       loop:
-        - '{{ porffer_state }}/routes.json'
-        - '{{ porffer_state }}/deployments.json'
+        - '{{ sproutboat_state }}/routes.json'
+        - '{{ sproutboat_state }}/deployments.json'
 
     - name: Install Caddy configuration
       ansible.builtin.copy:
@@ -141,9 +141,9 @@
     - name: Install Caddy environment
       ansible.builtin.copy:
         content: |-
-          ACME_EMAIL={{ porffer_acme_email }}
-          CLOUDFLARE_API_TOKEN={{ porffer_cloudflare_api_token }}
-        dest: /etc/porffer/caddy.env
+          ACME_EMAIL={{ sproutboat_acme_email }}
+          CLOUDFLARE_API_TOKEN={{ sproutboat_cloudflare_api_token }}
+        dest: /etc/sproutboat/caddy.env
         owner: root
         group: root
         mode: '0640'
@@ -162,18 +162,18 @@
       ansible.builtin.copy:
         content: |
           [Service]
-          EnvironmentFile=/etc/porffer/caddy.env
+          EnvironmentFile=/etc/sproutboat/caddy.env
           ExecStart=
-          ExecStart=/usr/local/bin/caddy-porffer run --environ --config /etc/caddy/Caddyfile
+          ExecStart=/usr/local/bin/caddy-sproutboat run --environ --config /etc/caddy/Caddyfile
           ExecReload=
-          ExecReload=/usr/local/bin/caddy-porffer reload --config /etc/caddy/Caddyfile --force
-        dest: /etc/systemd/system/caddy.service.d/porffer.conf
+          ExecReload=/usr/local/bin/caddy-sproutboat reload --config /etc/caddy/Caddyfile --force
+        dest: /etc/systemd/system/caddy.service.d/sproutboat.conf
         owner: root
         group: root
         mode: '0644'
       notify: reload systemd
 
-    - name: Install Porffer systemd services
+    - name: Install Sproutboat systemd services
       ansible.builtin.copy:
         src: '../systemd/{{ item }}'
         dest: '/etc/systemd/system/{{ item }}'
@@ -181,9 +181,9 @@
         group: root
         mode: '0644'
       loop:
-        - porffer-control.service
-        - porffer-edge.service
-        - porffer-web.service
+        - sproutboat-control.service
+        - sproutboat-edge.service
+        - sproutboat-web.service
       notify: reload systemd
 
     - name: Enable public services
@@ -193,9 +193,9 @@
         state: started
       loop:
         - docker
-        - porffer-control
-        - porffer-edge
-        - porffer-web
+        - sproutboat-control
+        - sproutboat-edge
+        - sproutboat-web
         - caddy
 
   handlers:

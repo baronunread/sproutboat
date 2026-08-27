@@ -1,0 +1,27 @@
+[Unit]
+Description=Sproutboat control service
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=sproutboat-control
+Group=sproutboat
+WorkingDirectory=/opt/sproutboat
+Environment=PORT=8787
+Environment=SPROUTBOAT_ROUTE_SNAPSHOT=/var/lib/sproutboat/routes.json
+Environment=SPROUTBOAT_LOG_PATH=/var/lib/sproutboat/logs/requests.ndjson
+# Provisioning can start the health/TLS gate before secrets are configured.
+# Deployments remain unavailable until SPROUTBOAT_BOOTSTRAP_TOKEN is supplied.
+EnvironmentFile=-/etc/sproutboat/control.env
+ExecStart=/opt/sproutboat/bun/bin/bun apps/control/src/main.ts
+Restart=always
+RestartSec=2
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/sproutboat
+
+[Install]
+WantedBy=multi-user.target

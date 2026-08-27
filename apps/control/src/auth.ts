@@ -9,12 +9,12 @@ function createAuth() {
   const githubClientId = process.env.GITHUB_CLIENT_ID;
   const githubClientSecret = process.env.GITHUB_CLIENT_SECRET;
   const githubEmulatorUrl = process.env.GITHUB_EMULATOR_URL?.replace(/\/$/, "");
-  const dashboardUrl = process.env.PORFFER_DASHBOARD_URL || "https://dashboard.porffer.dev";
+  const dashboardUrl = process.env.SPROUTBOAT_DASHBOARD_URL || "https://dashboard.sproutboat.com";
   if (!secret || secret.length < 32) throw new Error("BETTER_AUTH_SECRET must be set to at least 32 high-entropy characters");
-  if (!baseURL) throw new Error("BETTER_AUTH_URL must be set to the public dashboard.porffer.dev URL");
+  if (!baseURL) throw new Error("BETTER_AUTH_URL must be set to the public dashboard.sproutboat.com URL");
   if (!githubClientId || !githubClientSecret) throw new Error("GITHUB_CLIENT_ID and GITHUB_CLIENT_SECRET are required for GitHub sign-in");
   const apiKeyPlugin = apiKey({
-    defaultPrefix: "porffer_",
+    defaultPrefix: "sproutboat_",
     apiKeyHeaders: "x-api-key",
     enableSessionForAPIKeys: true,
     rateLimit: { enabled: true, maxRequests: 120, timeWindow: 60_000 },
@@ -38,8 +38,8 @@ function createAuth() {
       },
     }] }) : undefined;
   return betterAuth({
-    appName: "Porffer",
-    database: new Database(process.env.PORFFER_DATABASE_PATH || "/var/lib/porffer/porffer.sqlite"),
+    appName: "Sproutboat",
+    database: new Database(process.env.SPROUTBOAT_DATABASE_PATH || "/var/lib/sproutboat/sproutboat.sqlite"),
     secret,
     baseURL,
     trustedOrigins: [dashboardUrl],

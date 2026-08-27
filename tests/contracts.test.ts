@@ -11,7 +11,7 @@ import { profileForUser, reserveUsername, validUsername } from "../apps/control/
 import { createCliAuthorization, exchangeCliAuthorization } from "../apps/control/src/cli-authorization";
 
 describe("Phase A contracts", () => {
-  test("accepts the documented porffer.jsonc shape", () => {
+  test("accepts the documented sproutboat.jsonc shape", () => {
     expect(parseConfig(`{ // comment\n "name": "hello", "main": "src/index.js", "compatibility_date": "2026-08-26", "vars": { "GREETING": "hello" }, }`).ok).toBe(true);
   });
 
@@ -27,7 +27,7 @@ describe("Phase A contracts", () => {
   });
 
   test("round-trips a bounded abi-v1 request frame", () => {
-    const request = { version: "abi-v1" as const, kind: "request" as const, method: "GET", url: "https://hello.andrea.porffer.dev/", headers: { accept: "text/plain" }, body: "" };
+    const request = { version: "abi-v1" as const, kind: "request" as const, method: "GET", url: "https://hello.andrea.sproutboat.com/", headers: { accept: "text/plain" }, body: "" };
     expect(decodeFrame(encodeFrame(request))).toEqual(request);
   });
 
@@ -55,7 +55,7 @@ describe("Phase A contracts", () => {
   });
 
   test("rejects an artifact directory that is missing its worker", async () => {
-    const path = await mkdtemp("/private/tmp/porffer-invalid-artifact-");
+    const path = await mkdtemp("/private/tmp/sproutboat-invalid-artifact-");
     await Bun.write(`${path}/manifest.json`, "{}");
     const result = await validateArtifactDirectory(path);
     expect(result.ok).toBe(false);
@@ -63,12 +63,12 @@ describe("Phase A contracts", () => {
   });
 
   test("uses a reserved user namespace in nested deployment hostnames", async () => {
-    process.env.PORFFER_DATABASE_PATH = `${await mkdtemp("/private/tmp/porffer-profiles-")}/porffer.sqlite`;
+    process.env.SPROUTBOAT_DATABASE_PATH = `${await mkdtemp("/private/tmp/sproutboat-profiles-")}/sproutboat.sqlite`;
     expect(validUsername("andrea")).toBe(true);
     expect(validUsername("dashboard")).toBe(false);
     expect(reserveUsername("user-a", "andrea")).toEqual(expect.objectContaining({ userId: "user-a", username: "andrea" }));
     expect(profileForUser("user-a")).toEqual(expect.objectContaining({ username: "andrea" }));
-    expect(deploymentHostname("hello", "andrea")).toBe("hello.andrea.porffer.dev");
+    expect(deploymentHostname("hello", "andrea")).toBe("hello.andrea.sproutboat.com");
     expect(() => reserveUsername("user-b", "andrea")).toThrow("username is already taken");
   });
 

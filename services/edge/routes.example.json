@@ -1,6 +1,6 @@
 [
   {
-    "hostname": "hello.andrea.porffer.dev",
-    "workerPath": "/srv/porffer/artifacts/example/worker"
+    "hostname": "hello.andrea.sproutboat.com",
+    "workerPath": "/srv/sproutboat/artifacts/example/worker"
   }
 ]

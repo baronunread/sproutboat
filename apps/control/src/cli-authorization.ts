@@ -8,7 +8,7 @@ let database: Database | undefined;
 
 function db(): Database {
   if (!database) {
-    database = new Database(process.env.PORFFER_DATABASE_PATH || "/var/lib/porffer/porffer.sqlite");
+    database = new Database(process.env.SPROUTBOAT_DATABASE_PATH || "/var/lib/sproutboat/sproutboat.sqlite");
     database.run("CREATE TABLE IF NOT EXISTS cli_authorizations (user_code TEXT PRIMARY KEY, device_hash TEXT NOT NULL UNIQUE, user_id TEXT, state TEXT NOT NULL, expires_at TEXT NOT NULL, token_issued_at TEXT)");
   }
   return database;
@@ -25,8 +25,8 @@ export async function createCliAuthorization(): Promise<Response> {
     const expiresAt = new Date(Date.now() + 10 * 60_000).toISOString();
     try {
       db().query("INSERT INTO cli_authorizations (user_code, device_hash, user_id, state, expires_at) VALUES (?, ?, NULL, 'pending', ?)").run(code, hash(deviceCode), expiresAt);
-      const dashboardUrl = (process.env.PORFFER_DASHBOARD_URL || "https://dashboard.porffer.dev").replace(/\/$/, "");
-      return Response.json({ deviceCode, userCode: code, verificationUri: `${dashboardUrl}/dashboard?cli_code=${code}`, interval: 2, expiresAt }, { status: 201 });
+      const dashboardUrl = (process.env.SPROUTBOAT_DASHBOARD_URL || "https://dashboard.sproutboat.com").replace(/\/$/, "");
+      return Response.json({ deviceCode, userCode: code, verificationUri: `${dashboardUrl}/?cli_code=${code}`, interval: 2, expiresAt }, { status: 201 });
     } catch (error) {
       if (!(error instanceof Error) || !/UNIQUE constraint failed/.test(error.message)) throw error;
     }
@@ -53,7 +53,7 @@ export async function exchangeCliAuthorization(deviceCode: unknown): Promise<Res
   const claimed = db().query("UPDATE cli_authorizations SET state = 'issuing' WHERE user_code = ? AND state = 'approved'").run(record.user_code);
   if (!claimed.changes) return Response.json({ error: "CLI request was already used" }, { status: 410 });
   try {
-    const result = await getAuth().api.createApiKey({ body: { userId: record.user_id, name: "Porffer CLI" } });
+    const result = await getAuth().api.createApiKey({ body: { userId: record.user_id, name: "Sproutboat CLI" } });
     const key = (result as { key?: unknown }).key;
     if (typeof key !== "string") throw new Error("API key creation did not return a key");
     db().query("UPDATE cli_authorizations SET state = 'issued', token_issued_at = ? WHERE user_code = ?").run(new Date().toISOString(), record.user_code);

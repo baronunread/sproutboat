@@ -1,0 +1,25 @@
+[Unit]
+Description=Sproutboat deployment edge router
+After=network-online.target docker.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=sproutboat-edge
+Group=sproutboat
+WorkingDirectory=/opt/sproutboat
+Environment=PORT=8080
+Environment=SPROUTBOAT_ROUTE_SNAPSHOT=/var/lib/sproutboat/routes.json
+Environment=SPROUTBOAT_RUNTIME_IMAGE=sproutboat/build:stable
+Environment=SPROUTBOAT_LOG_PATH=/var/lib/sproutboat/logs/requests.ndjson
+ExecStart=/opt/sproutboat/bun/bin/bun services/edge/src/main.ts
+ExecReload=/bin/kill -HUP $MAINPID
+Restart=always
+RestartSec=2
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ReadWritePaths=/var/lib/sproutboat /var/run/docker.sock
+
+[Install]
+WantedBy=multi-user.target

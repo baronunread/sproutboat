@@ -5,10 +5,10 @@ import { validateHttpSyncSource } from "../../../packages/config/src/source";
 import { buildArtifact } from "../../../packages/artifact/src/build";
 import { activeApiUrl, savedToken, saveToken } from "./credentials";
 
-const defaultApiUrl = "https://dashboard.porffer.dev";
+const defaultApiUrl = "https://dashboard.sproutboat.com";
 
 const starterConfig = (name: string) => `{
-  "$schema": "https://porffer.dev/schema.json",
+  "$schema": "https://sproutboat.com/schema.json",
   "name": "${name}",
   "main": "src/index.js",
   "compatibility_date": "2026-08-26"
@@ -16,24 +16,24 @@ const starterConfig = (name: string) => `{
 `;
 const starterHandler = `export default {
   fetch() {
-    return new Response("hello from Porffer");
+    return new Response("hello from Sproutboat");
   }
 };
 `;
 
 function fail(message: string): never {
-  console.error(`porffer: ${message}`);
+  console.error(`sproutboat: ${message}`);
   process.exit(1);
 }
 
 async function readProject(directory = process.cwd()) {
   const projectDirectory = resolve(directory);
-  const configPath = resolve(projectDirectory, "porffer.jsonc");
+  const configPath = resolve(projectDirectory, "sproutboat.jsonc");
   let configSource: string;
   try {
     configSource = await readFile(configPath, "utf8");
   } catch {
-    fail(`no porffer.jsonc found in ${projectDirectory}`);
+    fail(`no sproutboat.jsonc found in ${projectDirectory}`);
   }
   const parsed = parseConfig(configSource);
   if (!parsed.ok) fail(parsed.errors.join("\n"));
@@ -52,12 +52,12 @@ async function readProject(directory = process.cwd()) {
 async function init(name = "hello") {
   if (!/^[a-z0-9](?:[a-z0-9-]{1,30}[a-z0-9])?$/.test(name)) fail("project name must be a 3–32 character lowercase slug");
   const directory = resolve(process.cwd(), name);
-  const configPath = resolve(directory, "porffer.jsonc");
-  if (await Bun.file(configPath).exists()) fail(`${basename(directory)} already contains porffer.jsonc`);
+  const configPath = resolve(directory, "sproutboat.jsonc");
+  if (await Bun.file(configPath).exists()) fail(`${basename(directory)} already contains sproutboat.jsonc`);
   await mkdir(resolve(directory, "src"), { recursive: true });
   await writeFile(configPath, starterConfig(name), { flag: "wx" });
   await writeFile(resolve(directory, "src/index.js"), starterHandler, { flag: "wx" });
-  console.log(`Created ${basename(directory)}/porffer.jsonc`);
+  console.log(`Created ${basename(directory)}/sproutboat.jsonc`);
   console.log(`Created ${basename(directory)}/src/index.js`);
 }
 
@@ -99,6 +99,19 @@ async function deploy(args: string[]) {
     return;
   }
   const { apiUrl, token } = await apiCredentials();
+  const artifact = await manifest.json() as { binaryHash?: string };
+  const digest = artifact.binaryHash?.replace(/^sha256:/, "");
+  if (digest) {
+    const response = await fetch(`${apiUrl.replace(/\/$/, "")}/v1/projects/${projectName}/deployments`, { headers: { "x-api-key": token } });
+    if (!response.ok) fail(`could not check existing deployments (${response.status}): ${await response.text()}`);
+    const deployments = await response.json() as Array<{ artifact: string; hostname: string; active: boolean }>;
+    const active = deployments.find((deployment) => deployment.active && deployment.artifact === digest);
+    if (active) {
+      console.log(`Nothing to deploy — artifact ${digest.slice(0, 12)} is already active`);
+      console.log(`https://${active.hostname}`);
+      return;
+    }
+  }
   const form = new FormData();
   form.set("manifest", new File([await manifest.arrayBuffer()], "manifest.json", { type: "application/json" }));
   form.set("worker", new File([await worker.arrayBuffer()], "worker", { type: "application/octet-stream" }));
@@ -115,9 +128,9 @@ async function deploy(args: string[]) {
 }
 
 function loginApiUrl(args: string[]): string {
-  if (!args.length) return (process.env.PORFFER_API_URL || defaultApiUrl).replace(/\/$/, "");
+  if (!args.length) return (process.env.SPROUTBOAT_API_URL || defaultApiUrl).replace(/\/$/, "");
   if (args.length === 2 && args[0] === "--api-url") return args[1].replace(/\/$/, "");
-  fail("usage: porffer login [--api-url <url>]");
+  fail("usage: sproutboat login [--api-url <url>]");
 }
 
 async function login(args: string[]) {
@@ -160,7 +173,7 @@ async function dev(args: string[]) {
   const port = Number(portValue || 8788);
   if (port < 1 || port > 65_535) fail("--port must be between 1 and 65535");
   const hostname = `${built.project.config.name}.localhost`;
-  const snapshotPath = resolve(built.project.directory, ".porffer/dev-routes.json");
+  const snapshotPath = resolve(built.project.directory, ".sproutboat/dev-routes.json");
   await writeFile(snapshotPath, `${JSON.stringify([{ hostname, workerPath: resolve(built.artifact.artifactDir, "worker") }], null, 2)}\n`);
   const edgePath = resolve(import.meta.dir, "../../../services/edge/src/main.ts");
   console.log(`Development server: http://${hostname}:${port}`);
@@ -171,8 +184,8 @@ async function dev(args: string[]) {
     env: {
       ...process.env,
       PORT: String(port),
-      PORFFER_ROUTE_SNAPSHOT: snapshotPath,
-      PORFFER_RUNTIME_IMAGE: process.env.PORFFER_RUNTIME_IMAGE || process.env.PORFFER_BUILD_IMAGE_REF || "porffer/build:dev",
+      SPROUTBOAT_ROUTE_SNAPSHOT: snapshotPath,
+      SPROUTBOAT_RUNTIME_IMAGE: process.env.SPROUTBOAT_RUNTIME_IMAGE || process.env.SPROUTBOAT_BUILD_IMAGE_REF || "sproutboat/build:dev",
     },
   });
   process.on("SIGINT", () => child.kill());
@@ -180,14 +193,14 @@ async function dev(args: string[]) {
 }
 
 async function apiCredentials() {
-  const apiUrl = (process.env.PORFFER_API_URL || await activeApiUrl() || defaultApiUrl).replace(/\/$/, "");
-  const token = process.env.PORFFER_TOKEN || await savedToken(apiUrl);
-  if (!token) fail("not logged in; run porffer login or set PORFFER_TOKEN for this command");
+  const apiUrl = (process.env.SPROUTBOAT_API_URL || await activeApiUrl() || defaultApiUrl).replace(/\/$/, "");
+  const token = process.env.SPROUTBOAT_TOKEN || await savedToken(apiUrl);
+  if (!token) fail("not logged in; run sproutboat login or set SPROUTBOAT_TOKEN for this command");
   return { apiUrl, token };
 }
 
 async function versions(args: string[]) {
-  if (args[0] !== "list") fail("usage: porffer versions list [project-directory]");
+  if (args[0] !== "list") fail("usage: sproutboat versions list [project-directory]");
   const project = await readProject(args[1]);
   const { apiUrl, token } = await apiCredentials();
   const response = await fetch(`${apiUrl}/v1/projects/${project.config.name}/deployments`, { headers: { "x-api-key": token } });
@@ -198,7 +211,7 @@ async function versions(args: string[]) {
 
 async function rollback(args: string[]) {
   const id = args[0];
-  if (!id) fail("usage: porffer rollback <version-id> [project-directory]");
+  if (!id) fail("usage: sproutboat rollback <version-id> [project-directory]");
   const project = await readProject(args[1]);
   const { apiUrl, token } = await apiCredentials();
   const response = await fetch(`${apiUrl}/v1/projects/${project.config.name}/deployments/${id}/activate`, { method: "POST", headers: { "x-api-key": token } });
@@ -226,7 +239,7 @@ async function deleteProject(args: string[]) {
 }
 
 function usage(): never {
-  console.error("usage: porffer <init [name]|check|build|dev [directory] [--port <port>]|login [--api-url <url>]|deploy [--dry-run|--artifact <path>]|tail|versions list|rollback <version-id>|delete --yes>");
+  console.error("usage: sproutboat <init [name]|check|build|dev [directory] [--port <port>]|login [--api-url <url>]|deploy [--dry-run|--artifact <path>]|tail|versions list|rollback <version-id>|delete --yes>");
   process.exit(1);
 }
 

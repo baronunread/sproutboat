@@ -3,7 +3,7 @@ all:
     poc-1:
       ansible_host: 203.0.113.10
       ansible_user: root
-      porffer_role: all-in-one
-      porffer_region: eu-central
-      porffer_acme_email: operator@example.com
-      porffer_cloudflare_api_token: replace-with-a-scoped-cloudflare-api-token
+      sproutboat_role: all-in-one
+      sproutboat_region: eu-central
+      sproutboat_acme_email: operator@example.com
+      sproutboat_cloudflare_api_token: replace-with-a-scoped-cloudflare-api-token

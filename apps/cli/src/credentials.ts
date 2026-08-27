@@ -5,9 +5,9 @@ import { isAbsolute, resolve } from "node:path";
 type Credentials = { version: 1; activeApiUrl?: string; profiles: Record<string, { token: string }> };
 
 function configDirectory(): string {
-  const configured = process.env.PORFFER_CONFIG_DIR || process.env.XDG_CONFIG_HOME;
-  if (configured && isAbsolute(configured)) return resolve(configured, "porffer");
-  return resolve(homedir(), ".config", "porffer");
+  const configured = process.env.SPROUTBOAT_CONFIG_DIR || process.env.XDG_CONFIG_HOME;
+  if (configured && isAbsolute(configured)) return resolve(configured, "sproutboat");
+  return resolve(homedir(), ".config", "sproutboat");
 }
 
 function credentialsPath(): string {
@@ -25,7 +25,7 @@ async function readCredentials(): Promise<Credentials> {
     return { version: 1, activeApiUrl: typeof parsed.activeApiUrl === "string" ? parsed.activeApiUrl : undefined, profiles: parsed.profiles };
   } catch (error) {
     if (error instanceof Error && "code" in error && error.code === "ENOENT") return emptyCredentials();
-    throw new Error("could not read local Porffer credentials");
+    throw new Error("could not read local Sproutboat credentials");
   }
 }
 

@@ -6,17 +6,22 @@ import { actorFor, type Actor } from "./identity";
 
 export type Route = { hostname: string; workerPath: string };
 
-const artifactRoot = resolve(process.env.PORFFER_ARTIFACTS_DIR || "/var/lib/porffer/artifacts");
-const routesPath = resolve(process.env.PORFFER_ROUTE_SNAPSHOT || "/var/lib/porffer/routes.json");
-const deploymentsPath = resolve(process.env.PORFFER_DEPLOYMENTS_PATH || "/var/lib/porffer/deployments.json");
-const logPath = resolve(process.env.PORFFER_LOG_PATH || "/var/lib/porffer/logs/requests.ndjson");
+const artifactRoot = resolve(process.env.SPROUTBOAT_ARTIFACTS_DIR || "/var/lib/sproutboat/artifacts");
+const routesPath = resolve(process.env.SPROUTBOAT_ROUTE_SNAPSHOT || "/var/lib/sproutboat/routes.json");
+const deploymentsPath = resolve(process.env.SPROUTBOAT_DEPLOYMENTS_PATH || "/var/lib/sproutboat/deployments.json");
+const logPath = resolve(process.env.SPROUTBOAT_LOG_PATH || "/var/lib/sproutboat/logs/requests.ndjson");
 
 export type Deployment = { id: string; project: string; ownerId: string; username: string; hostname: string; artifact: string; workerPath: string; deployedAt: string; active: boolean };
 export type ProjectSummary = { name: string; hostname: string; activeDeploymentId: string; deployedAt: string };
+export type DashboardOverview = {
+  metrics: { activeProjects: number; deployments: number; requestsLast24Hours: number; successRate: number | null };
+  projects: ProjectSummary[];
+  deployments: Array<Pick<Deployment, "id" | "project" | "hostname" | "artifact" | "deployedAt" | "active">>;
+};
 
 export function deploymentDomain(): string {
-  const domain = (process.env.PORFFER_DEPLOYMENT_DOMAIN || "porffer.dev").toLowerCase();
-  if (!/^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+$/.test(domain)) throw new Error("PORFFER_DEPLOYMENT_DOMAIN must be a lowercase multi-label hostname");
+  const domain = (process.env.SPROUTBOAT_DEPLOYMENT_DOMAIN || "sproutboat.com").toLowerCase();
+  if (!/^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+$/.test(domain)) throw new Error("SPROUTBOAT_DEPLOYMENT_DOMAIN must be a lowercase multi-label hostname");
   return domain;
 }
 
@@ -90,6 +95,47 @@ export async function listProjects(request: Request): Promise<Response> {
     deployedAt: deployment.deployedAt,
   }));
   return Response.json(projects.sort((left, right) => left.name.localeCompare(right.name)));
+}
+
+export async function dashboardOverview(request: Request): Promise<Response> {
+  const actor = await authorized(request);
+  if (actor instanceof Response) return actor;
+
+  const deployments = (await readDeployments()).filter((deployment) => deployment.ownerId === actor.id);
+  const active = deployments.filter((deployment) => deployment.active);
+  const projects = active.map((deployment) => ({
+    name: deployment.project,
+    hostname: deployment.hostname,
+    activeDeploymentId: deployment.id,
+    deployedAt: deployment.deployedAt,
+  })).sort((left, right) => left.name.localeCompare(right.name));
+  const hostnames = new Set(active.map((deployment) => deployment.hostname));
+  const since = Date.now() - 24 * 60 * 60 * 1000;
+  let requestsLast24Hours = 0;
+  let successfulRequests = 0;
+  try {
+    for (const line of (await readFile(logPath, "utf8")).trim().split("\n")) {
+      const event = JSON.parse(line) as { at?: string; hostname?: string; status?: number };
+      if (!event.hostname || !hostnames.has(event.hostname) || !event.at || new Date(event.at).getTime() < since) continue;
+      requestsLast24Hours += 1;
+      if (typeof event.status === "number" && event.status >= 200 && event.status < 400) successfulRequests += 1;
+    }
+  } catch { /* No request log exists until the edge receives traffic. */ }
+
+  const overview: DashboardOverview = {
+    metrics: {
+      activeProjects: projects.length,
+      deployments: deployments.length,
+      requestsLast24Hours,
+      successRate: requestsLast24Hours ? Math.round((successfulRequests / requestsLast24Hours) * 1000) / 10 : null,
+    },
+    projects,
+    deployments: deployments
+      .sort((left, right) => right.deployedAt.localeCompare(left.deployedAt))
+      .slice(0, 20)
+      .map(({ id, project, hostname, artifact, deployedAt, active }) => ({ id, project, hostname, artifact, deployedAt, active })),
+  };
+  return Response.json(overview);
 }
 
 export async function activateDeployment(request: Request, project: string, id: string): Promise<Response> {

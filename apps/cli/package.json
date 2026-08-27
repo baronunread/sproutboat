@@ -1,8 +1,8 @@
 {
-  "name": "porffer",
+  "name": "sproutboat",
   "private": true,
   "type": "module",
   "bin": {
-    "porffer": "src/main.ts"
+    "sproutboat": "src/main.ts"
   }
 }

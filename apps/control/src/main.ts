@@ -1,12 +1,12 @@
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { getAuth } from "./auth";
-import { activateDeployment, deleteProject, deployArtifact, isDeploymentHostname, listDeployments, listProjects, projectLogs } from "./deployments";
+import { activateDeployment, dashboardOverview, deleteProject, deployArtifact, isDeploymentHostname, listDeployments, listProjects, projectLogs } from "./deployments";
 import { actorFor, profileForUser, reserveUsername, signedInUserId } from "./identity";
 import { approveCliAuthorization, createCliAuthorization, exchangeCliAuthorization } from "./cli-authorization";
 
 type Route = { hostname: string; workerPath: string };
-const routesPath = resolve(process.env.PORFFER_ROUTE_SNAPSHOT || "/var/lib/porffer/routes.json");
+const routesPath = resolve(process.env.SPROUTBOAT_ROUTE_SNAPSHOT || "/var/lib/sproutboat/routes.json");
 const port = Number(process.env.PORT || 8787);
 
 async function activeHostnames(): Promise<Set<string>> {
@@ -64,6 +64,7 @@ const server = Bun.serve({
     }
     const deployment = /^\/v1\/projects\/([a-z0-9-]+)\/deployments$/.exec(url.pathname);
     if (request.method === "GET" && url.pathname === "/v1/projects") return listProjects(request);
+    if (request.method === "GET" && url.pathname === "/v1/overview") return dashboardOverview(request);
     if (request.method === "POST" && deployment) return deployArtifact(request, deployment[1]);
     if (request.method === "GET" && deployment) return listDeployments(request, deployment[1]);
     const project = /^\/v1\/projects\/([a-z0-9-]+)$/.exec(url.pathname);
@@ -79,7 +80,7 @@ const server = Bun.serve({
       return new Response(allowed ? "allowed" : "unknown deployment", { status: allowed ? 200 : 403 });
     }
     if (url.pathname === "/") {
-      return new Response("Porffer is an experimental platform. The control API is not public yet.", {
+      return new Response("Sproutboat is an experimental platform. The control API is not public yet.", {
         headers: { "content-type": "text/plain; charset=utf-8" },
       });
     }
@@ -87,4 +88,4 @@ const server = Bun.serve({
   },
 });
 
-console.log(`Porffer control listening on http://127.0.0.1:${server.port}`);
+console.log(`Sproutboat control listening on http://127.0.0.1:${server.port}`);

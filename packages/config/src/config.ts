@@ -2,7 +2,7 @@ export const CONFIG_SCHEMA_VERSION = 1;
 
 const slugPattern = /^[a-z0-9](?:[a-z0-9-]{1,30}[a-z0-9])?$/;
 
-export type PorfferConfig = {
+export type SproutboatConfig = {
   $schema?: string;
   name: string;
   main: string;
@@ -11,7 +11,7 @@ export type PorfferConfig = {
 };
 
 export type ConfigValidation =
-  | { ok: true; value: PorfferConfig }
+  | { ok: true; value: SproutboatConfig }
   | { ok: false; errors: string[] };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -43,7 +43,7 @@ export function validateConfig(value: unknown): ConfigValidation {
       if (!/^[A-Z][A-Z0-9_]*$/.test(key) || typeof item !== "string") errors.push(`vars.${key} must be a string environment name`);
     }
   }
-  return errors.length ? { ok: false, errors } : { ok: true, value: value as PorfferConfig };
+  return errors.length ? { ok: false, errors } : { ok: true, value: value as SproutboatConfig };
 }
 
 export function parseConfig(source: string): ConfigValidation {
@@ -68,6 +68,6 @@ export function parseConfig(source: string): ConfigValidation {
     json = json.replace(/,\s*([}\]])/g, "$1");
     return validateConfig(JSON.parse(json));
   } catch (error) {
-    return { ok: false, errors: [`invalid porffer.jsonc: ${error instanceof Error ? error.message : String(error)}`] };
+    return { ok: false, errors: [`invalid sproutboat.jsonc: ${error instanceof Error ? error.message : String(error)}`] };
   }
 }

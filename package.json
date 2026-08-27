@@ -1,12 +1,12 @@
 {
-  "name": "porffor-platform",
+  "name": "sproutboat-platform",
   "private": true,
   "type": "module",
   "bin": {
-    "porffer": "apps/cli/src/main.ts"
+    "sproutboat": "apps/cli/src/main.ts"
   },
   "scripts": {
-    "porffer": "bun --use-system-ca apps/cli/src/main.ts",
+    "sproutboat": "bun --use-system-ca apps/cli/src/main.ts",
     "edge": "bun run services/edge/src/main.ts",
     "control": "bun run apps/control/src/main.ts",
     "web": "bun run --cwd apps/web dev",

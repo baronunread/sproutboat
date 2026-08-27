@@ -4,5 +4,11 @@ import react from "@vitejs/plugin-react";
 
 export default defineConfig({
   plugins: [tanstackStart(), react()],
-  server: { port: Number(process.env.PORT) || 5173, proxy: { "/api": "https://control.porffer.localhost", "/v1": "https://control.porffer.localhost" } },
+  server: {
+    port: Number(process.env.PORT) || 5173,
+    proxy: {
+      "/api": { target: "https://control.sproutboat.localhost", changeOrigin: true },
+      "/v1": { target: "https://control.sproutboat.localhost", changeOrigin: true },
+    },
+  },
 });

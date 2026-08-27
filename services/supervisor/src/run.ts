@@ -53,7 +53,7 @@ function assertResponse(value: unknown): asserts value is { status: number; head
 
 export async function runWorker(workerPath: string, request: WorkerRequest): Promise<WorkerResponse> {
   if (new TextEncoder().encode(request.body).byteLength > maxBodyBytes) throw new RangeError("request body exceeds 256 KiB limit");
-  const image = process.env.PORFFER_RUNTIME_IMAGE || "porffer/build:dev";
+  const image = process.env.SPROUTBOAT_RUNTIME_IMAGE || "sproutboat/build:dev";
   const artifactDir = dirname(resolve(workerPath));
   const workerName = basename(workerPath);
   const child = Bun.spawn([
