@@ -1,0 +1,44 @@
+{
+  "name": "porffor-platform",
+  "private": true,
+  "type": "module",
+  "bin": {
+    "porffer": "apps/cli/src/main.ts"
+  },
+  "scripts": {
+    "porffer": "bun --use-system-ca apps/cli/src/main.ts",
+    "edge": "bun run services/edge/src/main.ts",
+    "control": "bun run apps/control/src/main.ts",
+    "web": "bun run --cwd apps/web dev",
+    "web:build": "bun run --cwd apps/web build",
+    "dev:local": "bun run tools/dev-local.ts",
+    "test": "bun test",
+    "typecheck": "tsc --noEmit",
+    "check": "bun run tools/check.ts",
+    "diff": "bun run tools/diff.ts",
+    "report": "bun run tools/report.ts",
+    "validate": "bun run typecheck && bun run test && bun run tools/check.ts && bun run tools/diff.ts && bun run tools/report.ts",
+    "retest": "bun run validate"
+  },
+  "devDependencies": {
+    "@types/bun": "1.2.21",
+    "@types/react": "^19.2.18",
+    "@types/react-dom": "^19.2.5",
+    "@vitejs/plugin-react": "^6.1.0",
+    "esbuild": "^0.28.2",
+    "nitro": "^3.0.260610-beta",
+    "porffor": "0.61.13",
+    "portless": "0.15.5",
+    "rolldown": "^1.2.6",
+    "typescript": "^5.9.2",
+    "vite": "^8.2.2"
+  },
+  "dependencies": {
+    "@better-auth/api-key": "^1.7.1",
+    "@tanstack/react-router": "^1.170.32",
+    "@tanstack/react-start": "^1.168.49",
+    "better-auth": "^1.7.1",
+    "react": "19",
+    "react-dom": "19"
+  }
+}

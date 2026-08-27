@@ -1,0 +1,14 @@
+github:
+  users:
+    - login: andrea
+      name: Andrea Test
+      email: andrea@example.test
+    - login: sofia
+      name: Sofia Test
+      email: sofia@example.test
+  oauth_apps:
+    - client_id: porffer-local
+      client_secret: porffer-local-secret
+      name: Porffer local dashboard
+      redirect_uris:
+        - https://dashboard.porffer.localhost/api/auth/callback/github

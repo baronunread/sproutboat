@@ -1,0 +1,35 @@
+import { readFile, writeFile } from "node:fs/promises";
+import { resolve } from "node:path";
+import type { CompatReport } from "./types";
+
+const root = resolve(import.meta.dir, "..");
+const report = JSON.parse(await readFile(resolve(root, "report.json"), "utf8")) as CompatReport;
+const compiled = report.files.filter((item) => item.compiles);
+const matched = report.files.filter((item) => item.matches);
+const sizes = compiled.flatMap((item) => item.sizeBytes === null ? [] : [item.sizeBytes]).sort((a, b) => a - b);
+const median = sizes.length === 0 ? null : sizes.length % 2
+  ? sizes[(sizes.length - 1) / 2]
+  : (sizes[sizes.length / 2 - 1] + sizes[sizes.length / 2]) / 2;
+const sizeLabel = median === null ? "n/a" : `${(median / 1_000_000).toFixed(2)} MB`;
+const summary = `${compiled.length}/${report.files.length} compile, ${matched.length}/${report.files.length} match, median binary ${sizeLabel}`;
+const categories = {
+  compile: report.files.filter((item) => !item.compiles).length,
+  runtime: report.files.filter((item) => item.compiles && !item.matches && !item.error?.includes(" mismatch:")).length,
+  mismatch: report.files.filter((item) => item.compiles && !item.matches && item.error?.includes(" mismatch:")).length,
+};
+
+const escape = (value: string | null) => (value || "").replaceAll("|", "\\|").replace(/\s+/g, " ");
+const rows = report.files.map((item) =>
+  `| ${item.file} | ${item.compiles ? "yes" : "no"} | ${item.matches ? "yes" : "no"} | ${item.sizeBytes ?? "—"} | ${item.compileMs} | ${item.runMs ?? "—"} | ${escape(item.error)} |`
+);
+const decision = matched.length / report.files.length >= 0.4 ? "GO" : "NO-GO";
+const markdown = `# Phase 0 compatibility\n\n` +
+  `Porffor ${report.porfforVersion}; generated ${report.generatedAt}; ${report.requestsPerFile} probes per handler.\n\n` +
+  `**${summary}**\n\n` +
+  `Decision: **${decision}** (go threshold: at least 40% matching).\n\n` +
+  `Failure categories: ${categories.compile} compile, ${categories.runtime} runtime, ${categories.mismatch} output mismatch.\n\n` +
+  `| Handler | Compiles | Matches | Bytes | Compile ms | Run ms | Error |\n` +
+  `|---|---:|---:|---:|---:|---:|---|\n${rows.join("\n")}\n`;
+
+await writeFile(resolve(root, "COMPAT.md"), markdown);
+console.log(markdown);

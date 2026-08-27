@@ -1,0 +1,209 @@
+---
+- name: Provision the provider-neutral Porffer POC host
+  hosts: all
+  become: true
+  gather_facts: true
+  vars:
+    porffer_root: /opt/porffer
+    porffer_state: /var/lib/porffer
+
+  pre_tasks:
+    - name: Require a supported Linux x86-64 systemd host
+      ansible.builtin.assert:
+        that:
+          - ansible_system == 'Linux'
+          - ansible_architecture in ['x86_64', 'amd64']
+          - ansible_service_mgr == 'systemd'
+        fail_msg: Porffer requires Linux x86-64 with systemd.
+
+    - name: Require an ACME account email
+      ansible.builtin.assert:
+        that: porffer_acme_email is defined and porffer_acme_email | length > 3
+        fail_msg: Set porffer_acme_email in inventory before provisioning.
+
+    - name: Require a scoped Cloudflare DNS token
+      ansible.builtin.assert:
+        that: porffer_cloudflare_api_token is defined and porffer_cloudflare_api_token | length > 20
+        fail_msg: Set porffer_cloudflare_api_token in inventory before provisioning.
+
+  tasks:
+    - name: Install host dependencies
+      ansible.builtin.apt:
+        update_cache: true
+        name:
+          - caddy
+          - docker.io
+          - bubblewrap
+          - ca-certificates
+          - curl
+          - golang-go
+          - unzip
+        state: present
+
+    - name: Create the Porffer service group
+      ansible.builtin.group:
+        name: porffer
+        system: true
+
+    - name: Create service identities
+      ansible.builtin.user:
+        name: '{{ item }}'
+        group: porffer
+        groups: '{{ "docker" if item == "porffer-edge" else omit }}'
+        append: '{{ item == "porffer-edge" }}'
+        system: true
+        create_home: false
+        shell: /usr/sbin/nologin
+      loop:
+        - porffer-control
+        - porffer-edge
+        - porffer-web
+
+    - name: Create immutable-artifact and application directories
+      ansible.builtin.file:
+        path: '{{ item.path }}'
+        state: directory
+        owner: '{{ item.owner }}'
+        group: porffer
+        mode: '{{ item.mode }}'
+      loop:
+        - { path: '{{ porffer_root }}', owner: root, mode: '0755' }
+        - { path: '{{ porffer_state }}', owner: porffer-control, mode: '0750' }
+        - { path: '{{ porffer_state }}/artifacts', owner: porffer-control, mode: '0750' }
+        - { path: '{{ porffer_state }}/logs', owner: porffer-edge, mode: '0770' }
+        - { path: /etc/porffer, owner: root, mode: '0750' }
+
+    - name: Copy the release tree
+      ansible.posix.synchronize:
+        src: ../../
+        dest: '{{ porffer_root }}/'
+        delete: true
+        rsync_opts:
+          - '--exclude=.git'
+          - '--exclude=node_modules'
+          - '--exclude=.phase0'
+          - '--exclude=.porffer'
+
+    - name: Install Bun under the application root
+      ansible.builtin.shell: curl -fsSL https://bun.sh/install | BUN_INSTALL={{ porffer_root }}/bun bash
+      args:
+        creates: '{{ porffer_root }}/bun/bin/bun'
+
+    - name: Install xcaddy for the Cloudflare DNS module build
+      ansible.builtin.command: go install github.com/caddyserver/xcaddy/cmd/xcaddy@latest
+      environment:
+        GOBIN: /usr/local/bin
+      args:
+        creates: /usr/local/bin/xcaddy
+
+    - name: Build Caddy with the Cloudflare DNS module
+      ansible.builtin.command: /usr/local/bin/xcaddy build --with github.com/caddy-dns/cloudflare --output /usr/local/bin/caddy-porffer
+      args:
+        chdir: '{{ porffer_root }}'
+        creates: /usr/local/bin/caddy-porffer
+
+    - name: Install locked application dependencies
+      ansible.builtin.command: '{{ porffer_root }}/bun/bin/bun install --frozen-lockfile'
+      args:
+        chdir: '{{ porffer_root }}'
+
+    - name: Build the Linux runtime image locally
+      ansible.builtin.command: docker build --platform linux/amd64 -t porffer/build:stable -f build-image/Dockerfile .
+      args:
+        chdir: '{{ porffer_root }}'
+
+    - name: Build the dashboard
+      ansible.builtin.command: '{{ porffer_root }}/bun/bin/bun run web:build'
+      args:
+        chdir: '{{ porffer_root }}'
+
+    - name: Initialize atomic route and deployment registries
+      ansible.builtin.copy:
+        content: '[]\n'
+        dest: '{{ item }}'
+        owner: porffer-control
+        group: porffer
+        mode: '0640'
+        force: false
+      loop:
+        - '{{ porffer_state }}/routes.json'
+        - '{{ porffer_state }}/deployments.json'
+
+    - name: Install Caddy configuration
+      ansible.builtin.copy:
+        src: ../caddy/Caddyfile
+        dest: /etc/caddy/Caddyfile
+        owner: root
+        group: root
+        mode: '0644'
+      notify: reload caddy
+
+    - name: Install Caddy environment
+      ansible.builtin.copy:
+        content: |-
+          ACME_EMAIL={{ porffer_acme_email }}
+          CLOUDFLARE_API_TOKEN={{ porffer_cloudflare_api_token }}
+        dest: /etc/porffer/caddy.env
+        owner: root
+        group: root
+        mode: '0640'
+      notify: reload caddy
+      no_log: true
+
+    - name: Create the Caddy systemd override directory
+      ansible.builtin.file:
+        path: /etc/systemd/system/caddy.service.d
+        state: directory
+        owner: root
+        group: root
+        mode: '0755'
+
+    - name: Configure Caddy environment loading
+      ansible.builtin.copy:
+        content: |
+          [Service]
+          EnvironmentFile=/etc/porffer/caddy.env
+          ExecStart=
+          ExecStart=/usr/local/bin/caddy-porffer run --environ --config /etc/caddy/Caddyfile
+          ExecReload=
+          ExecReload=/usr/local/bin/caddy-porffer reload --config /etc/caddy/Caddyfile --force
+        dest: /etc/systemd/system/caddy.service.d/porffer.conf
+        owner: root
+        group: root
+        mode: '0644'
+      notify: reload systemd
+
+    - name: Install Porffer systemd services
+      ansible.builtin.copy:
+        src: '../systemd/{{ item }}'
+        dest: '/etc/systemd/system/{{ item }}'
+        owner: root
+        group: root
+        mode: '0644'
+      loop:
+        - porffer-control.service
+        - porffer-edge.service
+        - porffer-web.service
+      notify: reload systemd
+
+    - name: Enable public services
+      ansible.builtin.systemd_service:
+        name: '{{ item }}'
+        enabled: true
+        state: started
+      loop:
+        - docker
+        - porffer-control
+        - porffer-edge
+        - porffer-web
+        - caddy
+
+  handlers:
+    - name: reload systemd
+      ansible.builtin.systemd_service:
+        daemon_reload: true
+
+    - name: reload caddy
+      ansible.builtin.systemd_service:
+        name: caddy
+        state: reloaded

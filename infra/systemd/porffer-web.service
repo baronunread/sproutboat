@@ -1,0 +1,21 @@
+[Unit]
+Description=Porffer dashboard
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=porffer-web
+Group=porffer
+WorkingDirectory=/opt/porffer
+Environment=PORT=3000
+ExecStart=/opt/porffer/bun/bin/bun apps/web/dist/server/server.js
+Restart=always
+RestartSec=2
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+
+[Install]
+WantedBy=multi-user.target

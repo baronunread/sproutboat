@@ -1,0 +1,277 @@
+{
+  "generatedAt": "2026-08-26T08:05:30.523Z",
+  "porfforVersion": "alpha 2 (20383ef 2026-08-26)",
+  "requestsPerFile": 3,
+  "files": [
+    {
+      "file": "01-hello.js",
+      "compiles": true,
+      "sizeBytes": 253064,
+      "compileMs": 3518,
+      "runMs": 84,
+      "matches": true,
+      "error": null
+    },
+    {
+      "file": "02-static-json.js",
+      "compiles": true,
+      "sizeBytes": 253072,
+      "compileMs": 3366,
+      "runMs": 28,
+      "matches": false,
+      "error": "request 1: Error: Porffor native fetch server listening on http://127.0.0.1:43129 Uncaught TypeError"
+    },
+    {
+      "file": "03-echo-method.js",
+      "compiles": true,
+      "sizeBytes": 253072,
+      "compileMs": 3402,
+      "runMs": 82,
+      "matches": true,
+      "error": null
+    },
+    {
+      "file": "04-query-param.js",
+      "compiles": true,
+      "sizeBytes": 286128,
+      "compileMs": 3589,
+      "runMs": 29,
+      "matches": false,
+      "error": "request 1: Error: Porffor native fetch server listening on http://127.0.0.1:43129 Uncaught TypeError: Cannot read property of undefined"
+    },
+    {
+      "file": "05-query-default.js",
+      "compiles": true,
+      "sizeBytes": 286128,
+      "compileMs": 3931,
+      "runMs": 27,
+      "matches": false,
+      "error": "request 1: Error: Porffor native fetch server listening on http://127.0.0.1:43129 Uncaught TypeError: Cannot read property of undefined"
+    },
+    {
+      "file": "06-url-routing.js",
+      "compiles": true,
+      "sizeBytes": 286128,
+      "compileMs": 3547,
+      "runMs": 81,
+      "matches": true,
+      "error": null
+    },
+    {
+      "file": "07-json-echo.js",
+      "compiles": true,
+      "sizeBytes": 269760,
+      "compileMs": 4148,
+      "runMs": 28,
+      "matches": false,
+      "error": "request 1 mismatch: expected {\"status\":200,\"body\":\"{}\",\"content-type\":\"application/json;charset=utf-8\"}, got {\"status\":500,\"body\":\"native fetch promise rejected\",\"content-type\":\"text/plain; charset=utf-8\"}"
+    },
+    {
+      "file": "08-json-transform.js",
+      "compiles": true,
+      "sizeBytes": 269760,
+      "compileMs": 3917,
+      "runMs": 28,
+      "matches": false,
+      "error": "request 1 mismatch: expected {\"status\":200,\"body\":\"{\\\"name\\\":\\\"\\\",\\\"active\\\":false}\",\"content-type\":\"application/json;charset=utf-8\"}, got {\"status\":500,\"body\":\"native fetch promise rejected\",\"content-type\":\"text/plain; charset=utf-8\"}"
+    },
+    {
+      "file": "09-json-stringify.js",
+      "compiles": true,
+      "sizeBytes": 269584,
+      "compileMs": 4732,
+      "runMs": 82,
+      "matches": true,
+      "error": null
+    },
+    {
+      "file": "10-uppercase.js",
+      "compiles": true,
+      "sizeBytes": 286128,
+      "compileMs": 5428,
+      "runMs": 28,
+      "matches": false,
+      "error": "request 1: Error: Porffor native fetch server listening on http://127.0.0.1:43129 Uncaught TypeError: Cannot read property of undefined"
+    },
+    {
+      "file": "11-reverse.js",
+      "compiles": true,
+      "sizeBytes": 319176,
+      "compileMs": 4326,
+      "runMs": 27,
+      "matches": false,
+      "error": "request 1: Error: Porffor native fetch server listening on http://127.0.0.1:43129 Uncaught TypeError: Cannot read property of undefined"
+    },
+    {
+      "file": "12-slugify.js",
+      "compiles": true,
+      "sizeBytes": 401816,
+      "compileMs": 4838,
+      "runMs": 27,
+      "matches": false,
+      "error": "request 1: Error: Porffor native fetch server listening on http://127.0.0.1:43129 Uncaught TypeError: Cannot read property of undefined"
+    },
+    {
+      "file": "13-regex-email.js",
+      "compiles": true,
+      "sizeBytes": 385296,
+      "compileMs": 4768,
+      "runMs": 27,
+      "matches": false,
+      "error": "request 1: Error: Porffor native fetch server listening on http://127.0.0.1:43129 Uncaught TypeError: Cannot read property of undefined"
+    },
+    {
+      "file": "14-regex-extract.js",
+      "compiles": true,
+      "sizeBytes": 401808,
+      "compileMs": 4894,
+      "runMs": 27,
+      "matches": false,
+      "error": "request 1: Error: Porffor native fetch server listening on http://127.0.0.1:43129 Uncaught TypeError: Cannot read property of undefined"
+    },
+    {
+      "file": "15-date-iso.js",
+      "compiles": true,
+      "sizeBytes": 302712,
+      "compileMs": 3856,
+      "runMs": 27,
+      "matches": false,
+      "error": "request 1: Error: Porffor native fetch server listening on http://127.0.0.1:43129 Uncaught TypeError: Cannot read property of undefined"
+    },
+    {
+      "file": "16-date-parts.js",
+      "compiles": true,
+      "sizeBytes": 302720,
+      "compileMs": 3824,
+      "runMs": 27,
+      "matches": false,
+      "error": "request 1: Error: Porffor native fetch server listening on http://127.0.0.1:43129 Uncaught TypeError: Cannot read property of undefined"
+    },
+    {
+      "file": "17-math-sum.js",
+      "compiles": true,
+      "sizeBytes": 319176,
+      "compileMs": 4153,
+      "runMs": 27,
+      "matches": false,
+      "error": "request 1: Error: Porffor native fetch server listening on http://127.0.0.1:43129 Uncaught TypeError: Cannot read property of undefined"
+    },
+    {
+      "file": "18-math-stats.js",
+      "compiles": true,
+      "sizeBytes": 353184,
+      "compileMs": 4330,
+      "runMs": 27,
+      "matches": false,
+      "error": "request 1: Error: Porffor native fetch server listening on http://127.0.0.1:43129 Uncaught TypeError: Cannot read property of undefined"
+    },
+    {
+      "file": "19-header-echo.js",
+      "compiles": true,
+      "sizeBytes": 253072,
+      "compileMs": 3365,
+      "runMs": 82,
+      "matches": true,
+      "error": null
+    },
+    {
+      "file": "20-auth-header.js",
+      "compiles": true,
+      "sizeBytes": 253072,
+      "compileMs": 3416,
+      "runMs": 82,
+      "matches": true,
+      "error": null
+    },
+    {
+      "file": "21-response-headers.js",
+      "compiles": true,
+      "sizeBytes": 253072,
+      "compileMs": 3359,
+      "runMs": 82,
+      "matches": true,
+      "error": null
+    },
+    {
+      "file": "22-status-created.js",
+      "compiles": true,
+      "sizeBytes": 253072,
+      "compileMs": 3416,
+      "runMs": 84,
+      "matches": true,
+      "error": null
+    },
+    {
+      "file": "23-status-not-found.js",
+      "compiles": true,
+      "sizeBytes": 286128,
+      "compileMs": 3536,
+      "runMs": 28,
+      "matches": false,
+      "error": "request 1: Error: Porffor native fetch server listening on http://127.0.0.1:43129 Uncaught TypeError: Cannot read property of undefined"
+    },
+    {
+      "file": "24-status-no-content.js",
+      "compiles": true,
+      "sizeBytes": 253080,
+      "compileMs": 3364,
+      "runMs": 82,
+      "matches": true,
+      "error": null
+    },
+    {
+      "file": "25-slack-command.js",
+      "compiles": true,
+      "sizeBytes": 269744,
+      "compileMs": 3586,
+      "runMs": 28,
+      "matches": false,
+      "error": "request 1 mismatch: expected {\"status\":400,\"body\":\"unknown command\",\"content-type\":null}, got {\"status\":500,\"body\":\"native fetch promise rejected\",\"content-type\":\"text/plain; charset=utf-8\"}"
+    },
+    {
+      "file": "26-stripe-shape.js",
+      "compiles": true,
+      "sizeBytes": 302640,
+      "compileMs": 3962,
+      "runMs": 82,
+      "matches": true,
+      "error": null
+    },
+    {
+      "file": "27-github-routing.js",
+      "compiles": true,
+      "sizeBytes": 253072,
+      "compileMs": 3465,
+      "runMs": 98,
+      "matches": true,
+      "error": null
+    },
+    {
+      "file": "28-state-machine.js",
+      "compiles": true,
+      "sizeBytes": 286128,
+      "compileMs": 3549,
+      "runMs": 28,
+      "matches": false,
+      "error": "request 1: Error: Porffor native fetch server listening on http://127.0.0.1:43129 Uncaught TypeError: Cannot read property of undefined"
+    },
+    {
+      "file": "29-form-urlencoded.js",
+      "compiles": true,
+      "sizeBytes": 269744,
+      "compileMs": 3455,
+      "runMs": 27,
+      "matches": false,
+      "error": "request 1 mismatch: expected {\"status\":200,\"body\":\"{\\\"name\\\":\\\"anonymous\\\",\\\"subscribed\\\":false}\",\"content-type\":\"application/json;charset=utf-8\"}, got {\"status\":500,\"body\":\"native fetch promise rejected\",\"content-type\":\"text/plain; charset=utf-8\"}"
+    },
+    {
+      "file": "30-content-negotiation.js",
+      "compiles": true,
+      "sizeBytes": 253096,
+      "compileMs": 3469,
+      "runMs": 27,
+      "matches": false,
+      "error": "request 1: Error: Porffor native fetch server listening on http://127.0.0.1:43129 Uncaught TypeError"
+    }
+  ]
+}

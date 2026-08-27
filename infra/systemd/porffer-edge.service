@@ -1,0 +1,25 @@
+[Unit]
+Description=Porffer deployment edge router
+After=network-online.target docker.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=porffer-edge
+Group=porffer
+WorkingDirectory=/opt/porffer
+Environment=PORT=8080
+Environment=PORFFER_ROUTE_SNAPSHOT=/var/lib/porffer/routes.json
+Environment=PORFFER_RUNTIME_IMAGE=porffer/build:stable
+Environment=PORFFER_LOG_PATH=/var/lib/porffer/logs/requests.ndjson
+ExecStart=/opt/porffer/bun/bin/bun services/edge/src/main.ts
+ExecReload=/bin/kill -HUP $MAINPID
+Restart=always
+RestartSec=2
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ReadWritePaths=/var/lib/porffer /var/run/docker.sock
+
+[Install]
+WantedBy=multi-user.target
