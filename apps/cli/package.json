@@ -1,0 +1,8 @@
+{
+  "name": "porffer",
+  "private": true,
+  "type": "module",
+  "bin": {
+    "porffer": "src/main.ts"
+  }
+}

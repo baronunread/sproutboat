@@ -3,3 +3,4 @@ node_modules/
 .porffer/
 .local/
 apps/web/dist/
+apps/web/.tanstack/

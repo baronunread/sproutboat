@@ -1,0 +1,57 @@
+import { chmod, mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
+import { homedir } from "node:os";
+import { isAbsolute, resolve } from "node:path";
+
+type Credentials = { version: 1; activeApiUrl?: string; profiles: Record<string, { token: string }> };
+
+function configDirectory(): string {
+  const configured = process.env.PORFFER_CONFIG_DIR || process.env.XDG_CONFIG_HOME;
+  if (configured && isAbsolute(configured)) return resolve(configured, "porffer");
+  return resolve(homedir(), ".config", "porffer");
+}
+
+function credentialsPath(): string {
+  return resolve(configDirectory(), "credentials.json");
+}
+
+function emptyCredentials(): Credentials {
+  return { version: 1, profiles: {} };
+}
+
+async function readCredentials(): Promise<Credentials> {
+  try {
+    const parsed = JSON.parse(await readFile(credentialsPath(), "utf8")) as Partial<Credentials>;
+    if (parsed.version !== 1 || !parsed.profiles || typeof parsed.profiles !== "object") return emptyCredentials();
+    return { version: 1, activeApiUrl: typeof parsed.activeApiUrl === "string" ? parsed.activeApiUrl : undefined, profiles: parsed.profiles };
+  } catch (error) {
+    if (error instanceof Error && "code" in error && error.code === "ENOENT") return emptyCredentials();
+    throw new Error("could not read local Porffer credentials");
+  }
+}
+
+export async function savedToken(apiUrl: string): Promise<string | undefined> {
+  return (await readCredentials()).profiles[apiUrl]?.token;
+}
+
+export async function activeApiUrl(): Promise<string | undefined> {
+  return (await readCredentials()).activeApiUrl;
+}
+
+export async function saveToken(apiUrl: string, token: string): Promise<void> {
+  const directory = configDirectory();
+  const path = credentialsPath();
+  const credentials = await readCredentials();
+  credentials.profiles[apiUrl] = { token };
+  credentials.activeApiUrl = apiUrl;
+  await mkdir(directory, { recursive: true, mode: 0o700 });
+  await chmod(directory, 0o700);
+  const temporary = `${path}.tmp-${crypto.randomUUID()}`;
+  try {
+    await writeFile(temporary, `${JSON.stringify(credentials, null, 2)}\n`, { mode: 0o600 });
+    await chmod(temporary, 0o600);
+    await rename(temporary, path);
+    await chmod(path, 0o600);
+  } finally {
+    await rm(temporary, { force: true });
+  }
+}

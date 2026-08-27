@@ -1,0 +1,6 @@
+[
+  {
+    "hostname": "hello.andrea.porffer.dev",
+    "workerPath": "/srv/porffer/artifacts/example/worker"
+  }
+]
