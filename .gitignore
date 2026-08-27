@@ -1,7 +1,6 @@
 node_modules/
 .phase0/
 .sproutboat/
-.porffer/
 .local/
 apps/web/dist/
 apps/web/.tanstack/
