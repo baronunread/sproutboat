@@ -22,7 +22,7 @@
         "esbuild": "^0.28.2",
         "nitro": "^3.0.260610-beta",
         "oxlint": "1.80.0",
-        "porffor": "github:CanadaHonk/porffor#alpha-3",
+        "porffor": "github:CanadaHonk/porffor#alpha-4",
         "portless": "0.15.5",
         "react-doctor": "0.9.12",
         "typescript": "^5.9.2",
@@ -739,7 +739,7 @@
 
     "playwright-core": ["playwright-core@1.62.1", "", { "bin": { "playwright-core": "cli.js" } }, "sha512-wPYSwEBJY9GHraISXqyqtx0na0LpO3XEX7jNDhntbex7tzUS7kLnZsOlFruFJB4Hi/rhDMjXGqHewDZ68nYZVw=="],
 
-    "porffor": ["porffor@github:CanadaHonk/porffor#03b6b54", {}, "CanadaHonk-porffor-03b6b54", "sha512-ok8pknrGWcWCb+dvEkluYZ593oazfYIsLiRqTQn04eo+Z40szk7iccgfcEYmwQpvemOHWQb/oW6iqrC+jDjgKw=="],
+    "porffor": ["porffor@github:CanadaHonk/porffor#a415d19", {}, "CanadaHonk-porffor-a415d19", "sha512-B/4TsihYIFLzl9AeK46cvARj3bfQ9XF4EXUKatpw/BuIzQjs3c1BSk1oRip4Zv+qCABHjLsGf6mRvV48ki0hSw=="],
 
     "portless": ["portless@0.15.5", "", { "os": [ "linux", "win32", "darwin", ], "bin": { "portless": "dist/cli.js" } }, "sha512-zmJu4Q8/fY54oVUT/5NnmF4Ih8wTdCvCf6JCN783dRYl9mXkJBzXSckX2lztGCLIbM70varDjCudAbGKT73XPg=="],
 

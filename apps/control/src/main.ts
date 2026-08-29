@@ -9,6 +9,8 @@ import { adminOverview, adminUserDetail, adminUsers, banUser, revokeUserSessions
 type Route = { hostname: string; workerPath: string };
 const routesPath = resolve(process.env.SPROUTBOAT_ROUTE_SNAPSHOT || "/var/lib/sproutboat/routes.json");
 const port = Number(process.env.PORT || 8787);
+// Loopback only: Caddy is the sole public listener and reverse-proxies here.
+const hostname = process.env.SPROUTBOAT_BIND_HOST || "127.0.0.1";
 
 type JsonValue = string | number | boolean | null | JsonObject | JsonValue[];
 type JsonObject = { [key: string]: JsonValue };
@@ -44,6 +46,7 @@ async function activeHostnames(): Promise<Set<string>> {
 
 const server = Bun.serve({
   port,
+  hostname,
   async fetch(request) {
     const url = new URL(request.url);
     if (url.pathname.startsWith("/api/auth/")) {
@@ -157,4 +160,4 @@ const server = Bun.serve({
   },
 });
 
-console.log(`Sproutboat control listening on http://127.0.0.1:${server.port}`);
+console.log(`Sproutboat control listening on http://${hostname}:${server.port}`);

@@ -109,13 +109,14 @@ ansible-playbook -i infra/ansible/inventory.yml infra/ansible/site.yml
 ```
 
 Before the public request path is enabled, attach `sproutboat.com` and
-`www.sproutboat.com` to the Cloudflare Pages marketing project. Create exact
-`dashboard.sproutboat.com` and wildcard `*.sproutboat.com` records in Cloudflare that
-point to the VPS. Set both VPS records to **DNS only**: Caddy, not Cloudflare
-Universal SSL, presents certificates for nested deployment names such as
-`hello.andrea.sproutboat.com`. The Pages domains can remain proxied through
-Cloudflare. The API token needs only the `Zone:Read` and `DNS:Edit` permissions
-for `sproutboat.com`.
+`www.sproutboat.com` to the Cloudflare Pages marketing project. The
+`dashboard.sproutboat.com` and wildcard `*.sproutboat.com` records that point to the
+VPS are managed with OpenTofu — see [tofu/README.md](tofu/README.md) — and are
+kept **DNS only**: Caddy, not Cloudflare Universal SSL, presents certificates
+for nested deployment names such as `hello.andrea.sproutboat.com`. The Pages
+domains can remain proxied through Cloudflare. The API token needs only the
+`Zone:Read` and `DNS:Edit` permissions for `sproutboat.com`, and is the same
+token Caddy uses for its DNS-01 challenge.
 
 Before deploying, copy [control.env.example](control.env.example) to
 `/etc/sproutboat/control.env` and set `BETTER_AUTH_SECRET` (at least 32

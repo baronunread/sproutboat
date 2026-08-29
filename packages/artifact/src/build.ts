@@ -62,6 +62,7 @@ export async function buildArtifact(input: BuildInput): Promise<BuildOutput> {
 
   await run([
     "docker", "run", "--rm", "--platform", "linux/amd64",
+    "--env", `SPROUTBOAT_VARS_JSON=${JSON.stringify(input.config.vars ?? {})}`,
     "--mount", `type=bind,src=${input.projectDir},dst=/input,readonly`,
     "--mount", `type=bind,src=${artifactDir},dst=/output`,
     image.reference,

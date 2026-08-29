@@ -20,13 +20,45 @@ const compileTimeoutMs = Number(process.env.PORFFOR_COMPILE_TIMEOUT_MS || 300_00
 
 /**
  * Turn `export default { [async] fetch(request) { … } }` into a native-fetch
- * server module: the prelude (URLSearchParams / Response.json shims for alpha-3)
- * then the handler body verbatim — no source rewriting.
+ * server module: the prelude (URLSearchParams / Response.json shims) plus the
+ * `env` binding (issue #8 — non-secret `vars` from sproutboat.jsonc, baked in at
+ * build time), then the handler body verbatim — no source rewriting.
+ *
+ * `env` is a module-scoped binding, not a `fetch` parameter: Porffor's
+ * native-fetch runtime invokes `fetch(request)` with one argument. A handler
+ * reads `env.MY_VAR`; it must not also declare `env` as a parameter.
+ *
+ * ponytail: the worker process is long-lived, so a handler that mutates `env`
+ * leaks that change to later requests on the same worker. Freeze upstream once
+ * Porffor supports Object.freeze in native mode.
  */
-export function wrapNativeFetchHandler(source: string, prelude: string): string {
+export function wrapNativeFetchHandler(source: string, prelude: string, vars: Record<string, string> = {}): string {
   const match = /^\s*export\s+default\s*\{\s*(async\s+)?fetch\s*\(([^)]*)\)\s*\{([\s\S]*)\}\s*\}\s*;?\s*$/.exec(source);
   if (!match) throw new Error("handler must default-export an object with a fetch(request) method");
-  return `${prelude}\nexport default {\n  port: ${defaultPort},\n  ${match[1] || ""}fetch(${match[2] || "request"}) {${match[3]}}\n};\n`;
+  const env = `const env = ${JSON.stringify(vars)};\n`;
+  return `${prelude}\n${env}export default {\n  port: ${defaultPort},\n  ${match[1] || ""}fetch(${match[2] || "request"}) {${match[3]}}\n};\n`;
+}
+
+type VarsJson = string | number | boolean | null | { readonly [key: string]: VarsJson } | VarsJson[];
+function isVarsObject(value: VarsJson): value is { readonly [key: string]: VarsJson } {
+  return value !== null && Object(value) === value && !Array.isArray(value);
+}
+function isVarsString(value: VarsJson): value is string {
+  return Object(value) !== value && value === String(value);
+}
+
+/** `SPROUTBOAT_VARS_JSON` (set by the build image) → a validated flat string map. */
+export function readVarsFromEnv() {
+  const raw = process.env.SPROUTBOAT_VARS_JSON;
+  const vars: Record<string, string> = {};
+  if (!raw) return vars;
+  const parsed: VarsJson = JSON.parse(raw);
+  if (!isVarsObject(parsed)) throw new Error("SPROUTBOAT_VARS_JSON must be a JSON object");
+  for (const [key, value] of Object.entries(parsed)) {
+    if (!/^[A-Z][A-Z0-9_]*$/.test(key) || !isVarsString(value)) throw new Error(`SPROUTBOAT_VARS_JSON.${key} must map an UPPER_SNAKE name to a string`);
+    vars[key] = value;
+  }
+  return vars;
 }
 
 export async function compileHandler(input: string, output?: string): Promise<CompileResult> {
@@ -39,7 +71,7 @@ export async function compileHandler(input: string, output?: string): Promise<Co
     await mkdir(dirname(outputPath), { recursive: true });
     await mkdir(dirname(generatedPath), { recursive: true });
     const [source, prelude] = await Promise.all([readFile(inputPath, "utf8"), readFile(preludePath, "utf8")]);
-    await writeFile(generatedPath, wrapNativeFetchHandler(source, prelude));
+    await writeFile(generatedPath, wrapNativeFetchHandler(source, prelude, readVarsFromEnv()));
 
     const child = Bun.spawn(["node", porfEntry, "native", generatedPath, "-o", outputPath], {
       cwd: root,

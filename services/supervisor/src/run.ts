@@ -17,6 +17,14 @@ import { workerCommand } from "./sandbox";
 export type WorkerChild = { readonly exited: Promise<number>; kill(signal?: number): void };
 export type WorkerFactory = (workerPath: string, port: number) => WorkerChild;
 
+/**
+ * What `endpoint()` resolved to. `coldStart` is true when this call had to spawn
+ * the worker process; `startupMs` is the spawn→listening wait for that cold
+ * start (0 on a warm hit). The edge records both per request so the dashboard
+ * can chart cold-start rate and startup-time percentiles.
+ */
+export type Endpoint = { url: string; coldStart: boolean; startupMs: number };
+
 export type WorkerPoolOptions = {
   readonly spawn?: WorkerFactory;
   readonly readyTimeoutMs?: number;
@@ -51,6 +59,8 @@ class WorkerServer {
   #closed = false;
   #ready: Promise<void>;
   lastUsedAt: number;
+  /** Spawn→listening wait in ms, set once the process accepts a connection. */
+  startupMs = 0;
 
   constructor(
     readonly workerPath: string,
@@ -63,8 +73,9 @@ class WorkerServer {
     this.port = port;
     this.url = `http://127.0.0.1:${port}`;
     this.lastUsedAt = now();
+    const spawnedAt = Date.now();
     this.#child = spawn(workerPath, port);
-    this.#ready = this.#awaitListening(readyTimeoutMs);
+    this.#ready = this.#awaitListening(readyTimeoutMs).then(() => { this.startupMs = Date.now() - spawnedAt; });
     void this.#child.exited.then(() => { if (!this.#closed) { this.#closed = true; this.onExit(this); } });
   }
 
@@ -82,10 +93,15 @@ class WorkerServer {
 
   async #awaitListening(timeoutMs: number): Promise<void> {
     const deadline = Date.now() + timeoutMs;
+    // Fast poll early (most workers listen within a few ms), then back off so a
+    // slow start doesn't spin. #43: replace polling entirely with an inherited
+    // listening fd once Porffor supports it.
+    let wait = 1;
     while (Date.now() < deadline) {
       if (this.#closed) throw new Error("worker exited before it began listening");
       if (await listens(this.port)) return;
-      await Bun.sleep(20);
+      await Bun.sleep(wait);
+      if (wait < 20) wait = Math.min(20, wait * 2);
     }
     this.dispose();
     throw new Error(`worker did not listen on :${this.port} within ${timeoutMs}ms`);
@@ -120,10 +136,12 @@ export class WorkerPool {
   }
 
   /** Base URL of the deployment's server, starting and awaiting it if needed. */
-  async endpoint(workerPath: string): Promise<string> {
+  async endpoint(workerPath: string): Promise<Endpoint> {
     const key = resolve(workerPath);
     let server = this.#servers.get(key);
+    let coldStart = false;
     if (!server || server.closed) {
+      coldStart = true;
       const port = this.#freePort();
       this.#usedPorts.add(port);
       server = new WorkerServer(key, port, this.#spawn, this.#readyTimeoutMs, this.#now, (dead) => {
@@ -141,7 +159,7 @@ export class WorkerPool {
       this.#usedPorts.delete(server.port);
       throw error;
     }
-    return server.url;
+    return { url: server.url, coldStart, startupMs: coldStart ? server.startupMs : 0 };
   }
 
   dispose(workerPath: string): void {
@@ -156,9 +174,19 @@ export class WorkerPool {
     this.#usedPorts.clear();
   }
 
-  evictIdle(now = this.#now()): number {
+  /**
+   * Stop workers idle past the window. `keepWarm` — the worker paths of
+   * currently-routed deployments — are never evicted, so an active deployment
+   * stays hot and its next request is not a cold start; idle eviction then only
+   * reaps workers whose route is gone.
+   *
+   * ponytail: keeps every routed deployment resident. Add an LRU cap or
+   * memory-pressure trigger once one node carries many hundreds of deployments.
+   */
+  evictIdle(keepWarm?: ReadonlySet<string>, now = this.#now()): number {
     let evicted = 0;
     for (const [key, server] of Array.from(this.#servers.entries())) {
+      if (keepWarm?.has(key)) continue;
       if (now - server.lastUsedAt >= this.#idleMs) {
         server.dispose();
         this.#servers.delete(key);

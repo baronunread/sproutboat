@@ -198,14 +198,27 @@ async function deploy(args: string[]) {
   console.log(deployed.url);
 }
 
-function loginApiUrl(args: string[]): string {
-  if (!args.length) return (process.env.SPROUTBOAT_API_URL || defaultApiUrl).replace(/\/$/, "");
-  if (args.length === 2 && args[0] === "--api-url") return args[1].replace(/\/$/, "");
-  fail("usage: sproutboat login [--api-url <url>]");
+function parseLoginArgs(args: string[]) {
+  let apiUrl = process.env.SPROUTBOAT_API_URL || defaultApiUrl;
+  let token: string | undefined;
+  for (let index = 0; index < args.length; index += 2) {
+    const value = args[index + 1];
+    if (args[index] === "--api-url" && value) apiUrl = value;
+    else if (args[index] === "--token" && value) token = value;
+    else fail("usage: sproutboat login [--api-url <url>] [--token <token>]");
+  }
+  return { apiUrl: apiUrl.replace(/\/$/, ""), token };
 }
 
 async function login(args: string[]) {
-  const apiUrl = loginApiUrl(args);
+  const { apiUrl, token: directToken } = parseLoginArgs(args);
+  // Self-hosted / non-interactive: skip the browser flow and store the token
+  // the operator already holds (e.g. SPROUTBOAT_BOOTSTRAP_TOKEN).
+  if (directToken) {
+    await saveToken(apiUrl, directToken);
+    console.log(`Saved credentials for ${apiUrl}.`);
+    return;
+  }
   const response = await fetch(`${apiUrl}/api/cli/authorizations`, { method: "POST" });
   const body = await responseText(response, "could not start login");
   const authorization = parseAuthorization(body);
@@ -304,7 +317,7 @@ async function deleteProject(args: string[]) {
 }
 
 function usage(): never {
-  console.error("usage: sproutboat <init [name]|check|build|dev [directory] [--port <port>]|login [--api-url <url>]|deploy [--dry-run|--artifact <path>]|tail|versions list|rollback <version-id>|delete --yes>");
+  console.error("usage: sproutboat <init [name]|check|build|dev [directory] [--port <port>]|login [--api-url <url>] [--token <token>]|deploy [--dry-run|--artifact <path>]|tail|versions list|rollback <version-id>|delete --yes>");
   process.exit(1);
 }
 

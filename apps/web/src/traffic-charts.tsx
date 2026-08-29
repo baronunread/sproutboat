@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useState } from "react";
 
 type StatusClass = "2xx" | "3xx" | "4xx" | "5xx" | "other";
-type Bucket = { start: string; count: number; errors: number };
+type Bucket = { start: string; count: number; errors: number; coldStarts: number };
+type Percentiles = { p50: number; p90: number; p99: number };
 type Metrics = {
   range: string;
   from: string;
@@ -9,9 +10,27 @@ type Metrics = {
   bucketMs: number;
   buckets: Bucket[];
   statusDistribution: Record<StatusClass, number>;
-  latencyMs: { p50: number; p90: number; p99: number } | null;
+  methodDistribution: Record<string, number>;
+  invocationStatus: Record<string, number>;
+  latencyMs: Percentiles | null;
+  ttfbMs: Percentiles | null;
+  startupMs: Percentiles | null;
+  coldStarts: number;
+  bytesIn: number;
+  bytesOut: number;
+  cacheHitRate: number | null;
+  cacheHits: number;
   sampleCount: number;
+  previous: { requests: number; errors: number; latencyP50: number | null };
   windowTruncated: boolean;
+};
+
+const KB = 1024;
+const bytes = (value: number) => {
+  if (value < KB) return `${value} B`;
+  if (value < KB * KB) return `${(value / KB).toFixed(1)} KB`;
+  if (value < KB * KB * KB) return `${(value / (KB * KB)).toFixed(1)} MB`;
+  return `${(value / (KB * KB * KB)).toFixed(2)} GB`;
 };
 
 const RANGES: ReadonlyArray<readonly [string, string]> = [
@@ -22,6 +41,41 @@ const CLOCK = new Intl.DateTimeFormat(undefined, { hour: "2-digit", minute: "2-d
 const DAY = new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric" });
 
 const group = (value: number) => value.toLocaleString();
+
+/** Signed percentage change, or null when there is no prior baseline. */
+function deltaPct(current: number, previous: number): number | null {
+  if (previous === 0) return current === 0 ? 0 : null;
+  return ((current - previous) / previous) * 100;
+}
+
+function Sparkline({ values }: { values: number[] }) {
+  const max = Math.max(1, ...values);
+  const step = values.length > 1 ? 100 / (values.length - 1) : 0;
+  const points = values.map((v, i) => `${(i * step).toFixed(2)},${(20 - (v / max) * 20).toFixed(2)}`).join(" ");
+  return (
+    <svg className="metric-spark" viewBox="0 0 100 20" preserveAspectRatio="none" role="img" aria-hidden="true">
+      <polyline points={points} fill="none" stroke="var(--sky)" strokeWidth="1.5" vectorEffect="non-scaling-stroke" />
+    </svg>
+  );
+}
+
+/** #37: KPI card — value, delta chip vs the previous same-length window, sparkline. */
+function MetricCard({ title, value, delta, goodWhen = "up", spark }: {
+  title: string; value: string; delta: number | null; goodWhen?: "up" | "down"; spark?: number[];
+}) {
+  const dir = delta === null || Math.abs(delta) < 0.5 ? "flat" : delta > 0 ? "up" : "down";
+  const tone = dir === "flat" ? "flat" : (dir === "up") === (goodWhen === "up") ? "up" : "down";
+  return (
+    <div className="metric-card">
+      <span className="metric-title">{title}</span>
+      <span className="metric-value">{value}</span>
+      <span className={`metric-delta ${tone}`}>
+        {delta === null ? "— no prior data" : `${delta > 0 ? "↑" : delta < 0 ? "↓" : ""} ${Math.abs(delta).toFixed(1)}% vs prev`}
+      </span>
+      {spark && spark.length > 1 && <Sparkline values={spark} />}
+    </div>
+  );
+}
 
 /** #10: request/error time series, status distribution, and latency percentiles for one project. */
 export function TrafficCharts({ name }: { name: string }) {
@@ -63,6 +117,22 @@ export function TrafficCharts({ name }: { name: string }) {
         <>
           {metrics.windowTruncated && <p className="form-status">Older activity beyond the scan window is not included in these totals.</p>}
 
+          {(() => {
+            const requests = metrics.buckets.reduce((sum, b) => sum + b.count, 0);
+            const errors = metrics.buckets.reduce((sum, b) => sum + b.errors, 0);
+            const errRate = requests ? (errors / requests) * 100 : 0;
+            const prevErrRate = metrics.previous.requests ? (metrics.previous.errors / metrics.previous.requests) * 100 : 0;
+            return (
+              <div className="metric-cards">
+                <MetricCard title="Requests" value={group(requests)} delta={deltaPct(requests, metrics.previous.requests)} goodWhen="up" spark={metrics.buckets.map((b) => b.count)} />
+                <MetricCard title="Error rate" value={`${errRate.toFixed(1)}%`} delta={deltaPct(errRate, prevErrRate)} goodWhen="down" spark={metrics.buckets.map((b) => b.errors)} />
+                <MetricCard title="Latency p50" value={metrics.latencyMs ? `${group(metrics.latencyMs.p50)} ms` : "—"} delta={metrics.latencyMs && metrics.previous.latencyP50 !== null ? deltaPct(metrics.latencyMs.p50, metrics.previous.latencyP50) : null} goodWhen="down" />
+                <MetricCard title="Cache hit rate" value={metrics.cacheHitRate === null ? "—" : `${metrics.cacheHitRate.toFixed(1)}%`} delta={null} goodWhen="up" />
+                <MetricCard title="Cold starts" value={group(metrics.coldStarts)} delta={null} goodWhen="down" spark={metrics.buckets.map((b) => b.coldStarts)} />
+              </div>
+            );
+          })()}
+
           <RequestBars buckets={metrics.buckets} tickLabel={tickLabel} />
 
           <div className="chart-block">
@@ -93,6 +163,74 @@ export function TrafficCharts({ name }: { name: string }) {
             ) : <p className="empty-state">Not enough requests to compute latency percentiles.</p>}
             <p className="hint">Nearest-rank percentiles over {group(metrics.sampleCount)} request{metrics.sampleCount === 1 ? "" : "s"}. The final bucket is still filling.</p>
           </div>
+
+          {metrics.ttfbMs && (
+            <div className="chart-block">
+              <h3>Time to first byte <small>· edge → worker response</small></h3>
+              <ul className="latency-tiles">
+                <li><strong>{group(metrics.ttfbMs.p50)} ms</strong><span>p50</span></li>
+                <li><strong>{group(metrics.ttfbMs.p90)} ms</strong><span>p90</span></li>
+                <li><strong>{group(metrics.ttfbMs.p99)} ms</strong><span>p99</span></li>
+              </ul>
+            </div>
+          )}
+
+          <div className="chart-block">
+            <h3>Cold starts <small>· spawn → listening</small></h3>
+            <ul className="latency-tiles">
+              <li><strong>{group(metrics.coldStarts)}</strong><span>cold starts</span></li>
+              <li><strong>{metrics.sampleCount ? `${Math.round((metrics.coldStarts / metrics.sampleCount) * 100)}%` : "—"}</strong><span>of requests</span></li>
+              <li><strong>{metrics.startupMs ? `${group(metrics.startupMs.p50)} ms` : "—"}</strong><span>startup p50</span></li>
+              <li><strong>{metrics.startupMs ? `${group(metrics.startupMs.p90)} ms` : "—"}</strong><span>startup p90</span></li>
+              <li><strong>{metrics.startupMs ? `${group(metrics.startupMs.p99)} ms` : "—"}</strong><span>startup p99</span></li>
+            </ul>
+            <p className="hint">A cold start is a request that had to launch the worker process (first hit after a deploy, crash, or idle eviction).</p>
+          </div>
+
+          <div className="chart-block">
+            <h3>Transfer</h3>
+            <ul className="latency-tiles">
+              <li><strong>{bytes(metrics.bytesIn)}</strong><span>request body in</span></li>
+              <li><strong>{bytes(metrics.bytesOut)}</strong><span>response body out</span></li>
+            </ul>
+            <p className="hint">Body bytes only, from Content-Length; streamed responses without a length are not counted.</p>
+          </div>
+
+          {Object.keys(metrics.invocationStatus).some((key) => key !== "ok") && (
+            <div className="chart-block">
+              <h3>Invocation status</h3>
+              <dl className="status-bars">
+                {Object.entries(metrics.invocationStatus).sort((a, b) => b[1] - a[1]).map(([status, value]) => {
+                  const width = metrics.sampleCount ? Math.round((value / metrics.sampleCount) * 100) : 0;
+                  const cls = status === "ok" ? "2xx" : "5xx";
+                  return (
+                    <div key={status}>
+                      <dt>{status}</dt>
+                      <dd><span className={`status-bar status-bar-${cls}`} style={{ width: `${width}%` }} aria-hidden="true" />{group(value)} <small>({width}%)</small></dd>
+                    </div>
+                  );
+                })}
+              </dl>
+              <p className="hint">`timed-out` and `response-too-large` are platform caps (#27); `worker-unavailable` / `proxy` are runtime failures.</p>
+            </div>
+          )}
+
+          {Object.keys(metrics.methodDistribution).length > 0 && (
+            <div className="chart-block">
+              <h3>Methods</h3>
+              <dl className="status-bars">
+                {Object.entries(metrics.methodDistribution).sort((a, b) => b[1] - a[1]).map(([method, value]) => {
+                  const width = metrics.sampleCount ? Math.round((value / metrics.sampleCount) * 100) : 0;
+                  return (
+                    <div key={method}>
+                      <dt>{method}</dt>
+                      <dd><span className="status-bar status-bar-2xx" style={{ width: `${width}%` }} aria-hidden="true" />{group(value)} <small>({width}%)</small></dd>
+                    </div>
+                  );
+                })}
+              </dl>
+            </div>
+          )}
         </>
       )}
     </section>

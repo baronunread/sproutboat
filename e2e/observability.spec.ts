@@ -11,7 +11,8 @@ test("traffic charts render from seeded edge logs", async ({ page }) => {
   await expect(page.getByRole("heading", { name: "Traffic" })).toBeVisible();
   await expect(page.locator("svg.bars g rect").first()).toBeVisible();     // request bars (skip the <defs> pattern rect)
   await expect(page.locator(".status-bars")).toContainText(/2xx/);          // status distribution
-  await expect(page.locator(".latency-tiles")).toContainText(/p50/);        // latency percentiles
+  await expect(page.locator(".latency-tiles").first()).toContainText(/p50/); // latency percentiles
+  await expect(page.getByRole("heading", { name: /Cold starts/ })).toBeVisible(); // startup metrics
 
   await page.getByLabel("Chart time range").selectOption("1h");
   await expect(page.locator("svg.bars")).toBeVisible();

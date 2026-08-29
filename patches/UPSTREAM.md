@@ -14,6 +14,22 @@ delete the corresponding lines from `native-fetch-prelude.js`.
 Porffor's AI_POLICY: **disclose AI use** (name the tool), and **do not paste
 LLM-written prose** — rewrite the drafts below in your own words before filing.
 
+**alpha-4 checked (2026-08-29, `a415d19`).** Nothing relevant changed:
+
+| Gap | alpha-4 | Action |
+| --- | --- | --- |
+| `URLSearchParams` / `URL.prototype.searchParams` | still missing (`runtime/fetch-globals.js:204`) | keep prelude; Draft A stands |
+| static `Response.json(data, init)` | still missing (`fetch-globals.js:326`, instance `json()` only) | keep prelude; Draft A stands |
+| class declaration not hoisted into scope | still throws in interpreter **and** native | Draft B stands |
+| env access / `$PORT` | no `Porffor.env`; `porf_native_fetch_get_port` unchanged | keep `patches/porffor-render.patch` (applied clean to alpha-4) |
+| compat suite | 30/30 compile, 28/30 match — identical to alpha-3 | GO holds |
+| `Date` string parse (`15-date-iso`, `16-date-parts`) | still wrong (`2008-03-04` → `0003-05-08`) | unchanged known limitation |
+
+So the drafts below are still accurate — bump their version line from
+`alpha-3 (03b6b54)` to `alpha-4 (a415d19)` before filing. Re-check on the next
+release; the pin is now `#alpha-4` (still a moving tag — bun.lock records
+`a415d19`).
+
 ---
 
 ## Draft A — missing WHATWG surface in native-fetch

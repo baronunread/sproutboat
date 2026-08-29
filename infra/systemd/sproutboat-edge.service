@@ -11,6 +11,12 @@ WorkingDirectory=/opt/sproutboat
 Environment=PORT=8080
 Environment=SPROUTBOAT_ROUTE_SNAPSHOT=/var/lib/sproutboat/routes.json
 Environment=SPROUTBOAT_LOG_PATH=/var/lib/sproutboat/logs/requests.ndjson
+# Platform-wide request caps (issue #27). Per-project overrides still tracked there.
+Environment=SPROUTBOAT_REQUEST_TIMEOUT_MS=30000
+Environment=SPROUTBOAT_RESPONSE_MAX_BYTES=10485760
+# Loopback bind (Caddy is the only public listener). Per-node response cache is
+# on by default; set SPROUTBOAT_EDGE_CACHE=off to disable it.
+Environment=SPROUTBOAT_BIND_HOST=127.0.0.1
 # Native runtime: each deployment is a long-lived native-fetch HTTP server
 # (Porffor alpha-3 + uWebSockets) started inside the bubblewrap sandbox
 # (infra/sandbox/worker-sandbox.sh). The supervisor assigns it a loopback $PORT;

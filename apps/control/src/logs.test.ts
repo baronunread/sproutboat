@@ -8,7 +8,10 @@ let logFile: string;
 let logs: typeof import("./logs");
 
 const HOST = "app.alice.test";
-type LineOverride = Partial<{ at: string; hostname: string; status: number; durationMs: number; error: string }>;
+type LineOverride = Partial<{
+  at: string; hostname: string; status: number; durationMs: number; error: string; errorKind: string;
+  method: string; ttfbMs: number; reqBytes: number; resBytes: number; coldStart: boolean; startupMs: number; cacheStatus: string;
+}>;
 const line = (over: LineOverride) =>
   `${JSON.stringify({ at: "2026-01-01T00:00:00.000Z", hostname: HOST, status: 200, durationMs: 5, ...over })}\n`;
 
@@ -102,6 +105,83 @@ test("aggregateLogs: 24 buckets over the range, right bucket, errors, distributi
 
   expect(metrics.statusDistribution).toEqual({ "2xx": 2, "3xx": 0, "4xx": 1, "5xx": 1, other: 0 });
   expect(metrics.latencyMs).toEqual({ p50: 20, p90: 900, p99: 900 });
+});
+
+test("aggregateLogs: cold starts, startup/ttfb percentiles, byte totals, method split", async () => {
+  const now = Date.now();
+  const ago = (ms: number) => new Date(now - ms).toISOString();
+  await writeFile(logFile, [
+    line({ at: ago(60_000), status: 200, method: "GET", ttfbMs: 4, reqBytes: 0, resBytes: 100, coldStart: true, startupMs: 30 }),
+    line({ at: ago(50_000), status: 200, method: "GET", ttfbMs: 8, reqBytes: 0, resBytes: 100 }),
+    line({ at: ago(40_000), status: 201, method: "POST", ttfbMs: 12, reqBytes: 50, resBytes: 20, coldStart: true, startupMs: 90 }),
+  ].join(""));
+
+  const metrics = await logs.aggregateLogs(HOST, "1h");
+  expect(metrics.invocationStatus).toEqual({ ok: 3 });
+  expect(metrics.cacheHitRate).toBeNull(); // no cacheStatus on these lines
+  expect(metrics.coldStarts).toBe(2);
+  expect(metrics.startupMs).toEqual({ p50: 90, p90: 90, p99: 90 });
+  expect(metrics.ttfbMs).toEqual({ p50: 8, p90: 12, p99: 12 });
+  expect(metrics.bytesIn).toBe(50);
+  expect(metrics.bytesOut).toBe(220);
+  expect(metrics.methodDistribution).toEqual({ GET: 2, POST: 1 });
+  expect(metrics.buckets.reduce((sum, bucket) => sum + bucket.coldStarts, 0)).toBe(2);
+});
+
+test("aggregateLogs: invocationStatus classifies errorKind and bare 5xx (#27/#33)", async () => {
+  const now = Date.now();
+  const ago = (ms: number) => new Date(now - ms).toISOString();
+  await writeFile(logFile, [
+    line({ at: ago(10_000), status: 200 }),
+    line({ at: ago(9_000), status: 200 }),
+    line({ at: ago(8_000), status: 504, error: "request timed out", errorKind: "timed-out" }),
+    line({ at: ago(7_000), status: 502, errorKind: "response-too-large" }),
+    line({ at: ago(6_000), status: 500 }), // bare 5xx, no errorKind -> upstream-5xx
+    line({ at: ago(5_000), status: 404, errorKind: "no-route" }),
+  ].join(""));
+
+  const metrics = await logs.aggregateLogs(HOST, "1h");
+  expect(metrics.invocationStatus).toEqual({
+    ok: 2, "timed-out": 1, "response-too-large": 1, "upstream-5xx": 1, "no-route": 1,
+  });
+});
+
+test("aggregateLogs: cache hit rate over cacheable GETs (#38)", async () => {
+  const now = Date.now();
+  const ago = (ms: number) => new Date(now - ms).toISOString();
+  await writeFile(logFile, [
+    line({ at: ago(10_000), status: 200, method: "GET", cacheStatus: "hit" }),
+    line({ at: ago(9_000), status: 200, method: "GET", cacheStatus: "hit" }),
+    line({ at: ago(8_000), status: 200, method: "GET", cacheStatus: "hit" }),
+    line({ at: ago(7_000), status: 200, method: "GET", cacheStatus: "miss" }),
+    line({ at: ago(6_000), status: 200, method: "GET", cacheStatus: "dynamic" }), // not counted
+    line({ at: ago(5_000), status: 200 }), // no cache status
+  ].join(""));
+
+  const metrics = await logs.aggregateLogs(HOST, "1h");
+  expect(metrics.cacheHits).toBe(3);
+  expect(metrics.cacheHitRate).toBe(75); // 3 hits / (3 hits + 1 miss)
+});
+
+test("aggregateLogs: previous-window totals for delta chips (#37)", async () => {
+  const now = Date.now();
+  const ago = (ms: number) => new Date(now - ms).toISOString();
+  const H = 3_600_000;
+  await writeFile(logFile, [
+    // this 1h window: 3 requests, 1 error
+    line({ at: ago(10_000), status: 200, durationMs: 10 }),
+    line({ at: ago(20_000), status: 200, durationMs: 30 }),
+    line({ at: ago(30_000), status: 503, durationMs: 40 }),
+    // the previous 1h window: 2 requests, 0 errors
+    line({ at: ago(H + 5 * 60_000), status: 200, durationMs: 5 }),
+    line({ at: ago(H + 10 * 60_000), status: 200, durationMs: 7 }),
+    // older than both windows -> ignored
+    line({ at: ago(3 * H), status: 200, durationMs: 1 }),
+  ].join(""));
+
+  const metrics = await logs.aggregateLogs(HOST, "1h");
+  expect(metrics.sampleCount).toBe(3);
+  expect(metrics.previous).toEqual({ requests: 2, errors: 0, latencyP50: 7 });
 });
 
 test("aggregateLogs: empty window and unknown range", async () => {

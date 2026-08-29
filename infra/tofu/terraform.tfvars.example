@@ -1,0 +1,10 @@
+# Copy to terraform.tfvars and fill in. Never commit the real file.
+# The API token goes in the environment, not here:
+#   export CLOUDFLARE_API_TOKEN=...   (Zone:Read + DNS:Edit on sproutboat.com)
+
+zone_id  = "0000000000000000000000000000000000"
+vps_ipv4 = "203.0.113.10"
+
+# Optional:
+# vps_ipv6          = "2001:db8::1"
+# pages_cname_target = "sproutboat.pages.dev"

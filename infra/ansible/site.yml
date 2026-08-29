@@ -37,8 +37,23 @@
           - ca-certificates
           - curl
           - golang-go
+          - ufw
           - unzip
         state: present
+
+    - name: Default-deny inbound; allow only SSH and the Caddy ports
+      # control (8787) and edge (8080) bind loopback only; Caddy is the sole
+      # public listener. Everything else is refused at the host firewall.
+      # ufw commands are idempotent, so this is safe to re-run.
+      ansible.builtin.command: '{{ item }}'
+      changed_when: false
+      loop:
+        - ufw default deny incoming
+        - ufw default allow outgoing
+        - ufw allow 22/tcp
+        - ufw allow 80/tcp
+        - ufw allow 443/tcp
+        - ufw --force enable
 
     - name: Create the Sproutboat service group
       ansible.builtin.group:
@@ -120,7 +135,9 @@
 
     - name: Initialize atomic route and deployment registries
       ansible.builtin.copy:
-        content: '[]\n'
+        # Double-quoted so \n is a real newline; single quotes would write the
+        # literal two characters and the edge's JSON.parse would crash-loop.
+        content: "[]\n"
         dest: '{{ item }}'
         owner: sproutboat-control
         group: sproutboat

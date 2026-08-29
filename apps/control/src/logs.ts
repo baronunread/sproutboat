@@ -4,9 +4,10 @@ import { resolve } from "node:path";
 /**
  * #3: bounded, filterable edge-log history + a live tail for one project's
  * route. The edge appends one JSON object per line to SPROUTBOAT_LOG_PATH:
- * `{ at, hostname, status, durationMs, error? }`. Method / URL are not recorded
- * by the edge (that record lives on the runtime track), so the view surfaces
- * "when available" only.
+ * `{ at, hostname, method, status, durationMs, ttfbMs?, reqBytes?, resBytes?,
+ * coldStart?, startupMs?, error?, errorKind? }`. Older lines carry only the
+ * first five fields; every added field is read defensively and treated as
+ * "unavailable" when absent.
  *
  * Every read is bounded to the last SCAN_CAP bytes of the file, so a large log
  * can never drive an unbounded request.
@@ -26,9 +27,17 @@ export type StatusClass = "2xx" | "3xx" | "4xx" | "5xx" | "other";
 
 export type LogRecord = {
   at: string;
+  method: string | null;
   status: number;
   durationMs: number;
+  ttfbMs: number | null;
+  reqBytes: number | null;
+  resBytes: number | null;
+  coldStart: boolean;
+  startupMs: number | null;
   failure: string | null;
+  errorKind: string | null;
+  cacheStatus: string | null;
   statusClass: StatusClass;
 };
 
@@ -69,7 +78,22 @@ function parseLine(line: string, hostname?: string): LogRecord | undefined {
     : status >= 500 ? "upstream error"
     : status === 404 ? "no route"
     : null;
-  return { at: value.at, status, durationMs: value.durationMs, failure, statusClass: statusClassOf(status) };
+  const num = (v: LogJson | undefined): number | null => (isFiniteNumber(v) ? v : null);
+  return {
+    at: value.at,
+    method: isText(value.method) ? value.method : null,
+    status,
+    durationMs: value.durationMs,
+    ttfbMs: num(value.ttfbMs),
+    reqBytes: num(value.reqBytes),
+    resBytes: num(value.resBytes),
+    coldStart: value.coldStart === true,
+    startupMs: num(value.startupMs),
+    failure,
+    errorKind: isText(value.errorKind) ? value.errorKind : null,
+    cacheStatus: isText(value.cacheStatus) ? value.cacheStatus : null,
+    statusClass: statusClassOf(status),
+  };
 }
 
 async function tailBytes(from: number, to: number): Promise<string> {
@@ -127,7 +151,8 @@ function resolveRange(range: string): RangeKey {
 }
 const BUCKET_COUNT = 24;
 
-export type MetricsBucket = { start: string; count: number; errors: number };
+export type MetricsBucket = { start: string; count: number; errors: number; coldStarts: number };
+export type Percentiles = { p50: number; p90: number; p99: number };
 export type Metrics = {
   range: string;
   from: string;
@@ -135,10 +160,32 @@ export type Metrics = {
   bucketMs: number;
   buckets: MetricsBucket[];
   statusDistribution: Record<StatusClass, number>;
-  latencyMs: { p50: number; p90: number; p99: number } | null;
+  methodDistribution: Record<string, number>;
+  /** ok | timed-out | worker-unavailable | proxy | response-too-large | upstream-5xx | no-route */
+  invocationStatus: Record<string, number>;
+  latencyMs: Percentiles | null;
+  /** Edge → first upstream byte. Null until some request reached a worker. */
+  ttfbMs: Percentiles | null;
+  /** Spawn → listening wait, over the cold starts in the window. */
+  startupMs: Percentiles | null;
+  coldStarts: number;
+  bytesIn: number;
+  bytesOut: number;
+  /** Edge cache: hits / (hits + misses) over cacheable GETs. Null if none. */
+  cacheHitRate: number | null;
+  cacheHits: number;
   sampleCount: number;
+  /** Same-length window immediately before this one, for delta-vs-previous chips.
+   *  Under-counts when `windowTruncated` (the tail did not reach back far enough). */
+  previous: { requests: number; errors: number; latencyP50: number | null };
   windowTruncated: boolean;
 };
+
+function percentilesOf(sorted: number[]): Percentiles | null {
+  if (!sorted.length) return null;
+  const at = (p: number) => sorted[Math.min(sorted.length - 1, Math.floor((p / 100) * sorted.length))];
+  return { p50: at(50), p90: at(90), p99: at(99) };
+}
 
 /**
  * Coarse traffic aggregation over one route's edge log, scanning only the last
@@ -162,25 +209,57 @@ export async function aggregateLogs(hostname: string, range: string): Promise<Me
     start: new Date(from + index * bucketMs).toISOString(),
     count: 0,
     errors: 0,
+    coldStarts: 0,
   }));
   const statusDistribution = { "2xx": 0, "3xx": 0, "4xx": 0, "5xx": 0, other: 0 } satisfies Record<StatusClass, number>;
+  const methodDistribution: Record<string, number> = {};
+  const invocationStatus: Record<string, number> = {};
   const latencies: number[] = [];
+  const ttfbs: number[] = [];
+  const startups: number[] = [];
+  let coldStarts = 0;
+  let bytesIn = 0;
+  let bytesOut = 0;
+  let cacheHits = 0;
+  let cacheMisses = 0;
+  const prevFrom = from - rangeMs;
+  let prevRequests = 0;
+  let prevErrors = 0;
+  const prevLatencies: number[] = [];
 
   for (const line of lines) {
     const record = parseLine(line, hostname);
     if (!record) continue;
     const at = Date.parse(record.at);
-    if (Number.isNaN(at) || at < from || at > to) continue;
+    if (Number.isNaN(at)) continue;
+    if (at >= prevFrom && at < from) {
+      prevRequests += 1;
+      if (record.status >= 500) prevErrors += 1;
+      prevLatencies.push(record.durationMs);
+      continue;
+    }
+    if (at < from || at > to) continue;
     const index = Math.min(BUCKET_COUNT - 1, Math.floor((at - from) / bucketMs));
     buckets[index].count += 1;
     if (record.status >= 500) buckets[index].errors += 1;
     statusDistribution[record.statusClass] += 1;
+    if (record.method) methodDistribution[record.method] = (methodDistribution[record.method] ?? 0) + 1;
+    const invStatus = record.errorKind ?? (record.status >= 500 ? "upstream-5xx" : "ok");
+    invocationStatus[invStatus] = (invocationStatus[invStatus] ?? 0) + 1;
     latencies.push(record.durationMs);
+    if (record.ttfbMs !== null) ttfbs.push(record.ttfbMs);
+    if (record.coldStart) {
+      coldStarts += 1;
+      buckets[index].coldStarts += 1;
+      if (record.startupMs !== null) startups.push(record.startupMs);
+    }
+    if (record.reqBytes !== null) bytesIn += record.reqBytes;
+    if (record.resBytes !== null) bytesOut += record.resBytes;
+    if (record.cacheStatus === "hit") cacheHits += 1;
+    else if (record.cacheStatus === "miss") cacheMisses += 1;
   }
 
-  latencies.sort((left, right) => left - right);
-  const percentile = (p: number): number => latencies[Math.min(latencies.length - 1, Math.floor((p / 100) * latencies.length))];
-  const latencyMs = latencies.length ? { p50: percentile(50), p90: percentile(90), p99: percentile(99) } : null;
+  const bySize = (left: number, right: number) => left - right;
 
   return {
     range: resolved,
@@ -189,8 +268,22 @@ export async function aggregateLogs(hostname: string, range: string): Promise<Me
     bucketMs,
     buckets,
     statusDistribution,
-    latencyMs,
+    methodDistribution,
+    invocationStatus,
+    latencyMs: percentilesOf(latencies.sort(bySize)),
+    ttfbMs: percentilesOf(ttfbs.sort(bySize)),
+    startupMs: percentilesOf(startups.sort(bySize)),
+    coldStarts,
+    bytesIn,
+    bytesOut,
+    cacheHits,
+    cacheHitRate: cacheHits + cacheMisses > 0 ? (cacheHits / (cacheHits + cacheMisses)) * 100 : null,
     sampleCount: latencies.length,
+    previous: {
+      requests: prevRequests,
+      errors: prevErrors,
+      latencyP50: percentilesOf(prevLatencies.sort(bySize))?.p50 ?? null,
+    },
     windowTruncated,
   };
 }

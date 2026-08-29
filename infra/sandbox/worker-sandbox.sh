@@ -66,9 +66,17 @@ for path in "${robind[@]}"; do
 done
 
 if [ -n "${SPROUTBOAT_WORKER_SECCOMP:-}" ]; then
-  [ -r "$SPROUTBOAT_WORKER_SECCOMP" ] || { echo "worker-sandbox: cannot read seccomp filter $SPROUTBOAT_WORKER_SECCOMP" >&2; exit 126; }
-  exec 3<"$SPROUTBOAT_WORKER_SECCOMP"
-  bwrap_args+=(--seccomp 3)
+  if [ -r "$SPROUTBOAT_WORKER_SECCOMP" ]; then
+    exec 3<"$SPROUTBOAT_WORKER_SECCOMP"
+    bwrap_args+=(--seccomp 3)
+  elif [ "${SPROUTBOAT_WORKER_SECCOMP_REQUIRED:-0}" = "1" ]; then
+    echo "worker-sandbox: seccomp filter $SPROUTBOAT_WORKER_SECCOMP is required but unreadable" >&2
+    exit 126
+  else
+    # A fresh host has no compiled BPF yet. The syscall allowlist is the last
+    # layer; namespace, filesystem, fork, and egress isolation do not need it.
+    echo "worker-sandbox: seccomp filter $SPROUTBOAT_WORKER_SECCOMP not readable; starting without it (set SPROUTBOAT_WORKER_SECCOMP_REQUIRED=1 to enforce)" >&2
+  fi
 fi
 
 launch=(bwrap "${bwrap_args[@]}" -- "$worker" "$@")

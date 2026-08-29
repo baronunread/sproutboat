@@ -9,6 +9,8 @@ User=sproutboat-control
 Group=sproutboat
 WorkingDirectory=/opt/sproutboat
 Environment=PORT=8787
+# Loopback only — Caddy proxies /api here on the same origin as the dashboard.
+Environment=SPROUTBOAT_BIND_HOST=127.0.0.1
 Environment=SPROUTBOAT_ROUTE_SNAPSHOT=/var/lib/sproutboat/routes.json
 Environment=SPROUTBOAT_LOG_PATH=/var/lib/sproutboat/logs/requests.ndjson
 # Provisioning can start the health/TLS gate before secrets are configured.

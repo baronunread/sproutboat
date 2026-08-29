@@ -1012,6 +1012,17 @@ body { letter-spacing: -0.006em; }
 .latency-tiles strong { display: block; font-size: 1.4rem; font-variant-numeric: tabular-nums; letter-spacing: -0.02em; }
 .latency-tiles span { color: var(--muted); font-size: 0.72rem; }
 
+/* #37 — Cloudflare-style metric cards */
+.metric-cards { display: grid; gap: 1px; grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr)); background: var(--line); border: 1px solid var(--line); margin-top: 1.25rem; }
+.metric-card { background: var(--panel); display: flex; flex-direction: column; gap: 0.35rem; padding: 0.9rem 1rem; }
+.metric-card .metric-title { color: var(--muted); font-size: 0.72rem; }
+.metric-card .metric-value { font-size: 1.5rem; font-variant-numeric: tabular-nums; letter-spacing: -0.02em; }
+.metric-card .metric-delta { font-size: 0.72rem; font-variant-numeric: tabular-nums; }
+.metric-card .metric-delta.up { color: var(--lime); }
+.metric-card .metric-delta.down { color: var(--coral); }
+.metric-card .metric-delta.flat { color: var(--muted); }
+.metric-card .metric-spark { display: block; height: 1.6rem; width: 100%; margin-top: 0.15rem; }
+
 /* operator — users admin */
 .user-list { list-style: none; margin: 1rem 0 0; padding: 0; }
 .user-item { border-top: 1px solid var(--line); padding: 0.8rem 0; }

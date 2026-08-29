@@ -2,5 +2,8 @@
   "$schema": "https://sproutboat.com/schema.json",
   "name": "hello",
   "main": "src/index.js",
-  "compatibility_date": "2026-08-26"
+  "compatibility_date": "2026-08-26",
+  "vars": {
+    "GREETING": "hello from Sproutboat"
+  }
 }

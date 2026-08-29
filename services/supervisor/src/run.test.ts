@@ -34,9 +34,20 @@ test("endpoint starts one server per deployment and reuses it", async () => {
   const pool = makePool(spawn);
   const a = await pool.endpoint("/tmp/app/worker");
   const b = await pool.endpoint("/tmp/app/worker");
-  expect(a).toBe(b);
+  expect(a.url).toBe(b.url);
   expect(servers.size).toBe(1);
-  expect((await (await fetch(a)).text())).toContain("/tmp/app/worker");
+  expect((await (await fetch(a.url)).text())).toContain("/tmp/app/worker");
+});
+
+test("endpoint reports the cold start and its startup time, then warm hits", async () => {
+  const { spawn } = fakeSpawn();
+  const pool = makePool(spawn);
+  const cold = await pool.endpoint("/tmp/app/worker");
+  expect(cold.coldStart).toBe(true);
+  expect(cold.startupMs).toBeGreaterThanOrEqual(0);
+  const warm = await pool.endpoint("/tmp/app/worker");
+  expect(warm.coldStart).toBe(false);
+  expect(warm.startupMs).toBe(0);
 });
 
 test("separate deployments get separate ports", async () => {
@@ -44,7 +55,7 @@ test("separate deployments get separate ports", async () => {
   const pool = makePool(spawn);
   const a = await pool.endpoint("/tmp/one/worker");
   const b = await pool.endpoint("/tmp/two/worker");
-  expect(a).not.toBe(b);
+  expect(a.url).not.toBe(b.url);
   expect(servers.size).toBe(2);
 });
 
@@ -52,12 +63,13 @@ test("a crashed worker is replaced on the next request", async () => {
   const { spawn, crash } = fakeSpawn();
   const pool = makePool(spawn);
   const first = await pool.endpoint("/tmp/app/worker");
-  const port = Number(new URL(first).port);
+  const port = Number(new URL(first.url).port);
   crash(port);
   await Bun.sleep(10);
   const second = await pool.endpoint("/tmp/app/worker");
-  expect(Number(new URL(second).port)).not.toBe(port);
-  expect((await fetch(second)).ok).toBe(true);
+  expect(Number(new URL(second.url).port)).not.toBe(port);
+  expect(second.coldStart).toBe(true);
+  expect((await fetch(second.url)).ok).toBe(true);
 });
 
 test("readiness failure surfaces and does not leak the port", async () => {
@@ -70,11 +82,22 @@ test("evictIdle stops servers past the idle window", async () => {
   const { spawn } = fakeSpawn();
   let now = 0;
   const pool = makePool(spawn, { idleMs: 100, now: () => now });
-  const url = await pool.endpoint("/tmp/app/worker");
+  const { url } = await pool.endpoint("/tmp/app/worker");
   now = 100;
   expect(pool.evictIdle()).toBe(1);
   await Bun.sleep(10);
   await expect(fetch(url)).rejects.toThrow();
+});
+
+test("evictIdle keeps idle workers whose deployment is still routed", async () => {
+  const { spawn } = fakeSpawn();
+  let now = 0;
+  const pool = makePool(spawn, { idleMs: 100, now: () => now });
+  const routed = await pool.endpoint("/tmp/routed/worker");
+  await pool.endpoint("/tmp/orphan/worker");
+  now = 200;
+  expect(pool.evictIdle(new Set(["/tmp/routed/worker"]))).toBe(1); // only the orphan
+  expect((await fetch(routed.url)).ok).toBe(true);                  // routed one still warm
 });
 
 test("workerCommand wraps the worker in the bwrap launcher on Linux, runs it directly off Linux", () => {

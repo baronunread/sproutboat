@@ -43,7 +43,7 @@ async function sandboxed(script: string): Promise<{ code: number; out: string; e
   if (compiled.ok) {
     const pool = new WorkerPool();
     try {
-      const base = await pool.endpoint(bin);
+      const { url: base } = await pool.endpoint(bin);
       const a = await (await fetch(base, { method: "GET" })).text();
       const b = await (await fetch(base, { method: "POST" })).text();
       check("sandboxed worker serves HTTP", a === "GET" && b === "POST", `${a},${b}`);
