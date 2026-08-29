@@ -59,6 +59,31 @@ test("separate deployments get separate ports", async () => {
   expect(servers.size).toBe(2);
 });
 
+test("stats() tracks live count, spawns, restarts, evictions and the port pool", async () => {
+  const { spawn, crash } = fakeSpawn();
+  const pool = makePool(spawn, { idleMs: 0, portRange: [46_000, 46_099] });
+  await pool.endpoint("/tmp/a/worker");
+  await pool.endpoint("/tmp/b/worker");
+  let s = pool.stats();
+  expect(s.live).toBe(2);
+  expect(s.spawns).toBe(2);
+  expect(s.restarts).toBe(0);
+  expect(s.portsInUse).toBe(2);
+  expect(s.portPoolSize).toBe(100);
+
+  const first = await pool.endpoint("/tmp/a/worker"); // warm, no new spawn
+  crash(Number(new URL(first.url).port));
+  await Bun.sleep(10);
+  await pool.endpoint("/tmp/a/worker");               // restart
+  s = pool.stats();
+  expect(s.spawns).toBe(3);
+  expect(s.restarts).toBe(1);
+
+  expect(pool.evictIdle()).toBeGreaterThan(0);
+  expect(pool.stats().idleEvictions).toBeGreaterThan(0);
+  expect(pool.stats().live).toBe(0);
+});
+
 test("a crashed worker is replaced on the next request", async () => {
   const { spawn, crash } = fakeSpawn();
   const pool = makePool(spawn);

@@ -109,6 +109,17 @@ class WorkerServer {
 }
 
 /** Deployment-keyed pool of native-fetch server processes. */
+/** #30 — process-wide runtime-lifecycle gauges for the admin dashboard. */
+export type PoolStats = {
+  live: number;
+  spawns: number;
+  restarts: number;
+  readyFailures: number;
+  idleEvictions: number;
+  portsInUse: number;
+  portPoolSize: number;
+};
+
 export class WorkerPool {
   readonly #servers = new Map<string, WorkerServer>();
   readonly #usedPorts = new Set<number>();
@@ -117,6 +128,11 @@ export class WorkerPool {
   readonly #idleMs: number;
   readonly #now: () => number;
   readonly #portRange: readonly [number, number];
+  readonly #seenKeys = new Set<string>();
+  #spawns = 0;
+  #restarts = 0;
+  #readyFailures = 0;
+  #idleEvictions = 0;
 
   constructor({ spawn = spawnNativeWorker, readyTimeoutMs = defaultReadyTimeoutMs, idleMs = defaultIdleMs, now = Date.now, portRange = defaultPortRange }: WorkerPoolOptions = {}) {
     this.#spawn = spawn;
@@ -142,8 +158,11 @@ export class WorkerPool {
     let coldStart = false;
     if (!server || server.closed) {
       coldStart = true;
+      if (this.#seenKeys.has(key)) this.#restarts += 1; // this route ran before: crash/evict replacement
+      this.#seenKeys.add(key);
       const port = this.#freePort();
       this.#usedPorts.add(port);
+      this.#spawns += 1;
       server = new WorkerServer(key, port, this.#spawn, this.#readyTimeoutMs, this.#now, (dead) => {
         if (this.#servers.get(key) === dead) this.#servers.delete(key);
         this.#usedPorts.delete(dead.port);
@@ -154,6 +173,7 @@ export class WorkerPool {
     try {
       await server.ready();
     } catch (error) {
+      this.#readyFailures += 1;
       server.dispose();
       this.#servers.delete(key);
       this.#usedPorts.delete(server.port);
@@ -194,7 +214,21 @@ export class WorkerPool {
         evicted++;
       }
     }
+    this.#idleEvictions += evicted;
     return evicted;
+  }
+
+  stats(): PoolStats {
+    const [lo, hi] = this.#portRange;
+    return {
+      live: this.#servers.size,
+      spawns: this.#spawns,
+      restarts: this.#restarts,
+      readyFailures: this.#readyFailures,
+      idleEvictions: this.#idleEvictions,
+      portsInUse: this.#usedPorts.size,
+      portPoolSize: hi - lo + 1,
+    };
   }
 }
 

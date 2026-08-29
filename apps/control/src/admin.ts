@@ -48,12 +48,23 @@ const publicUser = (user: ListedUser) => ({
   createdAt: new Date(user.createdAt).toISOString(),
 });
 
+/** #30 — best-effort runtime gauges from the edge's worker pool (loopback). */
+async function poolGauges(): Promise<Record<string, number> | null> {
+  try {
+    const url = (process.env.SPROUTBOAT_EDGE_INTERNAL_URL || "http://127.0.0.1:8080").replace(/\/$/, "");
+    const response = await fetch(`${url}/__sb/pool`, { signal: AbortSignal.timeout(1500) });
+    if (!response.ok) return null;
+    // SAFETY: the edge's /__sb/pool returns PoolStats — a flat number map.
+    return await response.json() as Record<string, number>;
+  } catch { return null; }
+}
+
 export async function adminOverview(request: Request): Promise<Response> {
   const denied = await requireAdmin(request);
   if (denied) return denied;
   const stats = globalStats();
-  const traffic = await globalLogTotals();
-  return Response.json({ ...stats, requests24h: traffic.requests, errors24h: traffic.errors, since: traffic.from });
+  const [traffic, runtime] = await Promise.all([globalLogTotals(), poolGauges()]);
+  return Response.json({ ...stats, requests24h: traffic.requests, errors24h: traffic.errors, since: traffic.from, runtime });
 }
 
 export async function adminUsers(request: Request): Promise<Response> {

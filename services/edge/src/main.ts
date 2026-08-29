@@ -156,6 +156,8 @@ const server = Bun.serve({
     const reqBytes = Number(request.headers.get("content-length")) || 0;
     try { await refreshRoutes(); }
     catch (error) { console.error(`route snapshot reload failed: ${error instanceof Error ? error.message : String(error)}`); }
+    // #30 — runtime-lifecycle gauges, loopback only (edge binds 127.0.0.1).
+    if (new URL(request.url).pathname === "/__sb/pool") return Response.json(pool.stats());
     const host = request.headers.get("host")?.split(":")[0]?.toLowerCase();
     if (host === deploymentDomain) return Response.redirect(dashboardUrl, 302);
     const workerPath = host ? routes.get(host) : undefined;
