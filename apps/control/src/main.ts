@@ -4,7 +4,7 @@ import { adminEmail, ensureAdminSeeded, getAuth, githubSignInConfigured } from "
 import { activateDeployment, dashboardOverview, deleteAccount, deleteDeployment, deleteProject, deploymentDetail, deployArtifact, isDeploymentHostname, listDeployments, listProjects, projectLogHistory, projectLogs, projectLogTail, projectMetrics } from "./deployments";
 import { actorFor, profileForUser, reserveUsername, sessionUser } from "./identity";
 import { approveCliAuthorization, createCliAuthorization, exchangeCliAuthorization, listCliCredentials, revokeAllCliCredentials, revokeCliCredential } from "./cli-authorization";
-import { adminOverview, adminUserDetail, adminUsers, banUser, revokeUserSessions, unbanUser } from "./admin";
+import { adminBackups, adminCreateBackup, adminDeleteBackup, adminDownloadBackup, adminOverview, adminUserDetail, adminUsers, banUser, revokeUserSessions, unbanUser } from "./admin";
 
 type Route = { hostname: string; workerPath: string };
 const routesPath = resolve(process.env.SPROUTBOAT_ROUTE_SNAPSHOT || "/var/lib/sproutboat/routes.json");
@@ -128,6 +128,13 @@ const server = Bun.serve({
         if (request.method === "POST" && unban) return await unbanUser(request, unban[1]);
         const revoke = /^\/api\/admin\/users\/([^/]+)\/sessions\/revoke$/.exec(url.pathname);
         if (request.method === "POST" && revoke) return await revokeUserSessions(request, revoke[1]);
+        if (url.pathname === "/api/admin/backups") {
+          if (request.method === "GET") return await adminBackups(request);
+          if (request.method === "POST") return await adminCreateBackup(request);
+        }
+        const backup = /^\/api\/admin\/backups\/([^/]+)$/.exec(url.pathname);
+        if (request.method === "GET" && backup) return await adminDownloadBackup(request, backup[1]);
+        if (request.method === "DELETE" && backup) return await adminDeleteBackup(request, backup[1]);
         return new Response("not found", { status: 404 });
       } catch (error) {
         return Response.json({ error: error instanceof Error ? error.message : "admin request failed" }, { status: 500 });

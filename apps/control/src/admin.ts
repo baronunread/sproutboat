@@ -1,4 +1,5 @@
 import { getAuth } from "./auth";
+import { backupPath, createBackup, deleteBackup, listBackups } from "./backups";
 import { actorFor } from "./identity";
 import { globalLogTotals } from "./logs";
 import { banOwner, globalStats, ownerDeployments, ownerRollups, syncRoutes, unbanOwner } from "./store";
@@ -139,4 +140,43 @@ export async function revokeUserSessions(request: Request, id: string): Promise<
   if (denied) return denied;
   await getAuth().api.revokeUserSessions({ body: { userId: id }, headers: request.headers });
   return Response.json({ revoked: id });
+}
+
+// --- #27 backups ---------------------------------------------------------
+
+export async function adminBackups(request: Request): Promise<Response> {
+  const denied = await requireAdmin(request);
+  if (denied) return denied;
+  return Response.json({ backups: await listBackups() });
+}
+
+export async function adminCreateBackup(request: Request): Promise<Response> {
+  const denied = await requireAdmin(request);
+  if (denied) return denied;
+  try {
+    return Response.json({ backup: await createBackup() }, { status: 201 });
+  } catch (error) {
+    return Response.json({ error: error instanceof Error ? error.message : "backup failed" }, { status: 500 });
+  }
+}
+
+export async function adminDownloadBackup(request: Request, name: string): Promise<Response> {
+  const denied = await requireAdmin(request);
+  if (denied) return denied;
+  const path = backupPath(name);
+  if (!path) return Response.json({ error: "invalid backup name" }, { status: 400 });
+  const file = Bun.file(path);
+  if (!(await file.exists())) return Response.json({ error: "backup not found" }, { status: 404 });
+  return new Response(file, {
+    headers: {
+      "content-type": "application/gzip",
+      "content-disposition": `attachment; filename="${name}"`,
+    },
+  });
+}
+
+export async function adminDeleteBackup(request: Request, name: string): Promise<Response> {
+  const denied = await requireAdmin(request);
+  if (denied) return denied;
+  return Response.json({ deleted: await deleteBackup(name) });
 }

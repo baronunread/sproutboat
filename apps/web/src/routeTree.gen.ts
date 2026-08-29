@@ -17,6 +17,7 @@ import { Route as ProfileRouteImport } from './routes/profile'
 import { Route as ProjectsRouteImport } from './routes/projects'
 import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as AdminIndexRouteImport } from './routes/admin.index'
+import { Route as AdminBackupsRouteImport } from './routes/admin.backups'
 import { Route as AdminUsersRouteImport } from './routes/admin.users'
 import { Route as ProjectsNameRouteImport } from './routes/projects_.$name'
 import { Route as ProjectsNameIndexRouteImport } from './routes/projects_.$name.index'
@@ -65,6 +66,11 @@ const AdminIndexRoute = AdminIndexRouteImport.update({
   path: '/',
   getParentRoute: () => AdminRoute,
 } as any)
+const AdminBackupsRoute = AdminBackupsRouteImport.update({
+  id: '/backups',
+  path: '/backups',
+  getParentRoute: () => AdminRoute,
+} as any)
 const AdminUsersRoute = AdminUsersRouteImport.update({
   id: '/users',
   path: '/users',
@@ -111,6 +117,7 @@ export interface FileRoutesByFullPath {
   '/profile': typeof ProfileRoute
   '/projects': typeof ProjectsRoute
   '/settings': typeof SettingsRoute
+  '/admin/backups': typeof AdminBackupsRoute
   '/admin/users': typeof AdminUsersRoute
   '/projects/$name': typeof ProjectsNameRouteWithChildren
   '/admin/': typeof AdminIndexRoute
@@ -127,6 +134,7 @@ export interface FileRoutesByTo {
   '/profile': typeof ProfileRoute
   '/projects': typeof ProjectsRoute
   '/settings': typeof SettingsRoute
+  '/admin/backups': typeof AdminBackupsRoute
   '/admin/users': typeof AdminUsersRoute
   '/admin': typeof AdminIndexRoute
   '/projects/$name/deployments': typeof ProjectsNameDeploymentsRoute
@@ -144,6 +152,7 @@ export interface FileRoutesById {
   '/profile': typeof ProfileRoute
   '/projects': typeof ProjectsRoute
   '/settings': typeof SettingsRoute
+  '/admin/backups': typeof AdminBackupsRoute
   '/admin/users': typeof AdminUsersRoute
   '/projects_/$name': typeof ProjectsNameRouteWithChildren
   '/admin/': typeof AdminIndexRoute
@@ -163,6 +172,7 @@ export interface FileRouteTypes {
     | '/profile'
     | '/projects'
     | '/settings'
+    | '/admin/backups'
     | '/admin/users'
     | '/projects/$name'
     | '/admin/'
@@ -179,6 +189,7 @@ export interface FileRouteTypes {
     | '/profile'
     | '/projects'
     | '/settings'
+    | '/admin/backups'
     | '/admin/users'
     | '/admin'
     | '/projects/$name/deployments'
@@ -195,6 +206,7 @@ export interface FileRouteTypes {
     | '/profile'
     | '/projects'
     | '/settings'
+    | '/admin/backups'
     | '/admin/users'
     | '/projects_/$name'
     | '/admin/'
@@ -274,6 +286,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AdminIndexRouteImport
       parentRoute: typeof AdminRoute
     }
+    '/admin/backups': {
+      id: '/admin/backups'
+      path: '/backups'
+      fullPath: '/admin/backups'
+      preLoaderRoute: typeof AdminBackupsRouteImport
+      parentRoute: typeof AdminRoute
+    }
     '/admin/users': {
       id: '/admin/users'
       path: '/users'
@@ -327,11 +346,13 @@ declare module '@tanstack/react-router' {
 }
 
 interface AdminRouteChildren {
+  AdminBackupsRoute: typeof AdminBackupsRoute
   AdminUsersRoute: typeof AdminUsersRoute
   AdminIndexRoute: typeof AdminIndexRoute
 }
 
 const AdminRouteChildren: AdminRouteChildren = {
+  AdminBackupsRoute: AdminBackupsRoute,
   AdminUsersRoute: AdminUsersRoute,
   AdminIndexRoute: AdminIndexRoute,
 }

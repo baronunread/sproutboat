@@ -1,0 +1,17 @@
+[Unit]
+Description=Sproutboat state backup (SQLite + artifacts)
+After=sproutboat-control.service
+
+[Service]
+Type=oneshot
+User=sproutboat-control
+Group=sproutboat
+WorkingDirectory=/opt/sproutboat
+# Storage paths + SPROUTBOAT_BACKUP_KEEP, written by install.sh.
+EnvironmentFile=-/etc/sproutboat/control.env
+ExecStart=/opt/sproutboat/bun/bin/bun apps/control/src/backups.ts
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/sproutboat

@@ -20,6 +20,7 @@ function AdminLayout() {
       <nav className="section-nav" aria-label="Admin sections">
         <Link to="/admin" activeOptions={{ exact: true }} activeProps={activeProps} className="section-tab">Overview</Link>
         <Link to="/admin/users" activeProps={activeProps} className="section-tab">Users</Link>
+        <Link to="/admin/backups" activeProps={activeProps} className="section-tab">Backups</Link>
       </nav>
       <Outlet />
     </Shell>

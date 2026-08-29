@@ -150,3 +150,26 @@ before install and register `https://dashboard.<domain>/api/auth/callback/github
 as the OAuth callback. `install.sh` runs the Better Auth migration
 (`bunx --bun auth@1.7.1 migrate --config apps/control/src/auth.migrate.ts --yes`)
 for you.
+
+## Backups
+
+`sproutboat-backup.timer` runs `apps/control/src/backups.ts` daily: a consistent
+SQLite snapshot (`VACUUM INTO`) plus the artifact directory and route snapshot,
+one `sproutboat-<date>.tar.gz` under `/var/lib/sproutboat/backups/`. The newest
+`SPROUTBOAT_BACKUP_KEEP` (default 7) are kept.
+
+Admin -> **Backups** in the dashboard lists them, takes one on demand, and
+downloads or deletes an archive. On-demand: `systemctl start sproutboat-backup`.
+
+These stay on the same disk — copy them off-box (or add object-storage upload to
+the unit) and keep taking provider snapshots.
+
+### Restore
+
+```sh
+systemctl stop sproutboat-control sproutboat-edge sproutboat-web
+cd /var/lib/sproutboat
+tar -xzf backups/sproutboat-<date>.tar.gz          # sproutboat.sqlite, artifacts/, routes.json
+chown -R sproutboat-control:sproutboat sproutboat.sqlite artifacts routes.json
+systemctl start sproutboat-control sproutboat-edge sproutboat-web
+```

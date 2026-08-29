@@ -301,6 +301,8 @@ EOF
 for u in sproutboat-control sproutboat-edge sproutboat-web; do
   install -m 0644 "$ROOT/infra/systemd/$u.service" "/etc/systemd/system/$u.service"
 done
+install -m 0644 "$ROOT/infra/systemd/sproutboat-backup.service" /etc/systemd/system/sproutboat-backup.service
+install -m 0644 "$ROOT/infra/systemd/sproutboat-backup.timer"   /etc/systemd/system/sproutboat-backup.timer
 
 # --- Better Auth schema (dashboard + admin token login) ---------------
 say "Migrating the auth database"
@@ -316,7 +318,7 @@ else
 
   # --- start (control first — its env now exists) ----------------
   say "Starting services"
-  units=(sproutboat-control sproutboat-edge sproutboat-web caddy)
+  units=(sproutboat-control sproutboat-edge sproutboat-web caddy sproutboat-backup.timer)
   systemctl enable --now "${units[@]}"
 
   # --- verify ---------------------------------------------------
@@ -350,4 +352,5 @@ echo
 say "Check it came up:   systemctl status caddy sproutboat-control sproutboat-edge"
 echo "                    journalctl -fu caddy      # watch the first certificate"
 echo
-warn "Back up $STATE (SQLite + artifacts). Take a provider snapshot now."
+say "Backups: daily to $STATE/backups (last 7 kept). Manage them at $DASH_URL under Admin -> Backups."
+warn "Also take a provider snapshot now, and copy backups off-box."
