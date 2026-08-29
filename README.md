@@ -27,6 +27,17 @@ worker artifacts, it never builds them. It pauses once to let you add a single
 wildcard DNS record and waits for it to resolve. See
 [infra/README.md](infra/README.md).
 
+## Dashboard
+
+Always installed, at `https://dashboard.<your-domain>`. Sign in with the admin
+token the installer prints (also in `/root/sproutboat-admin.env`) — the same
+token the CLI uses. There is no self-service registration; only that one admin
+account exists.
+
+GitHub sign-in is optional: set `SB_GITHUB_CLIENT_ID` + `SB_GITHUB_CLIENT_SECRET`
+before running `install.sh` (callback `https://dashboard.<domain>/api/auth/callback/github`).
+When it's not set, the token form is the only way in.
+
 ## Deploying to it
 
 Building and uploading worker artifacts is the [`@sproutboat/cli`](https://github.com/baronunread/sproutboat-cli)'s

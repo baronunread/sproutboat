@@ -50,8 +50,15 @@ export function profileForUser(userId: string): Profile | undefined {
   return row ? { userId: row.user_id, username: row.username, createdAt: row.created_at } : undefined;
 }
 
-export function reserveUsername(userId: string, username: string): Profile {
-  if (!validUsername(username)) throw new Error("username must be a 3–32 character lowercase slug and cannot be reserved");
+/**
+ * Reserve a namespace for a user. `allowReserved` is for the seeded single admin
+ * only (auth.ensureAdminSeeded): the reserved-word list keeps other users from
+ * claiming names like `api`/`admin`, but on a one-admin box the admin may hold
+ * one. The slug shape is still enforced.
+ */
+export function reserveUsername(userId: string, username: string, options: { allowReserved?: boolean } = {}): Profile {
+  const ok = options.allowReserved ? slug.test(username) : validUsername(username);
+  if (!ok) throw new Error("username must be a 3–32 character lowercase slug and cannot be reserved");
   const existing = profileForUser(userId);
   if (existing) {
     if (existing.username === username) return existing;

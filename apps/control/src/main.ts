@@ -1,6 +1,6 @@
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
-import { getAuth } from "./auth";
+import { adminEmail, ensureAdminSeeded, getAuth, githubSignInConfigured } from "./auth";
 import { activateDeployment, dashboardOverview, deleteAccount, deleteDeployment, deleteProject, deploymentDetail, deployArtifact, isDeploymentHostname, listDeployments, listProjects, projectLogHistory, projectLogs, projectLogTail, projectMetrics } from "./deployments";
 import { actorFor, profileForUser, reserveUsername, sessionUser } from "./identity";
 import { approveCliAuthorization, createCliAuthorization, exchangeCliAuthorization, listCliCredentials, revokeAllCliCredentials, revokeCliCredential } from "./cli-authorization";
@@ -50,11 +50,19 @@ const server = Bun.serve({
   async fetch(request) {
     const url = new URL(request.url);
     if (url.pathname.startsWith("/api/auth/")) {
+      // Single-admin box: no self-service registration. The one admin account is
+      // seeded by ensureAdminSeeded(); sign-in still works.
+      if (url.pathname.startsWith("/api/auth/sign-up")) {
+        return Response.json({ error: "registration is disabled" }, { status: 403 });
+      }
       try {
         return await getAuth().handler!(request);
       } catch (error) {
         return Response.json({ error: error instanceof Error ? error.message : "authentication is unavailable" }, { status: 503 });
       }
+    }
+    if (request.method === "GET" && url.pathname === "/api/config") {
+      return Response.json({ githubSignIn: githubSignInConfigured(), adminEmail: adminEmail() ?? null });
     }
     if (request.method === "POST" && url.pathname === "/api/cli/authorizations") return createCliAuthorization();
     if (request.method === "POST" && url.pathname === "/api/cli/authorizations/token") {
@@ -161,3 +169,7 @@ const server = Bun.serve({
 });
 
 console.log(`Sproutboat control listening on http://${hostname}:${server.port}`);
+
+// Seed the single admin credential account so the dashboard is usable without
+// GitHub OAuth. Safe to run every boot; no-op once the account exists.
+ensureAdminSeeded().catch((error) => console.error(`admin seed skipped: ${error instanceof Error ? error.message : String(error)}`));

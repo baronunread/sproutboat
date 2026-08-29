@@ -61,3 +61,11 @@ test("safeSessionUser normalises a missing avatar and name to null", () => {
   expect(identity.safeSessionUser({ id: "u1", email: "a@x.test" }))
     .toEqual({ id: "u1", name: null, email: "a@x.test", image: null });
 });
+
+test("reserveUsername rejects a reserved name unless allowReserved (the seeded admin)", () => {
+  expect(() => identity.reserveUsername("u2", "admin")).toThrow(/reserved/);
+  const profile = identity.reserveUsername("u2", "admin", { allowReserved: true });
+  expect(profile.username).toBe("admin");
+  // Idempotent for the same (user, name).
+  expect(identity.reserveUsername("u2", "admin", { allowReserved: true }).username).toBe("admin");
+});

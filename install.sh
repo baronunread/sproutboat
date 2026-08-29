@@ -6,11 +6,12 @@
 #   # or, from a checkout:  sudo ./install.sh
 #
 # It asks a few questions up front, then runs unattended: packages, Caddy,
-# bubblewrap, a firewall, one admin identity, and the control + edge
-# (+ optional dashboard) services. It pauses once to let you add a DNS record.
+# bubblewrap, a firewall, one admin identity, and the control + edge + dashboard
+# services. It pauses once to let you add a DNS record.
 #
-# Non-interactive: set SB_DOMAIN, SB_ACME_EMAIL, SB_ADMIN and optionally
-# SB_DASHBOARD=yes|no, SB_GITHUB_CLIENT_ID, SB_GITHUB_CLIENT_SECRET.
+# Non-interactive: set SB_DOMAIN, SB_ACME_EMAIL, SB_ADMIN. The dashboard is
+# always installed; sign in with the admin token this prints. GitHub sign-in is
+# optional — set SB_GITHUB_CLIENT_ID + SB_GITHUB_CLIENT_SECRET to enable it.
 # SB_CF_TOKEN — optional, only to use DNS-01 (inbound :80 blocked).
 # SB_SKIP_DNS_CHECK=1 — don't wait for DNS to resolve.
 
@@ -76,13 +77,10 @@ ask SB_DOMAIN     "Deployment domain, e.g. fn.example.com (must be one you contr
 ask SB_ACME_EMAIL "Email for Let's Encrypt (cert expiry notices)"
 ask SB_ADMIN      "Admin username (3-32 lowercase a-z 0-9 -)" "$(echo "${SUDO_USER:-admin}" | tr -cd 'a-z0-9-' | cut -c1-32)"
 [[ "$SB_ADMIN" =~ ^[a-z0-9]([a-z0-9-]{1,30}[a-z0-9])?$ ]] || die "invalid admin username: $SB_ADMIN"
-ask SB_DASHBOARD  "Enable the web dashboard? (needs a GitHub OAuth app) yes/no" "no"
-DASHBOARD_ENABLED=no
-if [[ "$SB_DASHBOARD" =~ ^[Yy] ]]; then
-  DASHBOARD_ENABLED=yes
-  ask SB_GITHUB_CLIENT_ID     "GitHub OAuth client id"
-  ask SB_GITHUB_CLIENT_SECRET "GitHub OAuth client secret"
-fi
+# The dashboard ships with every install. GitHub sign-in is opt-in via env; the
+# admin always signs in with the bootstrap token.
+SB_GITHUB_CLIENT_ID=${SB_GITHUB_CLIENT_ID:-}
+SB_GITHUB_CLIENT_SECRET=${SB_GITHUB_CLIENT_SECRET:-}
 DASH_URL="https://dashboard.$SB_DOMAIN"
 
 # Reuse secrets across re-runs so an existing CLI login / session keeps working.
@@ -189,9 +187,9 @@ chown root:sproutboat "$ETC/sproutboat.env"; chmod 0640 "$ETC/sproutboat.env"
   echo "SPROUTBOAT_BOOTSTRAP_USERNAME=$SB_ADMIN"
   echo "SPROUTBOAT_BOOTSTRAP_TOKEN=$ADMIN_TOKEN"
   echo "SPROUTBOAT_ADMIN_EMAILS=$SB_ACME_EMAIL"
-  if [ "$DASHBOARD_ENABLED" = yes ]; then
-    echo "BETTER_AUTH_SECRET=$BETTER_AUTH_SECRET"
-    echo "BETTER_AUTH_URL=$DASH_URL"
+  echo "BETTER_AUTH_SECRET=$BETTER_AUTH_SECRET"
+  echo "BETTER_AUTH_URL=$DASH_URL"
+  if [ -n "$SB_GITHUB_CLIENT_ID" ] && [ -n "$SB_GITHUB_CLIENT_SECRET" ]; then
     echo "GITHUB_CLIENT_ID=$SB_GITHUB_CLIENT_ID"
     echo "GITHUB_CLIENT_SECRET=$SB_GITHUB_CLIENT_SECRET"
   fi
@@ -223,8 +221,7 @@ control.$SB_DOMAIN {
 	reverse_proxy 127.0.0.1:8787
 }
 EOF
-  if [ "$DASHBOARD_ENABLED" = yes ]; then
-    cat <<EOF
+  cat <<EOF
 
 dashboard.$SB_DOMAIN {
 	handle /api/* {
@@ -235,7 +232,6 @@ dashboard.$SB_DOMAIN {
 	}
 }
 EOF
-  fi
   cat <<'EOF'
 
 # Every <project>.<user>.<domain> deployment. Cert issued on demand,
@@ -256,7 +252,7 @@ done
 # --- DNS: guide the one record, then wait for it to resolve here --------
 PUBLIC_IP=$(curl -fsS4 -m 5 https://api.ipify.org 2>/dev/null || true)
 covers="control.$SB_DOMAIN"
-[ "$DASHBOARD_ENABLED" = yes ] && covers="$covers, dashboard.$SB_DOMAIN"
+covers=", dashboard."
 echo
 say "Add ONE DNS record, then Caddy can issue TLS certificates:"
 echo
@@ -306,6 +302,13 @@ for u in sproutboat-control sproutboat-edge sproutboat-web; do
   install -m 0644 "$ROOT/infra/systemd/$u.service" "/etc/systemd/system/$u.service"
 done
 
+# --- Better Auth schema (dashboard + admin token login) ---------------
+say "Migrating the auth database"
+( cd "$ROOT" && SPROUTBOAT_DATABASE_PATH="$STATE/sproutboat.sqlite" \
+    BETTER_AUTH_SECRET="$BETTER_AUTH_SECRET" BETTER_AUTH_URL="$DASH_URL" \
+    "$BUN" x --bun auth@1.7.1 migrate --config apps/control/src/auth.migrate.ts --yes )
+chown sproutboat-control:sproutboat "$STATE"/sproutboat.sqlite* 2>/dev/null || true
+
 if [ "$SKIP_SERVICES" = 1 ]; then
   say "daemon-reload + service start + preflight — skipped (SB_SKIP_SERVICES)"
 else
@@ -313,8 +316,7 @@ else
 
   # --- start (control first — its env now exists) ----------------
   say "Starting services"
-  units=(sproutboat-control sproutboat-edge caddy)
-  [ "$DASHBOARD_ENABLED" = yes ] && units+=(sproutboat-web)
+  units=(sproutboat-control sproutboat-edge sproutboat-web caddy)
   systemctl enable --now "${units[@]}"
 
   # --- verify ---------------------------------------------------
@@ -335,10 +337,15 @@ echo
 echo "      SPROUTBOAT_API_URL   https://control.$SB_DOMAIN"
 echo "      SPROUTBOAT_TOKEN     $ADMIN_TOKEN"
 echo
+say "Dashboard:  $DASH_URL"
+echo "      Sign in with the admin token above (field: \"Admin token\")."
+if [ -n "$SB_GITHUB_CLIENT_ID" ] && [ -n "$SB_GITHUB_CLIENT_SECRET" ]; then
+  echo "      GitHub sign-in enabled. OAuth callback URL: $DASH_URL/api/auth/callback/github"
+fi
+echo
 say "On your workstation, install the CLI and log in:"
 echo "      bunx @sproutboat/cli login --api-url https://control.$SB_DOMAIN --token <token>"
 echo "      sproutboat init hello && cd hello && sproutboat deploy"
-[ "$DASHBOARD_ENABLED" = yes ] && echo "      GitHub OAuth callback URL: $DASH_URL/api/auth/callback/github"
 echo
 say "Check it came up:   systemctl status caddy sproutboat-control sproutboat-edge"
 echo "                    journalctl -fu caddy      # watch the first certificate"

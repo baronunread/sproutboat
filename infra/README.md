@@ -13,17 +13,15 @@ sudo ./install.sh
 The script is the whole runbook: it enables unprivileged user namespaces,
 installs Caddy + bubblewrap, sets a default-deny firewall, builds the dashboard,
 generates one admin identity, writes `/etc/sproutboat/{sproutboat,control}.env`
-**before** starting anything, brings up `control` + `edge` + Caddy (+ the
-dashboard if you opt in), runs `runtime:preflight`, and prints the admin token,
-the DNS record to create, and the CLI commands to deploy your first function.
+**before** starting anything, brings up `control` + `edge` + `dashboard` + Caddy,
+runs `runtime:preflight`, and prints the admin token, the DNS record to create,
+and the CLI commands to deploy your first function.
 
-No Docker on the server — deployments run under bubblewrap. `sproutboat build`
-uses the Porffor compile toolchain image on whatever machine runs the CLI
-(normally your laptop). `SB_WITH_BUILD_IMAGE=1` installs Docker + pulls that
-image here so you can build on the box too.
+No Docker on the server — deployments run under bubblewrap, and workers are
+built by the CLI (Porffor + Zig), never here.
 
-Non-interactive: set `SB_DOMAIN`, `SB_ACME_EMAIL`, `SB_ADMIN` (and
-`SB_DASHBOARD=yes` + `SB_GITHUB_CLIENT_ID`/`SB_GITHUB_CLIENT_SECRET`).
+Non-interactive: set `SB_DOMAIN`, `SB_ACME_EMAIL`, `SB_ADMIN`. GitHub sign-in is
+optional — add `SB_GITHUB_CLIENT_ID` / `SB_GITHUB_CLIENT_SECRET` to enable it.
 
 ## DNS
 
@@ -142,8 +140,13 @@ installer) — there is no separate namespace-reservation step in single-admin
 mode. `SPROUTBOAT_API_URL` / `SPROUTBOAT_TOKEN` env vars work instead of `login`
 for CI.
 
-If you enabled the dashboard: register `https://dashboard.<domain>/api/auth/callback/github`
-as the GitHub OAuth callback, run the Better Auth migration
-(`bunx --bun auth@1.7.1 migrate --config apps/control/src/auth.migrate.ts --yes`),
-then sign in with GitHub. A token-gated dashboard that skips GitHub for
-single-admin use is planned.
+The dashboard (`https://dashboard.<domain>`) is always installed. Sign in with
+the admin token — the "Admin token" field on the login page takes the value from
+`/root/sproutboat-admin.env`. There is no registration; only the seeded admin
+account exists.
+
+GitHub sign-in is optional. Set `SB_GITHUB_CLIENT_ID` / `SB_GITHUB_CLIENT_SECRET`
+before install and register `https://dashboard.<domain>/api/auth/callback/github`
+as the OAuth callback. `install.sh` runs the Better Auth migration
+(`bunx --bun auth@1.7.1 migrate --config apps/control/src/auth.migrate.ts --yes`)
+for you.
