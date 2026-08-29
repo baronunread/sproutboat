@@ -19,10 +19,10 @@ It leans on the existing **bootstrap token** path in
 
 ## 1. DNS
 
-One record: `*.<domain>` A → host IP, DNS-only. Covers `control.<domain>` and
-every `<project>.<admin>.<domain>`. Create it in your DNS panel, or
-`cd infra/tofu && tofu apply` (optional, Cloudflare). No DNS API token is needed
-for TLS — Caddy uses HTTP-01 per hostname.
+One record, made in your DNS panel: `*.<domain>` A → host IP, DNS-only. Covers
+`control.<domain>` and every `<project>.<admin>.<domain>`. `install.sh` prints
+it and waits for it to resolve. No DNS API token is needed for TLS — Caddy
+issues a cert per hostname via HTTP-01.
 
 ## 2. Control service env (`/etc/sproutboat/control.env`)
 

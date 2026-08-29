@@ -12,14 +12,18 @@ its own repo (`sproutboat-cli`) so it can target either.
 
 ## Deploy to a VPS
 
+SSH into a fresh Linux box (Debian/Ubuntu or RHEL-family, x86-64) and:
+
 ```sh
-git clone https://github.com/<you>/sproutboat && cd sproutboat
-sudo ./install.sh
+curl -fsSL https://raw.githubusercontent.com/baronunread/sproutboat/main/install.sh | sudo bash
+# from a checkout instead:  sudo ./install.sh
 ```
 
-One guided script: enables user namespaces, installs Caddy + Docker +
-bubblewrap, sets a firewall, builds the runtime image and dashboard, creates one
-admin, and starts everything. See [infra/README.md](infra/README.md).
+It asks 3–4 questions (domain, email, admin name), then runs unattended:
+user namespaces, Caddy + Docker + bubblewrap, a default-deny firewall, the
+runtime image + dashboard build, one admin identity, and the services. It
+pauses once to let you add a single wildcard DNS record and waits for it to
+resolve. See [infra/README.md](infra/README.md).
 
 ## Local quick start
 

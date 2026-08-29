@@ -11,12 +11,6 @@ apps/web/.tanstack/
 .agents/skills/impeccable/
 codex-session-*.md
 
-# opentofu / terraform
-infra/tofu/.terraform/
-*.tfstate
-*.tfstate.*
-infra/tofu/terraform.tfvars
-
 # playwright e2e
 e2e/.auth/
 /test-results/

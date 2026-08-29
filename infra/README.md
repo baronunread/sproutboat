@@ -34,9 +34,10 @@ via **HTTP-01 / TLS-ALPN-01** — `control.`/`dashboard.` at startup, deployment
 on demand (gated by the control plane's `/internal/tls/allow`). No wildcard
 certificate, so no DNS challenge.
 
-Set `SB_CF_TOKEN` (Cloudflare, `Zone:Read` + `DNS:Edit`) only if inbound `:80`
-is blocked — the installer then switches Caddy to DNS-01. `infra/tofu/` is a
-separate optional path to create the A record via the Cloudflare API.
+`install.sh` prints the record and waits for it to resolve before starting Caddy
+(skip with `SB_SKIP_DNS_CHECK=1`). Set `SB_CF_TOKEN` (Cloudflare, `Zone:Read` +
+`DNS:Edit`) only if inbound `:80` is blocked — the installer then switches Caddy
+to DNS-01.
 
 ## Hosts and binding
 

@@ -1,17 +1,18 @@
 #!/usr/bin/env bash
 #
-# Sproutboat single-VPS installer.
+# Sproutboat single-VPS installer. SSH into a fresh Linux box and:
 #
-#   git clone https://github.com/<you>/sproutboat && cd sproutboat
-#   sudo ./install.sh
+#   curl -fsSL https://raw.githubusercontent.com/baronunread/sproutboat/main/install.sh | sudo bash
+#   # or, from a checkout:  sudo ./install.sh
 #
-# Provisions one Linux x86-64 host as a single-admin Sproutboat instance:
-# Caddy (public), control + edge + dashboard on loopback, one admin identity.
-# Multi-tenant / fleet deployment is a separate project (sproutboat-cloud).
+# It asks a few questions up front, then runs unattended: packages, Caddy,
+# Docker, bubblewrap, firewall, one admin identity, and the control + edge
+# (+ optional dashboard) services. It pauses once to let you add a DNS record.
 #
 # Non-interactive: set SB_DOMAIN, SB_ACME_EMAIL, SB_ADMIN and optionally
 # SB_DASHBOARD=yes|no, SB_GITHUB_CLIENT_ID, SB_GITHUB_CLIENT_SECRET.
-# SB_CF_TOKEN is optional — set it only to use DNS-01 (inbound :80 blocked).
+# SB_CF_TOKEN — optional, only to use DNS-01 (inbound :80 blocked).
+# SB_SKIP_DNS_CHECK=1 — don't wait for DNS to resolve.
 
 set -euo pipefail
 
@@ -20,10 +21,13 @@ ROOT=/opt/sproutboat
 STATE=/var/lib/sproutboat
 ETC=/etc/sproutboat
 CADDY_BIN=/usr/local/bin/caddy-sproutboat
+SB_REPO=${SB_REPO:-https://github.com/baronunread/sproutboat.git}
+SB_REF=${SB_REF:-main}
 
 say()  { printf '\033[1;32m==>\033[0m %s\n' "$*"; }
 warn() { printf '\033[1;33m!  \033[0m %s\n' "$*" >&2; }
 die()  { printf '\033[1;31mx  \033[0m %s\n' "$*" >&2; exit 1; }
+randhex() { od -An -tx1 -N32 /dev/urandom | tr -d " \n"; }  # 64 hex chars, no external deps
 ask()  { # ask VAR "prompt" ["default"]
   local __v=$1 __p=$2 __d=${3:-} __a
   if [ -n "${!__v:-}" ]; then return; fi
@@ -46,10 +50,6 @@ else
   warn "SB_SKIP_SERVICES=1 — systemd, firewall, Docker image build, and service start are skipped"
 fi
 
-# Locate the source tree.
-SRC=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
-[ -f "$SRC/package.json" ] && [ -d "$SRC/apps/control" ] || die "run this from a Sproutboat checkout"
-
 # --- distro -----------------------------------------------------------------
 . /etc/os-release
 case "${ID:-}${ID_LIKE:+ $ID_LIKE}" in
@@ -58,6 +58,38 @@ case "${ID:-}${ID_LIKE:+ $ID_LIKE}" in
   *) die "unsupported distro '${ID:-?}' — need a Debian/Ubuntu or RHEL-family host" ;;
 esac
 say "Host: ${PRETTY_NAME:-$ID} ($PKG)"
+
+# --- locate (or fetch) the source tree ------------------------------------
+SRC=$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" 2>/dev/null && pwd || true)
+if [ -z "$SRC" ] || [ ! -f "$SRC/package.json" ] || [ ! -d "$SRC/apps/control" ]; then
+  say "Fetching Sproutboat ($SB_REF)"
+  command -v git >/dev/null || { [ "$PKG" = apt ] && apt-get install -y -qq git || dnf install -y -q git; }
+  SRC=/opt/sproutboat-src
+  if [ -d "$SRC/.git" ]; then git -C "$SRC" fetch -q --depth 1 origin "$SB_REF" && git -C "$SRC" reset -q --hard FETCH_HEAD
+  else git clone -q --depth 1 --branch "$SB_REF" "$SB_REPO" "$SRC"; fi
+fi
+
+# --- ask everything up front, then run unattended -----------------------
+say "Configuration"
+ask SB_DOMAIN     "Deployment domain, e.g. fn.example.com (must be one you control)"
+[[ "$SB_DOMAIN" =~ ^([a-z0-9]([a-z0-9-]*[a-z0-9])?\.)+[a-z]{2,}$ ]] || die "not a valid domain: $SB_DOMAIN"
+ask SB_ACME_EMAIL "Email for Let's Encrypt (cert expiry notices)"
+ask SB_ADMIN      "Admin username (3-32 lowercase a-z 0-9 -)" "$(echo "${SUDO_USER:-admin}" | tr -cd 'a-z0-9-' | cut -c1-32)"
+[[ "$SB_ADMIN" =~ ^[a-z0-9]([a-z0-9-]{1,30}[a-z0-9])?$ ]] || die "invalid admin username: $SB_ADMIN"
+ask SB_DASHBOARD  "Enable the web dashboard? (needs a GitHub OAuth app) yes/no" "no"
+DASHBOARD_ENABLED=no
+if [[ "$SB_DASHBOARD" =~ ^[Yy] ]]; then
+  DASHBOARD_ENABLED=yes
+  ask SB_GITHUB_CLIENT_ID     "GitHub OAuth client id"
+  ask SB_GITHUB_CLIENT_SECRET "GitHub OAuth client secret"
+fi
+DASH_URL="https://dashboard.$SB_DOMAIN"
+
+# Reuse secrets across re-runs so an existing CLI login / session keeps working.
+grep_env() { [ -f "$ETC/control.env" ] || return 0; sed -n "s/^$1=//p" "$ETC/control.env" | head -1; }
+ADMIN_TOKEN=$(grep_env SPROUTBOAT_BOOTSTRAP_TOKEN)
+if [ -n "$ADMIN_TOKEN" ]; then TOKEN_IS_NEW=0; else ADMIN_TOKEN=$(randhex); TOKEN_IS_NEW=1; fi
+BETTER_AUTH_SECRET=$(grep_env BETTER_AUTH_SECRET); BETTER_AUTH_SECRET=${BETTER_AUTH_SECRET:-$(randhex)}
 
 # --- unprivileged user namespaces (bubblewrap needs them) ------------------
 say "Enabling unprivileged user namespaces"
@@ -79,10 +111,10 @@ say "Installing host packages"
 if [ "$PKG" = apt ]; then
   export DEBIAN_FRONTEND=noninteractive
   apt-get update -qq
-  apt-get install -y -qq ca-certificates curl rsync bubblewrap docker.io ufw unzip
+  apt-get install -y -qq ca-certificates curl git patch rsync bubblewrap docker.io ufw unzip dnsutils
 else
-  dnf install -y -q ca-certificates curl rsync bubblewrap podman-docker ufw unzip || \
-    dnf install -y -q ca-certificates curl rsync bubblewrap docker ufw unzip
+  dnf install -y -q ca-certificates curl git patch rsync bubblewrap podman-docker ufw unzip bind-utils || \
+    dnf install -y -q ca-certificates curl git patch rsync bubblewrap docker ufw unzip bind-utils
 fi
 
 # --- firewall: default-deny, only SSH + Caddy -----------------------------
@@ -151,28 +183,6 @@ fi
 
 say "Building the dashboard"
 ( cd "$ROOT" && "$BUN" run web:build )
-
-# --- gather config ----------------------------------------------------
-say "Configuration"
-ask SB_DOMAIN      "Deployment domain (e.g. fn.example.com)"
-ask SB_ACME_EMAIL  "ACME / Let's Encrypt email"
-ask SB_ADMIN    "Admin username (3-32 lowercase, a-z 0-9 -)" "$(echo "${SUDO_USER:-admin}" | tr -cd 'a-z0-9-' | cut -c1-32)"
-[[ "$SB_ADMIN" =~ ^[a-z0-9]([a-z0-9-]{1,30}[a-z0-9])?$ ]] || die "invalid admin username: $SB_ADMIN"
-DASH_URL="https://dashboard.$SB_DOMAIN"
-
-# Reuse secrets across re-runs so an existing CLI login / session keeps working.
-grep_env() { [ -f "$ETC/control.env" ] || return 0; sed -n "s/^$1=//p" "$ETC/control.env" | head -1; }
-ADMIN_TOKEN=$(grep_env SPROUTBOAT_BOOTSTRAP_TOKEN)
-if [ -n "$ADMIN_TOKEN" ]; then TOKEN_IS_NEW=0; else ADMIN_TOKEN=$(openssl rand -hex 32); TOKEN_IS_NEW=1; fi
-
-ask SB_DASHBOARD "Enable the web dashboard? Needs a GitHub OAuth app (yes/no)" "no"
-DASHBOARD_ENABLED=no
-if [[ "$SB_DASHBOARD" =~ ^[Yy] ]]; then
-  DASHBOARD_ENABLED=yes
-  ask SB_GITHUB_CLIENT_ID     "GitHub OAuth client id"
-  ask SB_GITHUB_CLIENT_SECRET "GitHub OAuth client secret"
-  BETTER_AUTH_SECRET=$(grep_env BETTER_AUTH_SECRET); BETTER_AUTH_SECRET=${BETTER_AUTH_SECRET:-$(openssl rand -hex 32)}
-fi
 
 # --- write env BEFORE starting services -----------------------------
 say "Writing $ETC/{sproutboat,control}.env"
@@ -250,6 +260,33 @@ for f in routes.json deployments.json; do
   [ -s "$STATE/$f" ] || { printf '[]\n' > "$STATE/$f"; chown sproutboat-control:sproutboat "$STATE/$f"; chmod 0640 "$STATE/$f"; }
 done
 
+# --- DNS: guide the one record, then wait for it to resolve here --------
+PUBLIC_IP=$(curl -fsS4 -m 5 https://api.ipify.org 2>/dev/null || true)
+covers="control.$SB_DOMAIN"
+[ "$DASHBOARD_ENABLED" = yes ] && covers="$covers, dashboard.$SB_DOMAIN"
+echo
+say "Add ONE DNS record, then Caddy can issue TLS certificates:"
+echo
+echo "      Type:   A"
+echo "      Name:   *.$SB_DOMAIN     (a wildcard — the name is literally  *  )"
+echo "      Value:  ${PUBLIC_IP:-<the public IPv4 of this box>}"
+echo "      Proxy:  OFF / DNS only / grey cloud"
+echo
+echo "  Covers $covers, and every <project>.$SB_ADMIN.$SB_DOMAIN"
+echo "  deployment. No DNS API token needed."
+echo
+if [ "$SKIP_SERVICES" = 1 ] || [ "${SB_SKIP_DNS_CHECK:-0}" = 1 ] || [ -z "$PUBLIC_IP" ] || [ ! -t 0 ]; then
+  warn "Not waiting for DNS — the record must exist before the first HTTPS request."
+else
+  probe="sbdns-$RANDOM.$SB_DOMAIN"
+  say "Waiting for *.$SB_DOMAIN -> $PUBLIC_IP   (any key to skip)"
+  for _ in $(seq 1 120); do
+    got=$(getent ahostsv4 "$probe" 2>/dev/null | awk 'NR==1{print $1}')
+    [ "$got" = "$PUBLIC_IP" ] && { say "DNS is live."; break; }
+    if read -r -t 10 -n 1 -s _k; then warn "Skipped the DNS wait."; break; fi
+  done
+fi
+
 # --- systemd -------------------------------------------------------
 say "Installing systemd units"
 install -d -m 0755 /etc/systemd/system/caddy.service.d
@@ -292,28 +329,25 @@ else
   ( cd "$ROOT" && "$BUN" run runtime:preflight ) || warn "preflight reported problems — review above; deployments need bubblewrap working"
 fi
 
+# Keep the token retrievable — the SSH scrollback is not a safe home for it.
+printf 'SPROUTBOAT_API_URL=https://control.%s\nSPROUTBOAT_TOKEN=%s\n' "$SB_DOMAIN" "$ADMIN_TOKEN" > /root/sproutboat-admin.env
+chmod 0600 /root/sproutboat-admin.env
+
 echo
-if [ "$TOKEN_IS_NEW" = 1 ]; then
-  say "Done. Save the admin token — it is shown once:"
-else
-  say "Done. Admin token unchanged from your last install:"
-fi
+say "Done."
 echo
-echo "    SPROUTBOAT_API_URL   https://control.$SB_DOMAIN"
-echo "    SPROUTBOAT_TOKEN     $ADMIN_TOKEN"
+if [ "$TOKEN_IS_NEW" = 1 ]; then echo "  Admin credentials (also saved to /root/sproutboat-admin.env):"
+else echo "  Admin credentials (unchanged from your last install):"; fi
 echo
-IP=$(curl -fsS4 https://api.ipify.org 2>/dev/null || echo "<this-host-ipv4>")
-say "Create ONE DNS record (DNS only / grey cloud):"
-echo "    *.$SB_DOMAIN    A   $IP"
-covered="control.$SB_DOMAIN"
-[ "$DASHBOARD_ENABLED" = yes ] && covered="$covered, dashboard.$SB_DOMAIN"
+echo "      SPROUTBOAT_API_URL   https://control.$SB_DOMAIN"
+echo "      SPROUTBOAT_TOKEN     $ADMIN_TOKEN"
 echo
-echo "  A wildcard covers $covered, and every <project>.$SB_ADMIN.$SB_DOMAIN"
-echo "  deployment. Prefer IaC? cd infra/tofu && tofu apply."
+say "On your workstation, install the CLI and log in:"
+echo "      bunx @sproutboat/cli login --api-url https://control.$SB_DOMAIN --token <token>"
+echo "      sproutboat init hello && cd hello && sproutboat deploy"
+[ "$DASHBOARD_ENABLED" = yes ] && echo "      GitHub OAuth callback URL: $DASH_URL/api/auth/callback/github"
 echo
-say "Then from your workstation:"
-echo "    sproutboat login --api-url https://control.$SB_DOMAIN --token <token>"
-echo "    sproutboat init hello && cd hello && sproutboat deploy"
-[ "$DASHBOARD_ENABLED" = yes ] && echo "    GitHub OAuth callback: $DASH_URL/api/auth/callback/github"
+say "Check it came up:   systemctl status caddy sproutboat-control sproutboat-edge"
+echo "                    journalctl -fu caddy      # watch the first certificate"
 echo
-warn "Back up $STATE (SQLite + artifacts) — take a provider snapshot now; a restic job is not yet wired."
+warn "Back up $STATE (SQLite + artifacts). Take a provider snapshot now."
