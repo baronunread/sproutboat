@@ -11,28 +11,32 @@ sudo ./install.sh
 ```
 
 The script is the whole runbook: it enables unprivileged user namespaces,
-installs Caddy (with the Cloudflare DNS module) + Docker + bubblewrap, sets a
-default-deny firewall, builds the runtime image and dashboard, generates one
-admin identity, writes `/etc/sproutboat/{sproutboat,control}.env` **before**
-starting anything, brings up `control` + `edge` + Caddy (+ the dashboard if you
-opt in), runs `runtime:preflight`, and prints the admin token, the DNS
-records to create, and the CLI commands to deploy your first function.
+installs Caddy + Docker + bubblewrap, sets a default-deny firewall, builds the
+runtime image and dashboard, generates one admin identity, writes
+`/etc/sproutboat/{sproutboat,control}.env` **before** starting anything, brings
+up `control` + `edge` + Caddy (+ the dashboard if you opt in), runs
+`runtime:preflight`, and prints the admin token, the DNS record to create, and
+the CLI commands to deploy your first function.
 
-Non-interactive: set `SB_DOMAIN`, `SB_ACME_EMAIL`, `SB_CF_TOKEN`, `SB_ADMIN`
-(and `SB_DASHBOARD=yes` + `SB_GITHUB_CLIENT_ID`/`SB_GITHUB_CLIENT_SECRET`).
+Non-interactive: set `SB_DOMAIN`, `SB_ACME_EMAIL`, `SB_ADMIN` (and
+`SB_DASHBOARD=yes` + `SB_GITHUB_CLIENT_ID`/`SB_GITHUB_CLIENT_SECRET`).
 
 ## DNS
 
-**One record:** `*.<domain>` A → host IP, **DNS only** (grey cloud). Like
-Coolify and Pangolin, you create it yourself in your DNS panel — the installer
-prompts for the domain, it doesn't touch your provider.
+**One record:** `*.<domain>` A → host IP, **DNS only** (grey cloud, so
+Let's Encrypt reaches the box directly). Like Coolify and Pangolin, you create
+it yourself in your DNS panel — the installer prompts for the domain, it doesn't
+touch your provider and **needs no DNS API token**.
 
 The wildcard covers `control.<domain>`, `dashboard.<domain>`, and every
-`<project>.<admin>.<domain>` deployment. Caddy issues an exact cert for
-`control.` (and `dashboard.`) via a Cloudflare DNS-01 challenge at startup;
-deployment certs are issued on demand, gated by the control plane's
-`/internal/tls/allow`. `infra/tofu/` will create the record via the Cloudflare
-API if you prefer IaC.
+`<project>.<admin>.<domain>` deployment. Caddy gets a per-hostname cert for each
+via **HTTP-01 / TLS-ALPN-01** — `control.`/`dashboard.` at startup, deployments
+on demand (gated by the control plane's `/internal/tls/allow`). No wildcard
+certificate, so no DNS challenge.
+
+Set `SB_CF_TOKEN` (Cloudflare, `Zone:Read` + `DNS:Edit`) only if inbound `:80`
+is blocked — the installer then switches Caddy to DNS-01. `infra/tofu/` is a
+separate optional path to create the A record via the Cloudflare API.
 
 ## Hosts and binding
 

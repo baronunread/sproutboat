@@ -19,8 +19,10 @@ It leans on the existing **bootstrap token** path in
 
 ## 1. DNS
 
-`infra/tofu/` — set `root_domain` + `vps_ipv4`, then `tofu apply`. Only the
-`*.<domain>` wildcard record matters for CLI-only use; `dashboard.` is unused.
+One record: `*.<domain>` A → host IP, DNS-only. Covers `control.<domain>` and
+every `<project>.<admin>.<domain>`. Create it in your DNS panel, or
+`cd infra/tofu && tofu apply` (optional, Cloudflare). No DNS API token is needed
+for TLS — Caddy uses HTTP-01 per hostname.
 
 ## 2. Control service env (`/etc/sproutboat/control.env`)
 
@@ -61,10 +63,10 @@ edge silently writes nothing without it.
 Start `sproutboat-control`, `sproutboat-edge`, and `caddy`. Do **not** enable
 `sproutboat-web.service` (the dashboard needs GitHub OAuth).
 
-In `infra/caddy/Caddyfile`, swap `sproutboat.com` for your domain and comment out
-the `dashboard.` site block. Keep the `acme_dns cloudflare` line and the
-`on_demand_tls` block — on-demand TLS issues certs for `<project>.<user>.<domain>`
-against the control `ask` endpoint.
+In `infra/caddy/Caddyfile`, swap `fn.example.com` for your domain and comment out
+the `dashboard.` site block. Certs are per-hostname via HTTP-01 / TLS-ALPN-01 (no
+DNS API token); the `on_demand_tls` block issues them for
+`<project>.<admin>.<domain>` against the control `ask` endpoint.
 
 ## 5. CLI
 

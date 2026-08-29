@@ -9,8 +9,9 @@
 # Caddy (public), control + edge + dashboard on loopback, one admin identity.
 # Multi-tenant / fleet deployment is a separate project (sproutboat-cloud).
 #
-# Non-interactive: set SB_DOMAIN, SB_ACME_EMAIL, SB_CF_TOKEN, SB_ADMIN and
-# optionally SB_DASHBOARD=yes|no, SB_GITHUB_CLIENT_ID, SB_GITHUB_CLIENT_SECRET.
+# Non-interactive: set SB_DOMAIN, SB_ACME_EMAIL, SB_ADMIN and optionally
+# SB_DASHBOARD=yes|no, SB_GITHUB_CLIENT_ID, SB_GITHUB_CLIENT_SECRET.
+# SB_CF_TOKEN is optional — set it only to use DNS-01 (inbound :80 blocked).
 
 set -euo pipefail
 
@@ -122,13 +123,20 @@ if [ ! -x "$ROOT/bun/bin/bun" ]; then
 fi
 BUN="$ROOT/bun/bin/bun"
 
-# --- Caddy with the Cloudflare DNS module (prebuilt, no Go needed) ----
+# --- Caddy ----------------------------------------------------------
+# Stock Caddy is enough: per-hostname certs via HTTP-01 / TLS-ALPN-01, no DNS
+# API. Only add the Cloudflare DNS module if SB_CF_TOKEN is set (DNS-01 — for
+# hosts where inbound :80 is blocked).
+CADDY_DL="https://caddyserver.com/api/download?os=linux&arch=amd64"
+[ -n "${SB_CF_TOKEN:-}" ] && CADDY_DL="$CADDY_DL&p=github.com/caddy-dns/cloudflare"
 if [ ! -x "$CADDY_BIN" ]; then
-  say "Downloading Caddy + caddy-dns/cloudflare"
-  curl -fsSL "https://caddyserver.com/api/download?os=linux&arch=amd64&p=github.com/caddy-dns/cloudflare" -o "$CADDY_BIN"
+  say "Downloading Caddy${SB_CF_TOKEN:+ + caddy-dns/cloudflare}"
+  curl -fsSL "$CADDY_DL" -o "$CADDY_BIN"
   chmod 0755 "$CADDY_BIN"
 fi
-"$CADDY_BIN" list-modules 2>/dev/null | grep -q dns.providers.cloudflare || die "Caddy build lacks the cloudflare DNS module"
+if [ -n "${SB_CF_TOKEN:-}" ]; then
+  "$CADDY_BIN" list-modules 2>/dev/null | grep -q dns.providers.cloudflare || die "Caddy build lacks the cloudflare DNS module"
+fi
 
 say "Installing application dependencies"
 ( cd "$ROOT" && "$BUN" install --frozen-lockfile )
@@ -148,7 +156,6 @@ say "Building the dashboard"
 say "Configuration"
 ask SB_DOMAIN      "Deployment domain (e.g. fn.example.com)"
 ask SB_ACME_EMAIL  "ACME / Let's Encrypt email"
-ask SB_CF_TOKEN    "Cloudflare API token (Zone:Read + DNS:Edit on that zone)"
 ask SB_ADMIN    "Admin username (3-32 lowercase, a-z 0-9 -)" "$(echo "${SUDO_USER:-admin}" | tr -cd 'a-z0-9-' | cut -c1-32)"
 [[ "$SB_ADMIN" =~ ^[a-z0-9]([a-z0-9-]{1,30}[a-z0-9])?$ ]] || die "invalid admin username: $SB_ADMIN"
 DASH_URL="https://dashboard.$SB_DOMAIN"
@@ -188,23 +195,27 @@ chown root:sproutboat "$ETC/sproutboat.env"; chmod 0640 "$ETC/sproutboat.env"
 } > "$ETC/control.env"
 chown root:sproutboat "$ETC/control.env"; chmod 0640 "$ETC/control.env"
 
-printf 'ACME_EMAIL=%s\nCLOUDFLARE_API_TOKEN=%s\n' "$SB_ACME_EMAIL" "$SB_CF_TOKEN" > "$ETC/caddy.env"
+{
+  echo "ACME_EMAIL=$SB_ACME_EMAIL"
+  [ -n "${SB_CF_TOKEN:-}" ] && echo "CLOUDFLARE_API_TOKEN=$SB_CF_TOKEN"
+} > "$ETC/caddy.env"
 chmod 0640 "$ETC/caddy.env"
 umask 022
 
 say "Generating /etc/caddy/Caddyfile for $SB_DOMAIN"
 install -d /etc/caddy
+acme_line=""
+[ -n "${SB_CF_TOKEN:-}" ] && acme_line=$'\n\tacme_dns cloudflare {env.CLOUDFLARE_API_TOKEN}'
 {
   cat <<EOF
 {
-	email {\$ACME_EMAIL}
-	acme_dns cloudflare {env.CLOUDFLARE_API_TOKEN}
+	email {\$ACME_EMAIL}$acme_line
 	on_demand_tls {
 		ask http://127.0.0.1:8787/internal/tls/allow
 	}
 }
 
-# Control API (CLI + dashboard /api). Cert via Cloudflare DNS-01.
+# Control API (CLI + dashboard /api). Cert via HTTP-01 (or DNS-01 if configured).
 control.$SB_DOMAIN {
 	reverse_proxy 127.0.0.1:8787
 }
