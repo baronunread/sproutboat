@@ -28,10 +28,11 @@ quickly, the supported JavaScript and Web API surface is limited, and compiler
 updates may introduce breaking changes. No Bun or Node fallback may hide a
 Porffor incompatibility.
 
-Current evidence is the repository compatibility report, not a marketing
-claim: Porffor alpha 2 compiled all 30 frozen handlers, while 11 of 30 matched
-Bun on all probes. The public site should derive any compatibility status from
-versioned test data rather than hard-code a percentage.
+Current evidence is the repository compatibility report (`COMPAT.md`), not a
+marketing claim: on Porffor alpha-4 all 31 frozen handlers compile and 29 match
+Bun on all probes — the two misses are non-ISO `Date` string parsing (a Porffor
+bug, tracked in `patches/UPSTREAM.md`). The public site should derive any
+compatibility status from versioned test data rather than hard-code a percentage.
 
 ## 2. POC scope
 

@@ -149,8 +149,8 @@ language or Web API features rather than every file identically.
 
 ## Repository map
 
-- `tests/porffor/capabilities/`: 30 import-free handlers comprising the first
-  accepted Porffor capability suite, using the frozen Workers-style contract.
+- `tests/porffor/capabilities/`: 31 import-free handlers comprising the accepted
+  Porffor capability suite, using the frozen Workers-style contract.
 - `tools/refserve.ts`: Bun reference implementation.
 - `tools/compile.ts`: Porffor native compiler wrapper.
 - `tools/shim.js`: stdin/stdout JSON ABI used by compiled probes.

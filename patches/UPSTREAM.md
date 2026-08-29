@@ -1,9 +1,12 @@
 # Porffor: local patch + upstream notes
 
 **Local state:** one patch, `patches/porffor-render.patch` — 11 lines, honours
-`$PORT` at runtime in the generated native-fetch server. The two missing WHATWG
-globals (`URLSearchParams`, static `Response.json`) are handled in our own
-prepended prelude (`tools/native-fetch-prelude.js`), not by patching Porffor.
+`$PORT` at runtime in the generated native-fetch server. Missing WHATWG surface
+is handled in our own prepended prelude (`tools/native-fetch-prelude.js`), not by
+patching Porffor: `URLSearchParams` (read + write), `URL.prototype.searchParams`
+and the `protocol`/`host`/`hostname`/`port`/`hash` accessors, static
+`Response.json`, `crypto.randomUUID` / `crypto.getRandomValues` (Math.random —
+NOT crypto-strong), and `structuredClone` (JSON round-trip).
 
 **Upstream plan** (see issue #25): file the two `fetch-globals.js` gaps as **one
 issue**, not PRs — the maintainer may want `URL`/`URLSearchParams` as real
@@ -23,7 +26,8 @@ LLM-written prose** — rewrite the drafts below in your own words before filing
 | class declaration not hoisted into scope | still throws in interpreter **and** native | Draft B stands |
 | env access / `$PORT` | no `Porffor.env`; `porf_native_fetch_get_port` unchanged | keep `patches/porffor-render.patch` (applied clean to alpha-4) |
 | compat suite | 30/30 compile, 28/30 match — identical to alpha-3 | GO holds |
-| `Date` string parse (`15-date-iso`, `16-date-parts`) | still wrong (`2008-03-04` → `0003-05-08`) | unchanged known limitation |
+| `Date` string parse (`15-date-iso`, `16-date-parts`) | non-ISO strings mis-parsed | **real Porffor bug — file it** (see Draft D) |
+| `URL` accessors / `crypto.randomUUID` / `structuredClone` | absent | shimmed in the prelude (this session); fold into Draft A |
 
 So the drafts below are still accurate — bump their version line from
 `alpha-3 (03b6b54)` to `alpha-4 (a415d19)` before filing. Re-check on the next
@@ -112,3 +116,28 @@ and env-driven config works generally. Alternatives the maintainer may prefer: a
 `--port` compile flag, or a `--port` argv flag on the produced binary (workerd
 convention). Our local `patches/porffor-render.patch` hardcodes a `getenv("PORT")`
 branch in `porf_native_fetch_get_port()` — fine for us, not the right upstream shape.
+
+---
+
+## Draft D — non-ISO `Date` string parsing diverges from V8
+
+**Title:** native-fetch: `new Date("<non-ISO string>")` parses positionally, unlike V8/JSC
+
+alpha-4 (`a415d19`), `porf native`.
+
+ISO 8601 strings parse correctly (`"2024-01-02T03:04:05Z"`, `"2008-03-04"`). But
+a lenient/legacy string is read as `year, month, day` in source order rather than
+the locale `month/day/year` V8, JSC (Bun) and Deno accept:
+
+```js
+new Date("3,5,8").toISOString()
+// V8 / Bun / Deno: "2008-03-04T23:00:00.000Z"  (M/D/YY, local tz)
+// Porffor native:  "0003-05-08T00:00:00.000Z"
+```
+
+Impact: any handler doing `new Date(userSuppliedString)` on non-ISO input gets a
+silently wrong date rather than a matching one (or `Invalid Date`). Our harness
+sees this on `15-date-iso` / `16-date-parts` with a comma-separated probe value.
+
+Not shimmed locally — replicating V8's full lenient date grammar in a prelude is
+disproportionate. Filing so it can be fixed in `compiler/builtins`.
