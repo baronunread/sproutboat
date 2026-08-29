@@ -133,18 +133,23 @@ test("workerCommand wraps the worker in the bwrap launcher on Linux, runs it dir
     expect(workerCommand("/x/worker")).toEqual(["/x/worker"]);
     set("linux");
     process.env.SPROUTBOAT_WORKER_SANDBOX_CMD = "/opt/sproutboat/infra/sandbox/worker-sandbox.sh";
+    // The sandboxed path never adds a cgroup wrapper — worker-sandbox.sh owns
+    // the scope. Even with SPROUTBOAT_WORKER_CGROUP=1 it's just [launcher, path].
+    process.env.SPROUTBOAT_WORKER_CGROUP = "1";
     expect(workerCommand("/var/lib/sproutboat/artifacts/a/worker")).toEqual(["/opt/sproutboat/infra/sandbox/worker-sandbox.sh", "/var/lib/sproutboat/artifacts/a/worker"]);
     delete process.env.SPROUTBOAT_WORKER_SANDBOX_CMD;
     process.env.SPROUTBOAT_WORKER_SANDBOX = "none";
+    delete process.env.SPROUTBOAT_WORKER_CGROUP;
     expect(() => workerCommand("/x/worker")).toThrow("refusing to run an untrusted native worker unsandboxed");
 
-    // #25 — per-worker cgroup scope, opt-in on Linux.
+    // The `none` path (trusted local Linux) does wrap in a cgroup scope so a dev
+    // run can exercise the limits.
     process.env.SPROUTBOAT_UNSAFE_NO_SANDBOX = "1";
     process.env.SPROUTBOAT_WORKER_CGROUP = "1";
     process.env.SPROUTBOAT_WORKER_MEMORY_MAX = "96M";
     expect(workerCommand("/x/worker")).toEqual([
       "systemd-run", "--scope", "--quiet", "--collect",
-      "-p", "MemoryMax=96M", "-p", "CPUQuota=50%", "-p", "TasksMax=64", "--", "/x/worker",
+      "-p", "MemoryMax=96M", "-p", "MemorySwapMax=0", "-p", "CPUQuota=50%", "-p", "TasksMax=24", "--", "/x/worker",
     ]);
     delete process.env.SPROUTBOAT_WORKER_CGROUP;
     delete process.env.SPROUTBOAT_WORKER_MEMORY_MAX;
