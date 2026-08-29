@@ -17,13 +17,16 @@ control.fn.example.com {
 	reverse_proxy 127.0.0.1:8787
 }
 
-# Dashboard (only if enabled at install time).
+# Dashboard — a static SPA. Caddy serves the built client directly; /api is
+# proxied to control. No dashboard service.
 dashboard.fn.example.com {
 	handle /api/* {
 		reverse_proxy 127.0.0.1:8787
 	}
 	handle {
-		reverse_proxy 127.0.0.1:3000
+		root * /opt/sproutboat/apps/web/dist/client
+		try_files {path} /_shell.html
+		file_server
 	}
 }
 

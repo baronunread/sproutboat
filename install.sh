@@ -130,7 +130,7 @@ fi
 # --- identities + directories -------------------------------------------
 say "Creating service identities and directories"
 getent group sproutboat >/dev/null || groupadd --system sproutboat
-for u in sproutboat-control sproutboat-edge sproutboat-web; do
+for u in sproutboat-control sproutboat-edge; do
   id "$u" >/dev/null 2>&1 || useradd --system --gid sproutboat --no-create-home --shell /usr/sbin/nologin "$u"
 done
 install -d -m 0755 -o root "$ROOT"
@@ -231,7 +231,9 @@ dashboard.$SB_DOMAIN {
 		reverse_proxy 127.0.0.1:8787
 	}
 	handle {
-		reverse_proxy 127.0.0.1:3000
+		root * $ROOT/apps/web/dist/client
+		try_files {path} /_shell.html
+		file_server
 	}
 }
 EOF
@@ -301,7 +303,7 @@ Restart=on-failure
 [Install]
 WantedBy=multi-user.target
 EOF
-for u in sproutboat-control sproutboat-edge sproutboat-web; do
+for u in sproutboat-control sproutboat-edge; do
   install -m 0644 "$ROOT/infra/systemd/$u.service" "/etc/systemd/system/$u.service"
 done
 install -m 0644 "$ROOT/infra/systemd/sproutboat-backup.service" /etc/systemd/system/sproutboat-backup.service
@@ -321,7 +323,7 @@ else
 
   # --- start (control first — its env now exists) ----------------
   say "Starting services"
-  units=(sproutboat-control sproutboat-edge sproutboat-web caddy sproutboat-backup.timer)
+  units=(sproutboat-control sproutboat-edge caddy sproutboat-backup.timer)
   systemctl enable --now "${units[@]}"
 
   # --- verify ---------------------------------------------------

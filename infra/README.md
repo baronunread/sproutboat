@@ -56,9 +56,11 @@ to DNS-01.
 
 ## Hosts and binding
 
-`control` (`:8787`), `edge` (`:8080`), and the dashboard (`:3000`) bind
-`127.0.0.1` only. Caddy is the sole public listener (80/443). The bare
-`<domain>` redirects to the dashboard; `control.<domain>` is the CLI/API origin.
+`control` (`:8787`) and `edge` (`:8080`) bind `127.0.0.1` only. Caddy is the
+sole public listener (80/443). The **dashboard is a static SPA** (`apps/web`,
+built to `apps/web/dist/client`) that Caddy serves from disk on
+`dashboard.<domain>` — no service, no port. The bare `<domain>` redirects to
+the dashboard; `control.<domain>` is the CLI/API origin.
 
 ## Native runtime sandbox
 
@@ -196,11 +198,11 @@ Still keep taking provider snapshots.
 ### Restore
 
 ```sh
-systemctl stop sproutboat-control sproutboat-edge sproutboat-web
+systemctl stop sproutboat-control sproutboat-edge
 cd /var/lib/sproutboat
 tar -xzf backups/sproutboat-<date>.tar.gz          # sproutboat.sqlite, artifacts/, routes.json
 chown -R sproutboat-control:sproutboat sproutboat.sqlite artifacts routes.json
-systemctl start sproutboat-control sproutboat-edge sproutboat-web
+systemctl start sproutboat-control sproutboat-edge
 ```
 
 ## Limits and abuse controls (#25)

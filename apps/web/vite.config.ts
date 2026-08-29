@@ -3,11 +3,13 @@ import { tanstackStart } from "@tanstack/react-start/plugin/vite";
 import react from "@vitejs/plugin-react";
 
 export default defineConfig({
-  plugins: [tanstackStart(), react()],
+  // The dashboard is an internal admin SPA: no SSR server, all data is fetched
+  // client-side from /api. `spa` emits a static shell + client bundle that Caddy
+  // serves directly — no sproutboat-web service.
+  plugins: [tanstackStart({ spa: { enabled: true } }), react()],
   server: {
     port: Number(process.env.PORT) || 5173,
     proxy: {
-      // `secure: false` — the local portless cert is self-signed.
       "/api": { target: "https://control.sproutboat.localhost", changeOrigin: true, secure: false },
     },
   },

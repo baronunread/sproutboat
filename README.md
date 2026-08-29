@@ -31,9 +31,10 @@ wildcard DNS record and waits for it to resolve. See
 
 ## Dashboard
 
-Always installed, at `https://dashboard.<your-domain>`. Sign in with the admin
-token the installer prints (also in `/root/sproutboat-admin.env`) — the same
-token the CLI uses. There is no self-service registration; only that one admin
+Always installed, at `https://dashboard.<your-domain>` — a static SPA Caddy
+serves from disk (no service, no port). Sign in with the admin token the
+installer prints (also in `/root/sproutboat-admin.env`) — the same token the CLI
+uses. There is no self-service registration; only that one admin
 account exists.
 
 GitHub sign-in is optional: set `SB_GITHUB_CLIENT_ID` + `SB_GITHUB_CLIENT_SECRET`
