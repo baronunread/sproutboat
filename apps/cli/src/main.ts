@@ -1,9 +1,10 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { basename, resolve } from "node:path";
-import { parseConfig } from "../../../packages/config/src/config";
+import { parseConfig, type SproutboatConfig } from "../../../packages/config/src/config";
 import { validateHttpSyncSource } from "../../../packages/config/src/source";
 import { buildArtifact } from "../../../packages/artifact/src/build";
 import { validateManifest, type ArtifactManifest } from "../../../packages/artifact/src/manifest";
+import { printDeployReport } from "./report";
 import { activeApiUrl, savedToken, saveToken } from "./credentials";
 
 const defaultApiUrl = "https://dashboard.sproutboat.com";
@@ -151,6 +152,7 @@ async function deploy(args: string[]) {
   const dryRun = args.includes("--dry-run");
   let projectName: string;
   let artifactDir: string;
+  let config: SproutboatConfig | undefined;
   if (artifactIndex >= 0) {
     artifactDir = args[artifactIndex + 1] ? resolve(args[artifactIndex + 1]) : fail("--artifact requires a directory");
     projectName = "";
@@ -158,6 +160,7 @@ async function deploy(args: string[]) {
     const built = await build(args[0]);
     projectName = built.project.config.name;
     artifactDir = built.artifact.artifactDir;
+    config = built.project.config;
   }
   const manifest = Bun.file(resolve(artifactDir, "manifest.json"));
   const worker = Bun.file(resolve(artifactDir, "worker"));
@@ -166,8 +169,15 @@ async function deploy(args: string[]) {
   if (!manifestValidation.ok) fail(`invalid artifact manifest: ${manifestValidation.errors.join(", ")}`);
   const artifactManifest: ArtifactManifest = manifestValidation.value;
   if (artifactIndex >= 0) projectName = artifactManifest.project;
+
+  printDeployReport(
+    config ?? { name: projectName, main: "", compatibility_date: "(prebuilt artifact)" },
+    artifactManifest,
+    new Uint8Array(await worker.arrayBuffer()),
+    manifest.size,
+  );
   if (dryRun) {
-    console.log(`Dry run: ${projectName}, ${worker.size} byte worker; no upload made.`);
+    console.log("\n--dry-run: not uploading.");
     return;
   }
   const { apiUrl, token } = await apiCredentials();
@@ -194,8 +204,8 @@ async function deploy(args: string[]) {
   const body = await responseText(response, "deployment rejected");
   const deployed = parseUrlResponse(body);
   if (!deployed) fail("deployment response did not include a URL");
-  console.log(`Deployed ${projectName}`);
-  console.log(deployed.url);
+  console.log(`\nDeployed ${projectName}`);
+  console.log(`  ${deployed.url}`);
 }
 
 function parseLoginArgs(args: string[]) {
