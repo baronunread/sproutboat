@@ -20,6 +20,13 @@ RUN bun install --frozen-lockfile
 
 COPY . .
 
+# Stamp the toolchain identity so the CLI reads it from the image
+# (`docker run <ref> --entrypoint cat /opt/sproutboat-toolchain.json`) rather
+# than the monorepo's bun.lock / node_modules.
+RUN bun -e 'import { porfforVersion } from "./tools/porffor"; \
+  const esbuild = (await Bun.file("node_modules/esbuild/package.json").json()).version; \
+  process.stdout.write(JSON.stringify({ porffor: porfforVersion(), esbuild }))' > /opt/sproutboat-toolchain.json
+
 # Warm the uWebSockets cache (git clone + `uSockets.a` build) into this layer so
 # per-deploy compiles reuse it instead of each taking minutes.
 RUN bun run tools/compile.ts tests/porffor/capabilities/01-hello.js /tmp/prewarm \

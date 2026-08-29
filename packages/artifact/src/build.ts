@@ -3,9 +3,6 @@ import { chmod, mkdir, readFile, stat, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import type { SproutboatConfig } from "../../config/src/config";
 import { ARTIFACT_SCHEMA_VERSION, CAPABILITY_PROFILE, RUNTIME, type ArtifactManifest } from "./manifest";
-import { porfforVersion } from "../../../tools/porffor";
-
-const root = resolve(import.meta.dir, "../../..");
 
 export type BuildInput = {
   projectDir: string;
@@ -29,11 +26,17 @@ async function run(command: string[], label: string): Promise<string> {
   return stdout;
 }
 
-async function readVersion(packageDir: string): Promise<string> {
+type Toolchain = { porffor: string; esbuild: string };
+
+/** Read the pinned toolchain versions the image was built with. */
+async function toolchainOf(reference: string): Promise<Toolchain> {
   try {
-    const version: unknown = JSON.parse(await readFile(resolve(root, "node_modules", packageDir, "package.json"), "utf8"))?.version;
-    return Object(version) !== version && version === String(version) && version ? version : "unknown";
-  } catch { return "unknown"; }
+    const raw = await run(["docker", "run", "--rm", "--platform", "linux/amd64", "--entrypoint", "cat", reference, "/opt/sproutboat-toolchain.json"], "toolchain read");
+    // SAFETY: build-image/Dockerfile writes this file as {porffor, esbuild} strings;
+    // each field is defaulted below, so a shape mismatch degrades to "unknown".
+    const v = JSON.parse(raw) as Partial<Toolchain>;
+    return { porffor: v.porffor || "unknown", esbuild: v.esbuild || "unknown" };
+  } catch { return { porffor: "unknown", esbuild: "unknown" }; }
 }
 
 const DEFAULT_BUILD_IMAGE = "ghcr.io/baronunread/sproutboat/build:latest";
@@ -94,15 +97,15 @@ export async function buildArtifact(input: BuildInput): Promise<BuildOutput> {
     "-c", "PORT=8099 /output/worker & for i in $(seq 40); do curl -sf -o /dev/null http://127.0.0.1:8099/ && exit 0; sleep 0.25; done; echo 'worker did not serve HTTP' >&2; exit 1",
   ], "artifact smoke test");
 
-  const worker = await readFile(workerPath);
+  const [worker, toolchain] = await Promise.all([readFile(workerPath), toolchainOf(image.reference)]);
   const manifest: ArtifactManifest = {
     schemaVersion: ARTIFACT_SCHEMA_VERSION,
     project: input.config.name,
     target: "linux-x86_64",
     runtime: RUNTIME,
     capabilityProfile: CAPABILITY_PROFILE,
-    porfforVersion: porfforVersion(),
-    esbuildVersion: await readVersion("esbuild"),
+    porfforVersion: toolchain.porffor,
+    esbuildVersion: toolchain.esbuild,
     buildImage: image.immutable,
     sourceHash,
     binaryHash: digest(worker),
