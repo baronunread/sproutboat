@@ -76,17 +76,24 @@ function createAuth() {
       },
     }] }) : undefined;
   const adminPlugin = admin({ adminRoles: ["admin"], defaultRole: "user" });
-  const socialGithub = !useEmulator && githubSignInConfigured() ? { github: { clientId: clientId!, clientSecret: clientSecret! } } : {};
+  // GitHub sign-in never *creates* an account here — `disableSignUp` means the
+  // OAuth callback only logs in someone who already has an account with that
+  // email (the admin, or a user the admin provisioned), linking the GitHub
+  // identity to it. No self-service signup, whether by email or by OAuth.
+  const socialGithub = !useEmulator && githubSignInConfigured()
+    ? { github: { clientId: clientId!, clientSecret: clientSecret!, disableSignUp: true } }
+    : {};
   return betterAuth({
     appName: "Sproutboat",
     database: new Database(process.env.SPROUTBOAT_DATABASE_PATH || "/var/lib/sproutboat/sproutboat.sqlite"),
     secret,
     baseURL,
     trustedOrigins: [dashboardUrl],
-    // The single admin signs in with the bootstrap token as a credential
-    // password (account seeded by ensureAdminSeeded). Self-service registration
-    // is blocked at the HTTP layer in main.ts — the /sign-up route is refused.
+    // Accounts are created by the admin (email + password), never self-service:
+    // /api/auth/sign-up is refused in main.ts. `emailAndPassword` stays enabled
+    // for the sign-in side. GitHub OAuth links to an existing account (above).
     emailAndPassword: { enabled: true },
+    account: { accountLinking: { enabled: true, trustedProviders: ["github"] } },
     // #25 — throttle /api/auth/* (login, CLI token exchange) against credential
     // stuffing. Per-IP fixed window.
     rateLimit: {
@@ -102,6 +109,9 @@ function createAuth() {
       // dev only; production leaves this unset and stays secure.
       useSecureCookies: process.env.SPROUTBOAT_INSECURE_COOKIES === "1" ? false : true,
       crossSubDomainCookies: { enabled: false },
+      // Caddy is the only public listener and sets X-Forwarded-For, so the
+      // auth rate limiter can bucket per real client IP.
+      ipAddress: { ipAddressHeaders: ["x-forwarded-for", "x-real-ip"] },
     },
   });
 }

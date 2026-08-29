@@ -1,6 +1,6 @@
 import { getAuth } from "./auth";
 import { backupPath, createBackup, deleteBackup, listBackups } from "./backups";
-import { actorFor } from "./identity";
+import { actorFor, reserveUsername, validUsername } from "./identity";
 import { globalLogTotals } from "./logs";
 import { banOwner, globalStats, ownerDeployments, ownerRollups, syncRoutes, unbanOwner } from "./store";
 
@@ -124,6 +124,44 @@ const asText = (value: JsonInput): string | undefined =>
   Object(value) !== value && value === String(value) && String(value).trim() ? String(value).trim() : undefined;
 const asPositive = (value: JsonInput): number | undefined =>
   Object(value) !== value && value === Number(value) && Number.isFinite(value) && Number(value) > 0 ? Number(value) : undefined;
+
+const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
+const MIN_PASSWORD = 10;
+
+/**
+ * Provision a new account. Self-hosted has no self-service signup — the admin
+ * creates users here with an email + a starting password; the user then signs in
+ * with those, or links GitHub to the same email. The namespace is reserved now
+ * so they land straight in their workspace.
+ */
+export async function adminCreateUser(request: Request): Promise<Response> {
+  const denied = await requireAdmin(request);
+  if (denied) return denied;
+  const body = await request.json().catch(() => ({}));
+  const email = asText(body.email)?.toLowerCase();
+  const username = asText(body.username);
+  const password = asText(body.password);
+  const name = asText(body.name) ?? username;
+  if (!email || !EMAIL_RE.test(email)) return Response.json({ error: "a valid email is required" }, { status: 400 });
+  if (!username || !validUsername(username)) return Response.json({ error: "username must be a 3–32 character lowercase slug and not reserved" }, { status: 400 });
+  if (!password || password.length < MIN_PASSWORD) return Response.json({ error: `password must be at least ${MIN_PASSWORD} characters` }, { status: 400 });
+
+  let userId: string;
+  try {
+    const created = await getAuth().api.createUser({ body: { email, password, name: name!, role: "user" }, headers: request.headers });
+    // SAFETY: the admin plugin's createUser resolves to { user: { id, ... } }.
+    userId = (created as { user: { id: string } }).user.id;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "could not create the user";
+    return Response.json({ error: message }, { status: /exist|already|unique/i.test(message) ? 409 : 500 });
+  }
+  try {
+    reserveUsername(userId, username);
+  } catch (error) {
+    return Response.json({ error: error instanceof Error ? error.message : "namespace reservation failed" }, { status: 409 });
+  }
+  return Response.json({ id: userId, email, username }, { status: 201 });
+}
 
 export async function banUser(request: Request, id: string): Promise<Response> {
   const denied = await requireAdmin(request);

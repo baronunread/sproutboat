@@ -5,7 +5,7 @@ import { activateDeployment, dashboardOverview, deleteAccount, deleteDeployment,
 import { actorFor, profileForUser, reserveUsername, sessionUser } from "./identity";
 import { clientIp, logLimitEvent, rateHit, tlsIssuanceAllowed } from "./limits";
 import { approveCliAuthorization, createCliAuthorization, exchangeCliAuthorization, listCliCredentials, revokeAllCliCredentials, revokeCliCredential } from "./cli-authorization";
-import { adminBackups, adminCreateBackup, adminDeleteBackup, adminDownloadBackup, adminOverview, adminUserDetail, adminUsers, banUser, revokeUserSessions, unbanUser } from "./admin";
+import { adminBackups, adminCreateBackup, adminCreateUser, adminDeleteBackup, adminDownloadBackup, adminOverview, adminUserDetail, adminUsers, banUser, revokeUserSessions, unbanUser } from "./admin";
 
 type Route = { hostname: string; workerPath: string };
 const routesPath = resolve(process.env.SPROUTBOAT_ROUTE_SNAPSHOT || "/var/lib/sproutboat/routes.json");
@@ -125,6 +125,7 @@ const server = Bun.serve({
       try {
         if (request.method === "GET" && url.pathname === "/api/admin/overview") return await adminOverview(request);
         if (request.method === "GET" && url.pathname === "/api/admin/users") return await adminUsers(request);
+        if (request.method === "POST" && url.pathname === "/api/admin/users") return await adminCreateUser(request);
         const userDetail = /^\/api\/admin\/users\/([^/]+)$/.exec(url.pathname);
         if (request.method === "GET" && userDetail) return await adminUserDetail(request, userDetail[1]);
         const ban = /^\/api\/admin\/users\/([^/]+)\/ban$/.exec(url.pathname);

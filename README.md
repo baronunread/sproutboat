@@ -32,14 +32,20 @@ wildcard DNS record and waits for it to resolve. See
 ## Dashboard
 
 Always installed, at `https://dashboard.<your-domain>` — a static SPA Caddy
-serves from disk (no service, no port). Sign in with the admin token the
-installer prints (also in `/root/sproutboat-admin.env`) — the same token the CLI
-uses. There is no self-service registration; only that one admin
-account exists.
+serves from disk (no service, no port).
+
+**Sign in** with **email + password** or, if configured, **GitHub**. The admin's
+email is the ACME email you gave the installer; the admin's password is the token
+in `/root/sproutboat-admin.env` (the same token the CLI uses).
+
+**No self-service sign-up.** The admin creates every other account from
+**Admin → Users** (email + a starting password); those users then sign in with
+email + password, or link GitHub to the same email. `POST /api/auth/sign-up`
+always returns 403.
 
 GitHub sign-in is optional: set `SB_GITHUB_CLIENT_ID` + `SB_GITHUB_CLIENT_SECRET`
 before running `install.sh` (callback `https://dashboard.<domain>/api/auth/callback/github`).
-When it's not set, the token form is the only way in.
+It only signs in an account that already exists — it never creates one.
 
 ## Deploying to it
 

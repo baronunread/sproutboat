@@ -155,14 +155,20 @@ installer) — there is no separate namespace-reservation step in single-admin
 mode. `SPROUTBOAT_API_URL` / `SPROUTBOAT_TOKEN` env vars work instead of `login`
 for CI.
 
-The dashboard (`https://dashboard.<domain>`) is always installed. Sign in with
-the admin token — the "Admin token" field on the login page takes the value from
-`/root/sproutboat-admin.env`. There is no registration; only the seeded admin
-account exists.
+The dashboard (`https://dashboard.<domain>`) is always installed, a static SPA
+Caddy serves from disk. Sign in with **email + password**: the admin's email is
+`SB_ACME_EMAIL`, the admin's password is `SPROUTBOAT_TOKEN` from
+`/root/sproutboat-admin.env`.
+
+**No self-service sign-up.** Add other people from **Admin → Users** — you set
+an email + a starting password, hand those to them, and they sign in. They can
+link GitHub to the same email afterwards. `POST /api/auth/sign-up` returns 403.
 
 GitHub sign-in is optional. Set `SB_GITHUB_CLIENT_ID` / `SB_GITHUB_CLIENT_SECRET`
 before install and register `https://dashboard.<domain>/api/auth/callback/github`
-as the OAuth callback. `install.sh` runs the Better Auth migration
+as the OAuth callback. With `disableSignUp` it only logs in an account that
+already exists — a stranger's GitHub account can't get in. `install.sh` runs the
+Better Auth migration
 (`bunx --bun auth@1.7.1 migrate --config apps/control/src/auth.migrate.ts --yes`)
 for you.
 

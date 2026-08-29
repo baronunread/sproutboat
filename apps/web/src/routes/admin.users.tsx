@@ -58,8 +58,10 @@ function AdminUsers() {
   return (
     <section className="data-panel settings-panel">
       <div className="panel-heading">
-        <div><h2>Users</h2><p>Every account. Banning an account stops its routes immediately.</p></div>
+        <div><h2>Users</h2><p>Accounts are created here — there is no self-service sign-up. Banning an account stops its routes immediately.</p></div>
       </div>
+
+      <CreateUserForm onCreated={() => void load()} />
 
       <div className="log-filters">
         <input aria-label="Search users by email" placeholder="Search email" value={query}
@@ -88,6 +90,76 @@ function AdminUsers() {
         </>
       )}
     </section>
+  );
+}
+
+function randomPassword(): string {
+  const bytes = crypto.getRandomValues(new Uint8Array(18));
+  return btoa(String.fromCharCode(...bytes)).replace(/[+/=]/g, "").slice(0, 20);
+}
+
+function CreateUserForm({ onCreated }: { onCreated: () => void }) {
+  const [open, setOpen] = useState(false);
+  const [email, setEmail] = useState("");
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const [done, setDone] = useState<{ email: string; username: string; password: string } | null>(null);
+
+  const submit = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (busy) return;
+    setBusy(true); setError("");
+    try {
+      const response = await fetch("/api/admin/users", {
+        method: "POST", credentials: "include", headers: { "content-type": "application/json" },
+        body: JSON.stringify({ email: email.trim(), username: username.trim(), password }),
+      });
+      if (!response.ok) {
+        // SAFETY: an error body from this endpoint is { error: string }.
+        const body = await response.json().catch(() => ({})) as { error?: string };
+        setError(body.error ?? "Could not create the user.");
+        return;
+      }
+      setDone({ email: email.trim(), username: username.trim(), password });
+      setEmail(""); setUsername(""); setPassword("");
+      onCreated();
+    } catch { setError("Could not reach the control plane."); }
+    finally { setBusy(false); }
+  };
+
+  if (!open) {
+    return (
+      <div className="create-user">
+        <button type="button" className="button" onClick={() => { setOpen(true); setDone(null); }}>Create user</button>
+        {done && (
+          <p className="form-status" role="status">
+            Created <code>{done.username}</code> ({done.email}). Starting password: <code>{done.password}</code> — copy it now, it isn't shown again.
+          </p>
+        )}
+      </div>
+    );
+  }
+
+  return (
+    <form className="create-user create-user-form" onSubmit={submit}>
+      <div className="create-user-fields">
+        <label>Email<input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} /></label>
+        <label>Namespace<input required pattern="[a-z0-9](?:[a-z0-9-]{1,30}[a-z0-9])?" title="3–32 lowercase letters, digits, hyphens" value={username} onChange={(e) => setUsername(e.target.value.toLowerCase())} /></label>
+        <label>Password
+          <span className="input-with-button">
+            <input type="text" required minLength={10} value={password} onChange={(e) => setPassword(e.target.value)} />
+            <button type="button" className="button quiet" onClick={() => setPassword(randomPassword())}>Generate</button>
+          </span>
+        </label>
+      </div>
+      {error && <p className="form-error" role="alert">{error}</p>}
+      <div className="create-user-actions">
+        <button type="button" className="button quiet" onClick={() => setOpen(false)}>Cancel</button>
+        <button type="submit" className="button primary" disabled={busy || !email || !username || password.length < 10}>Create account</button>
+      </div>
+    </form>
   );
 }
 
