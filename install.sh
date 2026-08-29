@@ -291,11 +291,14 @@ echo
 echo "    SPROUTBOAT_API_URL   https://control.$SB_DOMAIN"
 echo "    SPROUTBOAT_TOKEN     $ADMIN_TOKEN"
 echo
-say "Create these DNS records (A -> this host, DNS only / grey cloud):"
 IP=$(curl -fsS4 https://api.ipify.org 2>/dev/null || echo "<this-host-ipv4>")
-echo "    control.$SB_DOMAIN      A   $IP"
-echo "    *.$SB_DOMAIN            A   $IP"
-[ "$DASHBOARD_ENABLED" = yes ] && echo "    dashboard.$SB_DOMAIN    A   $IP"
+say "Create ONE DNS record (DNS only / grey cloud):"
+echo "    *.$SB_DOMAIN    A   $IP"
+covered="control.$SB_DOMAIN"
+[ "$DASHBOARD_ENABLED" = yes ] && covered="$covered, dashboard.$SB_DOMAIN"
+echo
+echo "  A wildcard covers $covered, and every <project>.$SB_ADMIN.$SB_DOMAIN"
+echo "  deployment. Prefer IaC? cd infra/tofu && tofu apply."
 echo
 say "Then from your workstation:"
 echo "    sproutboat login --api-url https://control.$SB_DOMAIN --token <token>"

@@ -23,11 +23,16 @@ Non-interactive: set `SB_DOMAIN`, `SB_ACME_EMAIL`, `SB_CF_TOKEN`, `SB_ADMIN`
 
 ## DNS
 
-`control.<domain>` and `*.<domain>` — A records to the host, **DNS only**
-(grey cloud). Caddy issues exact certs via a Cloudflare DNS-01 challenge; the
-wildcard deployments get their cert on demand, gated by the control plane's
-`/internal/tls/allow`. Add `dashboard.<domain>` too if you enabled the dashboard.
-`infra/tofu/` manages these records if you prefer IaC.
+**One record:** `*.<domain>` A → host IP, **DNS only** (grey cloud). Like
+Coolify and Pangolin, you create it yourself in your DNS panel — the installer
+prompts for the domain, it doesn't touch your provider.
+
+The wildcard covers `control.<domain>`, `dashboard.<domain>`, and every
+`<project>.<admin>.<domain>` deployment. Caddy issues an exact cert for
+`control.` (and `dashboard.`) via a Cloudflare DNS-01 challenge at startup;
+deployment certs are issued on demand, gated by the control plane's
+`/internal/tls/allow`. `infra/tofu/` will create the record via the Cloudflare
+API if you prefer IaC.
 
 ## Hosts and binding
 
