@@ -1,0 +1,11 @@
+node_modules
+.git
+.phase0
+.sproutboat
+.local
+apps/web/dist
+apps/web/.tanstack
+codex-session-*.md
+.codex
+.impeccable
+.agents

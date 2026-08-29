@@ -1,14 +1,37 @@
 import { appendFile, mkdir, readFile, stat } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
-import { runWorker } from "../../supervisor/src/run";
+import { pool } from "../../supervisor/src/run";
 
-type Route = { hostname: string; workerPath: string };
+type JsonValue = string | number | boolean | null | EdgeJsonObject | JsonValue[];
+
+interface EdgeJsonObject {
+  readonly [key: string]: JsonValue;
+}
+
+type EdgeInput = JsonValue | undefined;
+
+interface LogEvent {
+  readonly hostname?: string | null;
+  readonly status: number;
+  readonly durationMs: number;
+  readonly error?: string;
+}
+
+function isObject(value: EdgeInput): value is EdgeJsonObject {
+  return value !== null && Object(value) === value && !Array.isArray(value)
+    && !(value instanceof Function);
+}
+
+function isString(value: EdgeInput): value is string {
+  return Object(value) !== value && value === String(value);
+}
 
 async function loadRoutes(path: string): Promise<Map<string, string>> {
-  const routes = JSON.parse(await readFile(path, "utf8")) as Route[];
+  const routes: EdgeInput = JSON.parse(await readFile(path, "utf8"));
+  if (!Array.isArray(routes)) throw new TypeError("invalid route snapshot");
   const result = new Map<string, string>();
   for (const route of routes) {
-    if (!/^[a-z0-9.-]+$/.test(route.hostname) || !route.workerPath.startsWith("/")) throw new TypeError("invalid route snapshot");
+    if (!isObject(route) || !isString(route.hostname) || !/^[a-z0-9.-]+$/.test(route.hostname) || !isString(route.workerPath) || !route.workerPath.startsWith("/")) throw new TypeError("invalid route snapshot");
     result.set(route.hostname, route.workerPath);
   }
   return result;
@@ -31,7 +54,7 @@ if (routesMtimeMs > 0) routes = await loadRoutes(routesPath);
 const port = Number(process.env.PORT || 8080);
 const logPath = process.env.SPROUTBOAT_LOG_PATH;
 
-async function log(event: Record<string, unknown>): Promise<void> {
+async function log(event: LogEvent): Promise<void> {
   if (!logPath) return;
   try {
     await mkdir(dirname(logPath), { recursive: true });
@@ -44,7 +67,11 @@ async function log(event: Record<string, unknown>): Promise<void> {
 async function refreshRoutes(): Promise<void> {
   const currentMtimeMs = await snapshotMtime(routesPath);
   if (currentMtimeMs > routesMtimeMs) {
-    routes = await loadRoutes(routesPath);
+    const nextRoutes = await loadRoutes(routesPath);
+    for (const [hostname, workerPath] of routes) {
+      if (nextRoutes.get(hostname) !== workerPath) pool.dispose(workerPath);
+    }
+    routes = nextRoutes;
     routesMtimeMs = currentMtimeMs;
   }
 }
@@ -63,10 +90,17 @@ const server = Bun.serve({
       return new Response("unknown deployment", { status: 404 });
     }
     try {
-      const headers = Object.fromEntries([...request.headers].filter(([name]) => !name.startsWith("sec-ch-ua")));
-      const response = await runWorker(workerPath, { method: request.method, url: request.url, headers, body: await request.text() });
-      await log({ hostname: host, status: response.status, durationMs: Math.round(performance.now() - started) });
-      return new Response(response.body, { status: response.status, headers: response.headers });
+      // Reverse-proxy the request to the deployment's native-fetch server.
+      const base = await pool.endpoint(workerPath);
+      const target = new URL(request.url);
+      const upstream = await fetch(`${base}${target.pathname}${target.search}`, {
+        method: request.method,
+        headers: request.headers,
+        body: request.method === "GET" || request.method === "HEAD" ? undefined : request.body,
+        redirect: "manual",
+      });
+      await log({ hostname: host, status: upstream.status, durationMs: Math.round(performance.now() - started) });
+      return new Response(upstream.body, { status: upstream.status, headers: upstream.headers });
     } catch (error) {
       console.error(`worker failure for ${host}: ${error instanceof Error ? error.message : String(error)}`);
       await log({ hostname: host, status: 502, durationMs: Math.round(performance.now() - started), error: "worker failure" });
@@ -77,8 +111,24 @@ const server = Bun.serve({
 
 console.log(`Sproutboat edge router listening on http://localhost:${server.port}`);
 
+const evictionTimer = setInterval(() => pool.evictIdle(), 60_000);
+
+function shutdown(): void {
+  clearInterval(evictionTimer);
+  pool.disposeAll();
+  server.stop();
+}
+
+process.once("SIGINT", shutdown);
+process.once("SIGTERM", shutdown);
+
 process.on("SIGHUP", async () => {
-  routesMtimeMs = await snapshotMtime(routesPath);
-  routes = routesMtimeMs > 0 ? await loadRoutes(routesPath) : new Map();
+  const nextRoutesMtimeMs = await snapshotMtime(routesPath);
+  const nextRoutes = nextRoutesMtimeMs > 0 ? await loadRoutes(routesPath) : new Map<string, string>();
+  for (const [hostname, workerPath] of routes) {
+    if (nextRoutes.get(hostname) !== workerPath) pool.dispose(workerPath);
+  }
+  routesMtimeMs = nextRoutesMtimeMs;
+  routes = nextRoutes;
   console.log("route snapshot reloaded");
 });

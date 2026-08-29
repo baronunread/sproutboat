@@ -45,12 +45,13 @@
         name: sproutboat
         system: true
 
+    # The edge runs deployments under bubblewrap, not Docker: no docker-group
+    # membership, no socket access. Docker is only used at provisioning time to
+    # build the base image (issue #23).
     - name: Create service identities
       ansible.builtin.user:
         name: '{{ item }}'
         group: sproutboat
-        groups: '{{ "docker" if item == "sproutboat-edge" else omit }}'
-        append: '{{ item == "sproutboat-edge" }}'
         system: true
         create_home: false
         shell: /usr/sbin/nologin

@@ -3,9 +3,80 @@ import { basename, resolve } from "node:path";
 import { parseConfig } from "../../../packages/config/src/config";
 import { validateHttpSyncSource } from "../../../packages/config/src/source";
 import { buildArtifact } from "../../../packages/artifact/src/build";
+import { validateManifest, type ArtifactManifest } from "../../../packages/artifact/src/manifest";
 import { activeApiUrl, savedToken, saveToken } from "./credentials";
 
 const defaultApiUrl = "https://dashboard.sproutboat.com";
+
+async function responseText(response: Response, failure: string): Promise<string> {
+  if (response.ok) return response.text();
+  fail(`${failure} (${response.status}): ${await response.text()}`);
+}
+
+type JsonValue = string | number | boolean | null | JsonObject | JsonValue[];
+type JsonObject = { [key: string]: JsonValue };
+
+function isString(value: JsonValue | undefined): value is string {
+  return value !== undefined && value === String(value);
+}
+
+function isSafeInteger(value: JsonValue | undefined): value is number {
+  return Number.isSafeInteger(value);
+}
+
+function parseJsonValue(source: string): JsonValue {
+  const value = JSON.parse(source);
+  if (value === null || value === true || value === false || value === String(value) || Number.isFinite(value) || value instanceof Object) return value;
+  throw new Error("response was not valid JSON");
+}
+
+function jsonObject(value: JsonValue): JsonObject | undefined {
+  return value instanceof Object && !Array.isArray(value) ? value : undefined;
+}
+
+type DeploymentSummary = { artifact: string; hostname: string; active: boolean };
+type VersionSummary = { id: string; artifact: string; deployedAt: string; active: boolean };
+type CliAuthorization = { deviceCode: string; userCode: string; verificationUri: string; interval: number; expiresAt: string };
+
+function parseDeploymentList(source: string): DeploymentSummary[] | undefined {
+  const value = parseJsonValue(source);
+  if (!Array.isArray(value)) return undefined;
+  const deployments: DeploymentSummary[] = [];
+  for (const item of value) {
+    const record = jsonObject(item);
+    if (!record || !isString(record.artifact) || !isString(record.hostname) || (record.active !== true && record.active !== false)) return undefined;
+    deployments.push({ artifact: record.artifact, hostname: record.hostname, active: record.active });
+  }
+  return deployments;
+}
+
+function parseVersionList(source: string): VersionSummary[] | undefined {
+  const value = parseJsonValue(source);
+  if (!Array.isArray(value)) return undefined;
+  const deployments: VersionSummary[] = [];
+  for (const item of value) {
+    const record = jsonObject(item);
+    if (!record || !isString(record.id) || !isString(record.artifact) || !isString(record.deployedAt) || (record.active !== true && record.active !== false)) return undefined;
+    deployments.push({ id: record.id, artifact: record.artifact, deployedAt: record.deployedAt, active: record.active });
+  }
+  return deployments;
+}
+
+function parseUrlResponse(source: string): { url: string } | undefined {
+  const record = jsonObject(parseJsonValue(source));
+  return record && isString(record.url) ? { url: record.url } : undefined;
+}
+
+function parseAuthorization(source: string): CliAuthorization | undefined {
+  const record = jsonObject(parseJsonValue(source));
+  if (!record || !isString(record.deviceCode) || !isString(record.userCode) || !isString(record.verificationUri) || !isSafeInteger(record.interval) || !isString(record.expiresAt)) return undefined;
+  return { deviceCode: record.deviceCode, userCode: record.userCode, verificationUri: record.verificationUri, interval: record.interval, expiresAt: record.expiresAt };
+}
+
+function parseToken(source: string): string | undefined {
+  const record = jsonObject(parseJsonValue(source));
+  return record && isString(record.token) ? record.token : undefined;
+}
 
 const starterConfig = (name: string) => `{
   "$schema": "https://sproutboat.com/schema.json",
@@ -63,13 +134,12 @@ async function init(name = "hello") {
 
 async function check(directory?: string) {
   const project = await readProject(directory);
-  console.log(`check passed: ${project.config.name} (${project.config.main}, http-sync-v0)`);
+  console.log(`check passed: ${project.config.name} (${project.config.main}, native-fetch)`);
 }
 
 async function build(directory?: string) {
   const project = await readProject(directory);
-  console.log("Bundling with Rolldown...");
-  console.log("Compiling with Porffor in the pinned Linux image...");
+  console.log("Compiling the native-fetch server with Porffor in the pinned build image...");
   const artifact = await buildArtifact({ projectDir: project.directory, config: project.config, sourcePath: project.sourcePath });
   console.log(`Built ${project.config.name}`);
   console.log(artifact.artifactDir);
@@ -83,9 +153,7 @@ async function deploy(args: string[]) {
   let artifactDir: string;
   if (artifactIndex >= 0) {
     artifactDir = args[artifactIndex + 1] ? resolve(args[artifactIndex + 1]) : fail("--artifact requires a directory");
-    const manifest = await Bun.file(resolve(artifactDir, "manifest.json")).json() as { project?: string };
-    if (!manifest.project || typeof manifest.project !== "string") fail("artifact manifest has no project name");
-    projectName = manifest.project;
+    projectName = "";
   } else {
     const built = await build(args[0]);
     projectName = built.project.config.name;
@@ -94,17 +162,20 @@ async function deploy(args: string[]) {
   const manifest = Bun.file(resolve(artifactDir, "manifest.json"));
   const worker = Bun.file(resolve(artifactDir, "worker"));
   if (!(await manifest.exists()) || !(await worker.exists())) fail("artifact must contain manifest.json and worker");
+  const manifestValidation = validateManifest(await manifest.json());
+  if (!manifestValidation.ok) fail(`invalid artifact manifest: ${manifestValidation.errors.join(", ")}`);
+  const artifactManifest: ArtifactManifest = manifestValidation.value;
+  if (artifactIndex >= 0) projectName = artifactManifest.project;
   if (dryRun) {
     console.log(`Dry run: ${projectName}, ${worker.size} byte worker; no upload made.`);
     return;
   }
   const { apiUrl, token } = await apiCredentials();
-  const artifact = await manifest.json() as { binaryHash?: string };
-  const digest = artifact.binaryHash?.replace(/^sha256:/, "");
+  const digest = artifactManifest.binaryHash.replace(/^sha256:/, "");
   if (digest) {
-    const response = await fetch(`${apiUrl.replace(/\/$/, "")}/v1/projects/${projectName}/deployments`, { headers: { "x-api-key": token } });
-    if (!response.ok) fail(`could not check existing deployments (${response.status}): ${await response.text()}`);
-    const deployments = await response.json() as Array<{ artifact: string; hostname: string; active: boolean }>;
+    const response = await fetch(`${apiUrl.replace(/\/$/, "")}/api/projects/${projectName}/deployments`, { headers: { "x-api-key": token } });
+    const deployments = parseDeploymentList(await responseText(response, "could not check existing deployments"));
+    if (!deployments) fail("could not parse deployment list response");
     const active = deployments.find((deployment) => deployment.active && deployment.artifact === digest);
     if (active) {
       console.log(`Nothing to deploy — artifact ${digest.slice(0, 12)} is already active`);
@@ -115,14 +186,14 @@ async function deploy(args: string[]) {
   const form = new FormData();
   form.set("manifest", new File([await manifest.arrayBuffer()], "manifest.json", { type: "application/json" }));
   form.set("worker", new File([await worker.arrayBuffer()], "worker", { type: "application/octet-stream" }));
-  const response = await fetch(`${apiUrl.replace(/\/$/, "")}/v1/projects/${projectName}/deployments`, {
+  const response = await fetch(`${apiUrl.replace(/\/$/, "")}/api/projects/${projectName}/deployments`, {
     method: "POST",
     headers: { "x-api-key": token },
     body: form,
   });
-  const body = await response.text();
-  if (!response.ok) fail(`deployment rejected (${response.status}): ${body}`);
-  const deployed = JSON.parse(body) as { url: string };
+  const body = await responseText(response, "deployment rejected");
+  const deployed = parseUrlResponse(body);
+  if (!deployed) fail("deployment response did not include a URL");
   console.log(`Deployed ${projectName}`);
   console.log(deployed.url);
 }
@@ -135,10 +206,10 @@ function loginApiUrl(args: string[]): string {
 
 async function login(args: string[]) {
   const apiUrl = loginApiUrl(args);
-  const response = await fetch(`${apiUrl}/v1/cli/authorizations`, { method: "POST" });
-  const body = await response.text();
-  if (!response.ok) fail(`could not start login (${response.status}): ${body}`);
-  const authorization = JSON.parse(body) as { deviceCode: string; userCode: string; verificationUri: string; interval: number; expiresAt: string };
+  const response = await fetch(`${apiUrl}/api/cli/authorizations`, { method: "POST" });
+  const body = await responseText(response, "could not start login");
+  const authorization = parseAuthorization(body);
+  if (!authorization) fail("login response did not include a valid authorization request");
   const verificationUrl = new URL(authorization.verificationUri, `${apiUrl}/`).toString();
   const openCommand = process.platform === "darwin" ? ["open", verificationUrl] : process.platform === "win32" ? ["cmd", "/c", "start", "", verificationUrl] : ["xdg-open", verificationUrl];
   try { Bun.spawn(openCommand, { stdout: "ignore", stderr: "ignore" }); }
@@ -147,7 +218,7 @@ async function login(args: string[]) {
   console.log(`Confirm code: ${authorization.userCode}`);
   while (new Date(authorization.expiresAt).getTime() > Date.now()) {
     await Bun.sleep(Math.max(authorization.interval, 1) * 1000);
-    const exchange = await fetch(`${apiUrl.replace(/\/$/, "")}/v1/cli/authorizations/token`, {
+    const exchange = await fetch(`${apiUrl.replace(/\/$/, "")}/api/cli/authorizations/token`, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ deviceCode: authorization.deviceCode }),
@@ -155,8 +226,8 @@ async function login(args: string[]) {
     if (exchange.status === 428) continue;
     const result = await exchange.text();
     if (!exchange.ok) fail(`login failed (${exchange.status}): ${result}`);
-    const token = (JSON.parse(result) as { token?: unknown }).token;
-    if (typeof token !== "string") fail("login response did not include a CLI token");
+    const token = parseToken(result);
+    if (!token) fail("login response did not include a CLI token");
     await saveToken(apiUrl, token);
     console.log("Login approved. Credentials were saved locally for this API endpoint.");
     return;
@@ -185,7 +256,6 @@ async function dev(args: string[]) {
       ...process.env,
       PORT: String(port),
       SPROUTBOAT_ROUTE_SNAPSHOT: snapshotPath,
-      SPROUTBOAT_RUNTIME_IMAGE: process.env.SPROUTBOAT_RUNTIME_IMAGE || process.env.SPROUTBOAT_BUILD_IMAGE_REF || "sproutboat/build:dev",
     },
   });
   process.on("SIGINT", () => child.kill());
@@ -201,40 +271,35 @@ async function apiCredentials() {
 
 async function versions(args: string[]) {
   if (args[0] !== "list") fail("usage: sproutboat versions list [project-directory]");
-  const project = await readProject(args[1]);
-  const { apiUrl, token } = await apiCredentials();
-  const response = await fetch(`${apiUrl}/v1/projects/${project.config.name}/deployments`, { headers: { "x-api-key": token } });
-  if (!response.ok) fail(`could not list versions (${response.status}): ${await response.text()}`);
-  const deployments = await response.json() as Array<{ id: string; artifact: string; deployedAt: string; active: boolean }>;
+  const [project, { apiUrl, token }] = await Promise.all([readProject(args[1]), apiCredentials()]);
+  const response = await fetch(`${apiUrl}/api/projects/${project.config.name}/deployments`, { headers: { "x-api-key": token } });
+  const deployments = parseVersionList(await responseText(response, "could not list versions"));
+  if (!deployments) fail("could not parse versions response");
   for (const deployment of deployments) console.log(`${deployment.active ? "*" : " "} ${deployment.id} ${deployment.artifact.slice(0, 12)} ${deployment.deployedAt}`);
 }
 
 async function rollback(args: string[]) {
   const id = args[0];
   if (!id) fail("usage: sproutboat rollback <version-id> [project-directory]");
-  const project = await readProject(args[1]);
-  const { apiUrl, token } = await apiCredentials();
-  const response = await fetch(`${apiUrl}/v1/projects/${project.config.name}/deployments/${id}/activate`, { method: "POST", headers: { "x-api-key": token } });
-  if (!response.ok) fail(`rollback rejected (${response.status}): ${await response.text()}`);
-  const deployment = await response.json() as { url: string };
+  const [project, { apiUrl, token }] = await Promise.all([readProject(args[1]), apiCredentials()]);
+  const response = await fetch(`${apiUrl}/api/projects/${project.config.name}/deployments/${id}/activate`, { method: "POST", headers: { "x-api-key": token } });
+  const deployment = parseUrlResponse(await responseText(response, "rollback rejected"));
+  if (!deployment) fail("rollback response did not include a URL");
   console.log(`Rolled back ${project.config.name}`);
   console.log(deployment.url);
 }
 
 async function tail(args: string[]) {
-  const project = await readProject(args[0]);
-  const { apiUrl, token } = await apiCredentials();
-  const response = await fetch(`${apiUrl}/v1/projects/${project.config.name}/logs/stream`, { headers: { "x-api-key": token } });
-  if (!response.ok) fail(`could not read logs (${response.status}): ${await response.text()}`);
-  process.stdout.write(await response.text());
+  const [project, { apiUrl, token }] = await Promise.all([readProject(args[0]), apiCredentials()]);
+  const response = await fetch(`${apiUrl}/api/projects/${project.config.name}/logs/recent`, { headers: { "x-api-key": token } });
+  process.stdout.write(await responseText(response, "could not read logs"));
 }
 
 async function deleteProject(args: string[]) {
   if (args[0] !== "--yes") fail("refusing to delete without --yes");
-  const project = await readProject(args[1]);
-  const { apiUrl, token } = await apiCredentials();
-  const response = await fetch(`${apiUrl}/v1/projects/${project.config.name}`, { method: "DELETE", headers: { "x-api-key": token } });
-  if (!response.ok) fail(`delete rejected (${response.status}): ${await response.text()}`);
+  const [project, { apiUrl, token }] = await Promise.all([readProject(args[1]), apiCredentials()]);
+  const response = await fetch(`${apiUrl}/api/projects/${project.config.name}`, { method: "DELETE", headers: { "x-api-key": token } });
+  await responseText(response, "delete rejected");
   console.log(`Deleted ${project.config.name}`);
 }
 

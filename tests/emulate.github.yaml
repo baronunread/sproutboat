@@ -6,6 +6,9 @@ github:
     - login: sofia
       name: Sofia Test
       email: sofia@example.test
+    - login: deletable
+      name: Deletable Test
+      email: deletable@example.test
   oauth_apps:
     - client_id: sproutboat-local
       client_secret: sproutboat-local-secret

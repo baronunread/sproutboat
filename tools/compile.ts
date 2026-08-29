@@ -10,31 +10,23 @@ export type CompileResult = {
 };
 
 const root = resolve(import.meta.dir, "..");
-const shimPath = resolve(root, "tools/shim.js");
-const porfPath = resolve(process.env.PORFFOR_BIN || resolve(root, "node_modules/.bin/porf"));
-const nativeFetchMode = process.env.PORFFOR_MODE === "native-fetch";
-const nativeFetchPort = Number(process.env.PORFFOR_BENCH_PORT || 43129);
+const porfEntry = resolve(root, "node_modules/porffor/runtime/index.js");
+const preludePath = resolve(root, "tools/native-fetch-prelude.js");
+// The supervisor overrides this per worker via $PORT (patches/porffor-render.patch);
+// the baked value is only a fallback for a directly-run binary.
+const defaultPort = Number(process.env.PORFFOR_BENCH_PORT || 8080);
+// First compile builds uWebSockets from source; later ones are ~4-8s.
+const compileTimeoutMs = Number(process.env.PORFFOR_COMPILE_TIMEOUT_MS || 300_000);
 
-function wrapHandler(source: string): string {
-  const match = /^\s*export\s+default\s*{\s*(async\s+)?fetch\s*\(([^)]*)\)\s*{([\s\S]*)}\s*}\s*;?\s*$/.exec(source);
-  const bundled = /\s*export\s*{\s*([A-Za-z_$][\w$]*)\s+as\s+default\s*};?\s*$/.exec(source);
-  if (!match && !bundled) throw new Error("handler bundle must default-export an object with fetch(request)");
-  const wrapped = match
-    ? `${match[1] || ""}function __fetch(${match[2]}) {${match[3]}}`
-    : `${source.slice(0, bundled!.index)}\nfunction __fetch(request) { return ${bundled![1]}.fetch(request); }`;
-  return wrapped
-    .replace(/\bnew\s+Response\s*\(/g, "makeResponse(")
-    .replace(/\bResponse\.json\s*\(/g, "makeJsonResponse(")
-    .replace(/\brequest\.headers\.get\s*\(/g, "getRequestHeader(")
-    .replace(/\brequest\.text\s*\(\s*\)/g, "requestText()")
-    .replace(/\brequest\.json\s*\(\s*\)/g, "requestJson()")
-    .replace(/\brequest\.(method|url|body)\b/g, 'request["$1"]');
-}
-
-function wrapNativeFetchHandler(source: string): string {
-  const match = /^\s*export\s+default\s*{\s*(async\s+)?fetch\s*\(([^)]*)\)\s*{([\s\S]*)}\s*}\s*;?\s*$/.exec(source);
-  if (!match) throw new Error("handler must only default-export an object with fetch(request)");
-  return `export default {\n  ${match[1] || ""}fetch(${match[2]}) {${match[3]}},\n  port: ${nativeFetchPort}\n};\n`;
+/**
+ * Turn `export default { [async] fetch(request) { … } }` into a native-fetch
+ * server module: the prelude (URLSearchParams / Response.json shims for alpha-3)
+ * then the handler body verbatim — no source rewriting.
+ */
+export function wrapNativeFetchHandler(source: string, prelude: string): string {
+  const match = /^\s*export\s+default\s*\{\s*(async\s+)?fetch\s*\(([^)]*)\)\s*\{([\s\S]*)\}\s*\}\s*;?\s*$/.exec(source);
+  if (!match) throw new Error("handler must default-export an object with a fetch(request) method");
+  return `${prelude}\nexport default {\n  port: ${defaultPort},\n  ${match[1] || ""}fetch(${match[2] || "request"}) {${match[3]}}\n};\n`;
 }
 
 export async function compileHandler(input: string, output?: string): Promise<CompileResult> {
@@ -46,27 +38,18 @@ export async function compileHandler(input: string, output?: string): Promise<Co
   try {
     await mkdir(dirname(outputPath), { recursive: true });
     await mkdir(dirname(generatedPath), { recursive: true });
-    const source = await readFile(inputPath, "utf8");
-    const generated = nativeFetchMode
-      ? wrapNativeFetchHandler(source)
-      : (await readFile(shimPath, "utf8"))
-        .replace("/*__HANDLER_SOURCE__*/", wrapHandler(source))
-        .replace("/*__LIBC_PATH__*/", process.platform === "darwin" ? "/usr/lib/libSystem.B.dylib" : "libc.so.6");
-    await writeFile(generatedPath, generated);
+    const [source, prelude] = await Promise.all([readFile(inputPath, "utf8"), readFile(preludePath, "utf8")]);
+    await writeFile(generatedPath, wrapNativeFetchHandler(source, prelude));
 
-    const args = nativeFetchMode
-      ? [porfPath, "native", generatedPath, "-o", outputPath]
-      : [porfPath, "native", generatedPath, outputPath];
-    const child = Bun.spawn(args, {
+    const child = Bun.spawn(["node", porfEntry, "native", generatedPath, "-o", outputPath], {
       cwd: root,
       stdout: "pipe",
       stderr: "pipe",
+      // esbuild (auto-bundler) + the porffor launcher must be resolvable.
+      env: { ...process.env, PATH: `${resolve(root, "node_modules/.bin")}:${process.env.PATH ?? ""}` },
     });
     let timedOut = false;
-    const timeout = setTimeout(() => {
-      timedOut = true;
-      child.kill();
-    }, 30_000);
+    const timeout = setTimeout(() => { timedOut = true; child.kill(); }, compileTimeoutMs);
     const [exitCode, stdout, stderr] = await Promise.all([
       child.exited,
       new Response(child.stdout).text(),
@@ -74,14 +57,12 @@ export async function compileHandler(input: string, output?: string): Promise<Co
     ]);
     clearTimeout(timeout);
     const compileMs = performance.now() - started;
-    if (timedOut) {
-      return { ok: false, binaryPath: null, sizeBytes: null, compileMs, error: "Porffor compile timed out after 30 seconds" };
-    }
-    if (exitCode !== 0) {
+
+    if (timedOut) return { ok: false, binaryPath: null, sizeBytes: null, compileMs, error: `porffor compile timed out after ${compileTimeoutMs}ms` };
+    if (exitCode !== 0 || !(await Bun.file(outputPath).exists())) {
       return { ok: false, binaryPath: null, sizeBytes: null, compileMs, error: (stderr || stdout).trim() || `porf exited ${exitCode}` };
     }
-    const sizeBytes = (await stat(outputPath)).size;
-    return { ok: true, binaryPath: outputPath, sizeBytes, compileMs, error: null };
+    return { ok: true, binaryPath: outputPath, sizeBytes: (await stat(outputPath)).size, compileMs, error: null };
   } catch (error) {
     return { ok: false, binaryPath: null, sizeBytes: null, compileMs: performance.now() - started, error: String(error) };
   }

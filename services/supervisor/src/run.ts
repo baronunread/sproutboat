@@ -1,92 +1,174 @@
-import { basename, dirname, resolve } from "node:path";
+import { resolve } from "node:path";
+import { connect } from "node:net";
+import { workerCommand } from "./sandbox";
 
-export type WorkerRequest = {
-  method: string;
-  url: string;
-  headers: Record<string, string>;
-  body: string;
+/**
+ * One long-lived native-fetch HTTP server per deployment.
+ *
+ * alpha-3 Porffor compiles `export default { fetch }` into a uWebSockets server
+ * binary. The supervisor assigns it a loopback port ($PORT — see
+ * patches/porffor-render.patch), starts it, waits for it to listen, and restarts
+ * it if it exits. The edge reverse-proxies each request to `endpoint()`.
+ *
+ * No stdin/stdout framing, no per-request process, no recycle: alpha-3 has
+ * working memory management (verified flat RSS over 500k requests).
+ */
+
+export type WorkerChild = { readonly exited: Promise<number>; kill(signal?: number): void };
+export type WorkerFactory = (workerPath: string, port: number) => WorkerChild;
+
+export type WorkerPoolOptions = {
+  readonly spawn?: WorkerFactory;
+  readonly readyTimeoutMs?: number;
+  readonly idleMs?: number;
+  readonly now?: () => number;
+  readonly portRange?: readonly [number, number];
 };
 
-export type WorkerResponse = {
-  status: number;
-  headers: Record<string, string>;
-  body: string;
-};
+const defaultReadyTimeoutMs = 10_000;
+const defaultIdleMs = 600_000;
+const defaultPortRange: readonly [number, number] = [40_000, 49_999];
 
-const maxBodyBytes = 262_144;
-const maxLogBytes = 65_536;
+function spawnNativeWorker(workerPath: string, port: number): WorkerChild {
+  return Bun.spawn(workerCommand(workerPath), {
+    stdout: "ignore",
+    stderr: "ignore",
+    env: { ...process.env, PORT: String(port) },
+  });
+}
 
-async function readBounded(stream: ReadableStream<Uint8Array>, maximum: number, child: ReturnType<typeof Bun.spawn>): Promise<string> {
-  const reader = stream.getReader();
-  const chunks: Uint8Array[] = [];
-  let length = 0;
-  try {
-    while (true) {
-      const item = await reader.read();
-      if (item.done) break;
-      length += item.value.byteLength;
-      if (length > maximum) {
-        child.kill();
-        throw new RangeError(`worker output exceeds ${maximum} byte limit`);
-      }
-      chunks.push(item.value);
+async function listens(port: number): Promise<boolean> {
+  return new Promise((done) => {
+    const socket = connect({ host: "127.0.0.1", port }, () => { socket.destroy(); done(true); });
+    socket.on("error", () => done(false));
+  });
+}
+
+class WorkerServer {
+  readonly port: number;
+  readonly url: string;
+  #child: WorkerChild;
+  #closed = false;
+  #ready: Promise<void>;
+  lastUsedAt: number;
+
+  constructor(
+    readonly workerPath: string,
+    port: number,
+    spawn: WorkerFactory,
+    readyTimeoutMs: number,
+    now: () => number,
+    private readonly onExit: (server: WorkerServer) => void,
+  ) {
+    this.port = port;
+    this.url = `http://127.0.0.1:${port}`;
+    this.lastUsedAt = now();
+    this.#child = spawn(workerPath, port);
+    this.#ready = this.#awaitListening(readyTimeoutMs);
+    void this.#child.exited.then(() => { if (!this.#closed) { this.#closed = true; this.onExit(this); } });
+  }
+
+  get closed(): boolean { return this.#closed; }
+
+  async ready(): Promise<void> { return this.#ready; }
+
+  dispose(): void {
+    if (this.#closed) return;
+    this.#closed = true;
+    // SIGKILL: the bwrap launcher does not forward SIGTERM to the payload;
+    // killing bwrap hard triggers --die-with-parent teardown of the namespace.
+    this.#child.kill(9);
+  }
+
+  async #awaitListening(timeoutMs: number): Promise<void> {
+    const deadline = Date.now() + timeoutMs;
+    while (Date.now() < deadline) {
+      if (this.#closed) throw new Error("worker exited before it began listening");
+      if (await listens(this.port)) return;
+      await Bun.sleep(20);
     }
-  } finally {
-    reader.releaseLock();
-  }
-  const joined = new Uint8Array(length);
-  let offset = 0;
-  for (const chunk of chunks) { joined.set(chunk, offset); offset += chunk.byteLength; }
-  return new TextDecoder().decode(joined);
-}
-
-function assertResponse(value: unknown): asserts value is { status: number; headers: Record<string, string | null>; body: string } {
-  if (typeof value !== "object" || value === null) throw new TypeError("worker response must be an object");
-  const response = value as Record<string, unknown>;
-  if (!Number.isInteger(response.status) || (response.status as number) < 100 || (response.status as number) > 599) throw new TypeError("worker response has invalid status");
-  if (typeof response.body !== "string") throw new TypeError("worker response body must be a string");
-  if (typeof response.headers !== "object" || response.headers === null || Array.isArray(response.headers)
-    || !Object.entries(response.headers).every(([key, item]) => /^[a-z0-9-]+$/i.test(key) && (typeof item === "string" || item === null))) {
-    throw new TypeError("worker response headers must contain strings or nulls");
+    this.dispose();
+    throw new Error(`worker did not listen on :${this.port} within ${timeoutMs}ms`);
   }
 }
 
-export async function runWorker(workerPath: string, request: WorkerRequest): Promise<WorkerResponse> {
-  if (new TextEncoder().encode(request.body).byteLength > maxBodyBytes) throw new RangeError("request body exceeds 256 KiB limit");
-  const image = process.env.SPROUTBOAT_RUNTIME_IMAGE || "sproutboat/build:dev";
-  const artifactDir = dirname(resolve(workerPath));
-  const workerName = basename(workerPath);
-  const child = Bun.spawn([
-    "docker", "run", "--rm", "-i", "--network", "none", "--read-only",
-    "--user", "65534:65534",
-    "--cap-drop", "ALL", "--security-opt", "no-new-privileges",
-    "--memory", "64m", "--pids-limit", "16", "--platform", "linux/amd64",
-    "--entrypoint", `/artifact/${workerName}`,
-    "--mount", `type=bind,src=${artifactDir},dst=/artifact,readonly`,
-    image,
-  ], { stdin: "pipe", stdout: "pipe", stderr: "pipe" });
-  if (!child.stdin) throw new Error("worker process has no standard input");
-  child.stdin.write(JSON.stringify(request));
-  child.stdin.end();
-  const timeout = setTimeout(() => child.kill(), 5_000);
-  let exitCode: number;
-  let stdout: string;
-  let stderr: string;
-  try {
-    [exitCode, stdout, stderr] = await Promise.all([
-      child.exited,
-      readBounded(child.stdout, maxBodyBytes, child),
-      readBounded(child.stderr, maxLogBytes, child),
-    ]);
-  } finally {
-    clearTimeout(timeout);
+/** Deployment-keyed pool of native-fetch server processes. */
+export class WorkerPool {
+  readonly #servers = new Map<string, WorkerServer>();
+  readonly #usedPorts = new Set<number>();
+  readonly #spawn: WorkerFactory;
+  readonly #readyTimeoutMs: number;
+  readonly #idleMs: number;
+  readonly #now: () => number;
+  readonly #portRange: readonly [number, number];
+
+  constructor({ spawn = spawnNativeWorker, readyTimeoutMs = defaultReadyTimeoutMs, idleMs = defaultIdleMs, now = Date.now, portRange = defaultPortRange }: WorkerPoolOptions = {}) {
+    this.#spawn = spawn;
+    this.#readyTimeoutMs = readyTimeoutMs;
+    this.#idleMs = idleMs;
+    this.#now = now;
+    this.#portRange = portRange;
   }
-  if (exitCode !== 0) throw new Error(stderr.trim() || `worker exited ${exitCode}`);
-  const response = JSON.parse(stdout.trim());
-  assertResponse(response);
-  return {
-    status: response.status,
-    headers: Object.fromEntries(Object.entries(response.headers).filter((entry): entry is [string, string] => typeof entry[1] === "string")),
-    body: response.body,
-  };
+
+  #freePort(): number {
+    const [lo, hi] = this.#portRange;
+    for (let attempt = 0; attempt < 10_000; attempt++) {
+      const port = lo + Math.floor(Math.random() * (hi - lo + 1));
+      if (!this.#usedPorts.has(port)) return port;
+    }
+    throw new Error("no free worker port available");
+  }
+
+  /** Base URL of the deployment's server, starting and awaiting it if needed. */
+  async endpoint(workerPath: string): Promise<string> {
+    const key = resolve(workerPath);
+    let server = this.#servers.get(key);
+    if (!server || server.closed) {
+      const port = this.#freePort();
+      this.#usedPorts.add(port);
+      server = new WorkerServer(key, port, this.#spawn, this.#readyTimeoutMs, this.#now, (dead) => {
+        if (this.#servers.get(key) === dead) this.#servers.delete(key);
+        this.#usedPorts.delete(dead.port);
+      });
+      this.#servers.set(key, server);
+    }
+    server.lastUsedAt = this.#now();
+    try {
+      await server.ready();
+    } catch (error) {
+      server.dispose();
+      this.#servers.delete(key);
+      this.#usedPorts.delete(server.port);
+      throw error;
+    }
+    return server.url;
+  }
+
+  dispose(workerPath: string): void {
+    const key = resolve(workerPath);
+    this.#servers.get(key)?.dispose();
+    this.#servers.delete(key);
+  }
+
+  disposeAll(): void {
+    for (const server of Array.from(this.#servers.values())) server.dispose();
+    this.#servers.clear();
+    this.#usedPorts.clear();
+  }
+
+  evictIdle(now = this.#now()): number {
+    let evicted = 0;
+    for (const [key, server] of Array.from(this.#servers.entries())) {
+      if (now - server.lastUsedAt >= this.#idleMs) {
+        server.dispose();
+        this.#servers.delete(key);
+        this.#usedPorts.delete(server.port);
+        evicted++;
+      }
+    }
+    return evicted;
+  }
 }
+
+/** Process-wide worker pool the edge proxies through. */
+export const pool = new WorkerPool();

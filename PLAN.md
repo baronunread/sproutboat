@@ -264,8 +264,8 @@ run as locked-down systemd services.
 - `sproutboat.com` and `www.sproutboat.com` are Cloudflare Pages custom domains. They
   serve only public, static marketing and documentation content.
 - `dashboard.sproutboat.com` points directly to the VPS and is served by Caddy.
-  Caddy serves the React dashboard and forwards same-origin `/api` and `/v1`
-  requests to the authenticated Control service.
+  Caddy serves the React dashboard and forwards same-origin `/api` requests to
+  the authenticated Control service.
 - A wildcard DNS record for `*.sproutboat.com` points to the VPS for deployment
   hosts. The exact dashboard record takes precedence over the wildcard.
 - Keep the dashboard and wildcard records DNS-only. Caddy uses Cloudflare
@@ -369,26 +369,42 @@ single hyphens. They cannot begin or end with a hyphen. Reserve names including
 
 ## 9. Control API
 
-All endpoints are versioned under `/v1`. Browser endpoints use the website
-session; CLI endpoints use scoped bearer tokens.
+All endpoints are namespaced under `/api` (no version prefix — pre-release).
+Browser endpoints use the website session; CLI endpoints use scoped bearer
+tokens. `/api/auth/**` is Better Auth's own surface.
 
 ```text
-POST   /v1/cli/authorizations
-POST   /v1/cli/authorizations/token
-POST   /v1/cli/authorizations/:userCode/approve
-DELETE /v1/tokens/current
+POST   /api/cli/authorizations
+POST   /api/cli/authorizations/token
+POST   /api/cli/authorizations/:userCode/approve
 
-GET    /v1/me
-POST   /v1/projects
-GET    /v1/projects
-GET    /v1/projects/:name
-DELETE /v1/projects/:name
+GET    /api/account
+DELETE /api/account
+POST   /api/account/namespace
+GET    /api/account/credentials
+DELETE /api/account/credentials
+DELETE /api/account/credentials/:id
 
-POST   /v1/projects/:name/deployments
-GET    /v1/projects/:name/deployments
-GET    /v1/projects/:name/deployments/:id
-POST   /v1/projects/:name/deployments/:id/activate
-GET    /v1/projects/:name/logs/stream
+GET    /api/overview
+GET    /api/projects
+DELETE /api/projects/:name?confirm=<name>
+
+POST   /api/projects/:name/deployments
+GET    /api/projects/:name/deployments
+GET    /api/projects/:name/deployments/:id
+DELETE /api/projects/:name/deployments/:id
+POST   /api/projects/:name/deployments/:id/activate
+GET    /api/projects/:name/metrics?range=1h|6h|24h|7d
+GET    /api/projects/:name/logs?before=&limit=&status=&q=
+GET    /api/projects/:name/logs/tail          (SSE)
+GET    /api/projects/:name/logs/recent        (CLI, NDJSON)
+
+GET    /api/admin/overview
+GET    /api/admin/users?limit=&offset=&q=
+GET    /api/admin/users/:id
+POST   /api/admin/users/:id/ban              { reason?, expiresIn? }
+POST   /api/admin/users/:id/unban
+POST   /api/admin/users/:id/sessions/revoke
 
 GET    /internal/tls/allow?domain=...
 GET    /internal/health

@@ -1,16 +1,9 @@
-import { createFileRoute, Link, redirect } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { Arrow, Metric, Shell } from "../components";
 import { relativeTime, useOverview } from "../dashboard-data";
 
+// Auth is gated in __root.tsx; an unauthenticated visitor never reaches here.
 export const Route = createFileRoute("/")({
-  beforeLoad: async () => {
-    if (typeof window === "undefined") return;
-    try {
-      const response = await fetch("/v1/me", { credentials: "include" });
-      if (response.ok) return;
-    } catch { /* A session check that cannot complete is not a workspace session. */ }
-    throw redirect({ to: "/login" });
-  },
   component: Overview,
   head: () => ({ meta: [{ title: "Sproutboat" }] }),
 });
@@ -18,10 +11,10 @@ export const Route = createFileRoute("/")({
 function Overview() {
   const { data, state } = useOverview();
   const metrics = data?.metrics;
-  const cliCode = typeof window === "undefined" ? null : new URLSearchParams(location.search).get("cli_code");
+  const cliCode = import.meta.env.SSR ? null : new URLSearchParams(location.search).get("cli_code");
   const approve = async () => {
     if (!cliCode) return;
-    const response = await fetch(`/v1/cli/authorizations/${encodeURIComponent(cliCode)}/approve`, { method: "POST", credentials: "include" });
+    const response = await fetch(`/api/cli/authorizations/${encodeURIComponent(cliCode)}/approve`, { method: "POST", credentials: "include" });
     if (response.ok) history.replaceState({}, "", "/");
   };
   return <Shell><section className="page-heading"><div><h1>Your deployments, at a glance.</h1><p>Live information from your active routes and deployment history.</p></div><Link className="button primary" to="/deployments">View deployments</Link></section>

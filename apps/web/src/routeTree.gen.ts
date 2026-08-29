@@ -12,9 +12,18 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as DeploymentsRouteImport } from './routes/deployments'
 import { Route as LoginRouteImport } from './routes/login'
+import { Route as OperatorRouteImport } from './routes/operator'
 import { Route as ProfileRouteImport } from './routes/profile'
 import { Route as ProjectsRouteImport } from './routes/projects'
 import { Route as SettingsRouteImport } from './routes/settings'
+import { Route as OperatorIndexRouteImport } from './routes/operator.index'
+import { Route as OperatorUsersRouteImport } from './routes/operator.users'
+import { Route as ProjectsNameRouteImport } from './routes/projects_.$name'
+import { Route as ProjectsNameIndexRouteImport } from './routes/projects_.$name.index'
+import { Route as ProjectsNameDeploymentsRouteImport } from './routes/projects_.$name.deployments'
+import { Route as ProjectsNameObservabilityRouteImport } from './routes/projects_.$name.observability'
+import { Route as ProjectsNameSettingsRouteImport } from './routes/projects_.$name.settings'
+import { Route as ProjectsNameDeploymentsIdRouteImport } from './routes/projects_.$name.deployments_.$id'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -29,6 +38,11 @@ const DeploymentsRoute = DeploymentsRouteImport.update({
 const LoginRoute = LoginRouteImport.update({
   id: '/login',
   path: '/login',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const OperatorRoute = OperatorRouteImport.update({
+  id: '/operator',
+  path: '/operator',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ProfileRoute = ProfileRouteImport.update({
@@ -46,14 +60,65 @@ const SettingsRoute = SettingsRouteImport.update({
   path: '/settings',
   getParentRoute: () => rootRouteImport,
 } as any)
+const OperatorIndexRoute = OperatorIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => OperatorRoute,
+} as any)
+const OperatorUsersRoute = OperatorUsersRouteImport.update({
+  id: '/users',
+  path: '/users',
+  getParentRoute: () => OperatorRoute,
+} as any)
+const ProjectsNameRoute = ProjectsNameRouteImport.update({
+  id: '/projects_/$name',
+  path: '/projects/$name',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ProjectsNameIndexRoute = ProjectsNameIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => ProjectsNameRoute,
+} as any)
+const ProjectsNameDeploymentsRoute = ProjectsNameDeploymentsRouteImport.update({
+  id: '/deployments',
+  path: '/deployments',
+  getParentRoute: () => ProjectsNameRoute,
+} as any)
+const ProjectsNameObservabilityRoute =
+  ProjectsNameObservabilityRouteImport.update({
+    id: '/observability',
+    path: '/observability',
+    getParentRoute: () => ProjectsNameRoute,
+  } as any)
+const ProjectsNameSettingsRoute = ProjectsNameSettingsRouteImport.update({
+  id: '/settings',
+  path: '/settings',
+  getParentRoute: () => ProjectsNameRoute,
+} as any)
+const ProjectsNameDeploymentsIdRoute =
+  ProjectsNameDeploymentsIdRouteImport.update({
+    id: '/deployments_/$id',
+    path: '/deployments/$id',
+    getParentRoute: () => ProjectsNameRoute,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/deployments': typeof DeploymentsRoute
   '/login': typeof LoginRoute
+  '/operator': typeof OperatorRouteWithChildren
   '/profile': typeof ProfileRoute
   '/projects': typeof ProjectsRoute
   '/settings': typeof SettingsRoute
+  '/operator/users': typeof OperatorUsersRoute
+  '/projects/$name': typeof ProjectsNameRouteWithChildren
+  '/operator/': typeof OperatorIndexRoute
+  '/projects/$name/deployments': typeof ProjectsNameDeploymentsRoute
+  '/projects/$name/observability': typeof ProjectsNameObservabilityRoute
+  '/projects/$name/settings': typeof ProjectsNameSettingsRoute
+  '/projects/$name/': typeof ProjectsNameIndexRoute
+  '/projects/$name/deployments/$id': typeof ProjectsNameDeploymentsIdRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -62,39 +127,93 @@ export interface FileRoutesByTo {
   '/profile': typeof ProfileRoute
   '/projects': typeof ProjectsRoute
   '/settings': typeof SettingsRoute
+  '/operator/users': typeof OperatorUsersRoute
+  '/operator': typeof OperatorIndexRoute
+  '/projects/$name/deployments': typeof ProjectsNameDeploymentsRoute
+  '/projects/$name/observability': typeof ProjectsNameObservabilityRoute
+  '/projects/$name/settings': typeof ProjectsNameSettingsRoute
+  '/projects/$name': typeof ProjectsNameIndexRoute
+  '/projects/$name/deployments/$id': typeof ProjectsNameDeploymentsIdRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/deployments': typeof DeploymentsRoute
   '/login': typeof LoginRoute
+  '/operator': typeof OperatorRouteWithChildren
   '/profile': typeof ProfileRoute
   '/projects': typeof ProjectsRoute
   '/settings': typeof SettingsRoute
+  '/operator/users': typeof OperatorUsersRoute
+  '/projects_/$name': typeof ProjectsNameRouteWithChildren
+  '/operator/': typeof OperatorIndexRoute
+  '/projects_/$name/deployments': typeof ProjectsNameDeploymentsRoute
+  '/projects_/$name/observability': typeof ProjectsNameObservabilityRoute
+  '/projects_/$name/settings': typeof ProjectsNameSettingsRoute
+  '/projects_/$name/': typeof ProjectsNameIndexRoute
+  '/projects_/$name/deployments_/$id': typeof ProjectsNameDeploymentsIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
-    '/' | '/deployments' | '/login' | '/profile' | '/projects' | '/settings'
+    | '/'
+    | '/deployments'
+    | '/login'
+    | '/operator'
+    | '/profile'
+    | '/projects'
+    | '/settings'
+    | '/operator/users'
+    | '/projects/$name'
+    | '/operator/'
+    | '/projects/$name/deployments'
+    | '/projects/$name/observability'
+    | '/projects/$name/settings'
+    | '/projects/$name/'
+    | '/projects/$name/deployments/$id'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/deployments' | '/login' | '/profile' | '/projects' | '/settings'
-  id:
-    | '__root__'
+  to:
     | '/'
     | '/deployments'
     | '/login'
     | '/profile'
     | '/projects'
     | '/settings'
+    | '/operator/users'
+    | '/operator'
+    | '/projects/$name/deployments'
+    | '/projects/$name/observability'
+    | '/projects/$name/settings'
+    | '/projects/$name'
+    | '/projects/$name/deployments/$id'
+  id:
+    | '__root__'
+    | '/'
+    | '/deployments'
+    | '/login'
+    | '/operator'
+    | '/profile'
+    | '/projects'
+    | '/settings'
+    | '/operator/users'
+    | '/projects_/$name'
+    | '/operator/'
+    | '/projects_/$name/deployments'
+    | '/projects_/$name/observability'
+    | '/projects_/$name/settings'
+    | '/projects_/$name/'
+    | '/projects_/$name/deployments_/$id'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   DeploymentsRoute: typeof DeploymentsRoute
   LoginRoute: typeof LoginRoute
+  OperatorRoute: typeof OperatorRouteWithChildren
   ProfileRoute: typeof ProfileRoute
   ProjectsRoute: typeof ProjectsRoute
   SettingsRoute: typeof SettingsRoute
+  ProjectsNameRoute: typeof ProjectsNameRouteWithChildren
 }
 
 declare module '@tanstack/react-router' {
@@ -120,6 +239,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof LoginRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/operator': {
+      id: '/operator'
+      path: '/operator'
+      fullPath: '/operator'
+      preLoaderRoute: typeof OperatorRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/profile': {
       id: '/profile'
       path: '/profile'
@@ -141,16 +267,108 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof SettingsRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/operator/': {
+      id: '/operator/'
+      path: '/'
+      fullPath: '/operator/'
+      preLoaderRoute: typeof OperatorIndexRouteImport
+      parentRoute: typeof OperatorRoute
+    }
+    '/operator/users': {
+      id: '/operator/users'
+      path: '/users'
+      fullPath: '/operator/users'
+      preLoaderRoute: typeof OperatorUsersRouteImport
+      parentRoute: typeof OperatorRoute
+    }
+    '/projects_/$name': {
+      id: '/projects_/$name'
+      path: '/projects/$name'
+      fullPath: '/projects/$name'
+      preLoaderRoute: typeof ProjectsNameRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/projects_/$name/': {
+      id: '/projects_/$name/'
+      path: '/'
+      fullPath: '/projects/$name/'
+      preLoaderRoute: typeof ProjectsNameIndexRouteImport
+      parentRoute: typeof ProjectsNameRoute
+    }
+    '/projects_/$name/deployments': {
+      id: '/projects_/$name/deployments'
+      path: '/deployments'
+      fullPath: '/projects/$name/deployments'
+      preLoaderRoute: typeof ProjectsNameDeploymentsRouteImport
+      parentRoute: typeof ProjectsNameRoute
+    }
+    '/projects_/$name/observability': {
+      id: '/projects_/$name/observability'
+      path: '/observability'
+      fullPath: '/projects/$name/observability'
+      preLoaderRoute: typeof ProjectsNameObservabilityRouteImport
+      parentRoute: typeof ProjectsNameRoute
+    }
+    '/projects_/$name/settings': {
+      id: '/projects_/$name/settings'
+      path: '/settings'
+      fullPath: '/projects/$name/settings'
+      preLoaderRoute: typeof ProjectsNameSettingsRouteImport
+      parentRoute: typeof ProjectsNameRoute
+    }
+    '/projects_/$name/deployments_/$id': {
+      id: '/projects_/$name/deployments_/$id'
+      path: '/deployments/$id'
+      fullPath: '/projects/$name/deployments/$id'
+      preLoaderRoute: typeof ProjectsNameDeploymentsIdRouteImport
+      parentRoute: typeof ProjectsNameRoute
+    }
   }
 }
+
+interface OperatorRouteChildren {
+  OperatorUsersRoute: typeof OperatorUsersRoute
+  OperatorIndexRoute: typeof OperatorIndexRoute
+}
+
+const OperatorRouteChildren: OperatorRouteChildren = {
+  OperatorUsersRoute: OperatorUsersRoute,
+  OperatorIndexRoute: OperatorIndexRoute,
+}
+
+const OperatorRouteWithChildren = OperatorRoute._addFileChildren(
+  OperatorRouteChildren,
+)
+
+interface ProjectsNameRouteChildren {
+  ProjectsNameDeploymentsRoute: typeof ProjectsNameDeploymentsRoute
+  ProjectsNameObservabilityRoute: typeof ProjectsNameObservabilityRoute
+  ProjectsNameSettingsRoute: typeof ProjectsNameSettingsRoute
+  ProjectsNameIndexRoute: typeof ProjectsNameIndexRoute
+  ProjectsNameDeploymentsIdRoute: typeof ProjectsNameDeploymentsIdRoute
+}
+
+const ProjectsNameRouteChildren: ProjectsNameRouteChildren = {
+  ProjectsNameDeploymentsRoute: ProjectsNameDeploymentsRoute,
+  ProjectsNameObservabilityRoute: ProjectsNameObservabilityRoute,
+  ProjectsNameSettingsRoute: ProjectsNameSettingsRoute,
+  ProjectsNameIndexRoute: ProjectsNameIndexRoute,
+  ProjectsNameDeploymentsIdRoute: ProjectsNameDeploymentsIdRoute,
+}
+
+const ProjectsNameRouteWithChildren = ProjectsNameRoute._addFileChildren(
+  ProjectsNameRouteChildren,
+)
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   DeploymentsRoute: DeploymentsRoute,
   LoginRoute: LoginRoute,
+  OperatorRoute: OperatorRouteWithChildren,
   ProfileRoute: ProfileRoute,
   ProjectsRoute: ProjectsRoute,
   SettingsRoute: SettingsRoute,
+  ProjectsNameRoute: ProjectsNameRouteWithChildren,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

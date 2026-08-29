@@ -1,5 +1,3 @@
-export const CONFIG_SCHEMA_VERSION = 1;
-
 const slugPattern = /^[a-z0-9](?:[a-z0-9-]{1,30}[a-z0-9])?$/;
 
 export type SproutboatConfig = {
@@ -14,36 +12,62 @@ export type ConfigValidation =
   | { ok: true; value: SproutboatConfig }
   | { ok: false; errors: string[] };
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
+type JsonValue = string | number | boolean | null | ConfigJsonObject | JsonValue[];
+
+interface ConfigJsonObject {
+  readonly [key: string]: JsonValue;
 }
 
-export function isProjectSlug(value: string): boolean {
+type ConfigInput = JsonValue | undefined;
+
+function isRecord(value: ConfigInput): value is ConfigJsonObject {
+  return value !== null && Object(value) === value && !Array.isArray(value)
+    && !(value instanceof Function);
+}
+
+function isString(value: ConfigInput): value is string {
+  return Object(value) !== value && value === String(value);
+}
+
+function isProjectSlug(value: string): boolean {
   return slugPattern.test(value);
 }
 
-export function validateConfig(value: unknown): ConfigValidation {
+function validateConfig(value: ConfigInput): ConfigValidation {
   const errors: string[] = [];
   if (!isRecord(value)) return { ok: false, errors: ["config must be an object"] };
   const allowed = new Set(["$schema", "name", "main", "compatibility_date", "vars"]);
   for (const key of Object.keys(value)) if (!allowed.has(key)) errors.push(`unsupported config field: ${key}`);
-  if (typeof value.name !== "string" || !isProjectSlug(value.name)) {
+  const name = isString(value.name) && isProjectSlug(value.name) ? value.name : null;
+  if (name === null) {
     errors.push("name must be a 3–32 character lowercase slug");
   }
-  if (typeof value.main !== "string" || !value.main.startsWith("src/") || value.main.includes("..")) {
+  const main = isString(value.main) && value.main.startsWith("src/") && !value.main.includes("..") ? value.main : null;
+  if (main === null) {
     errors.push("main must be a relative entry point under src/");
   }
-  if (typeof value.compatibility_date !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(value.compatibility_date)) {
+  const compatibility_date = isString(value.compatibility_date) && /^\d{4}-\d{2}-\d{2}$/.test(value.compatibility_date) ? value.compatibility_date : null;
+  if (compatibility_date === null) {
     errors.push("compatibility_date must use YYYY-MM-DD");
   }
-  if (value.$schema !== undefined && typeof value.$schema !== "string") errors.push("$schema must be a string");
+  const schema = value.$schema === undefined ? undefined : isString(value.$schema) ? value.$schema : null;
+  if (schema === null) errors.push("$schema must be a string");
+  let vars: Record<string, string> | undefined;
   if (value.vars !== undefined) {
     if (!isRecord(value.vars)) errors.push("vars must be an object of plain string values");
-    else for (const [key, item] of Object.entries(value.vars)) {
-      if (!/^[A-Z][A-Z0-9_]*$/.test(key) || typeof item !== "string") errors.push(`vars.${key} must be a string environment name`);
+    else {
+      vars = {};
+      for (const [key, item] of Object.entries(value.vars)) {
+        if (!/^[A-Z][A-Z0-9_]*$/.test(key) || !isString(item)) errors.push(`vars.${key} must be a string environment name`);
+        else vars[key] = item;
+      }
     }
   }
-  return errors.length ? { ok: false, errors } : { ok: true, value: value as SproutboatConfig };
+  if (errors.length || name === null || main === null || compatibility_date === null || schema === null) return { ok: false, errors };
+  const config: SproutboatConfig = { name, main, compatibility_date };
+  if ("$schema" in value) config.$schema = schema;
+  if ("vars" in value) config.vars = vars;
+  return { ok: true, value: config };
 }
 
 export function parseConfig(source: string): ConfigValidation {

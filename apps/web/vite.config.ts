@@ -7,8 +7,8 @@ export default defineConfig({
   server: {
     port: Number(process.env.PORT) || 5173,
     proxy: {
-      "/api": { target: "https://control.sproutboat.localhost", changeOrigin: true },
-      "/v1": { target: "https://control.sproutboat.localhost", changeOrigin: true },
+      // `secure: false` — the local portless cert is self-signed.
+      "/api": { target: "https://control.sproutboat.localhost", changeOrigin: true, secure: false },
     },
   },
 });

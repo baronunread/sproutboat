@@ -4,7 +4,7 @@ type Handler = { fetch(request: Request): Response | Promise<Response> };
 
 export async function loadHandler(file: string): Promise<Handler> {
   const module = await import(`${Bun.pathToFileURL(resolve(file)).href}?t=${Date.now()}`);
-  if (!module.default || typeof module.default.fetch !== "function") {
+  if (!module.default || !(module.default.fetch instanceof Function)) {
     throw new TypeError(`${file} must default-export an object with fetch(request)`);
   }
   return module.default;

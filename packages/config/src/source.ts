@@ -1,7 +1,7 @@
 export type SourceValidation = { ok: true } | { ok: false; errors: string[] };
 
 const forbidden: Array<[RegExp, string]> = [
-  [/^\s*import\s/m, "imports are not supported by http-sync-v0"],
+  [/^\s*import\s/m, "imports are not supported"],
   [/\brequire\s*\(/, "CommonJS require is not supported"],
   [/(?:\breturn\s+|\bawait\s+|=\s*)fetch\s*\(|\b(WebSocket|XMLHttpRequest)\s*\(/, "outbound networking is not supported"],
   [/\b(process|Bun|Deno|Buffer|node:)\b/, "Node, Bun, and Deno APIs are not supported"],

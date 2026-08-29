@@ -4,8 +4,6 @@ import { parseConfig } from "../packages/config/src/config";
 import { validateHttpSyncSource } from "../packages/config/src/source";
 import { validateManifest } from "../packages/artifact/src/manifest";
 import { validateArtifactDirectory } from "../packages/artifact/src/validate";
-import { decodeFrame, encodeFrame } from "../packages/protocol/src/abi";
-import { validateNodeEnrollment } from "../packages/protocol/src/nodes";
 import { deploymentHostname } from "../apps/control/src/deployments";
 import { profileForUser, reserveUsername, validUsername } from "../apps/control/src/identity";
 import { createCliAuthorization, exchangeCliAuthorization } from "../apps/control/src/cli-authorization";
@@ -21,14 +19,9 @@ describe("Phase A contracts", () => {
     if (!result.ok) expect(result.errors).toEqual(expect.arrayContaining(["unsupported config field: secrets"]));
   });
 
-  test("accepts a complete artifact-v1 manifest", () => {
+  test("accepts a complete artifact-v2 manifest", () => {
     const digest = `sha256:${"a".repeat(64)}`;
-    expect(validateManifest({ schemaVersion: 1, project: "hello", target: "linux-x86_64", abi: "abi-v1", capabilityProfile: "http-sync-v0", porfforVersion: "alpha 2", rolldownVersion: "1.0.0", buildImage: "sha256:image", sourceHash: digest, binaryHash: digest, binarySize: 42, builtAt: "2026-08-26T00:00:00.000Z" }).ok).toBe(true);
-  });
-
-  test("round-trips a bounded abi-v1 request frame", () => {
-    const request = { version: "abi-v1" as const, kind: "request" as const, method: "GET", url: "https://hello.andrea.sproutboat.com/", headers: { accept: "text/plain" }, body: "" };
-    expect(decodeFrame(encodeFrame(request))).toEqual(request);
+    expect(validateManifest({ schemaVersion: 2, project: "hello", target: "linux-x86_64", runtime: "native-fetch", capabilityProfile: "http-sync-v0", porfforVersion: "alpha-3", esbuildVersion: "0.28.2", buildImage: "sha256:image", sourceHash: digest, binaryHash: digest, binarySize: 42, builtAt: "2026-08-26T00:00:00.000Z" }).ok).toBe(true);
   });
 
   test("accepts the frozen capability handlers and rejects unsupported source", async () => {
@@ -43,15 +36,8 @@ describe("Phase A contracts", () => {
     });
   });
 
-  test("accepts a provider-neutral x86-64 node enrollment", () => {
-    expect(validateNodeEnrollment({
-      version: 1,
-      name: "poc-1",
-      role: "all-in-one",
-      region: "eu-central",
-      architecture: "x86_64",
-      publicKey: "ed25519:abcdefghijklmnopqrstuvwxyz1234567890",
-    }).ok).toBe(true);
+  test("allows console — native-fetch logs go to the worker's stderr, not a protocol stream", () => {
+    expect(validateHttpSyncSource(`export default { fetch() { console.log("hello"); return new Response("ok"); } }`).ok).toBe(true);
   });
 
   test("rejects an artifact directory that is missing its worker", async () => {
@@ -74,6 +60,7 @@ describe("Phase A contracts", () => {
 
   test("creates a short-lived CLI request that cannot be exchanged before approval", async () => {
     const created = await createCliAuthorization();
+    // SAFETY: a 201 response from createCliAuthorization carries this documented contract.
     const body = await created.json() as { deviceCode: string; userCode: string; verificationUri: string };
     expect(created.status).toBe(201);
     expect(body.deviceCode.length).toBeGreaterThan(32);

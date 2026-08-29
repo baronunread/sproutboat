@@ -1,6 +1,6 @@
 [Unit]
 Description=Sproutboat deployment edge router
-After=network-online.target docker.service
+After=network-online.target
 Wants=network-online.target
 
 [Service]
@@ -10,8 +10,16 @@ Group=sproutboat
 WorkingDirectory=/opt/sproutboat
 Environment=PORT=8080
 Environment=SPROUTBOAT_ROUTE_SNAPSHOT=/var/lib/sproutboat/routes.json
-Environment=SPROUTBOAT_RUNTIME_IMAGE=sproutboat/build:stable
 Environment=SPROUTBOAT_LOG_PATH=/var/lib/sproutboat/logs/requests.ndjson
+# Native runtime: each deployment is a long-lived native-fetch HTTP server
+# (Porffor alpha-3 + uWebSockets) started inside the bubblewrap sandbox
+# (infra/sandbox/worker-sandbox.sh). The supervisor assigns it a loopback $PORT;
+# the edge reverse-proxies to it. No Docker in the request path.
+Environment=SPROUTBOAT_WORKER_SANDBOX=bwrap
+Environment=SPROUTBOAT_WORKER_SECCOMP=/etc/sproutboat/worker-seccomp.bpf
+# Per-worker cgroup scopes need a user manager + linger; the POC instead caps
+# the whole edge+workers cgroup below and sets SPROUTBOAT_WORKER_CGROUP=off.
+Environment=SPROUTBOAT_WORKER_CGROUP=off
 ExecStart=/opt/sproutboat/bun/bin/bun services/edge/src/main.ts
 ExecReload=/bin/kill -HUP $MAINPID
 Restart=always
@@ -19,7 +27,20 @@ RestartSec=2
 NoNewPrivileges=true
 PrivateTmp=true
 ProtectHome=true
-ReadWritePaths=/var/lib/sproutboat /var/run/docker.sock
+ProtectSystem=strict
+ReadWritePaths=/var/lib/sproutboat
+# Aggregate limits for the edge plus every sandboxed worker it spawns.
+MemoryMax=1G
+MemorySwapMax=0
+CPUQuota=200%
+TasksMax=512
+# Egress isolation for the edge and every worker it spawns: they may talk to
+# each other over loopback (Caddy -> edge, edge -> worker) but cannot reach the
+# host network, the control plane, or the cloud metadata endpoint.
+IPAddressDeny=any
+IPAddressAllow=localhost
+# Unprivileged user namespaces must be permitted for bubblewrap to start.
+RestrictNamespaces=user pid ipc uts mnt cgroup
 
 [Install]
 WantedBy=multi-user.target

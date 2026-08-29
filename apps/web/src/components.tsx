@@ -1,5 +1,5 @@
-import { useEffect, useState, type ReactNode } from "react";
-import { Link, useRouterState } from "@tanstack/react-router";
+import { useLoaderData, useRouterState, Link } from "@tanstack/react-router";
+import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
 
 export function SproutboatMark() {
   return (
@@ -13,14 +13,14 @@ export function SproutboatMark() {
   );
 }
 
-function NavIcon({ name }: { name: "overview" | "projects" | "deployments" | "settings" }) {
-  const paths = {
+const NAV_ICON_PATHS = {
     overview: <><rect x="2.5" y="2.5" width="4" height="4" rx=".75" /><rect x="9.5" y="2.5" width="4" height="4" rx=".75" /><rect x="2.5" y="9.5" width="4" height="4" rx=".75" /><rect x="9.5" y="9.5" width="4" height="4" rx=".75" /></>,
     projects: <><path d="M2.5 4.5h4l1.2 1.5h5.8v6.5h-11z" /><path d="M2.5 4.5v-1h4l1.2 1.5" /></>,
     deployments: <><path d="M8 2.5v7" /><path d="m5.5 7 2.5 2.5L10.5 7" /><path d="M3 11.5v2h10v-2" /></>,
     settings: <><circle cx="8" cy="8" r="2" /><path d="M8 2.5v1.2M8 12.3v1.2M2.5 8h1.2M12.3 8h1.2M4.1 4.1l.9.9M11 11l.9.9M11.9 4.1l-.9.9M5 11l-.9.9" /></>,
-  };
-  return <svg className="nav-icon" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="1.25" strokeLinecap="round" strokeLinejoin="round">{paths[name]}</svg>;
+};
+function NavIcon({ name }: { name: keyof typeof NAV_ICON_PATHS }) {
+  return <svg className="nav-icon" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="1.25" strokeLinecap="round" strokeLinejoin="round">{NAV_ICON_PATHS[name]}</svg>;
 }
 export function Arrow() {
   return (
@@ -37,6 +37,17 @@ export function Arrow() {
   );
 }
 
+async function logout() {
+  await fetch("/api/auth/sign-out", { method: "POST", credentials: "include" });
+  location.assign("/login");
+}
+
+function toggleTheme() {
+  const theme = document.documentElement.dataset.theme === "light" ? "dark" : "light";
+  document.documentElement.dataset.theme = theme;
+  localStorage.setItem("sproutboat-theme", theme);
+}
+
 export function Shell({
   children,
 }: {
@@ -45,18 +56,9 @@ export function Shell({
   const pathname = useRouterState({
     select: (state) => state.location.pathname,
   });
-  const [account, setAccount] = useState<{ profile?: { username?: string }; isOperator?: boolean }>();
-  useEffect(() => { void fetch("/v1/me", { credentials: "include" }).then((response) => response.ok ? response.json() : undefined).then(setAccount).catch(() => undefined); }, []);
+  const account = useLoaderData({ from: "__root__" });
   const username = account?.profile?.username;
-  const logout = async () => {
-    await fetch("/api/auth/sign-out", { method: "POST", credentials: "include" });
-    location.assign("/login");
-  };
-  const toggleTheme = () => {
-    const theme = document.documentElement.dataset.theme === "light" ? "dark" : "light";
-    document.documentElement.dataset.theme = theme;
-    localStorage.setItem("sproutboat-theme", theme);
-  };
+  const displayName = username || account?.user?.name || "account";
   return (
     <div className="app-shell">
       <aside className="sidebar">
@@ -80,6 +82,9 @@ export function Shell({
           <Link className={pathname === "/deployments" ? "nav-link active" : "nav-link"} to="/deployments"><NavIcon name="deployments" />Deployments</Link>
           <span className="nav-section-label nav-section-secondary">Account</span>
           <Link className={pathname === "/settings" ? "nav-link active" : "nav-link"} to="/settings"><NavIcon name="settings" />Settings</Link>
+          {account?.isOperator && (
+            <Link className={pathname.startsWith("/operator") ? "nav-link active" : "nav-link"} to="/operator"><NavIcon name="settings" />Operator</Link>
+          )}
         </nav>
         <div className="sidebar-bottom">
           <span className="status-dot" aria-hidden="true" />
@@ -92,7 +97,7 @@ export function Shell({
           <div className="topbar-actions">
             {account?.isOperator && <span className="badge neutral">Operator</span>}
             <details className="account-menu">
-              <summary aria-label="Open account menu" className="avatar">{username?.slice(0, 1).toUpperCase() || "?"}</summary>
+              <summary aria-label="Open account menu" className="avatar"><Avatar image={account?.user?.image} label={displayName} /></summary>
               <div className="account-dropdown">
                 {username ? <><strong>{username}</strong><Link to="/profile">Profile</Link><Link to="/settings">Settings</Link><button type="button" onClick={toggleTheme}>Toggle theme</button><button type="button" onClick={logout}>Log out</button></> : <><strong>Account</strong><Link to="/login">Sign in</Link></>}
               </div>
@@ -106,6 +111,86 @@ export function Shell({
   );
 }
 
+/**
+ * #1 danger-zone project deletion: a text trigger that expands into a
+ * typed-name confirmation. The API needs `?confirm=<exact name>`, and the
+ * Delete button stays disabled until the field matches. `onDeleted` is the
+ * caller's list refresh — the row unmounts this component on success.
+ */
+export function DeleteProject({ name, onDeleted }: { name: string; onDeleted: () => void }) {
+  const [open, setOpen] = useState(false);
+  const [confirm, setConfirm] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const fieldId = `delete-project-${name}`;
+
+  if (!open) {
+    return <button type="button" className="text-button danger" onClick={() => setOpen(true)}>Delete…</button>;
+  }
+
+  const reset = () => { setOpen(false); setConfirm(""); setError(""); };
+  const submit = async (event: FormEvent) => {
+    event.preventDefault();
+    setError(""); setBusy(true);
+    try {
+      const response = await fetch(`/api/projects/${encodeURIComponent(name)}?confirm=${encodeURIComponent(confirm)}`, {
+        method: "DELETE", credentials: "include",
+      });
+      if (!response.ok) {
+        setBusy(false);
+        setError(response.status === 404 ? "This project no longer exists — it may already be deleted." : "Could not delete this project. Try again.");
+        return;
+      }
+      onDeleted();
+    } catch {
+      setBusy(false);
+      setError("Could not reach the control plane. Try again.");
+    }
+  };
+
+  return (
+    <form className="danger-confirm" onSubmit={submit}>
+      <label htmlFor={fieldId}>
+        Type <strong>{name}</strong> to permanently delete this project, every deployed version, and its route. This cannot be undone.
+      </label>
+      <div className="danger-confirm-row">
+        <input id={fieldId} value={confirm} autoComplete="off" spellCheck={false} placeholder={name}
+          aria-invalid={error ? true : undefined} onChange={(event) => setConfirm(event.target.value)} />
+        <button type="button" className="button quiet" onClick={reset} disabled={busy}>Cancel</button>
+        <button type="submit" className="button danger" disabled={busy || confirm !== name}>
+          {busy ? "Deleting…" : "Delete project"}
+        </button>
+      </div>
+      {error && <p className="form-error" role="alert">{error}</p>}
+    </form>
+  );
+}
+
+/** #7: copy a full value (digests, hostnames) to the clipboard. */
+export function Copy({ value }: { value: string }) {
+  const [done, setDone] = useState(false);
+  const timer = useRef<ReturnType<typeof setTimeout>>(undefined);
+  useEffect(() => () => clearTimeout(timer.current), []);
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(value);
+      setDone(true);
+      clearTimeout(timer.current);
+      timer.current = setTimeout(() => setDone(false), 1200);
+    } catch { /* clipboard blocked */ }
+  };
+  return <button type="button" className="copy-button" onClick={() => void copy()}>{done ? "Copied" : "Copy"}</button>;
+}
+
+/** #18: the GitHub avatar with the username initial as fallback when it is absent or fails to load. */
+export function Avatar({ image, label }: { image?: string | null; label: string }) {
+  const [failed, setFailed] = useState(false);
+  if (image && !failed) {
+    return <img className="avatar-img" src={image} alt={`${label} avatar`} width={32} height={32} onError={() => setFailed(true)} />;
+  }
+  return <span aria-hidden="true">{label.slice(0, 1).toUpperCase() || "?"}</span>;
+}
+
 export function Metric({
   label,
   value,
@@ -115,30 +200,13 @@ export function Metric({
   label: string;
   value: string;
   detail: string;
-  tone?: "neutral" | "good" | "purple" | "warning";
+  tone?: "neutral" | "warning";
 }) {
   return (
     <section className={`metric-card ${tone}`}>
       <p>{label}</p>
       <strong>{value}</strong>
       <span>{detail}</span>
-    </section>
-  );
-}
-export function EmptyChart({ label, note }: { label: string; note: string }) {
-  const headingId = `${label.toLowerCase().replace(/[^a-z0-9]+/g, "-")}-heading`;
-  return (
-    <section className="activity-panel" aria-labelledby={headingId}>
-      <div className="panel-heading">
-        <div>
-          <h2 id={headingId}>{note}</h2>
-        </div>
-        <span className="period-label">24 hours</span>
-      </div>
-      <div className="chart-empty">
-        <div className="signal-line" />
-        <p>Traffic will appear here after your first routed request.</p>
-      </div>
     </section>
   );
 }

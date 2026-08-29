@@ -1,0 +1,11 @@
+--- a/compiler/render.js
++++ b/compiler/render.js
+@@ -1517,6 +1517,8 @@
+ }
+ 
+ f64 porf_native_fetch_get_port(void) {
++  const char* e = getenv("PORT");
++  if (e && *e) { long v = strtol(e, NULL, 10); if (v > 0 && v < 65536) return (f64)v; }
+   return __porffor_native_fetch_port.val;
+ }
+ 

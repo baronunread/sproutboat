@@ -1,7 +1,33 @@
 import { Database } from "bun:sqlite";
 import { betterAuth } from "better-auth";
 import { apiKey } from "@better-auth/api-key";
-import { genericOAuth } from "better-auth/plugins";
+import { admin, genericOAuth } from "better-auth/plugins";
+
+type GithubProfile = { id: string | number; login?: string; name?: string; email: string; avatar_url?: string };
+type JsonValue = string | number | boolean | null | JsonObject | JsonValue[];
+type JsonObject = { [key: string]: JsonValue };
+
+function isString(value: JsonValue | undefined): value is string {
+  return value !== undefined && value === String(value);
+}
+
+function isFiniteNumber(value: JsonValue | undefined): value is number {
+  return Number.isFinite(value);
+}
+
+function parseGithubProfile(value: JsonValue): GithubProfile | null {
+  if (!(value instanceof Object) || Array.isArray(value)) return null;
+  const profile = value;
+  const id = isString(profile.id) ? profile.id : isFiniteNumber(profile.id) ? profile.id : undefined;
+  if (id === undefined || !isString(profile.email)) return null;
+  return {
+    id,
+    email: profile.email,
+    login: isString(profile.login) ? profile.login : undefined,
+    name: isString(profile.name) ? profile.name : undefined,
+    avatar_url: isString(profile.avatar_url) ? profile.avatar_url : undefined,
+  };
+}
 
 function createAuth() {
   const secret = process.env.BETTER_AUTH_SECRET;
@@ -32,11 +58,12 @@ function createAuth() {
       getUserInfo: async (tokens) => {
         const response = await fetch(`${githubEmulatorUrl}/user`, { headers: { authorization: `Bearer ${tokens.accessToken}` } });
         if (!response.ok) return null;
-        const profile = await response.json() as { id?: string | number; login?: string; name?: string; email?: string; avatar_url?: string };
-        if (profile.id === undefined || !profile.email) return null;
+        const profile = parseGithubProfile(await response.json());
+        if (!profile) return null;
         return { id: profile.id, name: profile.name || profile.login || "GitHub developer", email: profile.email, image: profile.avatar_url, emailVerified: true };
       },
     }] }) : undefined;
+  const adminPlugin = admin({ adminRoles: ["admin"], defaultRole: "user" });
   return betterAuth({
     appName: "Sproutboat",
     database: new Database(process.env.SPROUTBOAT_DATABASE_PATH || "/var/lib/sproutboat/sproutboat.sqlite"),
@@ -44,9 +71,12 @@ function createAuth() {
     baseURL,
     trustedOrigins: [dashboardUrl],
     socialProviders: githubEmulatorUrl ? {} : { github: { clientId: githubClientId, clientSecret: githubClientSecret } },
-    plugins: emulatorPlugin ? [apiKeyPlugin, emulatorPlugin] : [apiKeyPlugin],
+    plugins: emulatorPlugin ? [apiKeyPlugin, adminPlugin, emulatorPlugin] : [apiKeyPlugin, adminPlugin],
     advanced: {
-      useSecureCookies: true,
+      // The __Secure- prefix that `true` forces is rejected by browsers over a
+      // local dev cert, which breaks the OAuth state cookie. Opt out for local
+      // dev only; production leaves this unset and stays secure.
+      useSecureCookies: process.env.SPROUTBOAT_INSECURE_COOKIES === "1" ? false : true,
       crossSubDomainCookies: { enabled: false },
     },
   });

@@ -12,7 +12,7 @@ function Deployments() {
   const rollback = async (project: string, id: string) => {
     if (!confirm(`Roll back ${project} to this deployment?`)) return;
     setError(""); setRollingBack(id);
-    const response = await fetch(`/v1/projects/${encodeURIComponent(project)}/deployments/${encodeURIComponent(id)}/activate`, { method: "POST", credentials: "include" });
+    const response = await fetch(`/api/projects/${encodeURIComponent(project)}/deployments/${encodeURIComponent(id)}/activate`, { method: "POST", credentials: "include" });
     setRollingBack(undefined);
     if (!response.ok) return setError("Rollback failed. Refresh and try again.");
     await refresh();

@@ -18,6 +18,10 @@ function environment(extra: Record<string, string> = {}) {
     GITHUB_CLIENT_ID: "sproutboat-local",
     GITHUB_CLIENT_SECRET: "sproutboat-local-secret",
     GITHUB_EMULATOR_URL: "http://localhost:4000",
+    // The __Secure- cookie prefix is rejected over the local dev cert, which
+    // breaks the OAuth state cookie. Only the dev harness sets this.
+    SPROUTBOAT_INSECURE_COOKIES: "1",
+    SPROUTBOAT_OPERATOR_EMAILS: Bun.env.SPROUTBOAT_OPERATOR_EMAILS ?? "andrea@example.test",
     SPROUTBOAT_ARTIFACTS_DIR: `${state}/artifacts`,
     SPROUTBOAT_DATABASE_PATH: `${state}/sproutboat.sqlite`,
     SPROUTBOAT_DEPLOYMENT_DOMAIN: localDomain,
@@ -25,7 +29,6 @@ function environment(extra: Record<string, string> = {}) {
     SPROUTBOAT_DASHBOARD_URL: "https://dashboard.sproutboat.localhost",
     SPROUTBOAT_LOG_PATH: `${state}/edge.log`,
     SPROUTBOAT_ROUTE_SNAPSHOT: `${state}/routes.json`,
-    SPROUTBOAT_RUNTIME_IMAGE: "sproutboat/build:dev",
     ...extra,
   };
 }
@@ -60,7 +63,9 @@ async function main() {
   else start("GitHub emulator", ["npx", "emulate", "--service", "github", "--seed", "tests/emulate.github.yaml"]);
   start("Control at https://control.sproutboat.localhost", ["portless", "--force", "control.sproutboat", "bun", "run", "control"]);
   start("Edge wildcard at https://*.sproutboat.localhost", ["portless", "--force", "sproutboat", "bun", "run", "edge"]);
-  start("dashboard at https://dashboard.sproutboat.localhost", ["portless", "--force", "dashboard.sproutboat", "bun", "run", "web"]);
+  // The dashboard's SSR auth loader fetches the control API over the self-signed
+  // portless cert; let its process trust it for local dev.
+  start("dashboard at https://dashboard.sproutboat.localhost", ["portless", "--force", "dashboard.sproutboat", "bun", "run", "web"], environment({ NODE_TLS_REJECT_UNAUTHORIZED: "0" }));
   console.log("\nReady:\n  Marketing  https://sproutboat.localhost\n  Dashboard  https://dashboard.sproutboat.localhost\n  Control    https://control.sproutboat.localhost\n  Deployments https://<project>.<owner>.sproutboat.localhost\n\nUse: bun run sproutboat -- login --api-url https://control.sproutboat.localhost\n");
 }
 

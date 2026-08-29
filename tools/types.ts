@@ -5,7 +5,7 @@ export type RequestFixture = {
   body: string;
 };
 
-export type ResponseShape = {
+export type ResponseSnapshot = {
   status: number;
   body: string;
   "content-type": string | null;
