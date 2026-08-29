@@ -112,6 +112,18 @@ test("workerCommand wraps the worker in the bwrap launcher on Linux, runs it dir
     delete process.env.SPROUTBOAT_WORKER_SANDBOX_CMD;
     process.env.SPROUTBOAT_WORKER_SANDBOX = "none";
     expect(() => workerCommand("/x/worker")).toThrow("refusing to run an untrusted native worker unsandboxed");
+
+    // #25 — per-worker cgroup scope, opt-in on Linux.
+    process.env.SPROUTBOAT_UNSAFE_NO_SANDBOX = "1";
+    process.env.SPROUTBOAT_WORKER_CGROUP = "1";
+    process.env.SPROUTBOAT_WORKER_MEMORY_MAX = "96M";
+    expect(workerCommand("/x/worker")).toEqual([
+      "systemd-run", "--scope", "--quiet", "--collect",
+      "-p", "MemoryMax=96M", "-p", "CPUQuota=50%", "-p", "TasksMax=64", "--", "/x/worker",
+    ]);
+    delete process.env.SPROUTBOAT_WORKER_CGROUP;
+    delete process.env.SPROUTBOAT_WORKER_MEMORY_MAX;
+    delete process.env.SPROUTBOAT_UNSAFE_NO_SANDBOX;
     delete process.env.SPROUTBOAT_WORKER_SANDBOX;
   } finally {
     Object.defineProperty(process, "platform", { value: saved, configurable: true });

@@ -3,6 +3,7 @@ import { resolve } from "node:path";
 import { adminEmail, ensureAdminSeeded, getAuth, githubSignInConfigured } from "./auth";
 import { activateDeployment, dashboardOverview, deleteAccount, deleteDeployment, deleteProject, deploymentDetail, deployArtifact, isDeploymentHostname, listDeployments, listProjects, projectLogHistory, projectLogs, projectLogTail, projectMetrics } from "./deployments";
 import { actorFor, profileForUser, reserveUsername, sessionUser } from "./identity";
+import { clientIp, rateHit } from "./limits";
 import { approveCliAuthorization, createCliAuthorization, exchangeCliAuthorization, listCliCredentials, revokeAllCliCredentials, revokeCliCredential } from "./cli-authorization";
 import { adminBackups, adminCreateBackup, adminDeleteBackup, adminDownloadBackup, adminOverview, adminUserDetail, adminUsers, banUser, revokeUserSessions, unbanUser } from "./admin";
 
@@ -64,7 +65,11 @@ const server = Bun.serve({
     if (request.method === "GET" && url.pathname === "/api/config") {
       return Response.json({ githubSignIn: githubSignInConfigured(), adminEmail: adminEmail() ?? null });
     }
-    if (request.method === "POST" && url.pathname === "/api/cli/authorizations") return createCliAuthorization();
+    if (request.method === "POST" && url.pathname === "/api/cli/authorizations") {
+      const wait = rateHit(`cli-auth:${clientIp(request)}`, 20);
+      if (wait > 0) return Response.json({ error: "too many login attempts; wait a moment" }, { status: 429, headers: { "retry-after": String(wait) } });
+      return createCliAuthorization();
+    }
     if (request.method === "POST" && url.pathname === "/api/cli/authorizations/token") {
       const body = await request.json().catch(() => null);
       return exchangeCliAuthorization(parseDeviceCodeBody(body));

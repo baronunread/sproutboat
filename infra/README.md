@@ -77,9 +77,9 @@ bun run runtime:preflight     # arch, cgroups v2, user/pid/mount namespaces, unp
 
 It fails for a non-x86-64 CPU, cgroups v1, unavailable namespaces, disabled
 unprivileged user namespaces, a bwrap that cannot create the sandbox, or missing
-seccomp. `systemd-run` is a warning only: the POC caps the whole edge cgroup
-(`MemoryMax`/`CPUQuota`/`TasksMax` in `sproutboat-edge.service`) rather than
-per-worker scopes.
+seccomp. `systemd-run` is a warning only: the edge cgroup carries aggregate caps
+(`MemoryMax`/`CPUQuota`/`TasksMax` in `sproutboat-edge.service`); opt into
+per-worker scopes with `SPROUTBOAT_WORKER_CGROUP=1` (see Limits below).
 
 ### 2. Seccomp filter (optional but recommended)
 
@@ -189,3 +189,32 @@ tar -xzf backups/sproutboat-<date>.tar.gz          # sproutboat.sqlite, artifact
 chown -R sproutboat-control:sproutboat sproutboat.sqlite artifacts routes.json
 systemctl start sproutboat-control sproutboat-edge sproutboat-web
 ```
+
+## Limits and abuse controls (#25)
+
+All configurable in `/etc/sproutboat/control.env`; sane defaults apply if unset.
+
+| Env var | Default | Effect |
+| --- | --- | --- |
+| `SPROUTBOAT_DEPLOY_RATE_PER_MIN` | 10 | deploys per account per minute (`429` + `Retry-After` past it) |
+| `SPROUTBOAT_DEPLOY_RATE_PER_IP_PER_MIN` | 20 | deploys per source IP per minute |
+| `SPROUTBOAT_MAX_PROJECTS_PER_ACCOUNT` | 50 | distinct projects one account may hold |
+| `SPROUTBOAT_MAX_VERSIONS_PER_PROJECT` | 25 | retained inactive versions; older ones are deleted and their artifacts GC'd |
+| `SPROUTBOAT_AUTH_RATE_MAX` / `_WINDOW_SEC` | 30 / 60 | Better Auth throttle on `/api/auth/*` (login, token) |
+
+Rejections are written to `<state>/logs/control.ndjson` as
+`{"kind":"limit","event":"deploy-rate-account"|"deploy-rate-ip"|"project-cap", ...}`.
+
+**Per-worker runtime caps** (memory / CPU / pids) are opt-in and Linux-only —
+each worker gets its own `systemd-run --scope`:
+
+| Env var | Default | |
+| --- | --- | --- |
+| `SPROUTBOAT_WORKER_CGROUP` | unset | `1` to enable |
+| `SPROUTBOAT_WORKER_MEMORY_MAX` | `128M` | scope `MemoryMax` |
+| `SPROUTBOAT_WORKER_CPU_QUOTA` | `50%` | scope `CPUQuota` |
+| `SPROUTBOAT_WORKER_TASKS_MAX` | `64` | scope `TasksMax` |
+
+The edge unit still carries aggregate caps (`MemoryMax`/`CPUQuota`/`TasksMax`) as
+a backstop. Verify `systemd-run` is reachable for the `sproutboat-edge` user
+before enabling per-worker scopes.

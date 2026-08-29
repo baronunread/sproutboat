@@ -87,6 +87,13 @@ function createAuth() {
     // password (account seeded by ensureAdminSeeded). Self-service registration
     // is blocked at the HTTP layer in main.ts — the /sign-up route is refused.
     emailAndPassword: { enabled: true },
+    // #25 — throttle /api/auth/* (login, CLI token exchange) against credential
+    // stuffing. Per-IP fixed window.
+    rateLimit: {
+      enabled: true,
+      window: Number(process.env.SPROUTBOAT_AUTH_RATE_WINDOW_SEC) || 60,
+      max: Number(process.env.SPROUTBOAT_AUTH_RATE_MAX) || 30,
+    },
     socialProviders: socialGithub,
     plugins: emulatorPlugin ? [apiKeyPlugin, adminPlugin, emulatorPlugin] : [apiKeyPlugin, adminPlugin],
     advanced: {

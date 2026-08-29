@@ -153,6 +153,31 @@ export function projectDeployment(ownerId: string, project: string, id: string):
   return row ? toDeployment(row) : undefined;
 }
 
+/** #25 — number of distinct projects an owner holds (for the per-account cap). */
+export function ownerProjectCount(ownerId: string): number {
+  return q1<{ n: number }>("SELECT COUNT(*) AS n FROM projects WHERE owner_id = ?", ownerId)?.n ?? 0;
+}
+
+/**
+ * #25 — keep only the newest `keep` versions of a project plus its active one;
+ * delete the rest. Returns digests that no deployment references any more so the
+ * caller can GC them (`collectArtifacts`).
+ */
+export function pruneProjectDeployments(ownerId: string, project: string, keep: number): string[] {
+  if (!Number.isInteger(keep) || keep < 1) return [];
+  return connection().transaction(() => {
+    const rows = q<DeploymentRow>(
+      "SELECT * FROM deployments WHERE owner_id = ? AND project = ? ORDER BY deployed_at DESC",
+      ownerId, project,
+    );
+    const doomed = rows.filter((row) => row.active !== 1).slice(keep);
+    if (doomed.length === 0) return [];
+    const digests = doomed.map((row) => row.artifact_digest);
+    for (const row of doomed) run("DELETE FROM deployments WHERE id = ?", row.id);
+    return orphanedAmong(digests);
+  })();
+}
+
 export function activeProjects(ownerId: string): ProjectSummary[] {
   return q<DeploymentRow>("SELECT * FROM deployments WHERE owner_id = ? AND active = 1", ownerId)
     .map((row) => ({ name: row.project, hostname: row.hostname, activeDeploymentId: row.id, deployedAt: row.deployed_at }))

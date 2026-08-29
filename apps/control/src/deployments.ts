@@ -3,6 +3,7 @@ import { resolve } from "node:path";
 import { randomUUID } from "node:crypto";
 import { validateArtifactDirectory } from "../../../packages/artifact/src/validate";
 import { actorFor, purgeUser, type Actor } from "./identity";
+import { guardDeploy, guardNewProject, LIMITS } from "./limits";
 import { aggregateLogs, readLogHistory, readLogTailText, routeTraffic, tailLogs } from "./logs";
 import {
   activateDeployment as storeActivate,
@@ -13,9 +14,11 @@ import {
   deleteProject as storeDeleteProject,
   type Deployment,
   ownerDeployments,
+  ownerProjectCount,
   type ProjectSummary,
   projectDeployment,
   projectDeployments,
+  pruneProjectDeployments,
   recordDeployment,
   syncRoutes,
 } from "./store";
@@ -201,6 +204,12 @@ export async function deployArtifact(request: Request, project: string): Promise
   const actor = await authorized(request);
   if (actor instanceof Response) return actor;
   if (!/^[a-z0-9](?:[a-z0-9-]{1,30}[a-z0-9])?$/.test(project)) return Response.json({ error: "invalid project name" }, { status: 400 });
+  const rateLimited = await guardDeploy(actor.id, request);
+  if (rateLimited) return rateLimited;
+  if (projectDeployments(actor.id, project).length === 0) {
+    const capped = await guardNewProject(actor.id, request, ownerProjectCount(actor.id));
+    if (capped) return capped;
+  }
   let form: FormData;
   try { form = await request.formData(); }
   catch { return Response.json({ error: "expected multipart artifact upload" }, { status: 400 }); }
@@ -233,6 +242,9 @@ export async function deployArtifact(request: Request, project: string): Promise
       hostname, artifact: digest, workerPath: resolve(destination, "worker"), deployedAt: new Date().toISOString(),
     });
     await syncRoutes();
+    // #25 — keep the retained-versions cap; GC any artifact it orphans.
+    const orphaned = pruneProjectDeployments(actor.id, project, LIMITS.versionsPerProject());
+    if (orphaned.length > 0) await collectArtifacts(orphaned);
     return Response.json({ id: deployment.id, hostname, url: `https://${hostname}`, artifact: digest, activated: true }, { status: 201 });
   } catch (error) {
     await rm(temporary, { recursive: true, force: true });
