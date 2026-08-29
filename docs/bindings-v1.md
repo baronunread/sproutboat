@@ -76,7 +76,7 @@ this doc is a plan, not a task.
 
 1. Broker process + shim + wire format + sandbox socket mount (the spike: prove
    `env.KV.get/put` end to end against SQLite).
-2. KV (#15) → Secrets (#8) → outbound `fetch` + egress allowlist (#19) →
-   R2 (#14) → D1 (#9) → Queues (#22) / Cron (#12).
+2. KV (#14) → Secrets (#8) → outbound `fetch` + egress allowlist (#17) →
+   R2 (#13) → D1 (#9) → Queues (#20) / Cron (#12).
 3. Durable Objects last — needs single-threaded per-object routing in the
    supervisor, a much bigger change.

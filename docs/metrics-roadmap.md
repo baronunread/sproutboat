@@ -1,7 +1,7 @@
 # Metrics roadmap
 
 Target: the Cloudflare Workers **Analytics / Observability** tab, adapted to a
-single-server Porffor platform. Umbrella issue: **#40**.
+single-server Porffor platform. Umbrella issue: **#36**.
 
 ## Shipped
 
@@ -21,7 +21,7 @@ One JSON object per request on `SPROUTBOAT_LOG_PATH`, aggregated by
 | Latency / TTFB / **startup** p50·p90·p99 | `Metrics.latencyMs` / `ttfbMs` / `startupMs` |
 | Cold-start count + per-bucket cold starts | `Metrics.coldStarts`, `buckets[].coldStarts` |
 | Bytes in / out totals | `Metrics.bytesIn` / `bytesOut` |
-| Invocation-status distribution (`ok` / `timed-out` / `response-too-large` / `worker-unavailable` / `proxy` / `upstream-5xx` / `no-route`) | `Metrics.invocationStatus` — the observable side of #27/#33 |
+| Invocation-status distribution (`ok` / `timed-out` / `response-too-large` / `worker-unavailable` / `proxy` / `upstream-5xx` / `no-route`) | `Metrics.invocationStatus` — the observable side of #25/#29 |
 
 Dashboard: `apps/web/src/traffic-charts.tsx` renders request bars, status codes,
 methods, latency, TTFB, cold starts + startup percentiles, and transfer.
@@ -30,18 +30,18 @@ methods, latency, TTFB, cold starts + startup percentiles, and transfer.
 
 | # | Item | Note |
 | --- | --- | --- |
-| #32 | Per-invocation CPU time | needs the worker to report its own CPU (ABI hook) |
-| #33 | Invocation-status breakdown | `timed-out` / `response-too-large` **shipped**; `exceeded-cpu` / `exceeded-memory` still blocked on per-worker cgroup limits (#27) |
-| #34 | Runtime-lifecycle gauges (RSS, live count, restarts, OOM, ports) | supervisor stats surface, not the request log |
-| #35 | Full request duration (body end, not just TTFB) | streamed body — needs a `TransformStream` flush hook |
-| #36 | Rollup store beyond the 1 MiB tail window | SQLite `metrics_rollup` + a 1-minute folder |
-| #37 | Cloudflare-style metric cards (Δ vs previous period, sparkline) | front-end only; data is ready |
-| #38 | Edge response cache + cache-hit-rate metric | feature first, metric second |
-| #39 | Local build timing + binary-size trend | the local analog of "build minutes" |
+| #28 | Per-invocation CPU time | needs the worker to report its own CPU (ABI hook) |
+| #29 | Invocation-status breakdown | `timed-out` / `response-too-large` **shipped**; `exceeded-cpu` / `exceeded-memory` still blocked on per-worker cgroup limits (#25) |
+| #30 | Runtime-lifecycle gauges (RSS, live count, restarts, OOM, ports) | supervisor stats surface, not the request log |
+| #31 | Full request duration (body end, not just TTFB) | streamed body — needs a `TransformStream` flush hook |
+| #32 | Rollup store beyond the 1 MiB tail window | SQLite `metrics_rollup` + a 1-minute folder |
+| #33 | Cloudflare-style metric cards (Δ vs previous period, sparkline) | front-end only; data is ready |
+| #34 | Edge response cache + cache-hit-rate metric | feature first, metric second |
+| #35 | Local build timing + binary-size trend | the local analog of "build minutes" |
 
 ## Not applicable
 
 - **Subrequests** — a `http-sync-v0` handler has no outbound `fetch`; hard
-  capability boundary, not "yet". Tied to #19.
+  capability boundary, not "yet". Tied to #17.
 - **Requests by colo / region** — single server. The analog is "requests by
-  node", which only exists if #13 happens.
+  node", which only exists if sproutboat-cloud#1 happens.

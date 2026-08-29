@@ -34,4 +34,4 @@ export default {
 - Values are **baked into the compiled binary at build time** and are part of the
   immutable artifact. Do not put secrets here — encrypted, runtime-injected
   secrets and dynamic bindings (KV, R2, D1, outbound `fetch`) are tracked under
-  the bindings umbrella (#41) and need a Porffor host-call primitive first.
+  the bindings umbrella (#37) and need a Porffor host-call primitive first.
