@@ -6,10 +6,12 @@ the finished native artifact — the server never sees your source. Stable HTTPS
 endpoint, immutable versions, rollback, logs.
 
 This repo is the **single-machine, single-admin** deployment: control API,
-edge runtime, dashboard, and the `install.sh` provisioner. Multi-tenant fleet
-hosting is a separate project (`sproutboat-cloud`); the CLI is its own MIT repo
-([`sproutboat-cli`](https://github.com/baronunread/sproutboat-cli)) and targets
-either.
+edge runtime, dashboard, and the `install.sh` provisioner. The CLI is its own
+MIT repo ([`sproutboat-cli`](https://github.com/baronunread/sproutboat-cli)).
+
+> **Managed cloud hosting is coming soon.** Until then, self-host with the
+> steps below. The CLI already works against a managed control plane too, so
+> nothing changes for you when the cloud opens.
 
 ## Deploy to a VPS
 
