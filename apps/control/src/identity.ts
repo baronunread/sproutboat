@@ -5,7 +5,7 @@ export type Actor = {
   id: string;
   username: string;
   authentication: "session" | "bootstrap";
-  isOperator: boolean;
+  isAdmin: boolean;
 };
 
 export type Profile = { userId: string; username: string; createdAt: string };
@@ -72,7 +72,7 @@ export async function actorFor(request: Request): Promise<Actor | undefined> {
   const bootstrapUsername = process.env.SPROUTBOAT_BOOTSTRAP_USERNAME;
   const suppliedBootstrapToken = request.headers.get("x-api-key") || request.headers.get("authorization")?.replace(/^Bearer\s+/, "");
   if (bootstrapToken && bootstrapUsername && suppliedBootstrapToken === bootstrapToken && validUsername(bootstrapUsername)) {
-    return { id: `bootstrap:${bootstrapUsername}`, username: bootstrapUsername, authentication: "bootstrap", isOperator: false };
+    return { id: `bootstrap:${bootstrapUsername}`, username: bootstrapUsername, authentication: "bootstrap", isAdmin: false };
   }
 
   const session = await getAuth().api.getSession({ headers: request.headers });
@@ -80,18 +80,18 @@ export async function actorFor(request: Request): Promise<Actor | undefined> {
   if (!user) return undefined;
   const profile = profileForUser(user.id);
   if (!profile) return undefined;
-  // Operator = Better Auth admin role. SPROUTBOAT_OPERATOR_EMAILS is a bootstrap
+  // Admin = Better Auth admin role. SPROUTBOAT_ADMIN_EMAILS is a bootstrap
   // seeder: the first time such a user is seen, promote them to role "admin" so
   // the admin-plugin endpoints (which check the role) work for them too.
-  let isOperator = user.role === "admin";
-  if (!isOperator) {
-    const seeds = new Set((process.env.SPROUTBOAT_OPERATOR_EMAILS || "").split(",").map((email) => email.trim().toLowerCase()).filter(Boolean));
+  let isAdmin = user.role === "admin";
+  if (!isAdmin) {
+    const seeds = new Set((process.env.SPROUTBOAT_ADMIN_EMAILS || "").split(",").map((email) => email.trim().toLowerCase()).filter(Boolean));
     if (seeds.has(user.email.toLowerCase())) {
       try { db().query("UPDATE user SET role = 'admin' WHERE id = ?").run(user.id); } catch { /* user table may lag a migration */ }
-      isOperator = true;
+      isAdmin = true;
     }
   }
-  return { id: profile.userId, username: profile.username, authentication: "session", isOperator };
+  return { id: profile.userId, username: profile.username, authentication: "session", isAdmin };
 }
 
 const isoTime = (value: string | number | null): string =>

@@ -2,14 +2,14 @@ import { useEffect, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { Metric } from "../components";
 
-export const Route = createFileRoute("/operator/")({ component: OperatorOverview });
+export const Route = createFileRoute("/admin/")({ component: AdminOverview });
 
 type Overview = {
   owners: number; projects: number; activeProjects: number; deployments: number; artifacts: number;
   bannedOwners: number; requests24h: number; errors24h: number; since: string;
 };
 
-function OperatorOverview() {
+function AdminOverview() {
   const [data, setData] = useState<Overview>();
   const [state, setState] = useState<"loading" | "ready" | "error">("loading");
 

@@ -5,7 +5,7 @@ Host small JavaScript functions, compiled locally with
 the finished native artifact — the server never sees your source. Stable HTTPS
 endpoint, immutable versions, rollback, logs.
 
-This repo is the **single-machine, single-operator** deployment: control API,
+This repo is the **single-machine, single-admin** deployment: control API,
 edge runtime, dashboard, and the `install.sh` provisioner. Multi-tenant fleet
 hosting is a separate project (`sproutboat-cloud`); the CLI is MIT and moving to
 its own repo (`sproutboat-cli`) so it can target either.
@@ -19,7 +19,7 @@ sudo ./install.sh
 
 One guided script: enables user namespaces, installs Caddy + Docker +
 bubblewrap, sets a firewall, builds the runtime image and dashboard, creates one
-operator, and starts everything. See [infra/README.md](infra/README.md).
+admin, and starts everything. See [infra/README.md](infra/README.md).
 
 ## Local quick start
 

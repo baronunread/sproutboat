@@ -213,7 +213,7 @@ function parseLoginArgs(args: string[]) {
 async function login(args: string[]) {
   const { apiUrl, token: directToken } = parseLoginArgs(args);
   // Self-hosted / non-interactive: skip the browser flow and store the token
-  // the operator already holds (e.g. SPROUTBOAT_BOOTSTRAP_TOKEN).
+  // the admin already holds (e.g. SPROUTBOAT_BOOTSTRAP_TOKEN).
   if (directToken) {
     await saveToken(apiUrl, directToken);
     console.log(`Saved credentials for ${apiUrl}.`);

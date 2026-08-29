@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { relativeTime } from "../dashboard-data";
 
-export const Route = createFileRoute("/operator/users")({ component: OperatorUsers });
+export const Route = createFileRoute("/admin/users")({ component: AdminUsers });
 
 type UserRow = {
   id: string; email: string; name: string | null; image: string | null;
@@ -21,7 +21,7 @@ const DURATIONS: ReadonlyArray<readonly [string, number]> = [
   ["Permanent", 0], ["1 day", 86_400], ["7 days", 604_800], ["30 days", 2_592_000],
 ];
 
-function OperatorUsers() {
+function AdminUsers() {
   const [page, setPage] = useState<UsersPage>();
   const [state, setState] = useState<"loading" | "ready" | "error">("loading");
   const [query, setQuery] = useState("");

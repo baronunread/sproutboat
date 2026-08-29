@@ -3,24 +3,24 @@ import { authFile } from "./helpers";
 
 test.use({ storageState: authFile("andrea") });
 
-test("non-operators never see the operator area", async ({ browser }) => {
+test("non-admins never see the admin area", async ({ browser }) => {
   const context = await browser.newContext({ storageState: authFile("sofia") });
   const page = await context.newPage();
-  await page.goto("/operator");
+  await page.goto("/admin");
   await expect(page).toHaveURL(/\/$/); // redirected home
-  await expect(page.getByText("Operator", { exact: true })).toHaveCount(0);
+  await expect(page.getByText("Admin", { exact: true })).toHaveCount(0);
   await context.close();
 });
 
-test("operator overview shows platform stats", async ({ page }) => {
-  await page.goto("/operator");
-  await expect(page.getByRole("heading", { name: "Operator" })).toBeVisible();
+test("admin overview shows platform stats", async ({ page }) => {
+  await page.goto("/admin");
+  await expect(page.getByRole("heading", { name: "Admin" })).toBeVisible();
   await expect(page.locator(".metric-card", { hasText: /^Accounts/ })).toBeVisible();
   await expect(page.locator(".metric-card", { hasText: /^Deployments/ })).toBeVisible();
 });
 
 test("ban an account, verify it, then unban", async ({ page }) => {
-  await page.goto("/operator/users");
+  await page.goto("/admin/users");
   const sofiaRow = page.locator(".user-item", { hasText: "sofia@example.test" });
   await expect(sofiaRow.locator(".status", { hasText: "Active" })).toBeVisible();
 

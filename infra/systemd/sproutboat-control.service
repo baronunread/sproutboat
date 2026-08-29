@@ -15,7 +15,7 @@ Environment=SPROUTBOAT_ROUTE_SNAPSHOT=/var/lib/sproutboat/routes.json
 Environment=SPROUTBOAT_LOG_PATH=/var/lib/sproutboat/logs/requests.ndjson
 # Deployment domain + dashboard URL, written by install.sh.
 EnvironmentFile=-/etc/sproutboat/sproutboat.env
-# Operator identity, auth secrets, storage paths — written by install.sh before
+# Admin identity, auth secrets, storage paths — written by install.sh before
 # this unit is first started.
 EnvironmentFile=-/etc/sproutboat/control.env
 ExecStart=/opt/sproutboat/bun/bin/bun apps/control/src/main.ts

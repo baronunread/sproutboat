@@ -4,18 +4,18 @@ import { globalLogTotals } from "./logs";
 import { banOwner, globalStats, ownerDeployments, ownerRollups, syncRoutes, unbanOwner } from "./store";
 
 /**
- * Operator surface (#operator). Every handler is gated on `actor.isOperator`
- * (Better Auth `role === "admin"`, or the SPROUTBOAT_OPERATOR_EMAILS bootstrap
+ * Admin surface (#admin). Every handler is gated on `actor.isAdmin`
+ * (Better Auth `role === "admin"`, or the SPROUTBOAT_ADMIN_EMAILS bootstrap
  * list). Identity operations proxy the Better Auth admin plugin; the stats are
  * Sproutboat-specific aggregates over the store and edge logs. A ban also stops
  * the user's routes — `banOwner` + `syncRoutes` drop their hostnames from the
  * snapshot; `unbanOwner` restores them.
  */
 
-async function requireOperator(request: Request): Promise<Response | null> {
+async function requireAdmin(request: Request): Promise<Response | null> {
   const actor = await actorFor(request).catch(() => undefined);
   if (!actor) return Response.json({ error: "sign in required" }, { status: 401 });
-  if (!actor.isOperator) return Response.json({ error: "operator access required" }, { status: 403 });
+  if (!actor.isAdmin) return Response.json({ error: "admin access required" }, { status: 403 });
   return null;
 }
 
@@ -34,7 +34,7 @@ type AdminUserQuery = {
 
 async function listUsers(headers: Headers, query: AdminUserQuery): Promise<{ users: ListedUser[]; total: number }> {
   const raw = await getAuth().api.listUsers({ query, headers });
-  // SAFETY: the admin plugin returns { users, total } for an authenticated operator.
+  // SAFETY: the admin plugin returns { users, total } for an authenticated admin.
   const result = raw as { users: ListedUser[]; total?: number };
   return { users: result.users, total: result.total ?? result.users.length };
 }
@@ -48,7 +48,7 @@ const publicUser = (user: ListedUser) => ({
 });
 
 export async function adminOverview(request: Request): Promise<Response> {
-  const denied = await requireOperator(request);
+  const denied = await requireAdmin(request);
   if (denied) return denied;
   const stats = globalStats();
   const traffic = await globalLogTotals();
@@ -56,7 +56,7 @@ export async function adminOverview(request: Request): Promise<Response> {
 }
 
 export async function adminUsers(request: Request): Promise<Response> {
-  const denied = await requireOperator(request);
+  const denied = await requireAdmin(request);
   if (denied) return denied;
   const params = new URL(request.url).searchParams;
   const limit = Math.min(Math.max(1, Number(params.get("limit")) || 50), 200);
@@ -83,7 +83,7 @@ export async function adminUsers(request: Request): Promise<Response> {
 }
 
 export async function adminUserDetail(request: Request, id: string): Promise<Response> {
-  const denied = await requireOperator(request);
+  const denied = await requireAdmin(request);
   if (denied) return denied;
   const { users } = await listUsers(request.headers, { filterField: "id", filterOperator: "eq", filterValue: id, limit: 1 });
   const user = users[0];
@@ -93,7 +93,7 @@ export async function adminUserDetail(request: Request, id: string): Promise<Res
   let sessions: Array<{ id: string; createdAt: string; expiresAt: string; ipAddress: string | null; userAgent: string | null }> = [];
   try {
     const raw = await getAuth().api.listUserSessions({ body: { userId: id }, headers: request.headers });
-    // SAFETY: listUserSessions returns { sessions: Session[] } for an authenticated operator.
+    // SAFETY: listUserSessions returns { sessions: Session[] } for an authenticated admin.
     const result = raw as { sessions: Array<{ id: string; createdAt: string | Date; expiresAt: string | Date; ipAddress?: string | null; userAgent?: string | null }> };
     sessions = result.sessions.map((session) => ({
       id: session.id,
@@ -114,7 +114,7 @@ const asPositive = (value: JsonInput): number | undefined =>
   Object(value) !== value && value === Number(value) && Number.isFinite(value) && Number(value) > 0 ? Number(value) : undefined;
 
 export async function banUser(request: Request, id: string): Promise<Response> {
-  const denied = await requireOperator(request);
+  const denied = await requireAdmin(request);
   if (denied) return denied;
   const body = await request.json().catch(() => ({}));
   const banReason = asText(body.reason);
@@ -126,7 +126,7 @@ export async function banUser(request: Request, id: string): Promise<Response> {
 }
 
 export async function unbanUser(request: Request, id: string): Promise<Response> {
-  const denied = await requireOperator(request);
+  const denied = await requireAdmin(request);
   if (denied) return denied;
   await getAuth().api.unbanUser({ body: { userId: id }, headers: request.headers });
   unbanOwner(id);
@@ -135,7 +135,7 @@ export async function unbanUser(request: Request, id: string): Promise<Response>
 }
 
 export async function revokeUserSessions(request: Request, id: string): Promise<Response> {
-  const denied = await requireOperator(request);
+  const denied = await requireAdmin(request);
   if (denied) return denied;
   await getAuth().api.revokeUserSessions({ body: { userId: id }, headers: request.headers });
   return Response.json({ revoked: id });

@@ -1,6 +1,6 @@
 # Single-VPS deployment
 
-One Linux x86-64 host with a public IP runs a single-operator Sproutboat
+One Linux x86-64 host with a public IP runs a single-admin Sproutboat
 instance. Multi-tenant / fleet hosting is a separate project (`sproutboat-cloud`).
 
 ## Install
@@ -13,12 +13,12 @@ sudo ./install.sh
 The script is the whole runbook: it enables unprivileged user namespaces,
 installs Caddy (with the Cloudflare DNS module) + Docker + bubblewrap, sets a
 default-deny firewall, builds the runtime image and dashboard, generates one
-operator identity, writes `/etc/sproutboat/{sproutboat,control}.env` **before**
+admin identity, writes `/etc/sproutboat/{sproutboat,control}.env` **before**
 starting anything, brings up `control` + `edge` + Caddy (+ the dashboard if you
-opt in), runs `runtime:preflight`, and prints the operator token, the DNS
+opt in), runs `runtime:preflight`, and prints the admin token, the DNS
 records to create, and the CLI commands to deploy your first function.
 
-Non-interactive: set `SB_DOMAIN`, `SB_ACME_EMAIL`, `SB_CF_TOKEN`, `SB_OPERATOR`
+Non-interactive: set `SB_DOMAIN`, `SB_ACME_EMAIL`, `SB_CF_TOKEN`, `SB_ADMIN`
 (and `SB_DASHBOARD=yes` + `SB_GITHUB_CLIENT_ID`/`SB_GITHUB_CLIENT_SECRET`).
 
 ## DNS
@@ -113,18 +113,18 @@ dev box that is fine to trust, `SPROUTBOAT_WORKER_SANDBOX=none` plus
 
 ## First deploy
 
-`install.sh` prints the operator token, the DNS records, and:
+`install.sh` prints the admin token, the DNS records, and:
 
 ```sh
-sproutboat login --api-url https://control.<domain> --token <operator-token>
+sproutboat login --api-url https://control.<domain> --token <admin-token>
 sproutboat init hello
-cd hello && sproutboat deploy          # -> https://hello.<operator>.<domain>
+cd hello && sproutboat deploy          # -> https://hello.<admin>.<domain>
 sproutboat tail hello
 sproutboat versions list hello
 ```
 
-The operator's username comes from `SPROUTBOAT_BOOTSTRAP_USERNAME` (set by the
-installer) — there is no separate namespace-reservation step in single-operator
+The admin's username comes from `SPROUTBOAT_BOOTSTRAP_USERNAME` (set by the
+installer) — there is no separate namespace-reservation step in single-admin
 mode. `SPROUTBOAT_API_URL` / `SPROUTBOAT_TOKEN` env vars work instead of `login`
 for CI.
 
@@ -132,4 +132,4 @@ If you enabled the dashboard: register `https://dashboard.<domain>/api/auth/call
 as the GitHub OAuth callback, run the Better Auth migration
 (`bunx --bun auth@1.7.1 migrate --config apps/control/src/auth.migrate.ts --yes`),
 then sign in with GitHub. A token-gated dashboard that skips GitHub for
-single-operator use is planned.
+single-admin use is planned.

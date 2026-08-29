@@ -21,7 +21,7 @@ function environment(extra: Record<string, string> = {}) {
     // The __Secure- cookie prefix is rejected over the local dev cert, which
     // breaks the OAuth state cookie. Only the dev harness sets this.
     SPROUTBOAT_INSECURE_COOKIES: "1",
-    SPROUTBOAT_OPERATOR_EMAILS: Bun.env.SPROUTBOAT_OPERATOR_EMAILS ?? "andrea@example.test",
+    SPROUTBOAT_ADMIN_EMAILS: Bun.env.SPROUTBOAT_ADMIN_EMAILS ?? "andrea@example.test",
     SPROUTBOAT_ARTIFACTS_DIR: `${state}/artifacts`,
     SPROUTBOAT_DATABASE_PATH: `${state}/sproutboat.sqlite`,
     SPROUTBOAT_DEPLOYMENT_DOMAIN: localDomain,

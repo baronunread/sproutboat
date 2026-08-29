@@ -37,10 +37,10 @@ const fetchInsecure = (input: string | URL, init?: RequestInit): Promise<Respons
   fetch(input, { ...init, tls: { rejectUnauthorized: false } });
 
 type DemoDeployment = { project: string; versions: number; active: boolean };
-type DemoUser = { login: string; namespace: string; operator?: boolean; projects: DemoDeployment[] };
+type DemoUser = { login: string; namespace: string; admin?: boolean; projects: DemoDeployment[] };
 
 const DEMO: DemoUser[] = [
-  { login: "andrea", namespace: "andrea", operator: true, projects: [
+  { login: "andrea", namespace: "andrea", admin: true, projects: [
     { project: "blog", versions: 3, active: true },
     { project: "api", versions: 1, active: true },
     { project: "scratch", versions: 1, active: true },
@@ -179,7 +179,7 @@ async function main(): Promise<void> {
         seedTraffic(hostname, logLines);
       }
     }
-    console.log(`  seeded ${user.login} (${user.namespace})${user.operator ? " — operator" : ""}: ${user.projects.map((p) => p.project).join(", ")}`);
+    console.log(`  seeded ${user.login} (${user.namespace})${user.admin ? " — admin" : ""}: ${user.projects.map((p) => p.project).join(", ")}`);
   }
 
   await writeFile(process.env.SPROUTBOAT_LOG_PATH!, logLines.sort().map((l) => `${l}\n`).join(""));
@@ -212,7 +212,7 @@ async function main(): Promise<void> {
     console.log(`  wrote e2e/.auth/*.json for ${authStates.map((a) => a.login).join(", ")}`);
   }
 
-  console.log(`\nSeed complete. Sign in as andrea (operator) or paste a cookie:\n`);
+  console.log(`\nSeed complete. Sign in as andrea (admin) or paste a cookie:\n`);
   for (const { login, cookie } of authStates) console.log(`  ${login}:  ${cookie}`);
   store.closeStore();
 }

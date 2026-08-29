@@ -31,7 +31,7 @@ sidebar). The same scoped token drives Caddy's DNS-01 challenge
 
 ## Notes
 
-- State is local (`terraform.tfstate`) — fine for one operator. Move to a shared
+- State is local (`terraform.tfstate`) — fine for one admin. Move to a shared
   backend (the Restic backup bucket works) before a second person runs this.
 - Leave `pages_cname_target` empty to let the Cloudflare Pages "add custom
   domain" flow own the apex/www records instead.

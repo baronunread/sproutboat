@@ -241,7 +241,7 @@ flowchart TB
 | --- | --- |
 | Language/runtime | TypeScript on Bun |
 | Marketing site | Static site on Cloudflare Pages |
-| Dashboard UI | React 19 and TanStack Start with SSR; developer and operator surfaces |
+| Dashboard UI | React 19 and TanStack Start with SSR; developer and admin surfaces |
 | Control HTTP server | `Bun.serve` and Web `Request`/`Response` APIs |
 | Authentication | Better Auth, GitHub OAuth only, SQLite sessions |
 | Database | `bun:sqlite`, WAL mode, explicit SQL migrations |
@@ -559,7 +559,7 @@ be dismissible during the POC.
 
 ```text
 apps/
-  web/                 TanStack Start developer dashboard and operator console
+  web/                 TanStack Start developer dashboard and admin console
   control/             Bun API, auth, database, artifact validation
   cli/                 sproutboat CLI
 services/
@@ -657,7 +657,7 @@ enough to join the fleet.
 Common operating requirements:
 
 - Public ports: 80 and 443 where the assigned role serves traffic.
-- SSH: key-only, operator IP restriction where practical.
+- SSH: key-only, admin IP restriction where practical.
 - Services: Caddy, control, edge, and supervisor under separate systemd units.
 - Separate Unix users and restrictive filesystem ownership per service.
 - SQLite and artifact directories backed up off-server with Restic.
@@ -727,7 +727,7 @@ Exit: the complete API flow works locally using a real CLI token.
    names, light/dark appearance, increased contrast, and long text.
 
 Exit: a new developer can understand the experiment and authorize the
-CLI without operator explanation.
+CLI without admin explanation.
 
 ### Phase F — CLI deployment operations
 

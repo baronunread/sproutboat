@@ -311,7 +311,7 @@ export async function routeTraffic(hostnames: Set<string>, rangeMs = RANGE_MS["2
   return { requests, successes };
 }
 
-/** #operator: request/error totals across every route, bounded to the tail window. */
+/** #admin: request/error totals across every route, bounded to the tail window. */
 export async function globalLogTotals(rangeMs = RANGE_MS["24h"]): Promise<{ requests: number; errors: number; from: string; to: string }> {
   const to = Date.now();
   const from = to - rangeMs;

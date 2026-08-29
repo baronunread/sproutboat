@@ -10,14 +10,14 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as AdminRouteImport } from './routes/admin'
 import { Route as DeploymentsRouteImport } from './routes/deployments'
 import { Route as LoginRouteImport } from './routes/login'
-import { Route as OperatorRouteImport } from './routes/operator'
 import { Route as ProfileRouteImport } from './routes/profile'
 import { Route as ProjectsRouteImport } from './routes/projects'
 import { Route as SettingsRouteImport } from './routes/settings'
-import { Route as OperatorIndexRouteImport } from './routes/operator.index'
-import { Route as OperatorUsersRouteImport } from './routes/operator.users'
+import { Route as AdminIndexRouteImport } from './routes/admin.index'
+import { Route as AdminUsersRouteImport } from './routes/admin.users'
 import { Route as ProjectsNameRouteImport } from './routes/projects_.$name'
 import { Route as ProjectsNameIndexRouteImport } from './routes/projects_.$name.index'
 import { Route as ProjectsNameDeploymentsRouteImport } from './routes/projects_.$name.deployments'
@@ -30,6 +30,11 @@ const IndexRoute = IndexRouteImport.update({
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AdminRoute = AdminRouteImport.update({
+  id: '/admin',
+  path: '/admin',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const DeploymentsRoute = DeploymentsRouteImport.update({
   id: '/deployments',
   path: '/deployments',
@@ -38,11 +43,6 @@ const DeploymentsRoute = DeploymentsRouteImport.update({
 const LoginRoute = LoginRouteImport.update({
   id: '/login',
   path: '/login',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const OperatorRoute = OperatorRouteImport.update({
-  id: '/operator',
-  path: '/operator',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ProfileRoute = ProfileRouteImport.update({
@@ -60,15 +60,15 @@ const SettingsRoute = SettingsRouteImport.update({
   path: '/settings',
   getParentRoute: () => rootRouteImport,
 } as any)
-const OperatorIndexRoute = OperatorIndexRouteImport.update({
+const AdminIndexRoute = AdminIndexRouteImport.update({
   id: '/',
   path: '/',
-  getParentRoute: () => OperatorRoute,
+  getParentRoute: () => AdminRoute,
 } as any)
-const OperatorUsersRoute = OperatorUsersRouteImport.update({
+const AdminUsersRoute = AdminUsersRouteImport.update({
   id: '/users',
   path: '/users',
-  getParentRoute: () => OperatorRoute,
+  getParentRoute: () => AdminRoute,
 } as any)
 const ProjectsNameRoute = ProjectsNameRouteImport.update({
   id: '/projects_/$name',
@@ -105,15 +105,15 @@ const ProjectsNameDeploymentsIdRoute =
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/admin': typeof AdminRouteWithChildren
   '/deployments': typeof DeploymentsRoute
   '/login': typeof LoginRoute
-  '/operator': typeof OperatorRouteWithChildren
   '/profile': typeof ProfileRoute
   '/projects': typeof ProjectsRoute
   '/settings': typeof SettingsRoute
-  '/operator/users': typeof OperatorUsersRoute
+  '/admin/users': typeof AdminUsersRoute
   '/projects/$name': typeof ProjectsNameRouteWithChildren
-  '/operator/': typeof OperatorIndexRoute
+  '/admin/': typeof AdminIndexRoute
   '/projects/$name/deployments': typeof ProjectsNameDeploymentsRoute
   '/projects/$name/observability': typeof ProjectsNameObservabilityRoute
   '/projects/$name/settings': typeof ProjectsNameSettingsRoute
@@ -127,8 +127,8 @@ export interface FileRoutesByTo {
   '/profile': typeof ProfileRoute
   '/projects': typeof ProjectsRoute
   '/settings': typeof SettingsRoute
-  '/operator/users': typeof OperatorUsersRoute
-  '/operator': typeof OperatorIndexRoute
+  '/admin/users': typeof AdminUsersRoute
+  '/admin': typeof AdminIndexRoute
   '/projects/$name/deployments': typeof ProjectsNameDeploymentsRoute
   '/projects/$name/observability': typeof ProjectsNameObservabilityRoute
   '/projects/$name/settings': typeof ProjectsNameSettingsRoute
@@ -138,15 +138,15 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/admin': typeof AdminRouteWithChildren
   '/deployments': typeof DeploymentsRoute
   '/login': typeof LoginRoute
-  '/operator': typeof OperatorRouteWithChildren
   '/profile': typeof ProfileRoute
   '/projects': typeof ProjectsRoute
   '/settings': typeof SettingsRoute
-  '/operator/users': typeof OperatorUsersRoute
+  '/admin/users': typeof AdminUsersRoute
   '/projects_/$name': typeof ProjectsNameRouteWithChildren
-  '/operator/': typeof OperatorIndexRoute
+  '/admin/': typeof AdminIndexRoute
   '/projects_/$name/deployments': typeof ProjectsNameDeploymentsRoute
   '/projects_/$name/observability': typeof ProjectsNameObservabilityRoute
   '/projects_/$name/settings': typeof ProjectsNameSettingsRoute
@@ -157,15 +157,15 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/admin'
     | '/deployments'
     | '/login'
-    | '/operator'
     | '/profile'
     | '/projects'
     | '/settings'
-    | '/operator/users'
+    | '/admin/users'
     | '/projects/$name'
-    | '/operator/'
+    | '/admin/'
     | '/projects/$name/deployments'
     | '/projects/$name/observability'
     | '/projects/$name/settings'
@@ -179,8 +179,8 @@ export interface FileRouteTypes {
     | '/profile'
     | '/projects'
     | '/settings'
-    | '/operator/users'
-    | '/operator'
+    | '/admin/users'
+    | '/admin'
     | '/projects/$name/deployments'
     | '/projects/$name/observability'
     | '/projects/$name/settings'
@@ -189,15 +189,15 @@ export interface FileRouteTypes {
   id:
     | '__root__'
     | '/'
+    | '/admin'
     | '/deployments'
     | '/login'
-    | '/operator'
     | '/profile'
     | '/projects'
     | '/settings'
-    | '/operator/users'
+    | '/admin/users'
     | '/projects_/$name'
-    | '/operator/'
+    | '/admin/'
     | '/projects_/$name/deployments'
     | '/projects_/$name/observability'
     | '/projects_/$name/settings'
@@ -207,9 +207,9 @@ export interface FileRouteTypes {
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  AdminRoute: typeof AdminRouteWithChildren
   DeploymentsRoute: typeof DeploymentsRoute
   LoginRoute: typeof LoginRoute
-  OperatorRoute: typeof OperatorRouteWithChildren
   ProfileRoute: typeof ProfileRoute
   ProjectsRoute: typeof ProjectsRoute
   SettingsRoute: typeof SettingsRoute
@@ -225,6 +225,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/admin': {
+      id: '/admin'
+      path: '/admin'
+      fullPath: '/admin'
+      preLoaderRoute: typeof AdminRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/deployments': {
       id: '/deployments'
       path: '/deployments'
@@ -237,13 +244,6 @@ declare module '@tanstack/react-router' {
       path: '/login'
       fullPath: '/login'
       preLoaderRoute: typeof LoginRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/operator': {
-      id: '/operator'
-      path: '/operator'
-      fullPath: '/operator'
-      preLoaderRoute: typeof OperatorRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/profile': {
@@ -267,19 +267,19 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof SettingsRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/operator/': {
-      id: '/operator/'
+    '/admin/': {
+      id: '/admin/'
       path: '/'
-      fullPath: '/operator/'
-      preLoaderRoute: typeof OperatorIndexRouteImport
-      parentRoute: typeof OperatorRoute
+      fullPath: '/admin/'
+      preLoaderRoute: typeof AdminIndexRouteImport
+      parentRoute: typeof AdminRoute
     }
-    '/operator/users': {
-      id: '/operator/users'
+    '/admin/users': {
+      id: '/admin/users'
       path: '/users'
-      fullPath: '/operator/users'
-      preLoaderRoute: typeof OperatorUsersRouteImport
-      parentRoute: typeof OperatorRoute
+      fullPath: '/admin/users'
+      preLoaderRoute: typeof AdminUsersRouteImport
+      parentRoute: typeof AdminRoute
     }
     '/projects_/$name': {
       id: '/projects_/$name'
@@ -326,19 +326,17 @@ declare module '@tanstack/react-router' {
   }
 }
 
-interface OperatorRouteChildren {
-  OperatorUsersRoute: typeof OperatorUsersRoute
-  OperatorIndexRoute: typeof OperatorIndexRoute
+interface AdminRouteChildren {
+  AdminUsersRoute: typeof AdminUsersRoute
+  AdminIndexRoute: typeof AdminIndexRoute
 }
 
-const OperatorRouteChildren: OperatorRouteChildren = {
-  OperatorUsersRoute: OperatorUsersRoute,
-  OperatorIndexRoute: OperatorIndexRoute,
+const AdminRouteChildren: AdminRouteChildren = {
+  AdminUsersRoute: AdminUsersRoute,
+  AdminIndexRoute: AdminIndexRoute,
 }
 
-const OperatorRouteWithChildren = OperatorRoute._addFileChildren(
-  OperatorRouteChildren,
-)
+const AdminRouteWithChildren = AdminRoute._addFileChildren(AdminRouteChildren)
 
 interface ProjectsNameRouteChildren {
   ProjectsNameDeploymentsRoute: typeof ProjectsNameDeploymentsRoute
@@ -362,9 +360,9 @@ const ProjectsNameRouteWithChildren = ProjectsNameRoute._addFileChildren(
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  AdminRoute: AdminRouteWithChildren,
   DeploymentsRoute: DeploymentsRoute,
   LoginRoute: LoginRoute,
-  OperatorRoute: OperatorRouteWithChildren,
   ProfileRoute: ProfileRoute,
   ProjectsRoute: ProjectsRoute,
   SettingsRoute: SettingsRoute,

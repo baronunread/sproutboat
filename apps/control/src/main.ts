@@ -71,7 +71,7 @@ const server = Bun.serve({
         return Response.json({
           id: account.id,
           profile: profileForUser(account.id) || null,
-          isOperator: actor?.isOperator === true,
+          isAdmin: actor?.isAdmin === true,
           user: { name: account.name, email: account.email, image: account.image },
         });
       } catch (error) {

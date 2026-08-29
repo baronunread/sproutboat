@@ -159,7 +159,7 @@ export function activeProjects(ownerId: string): ProjectSummary[] {
     .sort((left, right) => left.name.localeCompare(right.name));
 }
 
-// --- operator aggregates (cross-owner) ----------------------------------
+// --- admin aggregates (cross-owner) ----------------------------------
 
 export type GlobalStats = {
   owners: number; projects: number; activeProjects: number;
@@ -254,7 +254,7 @@ export function deleteDeployment(ownerId: string, project: string, id: string): 
   })();
 }
 
-// --- owner bans (operator action; stops the owner's routes) --------------
+// --- owner bans (admin action; stops the owner's routes) --------------
 
 /** Marks an owner banned. `syncRoutes()` then drops every one of their hostnames. */
 export function banOwner(ownerId: string): void {

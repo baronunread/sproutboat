@@ -3,7 +3,7 @@ import "../styles.css";
 
 export type Account = {
   profile?: { username?: string };
-  isOperator?: boolean;
+  isAdmin?: boolean;
   user?: { name?: string | null; email?: string; image?: string | null };
 };
 

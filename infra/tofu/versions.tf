@@ -9,7 +9,7 @@ terraform {
   }
 
   # ponytail: local state for the POC. Move to an S3-compatible backend
-  # (same bucket as the Restic backups) before more than one operator runs this.
+  # (same bucket as the Restic backups) before more than one admin runs this.
   # backend "s3" { ... }
 }
 

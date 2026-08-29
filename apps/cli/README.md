@@ -6,7 +6,7 @@ It talks to a control plane over HTTP and is endpoint-agnostic — the same bina
 works against a **self-hosted** instance or the **cloud**:
 
 ```sh
-sproutboat login --api-url https://control.example.com --token <operator-token>
+sproutboat login --api-url https://control.example.com --token <admin-token>
 # or per-invocation:
 export SPROUTBOAT_API_URL=https://control.example.com SPROUTBOAT_TOKEN=<token>
 

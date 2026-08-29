@@ -5,11 +5,11 @@
 #   git clone https://github.com/<you>/sproutboat && cd sproutboat
 #   sudo ./install.sh
 #
-# Provisions one Linux x86-64 host as a single-operator Sproutboat instance:
-# Caddy (public), control + edge + dashboard on loopback, one operator identity.
+# Provisions one Linux x86-64 host as a single-admin Sproutboat instance:
+# Caddy (public), control + edge + dashboard on loopback, one admin identity.
 # Multi-tenant / fleet deployment is a separate project (sproutboat-cloud).
 #
-# Non-interactive: set SB_DOMAIN, SB_ACME_EMAIL, SB_CF_TOKEN, SB_OPERATOR and
+# Non-interactive: set SB_DOMAIN, SB_ACME_EMAIL, SB_CF_TOKEN, SB_ADMIN and
 # optionally SB_DASHBOARD=yes|no, SB_GITHUB_CLIENT_ID, SB_GITHUB_CLIENT_SECRET.
 
 set -euo pipefail
@@ -149,14 +149,14 @@ say "Configuration"
 ask SB_DOMAIN      "Deployment domain (e.g. fn.example.com)"
 ask SB_ACME_EMAIL  "ACME / Let's Encrypt email"
 ask SB_CF_TOKEN    "Cloudflare API token (Zone:Read + DNS:Edit on that zone)"
-ask SB_OPERATOR    "Operator username (3-32 lowercase, a-z 0-9 -)" "$(echo "${SUDO_USER:-admin}" | tr -cd 'a-z0-9-' | cut -c1-32)"
-[[ "$SB_OPERATOR" =~ ^[a-z0-9]([a-z0-9-]{1,30}[a-z0-9])?$ ]] || die "invalid operator username: $SB_OPERATOR"
+ask SB_ADMIN    "Admin username (3-32 lowercase, a-z 0-9 -)" "$(echo "${SUDO_USER:-admin}" | tr -cd 'a-z0-9-' | cut -c1-32)"
+[[ "$SB_ADMIN" =~ ^[a-z0-9]([a-z0-9-]{1,30}[a-z0-9])?$ ]] || die "invalid admin username: $SB_ADMIN"
 DASH_URL="https://dashboard.$SB_DOMAIN"
 
 # Reuse secrets across re-runs so an existing CLI login / session keeps working.
 grep_env() { [ -f "$ETC/control.env" ] || return 0; sed -n "s/^$1=//p" "$ETC/control.env" | head -1; }
-OPERATOR_TOKEN=$(grep_env SPROUTBOAT_BOOTSTRAP_TOKEN)
-if [ -n "$OPERATOR_TOKEN" ]; then TOKEN_IS_NEW=0; else OPERATOR_TOKEN=$(openssl rand -hex 32); TOKEN_IS_NEW=1; fi
+ADMIN_TOKEN=$(grep_env SPROUTBOAT_BOOTSTRAP_TOKEN)
+if [ -n "$ADMIN_TOKEN" ]; then TOKEN_IS_NEW=0; else ADMIN_TOKEN=$(openssl rand -hex 32); TOKEN_IS_NEW=1; fi
 
 ask SB_DASHBOARD "Enable the web dashboard? Needs a GitHub OAuth app (yes/no)" "no"
 DASHBOARD_ENABLED=no
@@ -176,9 +176,9 @@ chown root:sproutboat "$ETC/sproutboat.env"; chmod 0640 "$ETC/sproutboat.env"
   echo "SPROUTBOAT_DATABASE_PATH=$STATE/sproutboat.sqlite"
   echo "SPROUTBOAT_ARTIFACTS_DIR=$STATE/artifacts"
   echo "SPROUTBOAT_DEPLOYMENTS_PATH=$STATE/deployments.json"
-  echo "SPROUTBOAT_BOOTSTRAP_USERNAME=$SB_OPERATOR"
-  echo "SPROUTBOAT_BOOTSTRAP_TOKEN=$OPERATOR_TOKEN"
-  echo "SPROUTBOAT_OPERATOR_EMAILS=$SB_ACME_EMAIL"
+  echo "SPROUTBOAT_BOOTSTRAP_USERNAME=$SB_ADMIN"
+  echo "SPROUTBOAT_BOOTSTRAP_TOKEN=$ADMIN_TOKEN"
+  echo "SPROUTBOAT_ADMIN_EMAILS=$SB_ACME_EMAIL"
   if [ "$DASHBOARD_ENABLED" = yes ]; then
     echo "BETTER_AUTH_SECRET=$BETTER_AUTH_SECRET"
     echo "BETTER_AUTH_URL=$DASH_URL"
@@ -283,13 +283,13 @@ fi
 
 echo
 if [ "$TOKEN_IS_NEW" = 1 ]; then
-  say "Done. Save the operator token — it is shown once:"
+  say "Done. Save the admin token — it is shown once:"
 else
-  say "Done. Operator token unchanged from your last install:"
+  say "Done. Admin token unchanged from your last install:"
 fi
 echo
 echo "    SPROUTBOAT_API_URL   https://control.$SB_DOMAIN"
-echo "    SPROUTBOAT_TOKEN     $OPERATOR_TOKEN"
+echo "    SPROUTBOAT_TOKEN     $ADMIN_TOKEN"
 echo
 say "Create these DNS records (A -> this host, DNS only / grey cloud):"
 IP=$(curl -fsS4 https://api.ipify.org 2>/dev/null || echo "<this-host-ipv4>")

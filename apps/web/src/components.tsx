@@ -82,8 +82,8 @@ export function Shell({
           <Link className={pathname === "/deployments" ? "nav-link active" : "nav-link"} to="/deployments"><NavIcon name="deployments" />Deployments</Link>
           <span className="nav-section-label nav-section-secondary">Account</span>
           <Link className={pathname === "/settings" ? "nav-link active" : "nav-link"} to="/settings"><NavIcon name="settings" />Settings</Link>
-          {account?.isOperator && (
-            <Link className={pathname.startsWith("/operator") ? "nav-link active" : "nav-link"} to="/operator"><NavIcon name="settings" />Operator</Link>
+          {account?.isAdmin && (
+            <Link className={pathname.startsWith("/admin") ? "nav-link active" : "nav-link"} to="/admin"><NavIcon name="settings" />Admin</Link>
           )}
         </nav>
         <div className="sidebar-bottom">
@@ -95,7 +95,7 @@ export function Shell({
         <header className="topbar">
           <p><span>Personal account</span><b>/</b>{pathname === "/" ? "Overview" : pathname.slice(1)}</p>
           <div className="topbar-actions">
-            {account?.isOperator && <span className="badge neutral">Operator</span>}
+            {account?.isAdmin && <span className="badge neutral">Admin</span>}
             <details className="account-menu">
               <summary aria-label="Open account menu" className="avatar"><Avatar image={account?.user?.image} label={displayName} /></summary>
               <div className="account-dropdown">

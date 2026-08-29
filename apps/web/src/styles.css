@@ -1023,7 +1023,7 @@ body { letter-spacing: -0.006em; }
 .metric-card .metric-delta.flat { color: var(--muted); }
 .metric-card .metric-spark { display: block; height: 1.6rem; width: 100%; margin-top: 0.15rem; }
 
-/* operator — users admin */
+/* admin — users */
 .user-list { list-style: none; margin: 1rem 0 0; padding: 0; }
 .user-item { border-top: 1px solid var(--line); padding: 0.8rem 0; }
 .user-item:first-child { border-top: 0; }

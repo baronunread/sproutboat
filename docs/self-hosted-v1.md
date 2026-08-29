@@ -1,15 +1,15 @@
-# Self-hosted, single-operator mode (v1)
+# Self-hosted, single-admin mode (v1)
 
 > **`sudo ./install.sh` does everything below automatically.** This doc is the
 > manual reference — what the script writes and why.
 
-Run Sproutboat on your own VPS for one operator, driven entirely by the CLI. No
+Run Sproutboat on your own VPS for one admin, driven entirely by the CLI. No
 GitHub OAuth, no dashboard sign-in, no namespace reservation flow. The
 multi-tenant code stays in place but dormant — this mode just doesn't wire it.
 
 It leans on the existing **bootstrap token** path in
 `apps/control/src/identity.ts` (`actorFor()`): any request carrying
-`SPROUTBOAT_BOOTSTRAP_TOKEN` is the operator, and every CLI route
+`SPROUTBOAT_BOOTSTRAP_TOKEN` is the admin, and every CLI route
 (`deploy`, `versions`, `rollback`, `tail`, logs, metrics) accepts it.
 
 > Known-sharp, acceptable behind your own firewall, all on the production
@@ -95,6 +95,6 @@ sproutboat tail
 ## What stays off
 
 Better Auth, GitHub OAuth, the device-code flow, namespace reservation, the web
-dashboard, the operator/admin API. All compiled in, none wired. The full
+dashboard, the admin/admin API. All compiled in, none wired. The full
 production backlog (the 40-item audit) is unchanged and still applies before
 this takes untrusted traffic.
