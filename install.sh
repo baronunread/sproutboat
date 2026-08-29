@@ -6,13 +6,15 @@
 #   # or, from a checkout:  sudo ./install.sh
 #
 # It asks a few questions up front, then runs unattended: packages, Caddy,
-# Docker, bubblewrap, firewall, one admin identity, and the control + edge
+# bubblewrap, a firewall, one admin identity, and the control + edge
 # (+ optional dashboard) services. It pauses once to let you add a DNS record.
 #
 # Non-interactive: set SB_DOMAIN, SB_ACME_EMAIL, SB_ADMIN and optionally
 # SB_DASHBOARD=yes|no, SB_GITHUB_CLIENT_ID, SB_GITHUB_CLIENT_SECRET.
 # SB_CF_TOKEN — optional, only to use DNS-01 (inbound :80 blocked).
 # SB_SKIP_DNS_CHECK=1 — don't wait for DNS to resolve.
+# SB_WITH_BUILD_IMAGE=1 — also install Docker + pull the compile toolchain image,
+#   so `sproutboat build` works on this box too (normally it runs on your laptop).
 
 set -euo pipefail
 
@@ -37,7 +39,7 @@ ask()  { # ask VAR "prompt" ["default"]
 }
 
 # SB_SKIP_SERVICES=1 provisions files + builds but does not touch systemd, the
-# firewall, or the Docker daemon — for testing the installer in a container/CI.
+# firewall, or Docker — for testing the installer in a container/CI.
 SKIP_SERVICES=${SB_SKIP_SERVICES:-0}
 
 [ "$(id -u)" = 0 ] || die "run as root (sudo ./install.sh)"
@@ -47,7 +49,7 @@ if [ "$SKIP_SERVICES" != 1 ]; then
   command -v systemctl >/dev/null || die "systemd required"
   [ -f /sys/fs/cgroup/cgroup.controllers ] || die "cgroups v2 unified hierarchy required (boot with systemd.unified_cgroup_hierarchy=1)"
 else
-  warn "SB_SKIP_SERVICES=1 — systemd, firewall, Docker image build, and service start are skipped"
+  warn "SB_SKIP_SERVICES=1 — systemd, firewall, image pull, and service start are skipped"
 fi
 
 # --- distro -----------------------------------------------------------------
@@ -107,14 +109,19 @@ for k in kernel.unprivileged_userns_clone user.max_user_namespaces kernel.apparm
 done
 
 # --- packages -------------------------------------------------------------
+# The server runs deployments under bubblewrap — no Docker. Docker is only for
+# `sproutboat build` (the compile toolchain), which normally runs on your
+# workstation. SB_WITH_BUILD_IMAGE=1 adds it so you can also build on this box.
+WITH_IMAGE=${SB_WITH_BUILD_IMAGE:-0}
 say "Installing host packages"
 if [ "$PKG" = apt ]; then
   export DEBIAN_FRONTEND=noninteractive
   apt-get update -qq
-  apt-get install -y -qq ca-certificates curl git patch rsync bubblewrap docker.io ufw unzip dnsutils
+  apt-get install -y -qq ca-certificates curl git patch rsync bubblewrap ufw unzip dnsutils
+  [ "$WITH_IMAGE" = 1 ] && apt-get install -y -qq docker.io
 else
-  dnf install -y -q ca-certificates curl git patch rsync bubblewrap podman-docker ufw unzip bind-utils || \
-    dnf install -y -q ca-certificates curl git patch rsync bubblewrap docker ufw unzip bind-utils
+  dnf install -y -q ca-certificates curl git patch rsync bubblewrap ufw unzip bind-utils
+  [ "$WITH_IMAGE" = 1 ] && { dnf install -y -q podman-docker || dnf install -y -q docker; }
 fi
 
 # --- firewall: default-deny, only SSH + Caddy -----------------------------
@@ -173,12 +180,22 @@ fi
 say "Installing application dependencies"
 ( cd "$ROOT" && "$BUN" install --frozen-lockfile )
 
-if [ "$SKIP_SERVICES" = 1 ]; then
-  say "Runtime image build — skipped (SB_SKIP_SERVICES)"
-else
-  say "Building the Linux runtime image (docker)"
+# The Porffor compile toolchain image is a `sproutboat build` dependency and
+# normally lives on your laptop (like `wrangler deploy`). Only fetch it here if
+# you also want to build/deploy from this box.
+if [ "$WITH_IMAGE" != 1 ] || [ "$SKIP_SERVICES" = 1 ]; then
+  say "Build toolchain image — not needed on the server (set SB_WITH_BUILD_IMAGE=1 to build here too)"
+elif [ "${SB_BUILD_LOCAL:-0}" = 1 ]; then
+  say "Building the toolchain image locally"
   systemctl enable --now docker >/dev/null 2>&1 || true
-  ( cd "$ROOT" && docker build --platform linux/amd64 -t sproutboat/build:stable -f build-image/Dockerfile . )
+  ( cd "$ROOT" && docker build --platform linux/amd64 -t "${SB_IMAGE:-ghcr.io/baronunread/sproutboat/build:latest}" -f build-image/Dockerfile . )
+else
+  SB_IMAGE=${SB_IMAGE:-ghcr.io/baronunread/sproutboat/build:latest}
+  say "Pulling toolchain image $SB_IMAGE"
+  systemctl enable --now docker >/dev/null 2>&1 || true
+  [ -n "${SB_GHCR_TOKEN:-}" ] && printf '%s' "$SB_GHCR_TOKEN" | docker login ghcr.io -u "${SB_GHCR_USER:-x}" --password-stdin >/dev/null
+  docker pull --platform linux/amd64 "$SB_IMAGE" \
+    || die "could not pull $SB_IMAGE — make the GHCR package public, or set SB_GHCR_TOKEN, or SB_BUILD_LOCAL=1"
 fi
 
 say "Building the dashboard"

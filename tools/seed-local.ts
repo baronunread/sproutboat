@@ -163,7 +163,7 @@ async function main(): Promise<void> {
         const manifest = {
           schemaVersion: 2, project: spec.project, target: "linux-x86_64", runtime: "native-fetch",
           capabilityProfile: "http-sync-v0", porfforVersion: "alpha-3 (seed000)", esbuildVersion: "0.28.2",
-          buildImage: "sproutboat/build:dev@sha256:" + "0".repeat(64),
+          buildImage: "ghcr.io/baronunread/sproutboat/build@sha256:" + "0".repeat(64),
           sourceHash: sha256(`src:${user.login}/${spec.project}/${v}`), binaryHash: sha256(worker),
           binarySize: worker.length, builtAt,
         };

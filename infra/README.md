@@ -11,12 +11,16 @@ sudo ./install.sh
 ```
 
 The script is the whole runbook: it enables unprivileged user namespaces,
-installs Caddy + Docker + bubblewrap, sets a default-deny firewall, builds the
-runtime image and dashboard, generates one admin identity, writes
-`/etc/sproutboat/{sproutboat,control}.env` **before** starting anything, brings
-up `control` + `edge` + Caddy (+ the dashboard if you opt in), runs
-`runtime:preflight`, and prints the admin token, the DNS record to create, and
-the CLI commands to deploy your first function.
+installs Caddy + bubblewrap, sets a default-deny firewall, builds the dashboard,
+generates one admin identity, writes `/etc/sproutboat/{sproutboat,control}.env`
+**before** starting anything, brings up `control` + `edge` + Caddy (+ the
+dashboard if you opt in), runs `runtime:preflight`, and prints the admin token,
+the DNS record to create, and the CLI commands to deploy your first function.
+
+No Docker on the server — deployments run under bubblewrap. `sproutboat build`
+uses the Porffor compile toolchain image on whatever machine runs the CLI
+(normally your laptop). `SB_WITH_BUILD_IMAGE=1` installs Docker + pulls that
+image here so you can build on the box too.
 
 Non-interactive: set `SB_DOMAIN`, `SB_ACME_EMAIL`, `SB_ADMIN` (and
 `SB_DASHBOARD=yes` + `SB_GITHUB_CLIENT_ID`/`SB_GITHUB_CLIENT_SECRET`).

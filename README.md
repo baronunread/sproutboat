@@ -27,17 +27,20 @@ resolve. See [infra/README.md](infra/README.md).
 
 ## Local quick start
 
-Requirements: Bun, Docker, and a local Linux/amd64 build image:
+Requirements: Bun and Docker. `sproutboat build` pulls the Porffor compile
+toolchain image (`ghcr.io/baronunread/sproutboat/build`) on first use — like
+`wrangler`, the CLI builds locally and ships only the finished artifact.
 
 ```sh
-docker build --platform linux/amd64 -t sproutboat/build:dev -f build-image/Dockerfile .
 bun run sproutboat -- init hello
 bun run sproutboat -- dev hello --port 8788
 curl -H 'Host: hello.localhost' http://127.0.0.1:8788/
 ```
 
 `build`, `deploy --dry-run`, `deploy --artifact`, `tail`, `versions list`,
-`rollback`, and `delete --yes` are also available.
+`rollback`, and `delete --yes` are also available. To build the toolchain image
+yourself instead of pulling it:
+`docker build --platform linux/amd64 -t ghcr.io/baronunread/sproutboat/build:latest -f build-image/Dockerfile .`
 
 ## Local end-to-end test
 

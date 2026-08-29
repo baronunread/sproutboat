@@ -54,8 +54,10 @@ async function main() {
   requireCommand("npx");
   await mkdir(state, { recursive: true });
 
-  const image = Bun.spawn(["docker", "image", "inspect", "sproutboat/build:dev"], { cwd: root, stdout: "ignore", stderr: "ignore" });
-  if (await image.exited !== 0) await checked("building the local Sproutboat image", ["docker", "build", "--platform", "linux/amd64", "-t", "sproutboat/build:dev", "-f", "build-image/Dockerfile", "."]);
+  // Tag as the default build-image ref so `sproutboat deploy` finds it without an override.
+  const buildRef = "ghcr.io/baronunread/sproutboat/build:latest";
+  const image = Bun.spawn(["docker", "image", "inspect", buildRef], { cwd: root, stdout: "ignore", stderr: "ignore" });
+  if (await image.exited !== 0) await checked("building the local Sproutboat image", ["docker", "build", "--platform", "linux/amd64", "-t", buildRef, "-f", "build-image/Dockerfile", "."]);
 
   await checked("starting Portless HTTPS and wildcard routing", ["portless", "proxy", "start", "--wildcard"]);
   await checked("migrating local Control state", ["bunx", "--bun", "auth@1.7.1", "migrate", "--config", "apps/control/src/auth.migrate.ts", "--yes"]);

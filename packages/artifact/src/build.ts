@@ -36,16 +36,32 @@ async function readVersion(packageDir: string): Promise<string> {
   } catch { return "unknown"; }
 }
 
+const DEFAULT_BUILD_IMAGE = "ghcr.io/baronunread/sproutboat/build:latest";
+
+/**
+ * Resolve the Porffor toolchain image to an immutable digest. CI publishes it to
+ * GHCR; `sproutboat build` pulls it once. Override the ref with
+ * SPROUTBOAT_BUILD_IMAGE_REF, or pin a digest outright with SPROUTBOAT_BUILD_IMAGE.
+ */
 async function buildImage(): Promise<{ immutable: string; reference: string }> {
-  const reference = process.env.SPROUTBOAT_BUILD_IMAGE_REF || "sproutboat/build:dev";
+  const reference = process.env.SPROUTBOAT_BUILD_IMAGE_REF || DEFAULT_BUILD_IMAGE;
   const configured = process.env.SPROUTBOAT_BUILD_IMAGE;
   if (configured) {
     if (!/@sha256:[a-f0-9]{64}$/.test(configured)) throw new Error("SPROUTBOAT_BUILD_IMAGE must name an immutable build-image digest");
     return { immutable: configured, reference };
   }
-  const imageId = (await run(["docker", "image", "inspect", "--format", "{{.Id}}", reference], "local build image inspection")).trim();
-  if (!/^sha256:[a-f0-9]{64}$/.test(imageId)) throw new Error(`Docker did not return an immutable digest for ${reference}`);
-  return { immutable: `${reference.replace(/@sha256:[a-f0-9]{64}$/, "")}@${imageId}`, reference };
+  const present = await run(["docker", "image", "inspect", reference], "").then(() => true).catch(() => false);
+  if (!present) {
+    console.log(`Pulling ${reference} (one-time)...`);
+    await run(["docker", "pull", "--platform", "linux/amd64", reference], `pull ${reference}`);
+  }
+  // Prefer the registry digest (portable, identical everywhere); fall back to the
+  // local image id for an image that was built rather than pulled.
+  const repoDigest = (await run(["docker", "image", "inspect", "--format", "{{if .RepoDigests}}{{index .RepoDigests 0}}{{end}}", reference], "build image inspection")).trim();
+  if (/@sha256:[a-f0-9]{64}$/.test(repoDigest)) return { immutable: repoDigest, reference };
+  const imageId = (await run(["docker", "image", "inspect", "--format", "{{.Id}}", reference], "build image inspection")).trim();
+  if (!/^sha256:[a-f0-9]{64}$/.test(imageId)) throw new Error(`Docker did not return a digest for ${reference}`);
+  return { immutable: `${reference.replace(/:[^:/]+$/, "")}@${imageId}`, reference };
 }
 
 /**
