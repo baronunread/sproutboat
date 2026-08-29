@@ -62,19 +62,34 @@ const cache = process.env.SPROUTBOAT_EDGE_CACHE === "off" ? null : new EdgeCache
 const MAX_CACHE_ENTRY_BYTES = 512 * 1024;
 
 /** Fail the stream (and log) if the worker's response body runs past the cap. */
-function cappedBody(body: ReadableStream<Uint8Array> | null, host: string): ReadableStream<Uint8Array> | null {
-  if (!body) return null;
+/**
+ * Wrap the upstream body to (a) enforce the byte cap and (b) call `onEnd` with
+ * the total bytes streamed once the response body actually finishes — so the
+ * request log can carry a real full duration (#31), not just TTFB.
+ */
+function cappedBody(
+  body: ReadableStream<Uint8Array> | null,
+  host: string,
+  onEnd: (bytes: number, ok: boolean) => void,
+): ReadableStream<Uint8Array> | null {
+  if (!body) { onEnd(0, true); return null; }
   let sent = 0;
+  let ended = false;
+  // `flush` covers normal completion and the byte-cap abort; a client that
+  // hangs up mid-stream won't reach here and that request goes unlogged.
+  const finish = (ok: boolean) => { if (!ended) { ended = true; onEnd(sent, ok); } };
   return body.pipeThrough(new TransformStream<Uint8Array, Uint8Array>({
     transform(chunk, controller) {
       sent += chunk.byteLength;
       if (sent > responseMaxBytes) {
         console.error(`response body cap (${responseMaxBytes}B) exceeded for ${host}`);
+        finish(false);
         controller.error(new Error("response exceeded byte cap"));
         return;
       }
       controller.enqueue(chunk);
     },
+    flush() { finish(true); },
   }));
 }
 // The bare deployment domain hosts no content on this box — send it to the dashboard.
@@ -185,8 +200,6 @@ const server = Bun.serve({
         redirect: "manual",
         signal: AbortSignal.timeout(requestTimeoutMs),
       });
-      // The body is streamed after this point, so durationMs == time to response
-      // headers (TTFB). Full body-end timing needs a stream close hook — see #35.
       const ttfbMs = elapsed();
       const declared = Number(upstream.headers.get("content-length"));
       if (Number.isFinite(declared) && declared > responseMaxBytes) {
@@ -204,14 +217,18 @@ const server = Bun.serve({
       }
 
       const cacheStatus = request.method === "GET" ? (ttl === null ? "dynamic" : "miss") : undefined;
-      await log({
-        hostname: host, method: request.method, status: upstream.status, durationMs: ttfbMs,
-        ttfbMs, reqBytes, resBytes: Number.isFinite(declared) ? declared : null,
-        coldStart, startupMs, errorKind: upstream.status >= 500 ? "upstream-5xx" : undefined, cacheStatus,
+      // #31 — log once the response body has actually finished streaming, so
+      // durationMs is the full request duration and resBytes is the real count.
+      const body = cappedBody(upstream.body, host, (bytes) => {
+        void log({
+          hostname: host, method: request.method, status: upstream.status, durationMs: elapsed(),
+          ttfbMs, reqBytes, resBytes: Number.isFinite(declared) ? declared : bytes,
+          coldStart, startupMs, errorKind: upstream.status >= 500 ? "upstream-5xx" : undefined, cacheStatus,
+        });
       });
       const headers = new Headers(upstream.headers);
       if (cacheStatus) headers.set("sb-cache", cacheStatus === "dynamic" ? "DYNAMIC" : "MISS");
-      return new Response(cappedBody(upstream.body, host), { status: upstream.status, headers });
+      return new Response(body, { status: upstream.status, headers });
     } catch (error) {
       const timedOut = error instanceof Error && (error.name === "TimeoutError" || error.name === "AbortError");
       const status = timedOut ? 504 : 502;
