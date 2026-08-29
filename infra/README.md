@@ -161,8 +161,24 @@ one `sproutboat-<date>.tar.gz` under `/var/lib/sproutboat/backups/`. The newest
 Admin -> **Backups** in the dashboard lists them, takes one on demand, and
 downloads or deletes an archive. On-demand: `systemctl start sproutboat-backup`.
 
-These stay on the same disk — copy them off-box (or add object-storage upload to
-the unit) and keep taking provider snapshots.
+### Off-box copy (S3-compatible)
+
+Set these in `/etc/sproutboat/control.env` and every new archive is uploaded and
+the remote copies are pruned to the same retention. An upload failure never
+fails the backup — the local archive still exists, and the dashboard shows the
+per-archive **Off-box** state.
+
+```sh
+SPROUTBOAT_BACKUP_S3_BUCKET=my-sproutboat-backups
+SPROUTBOAT_BACKUP_S3_ACCESS_KEY_ID=...
+SPROUTBOAT_BACKUP_S3_SECRET_ACCESS_KEY=...
+SPROUTBOAT_BACKUP_S3_ENDPOINT=https://<account>.r2.cloudflarestorage.com   # omit for AWS S3
+SPROUTBOAT_BACKUP_S3_REGION=auto
+SPROUTBOAT_BACKUP_S3_PREFIX=host-1                                          # optional key prefix
+```
+
+Works with AWS S3, Cloudflare R2, Backblaze B2, MinIO — anything S3-compatible.
+Still keep taking provider snapshots.
 
 ### Restore
 

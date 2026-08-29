@@ -7,7 +7,13 @@
  *
  * The SQLite file is snapshotted with `VACUUM INTO` (consistent even while
  * control is writing, WAL and all) rather than copied raw.
+ *
+ * Off-box copy is optional: set SPROUTBOAT_BACKUP_S3_BUCKET (+ keys, + endpoint
+ * for a non-AWS S3-compatible store like R2 / B2 / MinIO) and each new archive
+ * is uploaded and the remote copies are pruned to the same retention. An upload
+ * failure never fails the backup — the local archive still exists.
  */
+import { S3Client } from "bun";
 import { Database } from "bun:sqlite";
 import { mkdir, readdir, rm, stat } from "node:fs/promises";
 import { basename, dirname, resolve } from "node:path";
@@ -36,7 +42,25 @@ function keepCount(): number {
   return Number.isInteger(n) && n > 0 ? n : 7;
 }
 
-export type BackupEntry = { name: string; sizeBytes: number; createdAt: string };
+const S3_PREFIX = () => (process.env.SPROUTBOAT_BACKUP_S3_PREFIX || "").replace(/^\/+|\/+$/g, "");
+const s3Key = (name: string) => (S3_PREFIX() ? `${S3_PREFIX()}/${name}` : name);
+
+/** Configured off-box target, or null. Works with AWS S3 and any S3-compatible endpoint. */
+function s3(): S3Client | null {
+  const bucket = process.env.SPROUTBOAT_BACKUP_S3_BUCKET;
+  const accessKeyId = process.env.SPROUTBOAT_BACKUP_S3_ACCESS_KEY_ID;
+  const secretAccessKey = process.env.SPROUTBOAT_BACKUP_S3_SECRET_ACCESS_KEY;
+  if (!bucket || !accessKeyId || !secretAccessKey) return null;
+  return new S3Client({
+    bucket,
+    accessKeyId,
+    secretAccessKey,
+    endpoint: process.env.SPROUTBOAT_BACKUP_S3_ENDPOINT || undefined,
+    region: process.env.SPROUTBOAT_BACKUP_S3_REGION || undefined,
+  });
+}
+
+export type BackupEntry = { name: string; sizeBytes: number; createdAt: string; offsite: boolean };
 
 function stamp(date = new Date()): string {
   const p = (n: number, w = 2) => String(n).padStart(w, "0");
@@ -50,6 +74,19 @@ export function backupPath(name: string): string | null {
   return path.startsWith(backupsDir() + "/") ? path : null;
 }
 
+/** Names currently present in the off-box store (empty if not configured). */
+async function remoteNames(): Promise<Set<string>> {
+  const client = s3();
+  if (!client) return new Set();
+  try {
+    const listed = await client.list({ prefix: S3_PREFIX() ? `${S3_PREFIX()}/` : undefined, maxKeys: 1000 });
+    const names = (listed.contents ?? []).map((object) => basename(object.key)).filter((name) => NAME_RE.test(name));
+    return new Set(names);
+  } catch {
+    return new Set();
+  }
+}
+
 export async function listBackups(): Promise<BackupEntry[]> {
   let names: string[];
   try {
@@ -57,11 +94,12 @@ export async function listBackups(): Promise<BackupEntry[]> {
   } catch {
     return [];
   }
+  const offsite = await remoteNames();
   const entries: BackupEntry[] = [];
   for (const name of names) {
     if (!NAME_RE.test(name)) continue;
     const info = await stat(resolve(backupsDir(), name));
-    entries.push({ name, sizeBytes: info.size, createdAt: info.mtime.toISOString() });
+    entries.push({ name, sizeBytes: info.size, createdAt: info.mtime.toISOString(), offsite: offsite.has(name) });
   }
   return entries.sort((a, b) => (a.name < b.name ? 1 : -1));
 }
@@ -74,6 +112,23 @@ async function run(command: string[]): Promise<void> {
 
 async function exists(path: string): Promise<boolean> {
   try { await stat(path); return true; } catch { return false; }
+}
+
+/** Upload one archive off-box and prune remote copies to keepCount(). Best-effort. */
+async function copyOffsite(localPath: string, name: string): Promise<boolean> {
+  const client = s3();
+  if (!client) return false;
+  try {
+    await client.write(s3Key(name), Bun.file(localPath), { type: "application/gzip" });
+    const remote = [...await remoteNames()].sort().reverse();
+    for (const stale of remote.slice(keepCount())) {
+      await client.delete(s3Key(stale)).catch(() => { /* prune is best-effort */ });
+    }
+    return true;
+  } catch (error) {
+    console.error(`backup: off-box upload failed (${error instanceof Error ? error.message : String(error)}); local copy kept`);
+    return false;
+  }
 }
 
 export async function createBackup(): Promise<BackupEntry> {
@@ -98,7 +153,8 @@ export async function createBackup(): Promise<BackupEntry> {
     await run(tar);
     await pruneOldBackups();
     const info = await stat(outPath);
-    return { name, sizeBytes: info.size, createdAt: info.mtime.toISOString() };
+    const offsite = await copyOffsite(outPath, name);
+    return { name, sizeBytes: info.size, createdAt: info.mtime.toISOString(), offsite };
   } finally {
     await rm(staging, { recursive: true, force: true });
   }
@@ -106,16 +162,19 @@ export async function createBackup(): Promise<BackupEntry> {
 
 export async function deleteBackup(name: string): Promise<boolean> {
   const path = backupPath(name);
-  if (!path || !(await exists(path))) return false;
+  if (!path) return false;
+  const client = s3();
+  if (client && NAME_RE.test(name)) await client.delete(s3Key(name)).catch(() => { /* may not be offsite */ });
+  if (!(await exists(path))) return false;
   await rm(path, { force: true });
   return true;
 }
 
 async function pruneOldBackups(): Promise<void> {
-  const all = await listBackups();
-  for (const stale of all.slice(keepCount())) {
-    await rm(resolve(backupsDir(), stale.name), { force: true });
-  }
+  let names: string[];
+  try { names = await readdir(backupsDir()); } catch { return; }
+  const stale = names.filter((name) => NAME_RE.test(name)).sort().reverse().slice(keepCount());
+  for (const name of stale) await rm(resolve(backupsDir(), name), { force: true });
 }
 
 if (import.meta.main) {

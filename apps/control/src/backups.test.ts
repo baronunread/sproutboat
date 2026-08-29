@@ -16,6 +16,9 @@ beforeEach(async () => {
   process.env.SPROUTBOAT_ARTIFACTS_DIR = join(dir, "artifacts");
   process.env.SPROUTBOAT_ROUTE_SNAPSHOT = join(dir, "routes.json");
   delete process.env.SPROUTBOAT_BACKUP_KEEP;
+  delete process.env.SPROUTBOAT_BACKUP_S3_BUCKET;
+  delete process.env.SPROUTBOAT_BACKUP_S3_ACCESS_KEY_ID;
+  delete process.env.SPROUTBOAT_BACKUP_S3_SECRET_ACCESS_KEY;
   const db = new Database(join(dir, "sproutboat.sqlite"));
   db.run("CREATE TABLE deployment (id TEXT)");
   db.run("INSERT INTO deployment VALUES ('d1')");
@@ -36,6 +39,7 @@ test("createBackup: bundles the sqlite snapshot + artifacts + routes.json", asyn
   const entry = await mod.createBackup();
   expect(entry.name).toMatch(/^sproutboat-\d{8}-\d{6}\.tar\.gz$/);
   expect(entry.sizeBytes).toBeGreaterThan(0);
+  expect(entry.offsite).toBe(false); // no SPROUTBOAT_BACKUP_S3_* -> local only
   const members = await tarList(join(dir, "backups", entry.name));
   expect(members).toContain("sproutboat.sqlite");
   expect(members).toContain("artifacts/abc123/worker");

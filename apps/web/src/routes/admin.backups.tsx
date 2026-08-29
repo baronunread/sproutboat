@@ -4,7 +4,7 @@ import { relativeTime } from "../dashboard-data";
 
 export const Route = createFileRoute("/admin/backups")({ component: AdminBackups });
 
-type Backup = { name: string; sizeBytes: number; createdAt: string };
+type Backup = { name: string; sizeBytes: number; createdAt: string; offsite: boolean };
 
 function humanSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
@@ -80,7 +80,7 @@ function AdminBackups() {
       {state === "ready" && backups && backups.length > 0 && (
         <table className="data-table">
           <thead>
-            <tr><th scope="col">Archive</th><th scope="col">Size</th><th scope="col">Taken</th><th scope="col"><span className="sr-only">Actions</span></th></tr>
+            <tr><th scope="col">Archive</th><th scope="col">Size</th><th scope="col">Taken</th><th scope="col">Off-box</th><th scope="col"><span className="sr-only">Actions</span></th></tr>
           </thead>
           <tbody>
             {backups.map((backup) => (
@@ -88,6 +88,7 @@ function AdminBackups() {
                 <td><code>{backup.name}</code></td>
                 <td>{humanSize(backup.sizeBytes)}</td>
                 <td>{relativeTime(backup.createdAt)}</td>
+                <td>{backup.offsite ? "Uploaded" : "—"}</td>
                 <td className="row-actions">
                   <a className="button quiet" href={`/api/admin/backups/${encodeURIComponent(backup.name)}`} download>Download</a>
                   <button type="button" className="text-button danger" onClick={() => void remove(backup.name)}>Delete</button>
@@ -98,7 +99,7 @@ function AdminBackups() {
         </table>
       )}
 
-      <p className="hint">Restore on the box: stop the services, replace <code>/var/lib/sproutboat/sproutboat.sqlite</code> and <code>artifacts/</code> from the archive, then start again. See <code>infra/README.md</code>.</p>
+      <p className="hint">Off-box upload runs when <code>SPROUTBOAT_BACKUP_S3_*</code> is set in <code>/etc/sproutboat/control.env</code> (any S3-compatible store). Restore on the box: stop the services, replace <code>/var/lib/sproutboat/sproutboat.sqlite</code> and <code>artifacts/</code> from the archive, then start again. See <code>infra/README.md</code>.</p>
     </section>
   );
 }
