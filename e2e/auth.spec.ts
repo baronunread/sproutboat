@@ -1,11 +1,6 @@
 import { expect, test } from "@playwright/test";
 import { loginViaEmulator } from "./helpers";
 
-test("marketing site is served at the apex host", async ({ page }) => {
-  await page.goto("https://sproutboat.localhost/");
-  await expect(page.locator("body")).toContainText(/sproutboat/i);
-});
-
 test("an unauthenticated visitor is redirected to /login", async ({ page }) => {
   await page.goto("/projects");
   await expect(page).toHaveURL(/\/login$/);

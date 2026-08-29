@@ -77,8 +77,9 @@ function cappedBody(body: ReadableStream<Uint8Array> | null, host: string): Read
     },
   }));
 }
-const marketingHostname = (process.env.SPROUTBOAT_DEPLOYMENT_DOMAIN || "sproutboat.com").toLowerCase();
-const marketingPage = Bun.file(resolve(import.meta.dir, "../../../apps/marketing/index.html"));
+// The bare deployment domain hosts no content on this box — send it to the dashboard.
+const deploymentDomain = (process.env.SPROUTBOAT_DEPLOYMENT_DOMAIN || "sproutboat.local").toLowerCase();
+const dashboardUrl = (process.env.SPROUTBOAT_DASHBOARD_URL || `https://dashboard.${deploymentDomain}`).replace(/\/$/, "");
 async function snapshotMtime(path: string): Promise<number> {
   try { return (await stat(path)).mtimeMs; }
   catch (error) {
@@ -141,7 +142,7 @@ const server = Bun.serve({
     try { await refreshRoutes(); }
     catch (error) { console.error(`route snapshot reload failed: ${error instanceof Error ? error.message : String(error)}`); }
     const host = request.headers.get("host")?.split(":")[0]?.toLowerCase();
-    if (host === marketingHostname) return new Response(marketingPage, { headers: { "content-type": "text/html; charset=utf-8" } });
+    if (host === deploymentDomain) return Response.redirect(dashboardUrl, 302);
     const workerPath = host ? routes.get(host) : undefined;
     if (!workerPath || !host) {
       await log({ hostname: host || null, method: request.method, status: 404, durationMs: elapsed(), reqBytes, errorKind: "no-route" });

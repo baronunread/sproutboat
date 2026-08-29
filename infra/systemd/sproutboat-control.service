@@ -13,8 +13,10 @@ Environment=PORT=8787
 Environment=SPROUTBOAT_BIND_HOST=127.0.0.1
 Environment=SPROUTBOAT_ROUTE_SNAPSHOT=/var/lib/sproutboat/routes.json
 Environment=SPROUTBOAT_LOG_PATH=/var/lib/sproutboat/logs/requests.ndjson
-# Provisioning can start the health/TLS gate before secrets are configured.
-# Deployments remain unavailable until SPROUTBOAT_BOOTSTRAP_TOKEN is supplied.
+# Deployment domain + dashboard URL, written by install.sh.
+EnvironmentFile=-/etc/sproutboat/sproutboat.env
+# Operator identity, auth secrets, storage paths — written by install.sh before
+# this unit is first started.
 EnvironmentFile=-/etc/sproutboat/control.env
 ExecStart=/opt/sproutboat/bun/bin/bun apps/control/src/main.ts
 Restart=always

@@ -1,28 +1,39 @@
-# Sproutboat POC
+# Sproutboat
 
-This repository contains both the Phase 0 compatibility harness and the first
-Sproutboat POC: a locally compiled Linux artifact, an artifact-only control API,
-an isolated edge runtime, and provider-neutral VPS configuration.
+Host small JavaScript functions, compiled locally with
+[Porffor](https://porffor.dev/), on **one Linux VPS you control**. Upload only
+the finished native artifact — the server never sees your source. Stable HTTPS
+endpoint, immutable versions, rollback, logs.
 
-## POC quick start
+This repo is the **single-machine, single-operator** deployment: control API,
+edge runtime, dashboard, and the `install.sh` provisioner. Multi-tenant fleet
+hosting is a separate project (`sproutboat-cloud`); the CLI is MIT and moving to
+its own repo (`sproutboat-cli`) so it can target either.
 
-Requirements: Bun, Docker, and a local Linux/amd64 Sproutboat build image. Build
-the image once from the repository root. The CLI reads the Docker image digest
-automatically and records that immutable identity in each artifact:
+## Deploy to a VPS
+
+```sh
+git clone https://github.com/<you>/sproutboat && cd sproutboat
+sudo ./install.sh
+```
+
+One guided script: enables user namespaces, installs Caddy + Docker +
+bubblewrap, sets a firewall, builds the runtime image and dashboard, creates one
+operator, and starts everything. See [infra/README.md](infra/README.md).
+
+## Local quick start
+
+Requirements: Bun, Docker, and a local Linux/amd64 build image:
 
 ```sh
 docker build --platform linux/amd64 -t sproutboat/build:dev -f build-image/Dockerfile .
-```
-
-```sh
 bun run sproutboat -- init hello
 bun run sproutboat -- dev hello --port 8788
 curl -H 'Host: hello.localhost' http://127.0.0.1:8788/
 ```
 
-`sproutboat build`, `deploy --dry-run`, `deploy --artifact`, `tail`, `versions
-list`, `rollback`, and `delete --yes` are available. The real-domain VPS flow
-is documented in [infra/README.md](infra/README.md).
+`build`, `deploy --dry-run`, `deploy --artifact`, `tail`, `versions list`,
+`rollback`, and `delete --yes` are also available.
 
 ## Local end-to-end test
 

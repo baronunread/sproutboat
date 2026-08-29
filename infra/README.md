@@ -1,26 +1,39 @@
-# One-server deployment
+# Single-VPS deployment
 
-The POC requires a Linux x86-64 host with systemd, Caddy, cgroups v2,
-`bubblewrap`, unprivileged user namespaces, and a Cloudflare wildcard DNS record
-for `*.sproutboat.com` pointing at the host. The build image (a C/C++ toolchain
-for the Porffor native-fetch compile) is used only to produce artifacts, never
-to serve requests — the edge runs each deployment as a long-lived native-fetch
-HTTP server inside a bubblewrap sandbox (`infra/sandbox/worker-sandbox.sh`).
-The public marketing site is deliberately not hosted on this VPS: `sproutboat.com`
-and `www.sproutboat.com` are Cloudflare Pages custom domains. Install the two unit
-files in `infra/systemd/`, place the repository at `/opt/sproutboat`, and install
-[Caddyfile](caddy/Caddyfile) at `/etc/caddy/Caddyfile`.
+One Linux x86-64 host with a public IP runs a single-operator Sproutboat
+instance. Multi-tenant / fleet hosting is a separate project (`sproutboat-cloud`).
 
-Before starting Caddy, provide `ACME_EMAIL`, create `/var/lib/sproutboat`, and
-write its initial route snapshot as an empty JSON array. Caddy asks the local
-control service before requesting a certificate, so it can issue TLS only for
-an active `<project>.<username>.sproutboat.com` deployment. The custom Caddy build
-uses Cloudflare DNS-01 validation to obtain an exact certificate for that host.
+## Install
 
-The dashboard, control, and edge services intentionally bind only to loopback.
-Caddy is the sole public listener on ports 80 and 443. It serves the React
-dashboard at `dashboard.sproutboat.com` and forwards its `/api` requests to
-Control on the same origin.
+```sh
+git clone https://github.com/<you>/sproutboat && cd sproutboat
+sudo ./install.sh
+```
+
+The script is the whole runbook: it enables unprivileged user namespaces,
+installs Caddy (with the Cloudflare DNS module) + Docker + bubblewrap, sets a
+default-deny firewall, builds the runtime image and dashboard, generates one
+operator identity, writes `/etc/sproutboat/{sproutboat,control}.env` **before**
+starting anything, brings up `control` + `edge` + Caddy (+ the dashboard if you
+opt in), runs `runtime:preflight`, and prints the operator token, the DNS
+records to create, and the CLI commands to deploy your first function.
+
+Non-interactive: set `SB_DOMAIN`, `SB_ACME_EMAIL`, `SB_CF_TOKEN`, `SB_OPERATOR`
+(and `SB_DASHBOARD=yes` + `SB_GITHUB_CLIENT_ID`/`SB_GITHUB_CLIENT_SECRET`).
+
+## DNS
+
+`control.<domain>` and `*.<domain>` — A records to the host, **DNS only**
+(grey cloud). Caddy issues exact certs via a Cloudflare DNS-01 challenge; the
+wildcard deployments get their cert on demand, gated by the control plane's
+`/internal/tls/allow`. Add `dashboard.<domain>` too if you enabled the dashboard.
+`infra/tofu/` manages these records if you prefer IaC.
+
+## Hosts and binding
+
+`control` (`:8787`), `edge` (`:8080`), and the dashboard (`:3000`) bind
+`127.0.0.1` only. Caddy is the sole public listener (80/443). The bare
+`<domain>` redirects to the dashboard; `control.<domain>` is the CLI/API origin.
 
 ## Native runtime sandbox
 
@@ -98,57 +111,25 @@ Off Linux the sandbox is skipped and the worker is spawned directly. On a Linux
 dev box that is fine to trust, `SPROUTBOAT_WORKER_SANDBOX=none` plus
 `SPROUTBOAT_UNSAFE_NO_SANDBOX=1` does the same; anything else is refused.
 
-## Provisioning
+## First deploy
 
-Copy `infra/ansible/inventory.example.yml`, set the real VPS address, ACME email,
-and a scoped Cloudflare token, then run:
-
-```sh
-ansible-galaxy collection install ansible.posix
-ansible-playbook -i infra/ansible/inventory.yml infra/ansible/site.yml
-```
-
-Before the public request path is enabled, attach `sproutboat.com` and
-`www.sproutboat.com` to the Cloudflare Pages marketing project. The
-`dashboard.sproutboat.com` and wildcard `*.sproutboat.com` records that point to the
-VPS are managed with OpenTofu — see [tofu/README.md](tofu/README.md) — and are
-kept **DNS only**: Caddy, not Cloudflare Universal SSL, presents certificates
-for nested deployment names such as `hello.andrea.sproutboat.com`. The Pages
-domains can remain proxied through Cloudflare. The API token needs only the
-`Zone:Read` and `DNS:Edit` permissions for `sproutboat.com`, and is the same
-token Caddy uses for its DNS-01 challenge.
-
-Before deploying, copy [control.env.example](control.env.example) to
-`/etc/sproutboat/control.env` and set `BETTER_AUTH_SECRET` (at least 32
-high-entropy characters),
-`BETTER_AUTH_URL=https://dashboard.sproutboat.com`, and the GitHub OAuth client credentials.
-For an operator CLI during the transition, set the temporary
-`SPROUTBOAT_BOOTSTRAP_USERNAME` and `SPROUTBOAT_BOOTSTRAP_TOKEN`, then reload and
-restart Control:
+`install.sh` prints the operator token, the DNS records, and:
 
 ```sh
-sudo systemctl daemon-reload
-sudo systemctl restart sproutboat-control
+sproutboat login --api-url https://control.<domain> --token <operator-token>
+sproutboat init hello
+cd hello && sproutboat deploy          # -> https://hello.<operator>.<domain>
+sproutboat tail hello
+sproutboat versions list hello
 ```
 
-Apply the Better Auth SQLite migration before enabling GitHub sign-in and
-user-owned CLI keys:
-`bunx --bun auth@1.7.1 migrate --config apps/control/src/auth.migrate.ts --yes`.
+The operator's username comes from `SPROUTBOAT_BOOTSTRAP_USERNAME` (set by the
+installer) — there is no separate namespace-reservation step in single-operator
+mode. `SPROUTBOAT_API_URL` / `SPROUTBOAT_TOKEN` env vars work instead of `login`
+for CI.
 
-Register `https://dashboard.sproutboat.com/api/auth/callback/github` as the GitHub
-OAuth callback URL. The GitHub app needs access to the account email address.
-
-## First developer
-
-1. Open `https://dashboard.sproutboat.com` and select **Sign in with GitHub**.
-2. Reserve a lowercase namespace such as `andrea`.
-3. On the development machine, set `SPROUTBOAT_API_URL=https://dashboard.sproutboat.com`
-   and run `sproutboat login`. It opens the approval page and stores the approved
-   credential locally. `SPROUTBOAT_TOKEN` is reserved as an explicit override for
-   CI and other non-interactive automation.
-4. Run `sproutboat deploy` from a project. Its live URL is
-   `https://<project>.<namespace>.sproutboat.com`.
-
-Each account receives its own namespace and API key. Projects with the same
-name may be deployed by different accounts without sharing deployment history,
-logs, rollback, or deletion rights.
+If you enabled the dashboard: register `https://dashboard.<domain>/api/auth/callback/github`
+as the GitHub OAuth callback, run the Better Auth migration
+(`bunx --bun auth@1.7.1 migrate --config apps/control/src/auth.migrate.ts --yes`),
+then sign in with GitHub. A token-gated dashboard that skips GitHub for
+single-operator use is planned.

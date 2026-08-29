@@ -66,7 +66,7 @@ async function main() {
   // The dashboard's SSR auth loader fetches the control API over the self-signed
   // portless cert; let its process trust it for local dev.
   start("dashboard at https://dashboard.sproutboat.localhost", ["portless", "--force", "dashboard.sproutboat", "bun", "run", "web"], environment({ NODE_TLS_REJECT_UNAUTHORIZED: "0" }));
-  console.log("\nReady:\n  Marketing  https://sproutboat.localhost\n  Dashboard  https://dashboard.sproutboat.localhost\n  Control    https://control.sproutboat.localhost\n  Deployments https://<project>.<owner>.sproutboat.localhost\n\nUse: bun run sproutboat -- login --api-url https://control.sproutboat.localhost\n");
+  console.log("\nReady:\n  Dashboard  https://dashboard.sproutboat.localhost\n  Control    https://control.sproutboat.localhost\n  Deployments https://<project>.<owner>.sproutboat.localhost\n\nUse: bun run sproutboat -- login --api-url https://control.sproutboat.localhost\n");
 }
 
 for (const signal of ["SIGINT", "SIGTERM"] as const) process.on(signal, () => {

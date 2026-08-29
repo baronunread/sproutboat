@@ -1,24 +1,35 @@
+# Reference only — install.sh generates the real /etc/caddy/Caddyfile with your
+# domain substituted and the dashboard block included only if you enabled it.
+#
+# Replace fn.example.com with your deployment domain.
+
 {
-  email {$ACME_EMAIL}
-  acme_dns cloudflare {env.CLOUDFLARE_API_TOKEN}
-
-  on_demand_tls {
-    ask http://127.0.0.1:8787/internal/tls/allow
-  }
+	email {$ACME_EMAIL}
+	acme_dns cloudflare {env.CLOUDFLARE_API_TOKEN}
+	on_demand_tls {
+		ask http://127.0.0.1:8787/internal/tls/allow
+	}
 }
 
-dashboard.sproutboat.com {
-  handle /api/* {
-    reverse_proxy 127.0.0.1:8787
-  }
-  handle {
-    reverse_proxy 127.0.0.1:3000
-  }
+# Control API (CLI + dashboard /api). Cert via Cloudflare DNS-01.
+control.fn.example.com {
+	reverse_proxy 127.0.0.1:8787
 }
 
+# Dashboard (only if enabled at install time).
+dashboard.fn.example.com {
+	handle /api/* {
+		reverse_proxy 127.0.0.1:8787
+	}
+	handle {
+		reverse_proxy 127.0.0.1:3000
+	}
+}
+
+# Every <project>.<user>.<domain> deployment. Cert on demand, gated by control.
 https:// {
-  tls {
-    on_demand
-  }
-  reverse_proxy 127.0.0.1:8080
+	tls {
+		on_demand
+	}
+	reverse_proxy 127.0.0.1:8080
 }

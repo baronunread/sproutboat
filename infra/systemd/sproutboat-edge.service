@@ -11,6 +11,8 @@ WorkingDirectory=/opt/sproutboat
 Environment=PORT=8080
 Environment=SPROUTBOAT_ROUTE_SNAPSHOT=/var/lib/sproutboat/routes.json
 Environment=SPROUTBOAT_LOG_PATH=/var/lib/sproutboat/logs/requests.ndjson
+# Deployment domain + dashboard URL, written by install.sh.
+EnvironmentFile=-/etc/sproutboat/sproutboat.env
 # Platform-wide request caps (issue #27). Per-project overrides still tracked there.
 Environment=SPROUTBOAT_REQUEST_TIMEOUT_MS=30000
 Environment=SPROUTBOAT_RESPONSE_MAX_BYTES=10485760

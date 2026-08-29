@@ -1,5 +1,5 @@
 {
-  "name": "sproutboat-platform",
+  "name": "sproutboat",
   "private": true,
   "type": "module",
   "bin": {

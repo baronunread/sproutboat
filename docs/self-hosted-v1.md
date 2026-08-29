@@ -1,5 +1,8 @@
 # Self-hosted, single-operator mode (v1)
 
+> **`sudo ./install.sh` does everything below automatically.** This doc is the
+> manual reference — what the script writes and why.
+
 Run Sproutboat on your own VPS for one operator, driven entirely by the CLI. No
 GitHub OAuth, no dashboard sign-in, no namespace reservation flow. The
 multi-tenant code stays in place but dormant — this mode just doesn't wire it.
