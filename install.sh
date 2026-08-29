@@ -207,6 +207,9 @@ say "Generating /etc/caddy/Caddyfile for $SB_DOMAIN"
 install -d /etc/caddy
 acme_line=""
 [ -n "${SB_CF_TOKEN:-}" ] && acme_line=$'\n\tacme_dns cloudflare {env.CLOUDFLARE_API_TOKEN}'
+# SB_ACME_STAGING=1 -> Let's Encrypt staging (untrusted certs, no rate limit) for
+# a first shakeout. Remove it and `systemctl reload caddy` to switch to prod.
+[ "${SB_ACME_STAGING:-0}" = 1 ] && acme_line="$acme_line"$'\n\tacme_ca https://acme-staging-v02.api.letsencrypt.org/directory'
 {
   cat <<EOF
 {

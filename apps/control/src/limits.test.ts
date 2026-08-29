@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, expect, test } from "bun:test";
-import { clientIp, guardDeploy, guardNewProject, LIMITS, rateHit, resetLimiter } from "./limits";
+import { clientIp, guardDeploy, guardNewProject, LIMITS, rateHit, resetLimiter, tlsIssuanceAllowed } from "./limits";
 
 beforeEach(() => {
   resetLimiter();
@@ -7,6 +7,7 @@ beforeEach(() => {
     "SPROUTBOAT_DEPLOY_RATE_PER_MIN", "SPROUTBOAT_DEPLOY_RATE_PER_IP_PER_MIN",
     "SPROUTBOAT_MAX_PROJECTS_PER_ACCOUNT", "SPROUTBOAT_MAX_VERSIONS_PER_PROJECT",
   ]) delete process.env[key];
+  delete process.env.SPROUTBOAT_TLS_NEW_CERTS_PER_HOUR;
 });
 afterEach(() => resetLimiter());
 
@@ -57,6 +58,17 @@ test("guardNewProject: 429 at the cap, allowed below it", async () => {
   expect(await guardNewProject("acct", req(), 2)).toBeNull();
   const capped = await guardNewProject("acct", req(), 3);
   expect(capped?.status).toBe(429);
+});
+
+test("tlsIssuanceAllowed: caps NEW hostnames per hour, repeats don't count", () => {
+  process.env.SPROUTBOAT_TLS_NEW_CERTS_PER_HOUR = "3";
+  const t = 1_000_000;
+  expect(tlsIssuanceAllowed("a.x.test", t)).toBe(true);
+  expect(tlsIssuanceAllowed("b.x.test", t)).toBe(true);
+  expect(tlsIssuanceAllowed("c.x.test", t)).toBe(true);
+  expect(tlsIssuanceAllowed("d.x.test", t)).toBe(false);        // 4th new host in the window
+  expect(tlsIssuanceAllowed("a.x.test", t + 1000)).toBe(true);  // a repeat is a renewal, always allowed
+  expect(tlsIssuanceAllowed("d.x.test", t + 3_600_001)).toBe(true); // window rolled over
 });
 
 test("LIMITS: env overrides, sane defaults", () => {

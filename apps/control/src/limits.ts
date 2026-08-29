@@ -62,7 +62,7 @@ export function clientIp(request: Request): string {
 const eventLogPath = (): string =>
   process.env.SPROUTBOAT_CONTROL_LOG_PATH || resolve(dirname(process.env.SPROUTBOAT_LOG_PATH || "/var/lib/sproutboat/logs/requests.ndjson"), "control.ndjson");
 
-export type LimitEvent = "deploy-rate-account" | "deploy-rate-ip" | "project-cap";
+export type LimitEvent = "deploy-rate-account" | "deploy-rate-ip" | "project-cap" | "tls-issuance";
 
 export async function logLimitEvent(event: LimitEvent, fields: { actor?: string; ip?: string; detail?: string }): Promise<void> {
   const line = JSON.stringify({ at: new Date().toISOString(), kind: "limit", event, ...fields }) + "\n";
@@ -107,7 +107,34 @@ export async function guardNewProject(actorId: string, request: Request, current
   return Response.json({ error: `project limit reached (${cap}); delete a project first` }, { status: 429, headers: { "retry-after": "0" } });
 }
 
+// --- #26 ACME issuance ceiling -----------------------------------------
+
+const HOUR_MS = 3_600_000;
+const tlsSeen = new Map<string, number>(); // hostname -> last approval ms
+let tlsApprovals: number[] = []; // approval timestamps for NEW hostnames, last hour
+
+/**
+ * Bound how many *new* deployment certificates Caddy is told to order per hour,
+ * so a burst of deployments can't run the zone into a Let's Encrypt block. A
+ * hostname already approved recently is a renewal/repeat and does not count.
+ * @returns true to let issuance proceed.
+ */
+export function tlsIssuanceAllowed(hostname: string, now = Date.now()): boolean {
+  const last = tlsSeen.get(hostname);
+  tlsSeen.set(hostname, now);
+  if (last !== undefined && now - last < 24 * HOUR_MS) return true; // repeat within a day
+  tlsApprovals = tlsApprovals.filter((ms) => now - ms < HOUR_MS);
+  const cap = num("SPROUTBOAT_TLS_NEW_CERTS_PER_HOUR", 20);
+  if (tlsApprovals.length >= cap) return false;
+  tlsApprovals.push(now);
+  // keep the seen-map from growing forever
+  if (tlsSeen.size > 8192) for (const [key, ms] of tlsSeen) if (now - ms > 48 * HOUR_MS) tlsSeen.delete(key);
+  return true;
+}
+
 /** Test hook. */
 export function resetLimiter(): void {
   buckets.clear();
+  tlsSeen.clear();
+  tlsApprovals = [];
 }

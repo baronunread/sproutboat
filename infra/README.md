@@ -33,8 +33,21 @@ touch your provider and **needs no DNS API token**.
 The wildcard covers `control.<domain>`, `dashboard.<domain>`, and every
 `<project>.<admin>.<domain>` deployment. Caddy gets a per-hostname cert for each
 via **HTTP-01 / TLS-ALPN-01** — `control.`/`dashboard.` at startup, deployments
-on demand (gated by the control plane's `/internal/tls/allow`). No wildcard
-certificate, so no DNS challenge.
+on demand. No wildcard certificate, so no DNS challenge.
+
+**Issuance is gated.** Caddy's `on_demand_tls` asks `/internal/tls/allow` before
+ordering any deployment cert; control answers `allowed` only for a hostname that
+matches the `<project>.<admin>.<domain>` shape **and** is an active route right
+now — an arbitrary `Host:` header never triggers an ACME order. On top of that,
+new hostnames are capped at `SPROUTBOAT_TLS_NEW_CERTS_PER_HOUR` (default 20) per
+rolling hour so a deploy burst can't run the zone into a Let's Encrypt block;
+renewals of an already-seen hostname are never counted. A `429` here is logged to
+`control.ndjson` as `{"kind":"limit","event":"tls-issuance"}`.
+
+Start with **staging ACME** for the first shakeout: `SB_ACME_STAGING=1 sudo
+./install.sh` (or add `acme_ca https://acme-staging-v02.api.letsencrypt.org/directory`
+to the Caddyfile global block). Certs will be untrusted but rate-limit-free.
+Remove it and `systemctl reload caddy` to switch to production.
 
 `install.sh` prints the record and waits for it to resolve before starting Caddy
 (skip with `SB_SKIP_DNS_CHECK=1`). Set `SB_CF_TOKEN` (Cloudflare, `Zone:Read` +

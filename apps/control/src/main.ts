@@ -3,7 +3,7 @@ import { resolve } from "node:path";
 import { adminEmail, ensureAdminSeeded, getAuth, githubSignInConfigured } from "./auth";
 import { activateDeployment, dashboardOverview, deleteAccount, deleteDeployment, deleteProject, deploymentDetail, deployArtifact, isDeploymentHostname, listDeployments, listProjects, projectLogHistory, projectLogs, projectLogTail, projectMetrics } from "./deployments";
 import { actorFor, profileForUser, reserveUsername, sessionUser } from "./identity";
-import { clientIp, rateHit } from "./limits";
+import { clientIp, logLimitEvent, rateHit, tlsIssuanceAllowed } from "./limits";
 import { approveCliAuthorization, createCliAuthorization, exchangeCliAuthorization, listCliCredentials, revokeAllCliCredentials, revokeCliCredential } from "./cli-authorization";
 import { adminBackups, adminCreateBackup, adminDeleteBackup, adminDownloadBackup, adminOverview, adminUserDetail, adminUsers, banUser, revokeUserSessions, unbanUser } from "./admin";
 
@@ -168,8 +168,15 @@ const server = Bun.serve({
     if (url.pathname === "/internal/health") return Response.json({ ok: true, service: "control" });
     if (url.pathname === "/internal/tls/allow") {
       const domain = url.searchParams.get("domain")?.toLowerCase() || "";
-      const allowed = isDeploymentHostname(domain) && (await activeHostnames()).has(domain);
-      return new Response(allowed ? "allowed" : "unknown deployment", { status: allowed ? 200 : 403 });
+      if (!isDeploymentHostname(domain) || !(await activeHostnames()).has(domain)) {
+        return new Response("unknown deployment", { status: 403 });
+      }
+      // #26 — real deployment, but bound how fast NEW certs get ordered.
+      if (!tlsIssuanceAllowed(domain)) {
+        await logLimitEvent("tls-issuance", { detail: domain });
+        return new Response("issuance rate exceeded; retry later", { status: 429 });
+      }
+      return new Response("allowed", { status: 200 });
     }
     if (url.pathname === "/") {
       return new Response("Sproutboat is an experimental platform. The control API is not public yet.", {
