@@ -7,8 +7,9 @@ endpoint, immutable versions, rollback, logs.
 
 This repo is the **single-machine, single-admin** deployment: control API,
 edge runtime, dashboard, and the `install.sh` provisioner. Multi-tenant fleet
-hosting is a separate project (`sproutboat-cloud`); the CLI is MIT and moving to
-its own repo (`sproutboat-cli`) so it can target either.
+hosting is a separate project (`sproutboat-cloud`); the CLI is its own MIT repo
+([`sproutboat-cli`](https://github.com/baronunread/sproutboat-cli)) and targets
+either.
 
 ## Deploy to a VPS
 
@@ -20,27 +21,27 @@ curl -fsSL https://raw.githubusercontent.com/baronunread/sproutboat/main/install
 ```
 
 It asks 3–4 questions (domain, email, admin name), then runs unattended:
-user namespaces, Caddy + Docker + bubblewrap, a default-deny firewall, the
-runtime image + dashboard build, one admin identity, and the services. It
-pauses once to let you add a single wildcard DNS record and waits for it to
-resolve. See [infra/README.md](infra/README.md).
+user namespaces, Caddy + bubblewrap, a default-deny firewall, the dashboard
+build, one admin identity, and the services. No Docker — the server only runs
+worker artifacts, it never builds them. It pauses once to let you add a single
+wildcard DNS record and waits for it to resolve. See
+[infra/README.md](infra/README.md).
 
-## Local quick start
+## Deploying to it
 
-Requirements: Bun and Docker. `sproutboat build` pulls the Porffor compile
-toolchain image (`ghcr.io/baronunread/sproutboat/build`) on first use — like
-`wrangler`, the CLI builds locally and ships only the finished artifact.
+Building and uploading worker artifacts is the [`@sproutboat/cli`](https://github.com/baronunread/sproutboat-cli)'s
+job — MIT, its own repo, targets any control plane. It cross-compiles the
+handler with Porffor + Zig (no Docker) and ships only the finished native
+binary; the server never sees your source.
 
 ```sh
-bun run sproutboat -- init hello
-bun run sproutboat -- dev hello --port 8788
-curl -H 'Host: hello.localhost' http://127.0.0.1:8788/
+bunx @sproutboat/cli init hello
+bunx @sproutboat/cli login --api-url https://control.<your-domain>
+bunx @sproutboat/cli deploy
 ```
 
 `build`, `deploy --dry-run`, `deploy --artifact`, `tail`, `versions list`,
-`rollback`, and `delete --yes` are also available. To build the toolchain image
-yourself instead of pulling it:
-`docker build --platform linux/amd64 -t ghcr.io/baronunread/sproutboat/build:latest -f build-image/Dockerfile .`
+`rollback`, and `delete --yes` are also available.
 
 ## Local end-to-end test
 
@@ -56,21 +57,16 @@ On Portless's first run, trust its local certificate authority. Open
 `https://dashboard.sproutboat.localhost/`, select **Sign in with GitHub**, use the
 seeded `andrea` account, and reserve the `andrea` namespace.
 
-In another terminal, create and authorize a project:
+In another terminal, create, authorize, and deploy a project with the CLI:
 
 ```sh
-bun run sproutboat -- init hello
-bun run sproutboat -- login --api-url https://control.sproutboat.localhost
-```
-
-The login command opens the dashboard. Select **Approve CLI login**, then
-deploy and verify the result:
-
-```sh
-bun run sproutboat -- deploy hello
+bunx @sproutboat/cli init hello
+bunx @sproutboat/cli login --api-url https://control.sproutboat.localhost
+# approve in the dashboard, then:
+bunx @sproutboat/cli deploy
 open https://hello.andrea.sproutboat.localhost
-bun run sproutboat -- versions list hello
-bun run sproutboat -- tail hello
+bunx @sproutboat/cli versions list
+bunx @sproutboat/cli tail hello
 ```
 
 The dashboard is at `https://dashboard.sproutboat.localhost/dashboard`. Control
@@ -83,11 +79,11 @@ credentials before starting it again:
 
 ```sh
 rm -rf .local/sproutboat
-rm -rf /Users/andreabruno/.config/sproutboat
+rm -rf ~/.config/sproutboat
 bun run dev:local
 ```
 
-Portless certificates and the Docker build image remain intact.
+Portless certificates remain intact.
 
 ## Compatibility harness
 

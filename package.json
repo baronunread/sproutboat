@@ -2,12 +2,8 @@
   "name": "sproutboat",
   "private": true,
   "type": "module",
-  "bin": {
-    "sproutboat": "apps/cli/src/main.ts"
-  },
   "scripts": {
     "postinstall": "bun run tools/patch-porffor.ts",
-    "sproutboat": "bun --use-system-ca apps/cli/src/main.ts",
     "edge": "bun run services/edge/src/main.ts",
     "control": "bun run apps/control/src/main.ts",
     "web": "bun run --cwd apps/web dev",

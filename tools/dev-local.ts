@@ -49,15 +49,13 @@ function start(label: string, command: string[], env = environment()) {
 }
 
 async function main() {
-  requireCommand("docker");
   requireCommand("portless");
   requireCommand("npx");
   await mkdir(state, { recursive: true });
 
-  // Tag as the default build-image ref so `sproutboat deploy` finds it without an override.
-  const buildRef = "ghcr.io/baronunread/sproutboat/build:latest";
-  const image = Bun.spawn(["docker", "image", "inspect", buildRef], { cwd: root, stdout: "ignore", stderr: "ignore" });
-  if (await image.exited !== 0) await checked("building the local Sproutboat image", ["docker", "build", "--platform", "linux/amd64", "-t", buildRef, "-f", "build-image/Dockerfile", "."]);
+  // Building worker artifacts is the CLI's job now (`bunx @sproutboat/cli`,
+  // which cross-compiles with Porffor + Zig — no Docker). This harness only
+  // brings up the platform: control, edge, dashboard.
 
   await checked("starting Portless HTTPS and wildcard routing", ["portless", "proxy", "start", "--wildcard"]);
   await checked("migrating local Control state", ["bunx", "--bun", "auth@1.7.1", "migrate", "--config", "apps/control/src/auth.migrate.ts", "--yes"]);
@@ -68,7 +66,7 @@ async function main() {
   // The dashboard's SSR auth loader fetches the control API over the self-signed
   // portless cert; let its process trust it for local dev.
   start("dashboard at https://dashboard.sproutboat.localhost", ["portless", "--force", "dashboard.sproutboat", "bun", "run", "web"], environment({ NODE_TLS_REJECT_UNAUTHORIZED: "0" }));
-  console.log("\nReady:\n  Dashboard  https://dashboard.sproutboat.localhost\n  Control    https://control.sproutboat.localhost\n  Deployments https://<project>.<owner>.sproutboat.localhost\n\nUse: bun run sproutboat -- login --api-url https://control.sproutboat.localhost\n");
+  console.log("\nReady:\n  Dashboard  https://dashboard.sproutboat.localhost\n  Control    https://control.sproutboat.localhost\n  Deployments https://<project>.<owner>.sproutboat.localhost\n\nDeploy with the CLI:\n  bunx @sproutboat/cli login --api-url https://control.sproutboat.localhost\n  bunx @sproutboat/cli deploy\n");
 }
 
 for (const signal of ["SIGINT", "SIGTERM"] as const) process.on(signal, () => {
