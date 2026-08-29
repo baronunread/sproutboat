@@ -31,11 +31,19 @@ ask()  { # ask VAR "prompt" ["default"]
   printf -v "$__v" '%s' "${__a:-$__d}"
 }
 
+# SB_SKIP_SERVICES=1 provisions files + builds but does not touch systemd, the
+# firewall, or the Docker daemon — for testing the installer in a container/CI.
+SKIP_SERVICES=${SB_SKIP_SERVICES:-0}
+
 [ "$(id -u)" = 0 ] || die "run as root (sudo ./install.sh)"
 [ "$(uname -s)" = Linux ] || die "Linux only"
 [ "$(uname -m)" = x86_64 ] || die "x86-64 only (artifact target is linux-x86_64)"
-command -v systemctl >/dev/null || die "systemd required"
-[ -f /sys/fs/cgroup/cgroup.controllers ] || die "cgroups v2 unified hierarchy required (boot with systemd.unified_cgroup_hierarchy=1)"
+if [ "$SKIP_SERVICES" != 1 ]; then
+  command -v systemctl >/dev/null || die "systemd required"
+  [ -f /sys/fs/cgroup/cgroup.controllers ] || die "cgroups v2 unified hierarchy required (boot with systemd.unified_cgroup_hierarchy=1)"
+else
+  warn "SB_SKIP_SERVICES=1 — systemd, firewall, Docker image build, and service start are skipped"
+fi
 
 # Locate the source tree.
 SRC=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
@@ -70,18 +78,22 @@ say "Installing host packages"
 if [ "$PKG" = apt ]; then
   export DEBIAN_FRONTEND=noninteractive
   apt-get update -qq
-  apt-get install -y -qq ca-certificates curl bubblewrap docker.io ufw unzip
+  apt-get install -y -qq ca-certificates curl rsync bubblewrap docker.io ufw unzip
 else
-  dnf install -y -q ca-certificates curl bubblewrap podman-docker ufw unzip || \
-    dnf install -y -q ca-certificates curl bubblewrap docker ufw unzip
+  dnf install -y -q ca-certificates curl rsync bubblewrap podman-docker ufw unzip || \
+    dnf install -y -q ca-certificates curl rsync bubblewrap docker ufw unzip
 fi
 
 # --- firewall: default-deny, only SSH + Caddy -----------------------------
-say "Configuring firewall (deny inbound except 22/80/443)"
-ufw --force default deny incoming >/dev/null
-ufw --force default allow outgoing >/dev/null
-for p in 22 80 443; do ufw allow "$p"/tcp >/dev/null; done
-ufw --force enable >/dev/null
+if [ "$SKIP_SERVICES" = 1 ]; then
+  say "Firewall — skipped (SB_SKIP_SERVICES)"
+else
+  say "Configuring firewall (deny inbound except 22/80/443)"
+  ufw --force default deny incoming >/dev/null
+  ufw --force default allow outgoing >/dev/null
+  for p in 22 80 443; do ufw allow "$p"/tcp >/dev/null; done
+  ufw --force enable >/dev/null
+fi
 
 # --- identities + directories -------------------------------------------
 say "Creating service identities and directories"
@@ -95,9 +107,12 @@ install -d -m 0770 -o sproutboat-edge   -g sproutboat "$STATE/logs"
 install -d -m 0750 -o root -g sproutboat "$ETC"
 
 # --- sync the tree ------------------------------------------------------
+# --delete keeps $ROOT a clean mirror of the checkout, but must NOT touch the
+# things provisioned INTO $ROOT afterwards (Bun, deps, the built dashboard).
 say "Syncing $SRC -> $ROOT"
 rsync -a --delete \
   --exclude .git --exclude node_modules --exclude .phase0 --exclude .sproutboat --exclude .local \
+  --exclude /bun --exclude /apps/web/dist --exclude /apps/web/.tanstack \
   "$SRC"/ "$ROOT"/
 
 # --- Bun (pinned) -----------------------------------------------------
@@ -118,9 +133,13 @@ fi
 say "Installing application dependencies"
 ( cd "$ROOT" && "$BUN" install --frozen-lockfile )
 
-say "Building the Linux runtime image (docker)"
-systemctl enable --now docker >/dev/null 2>&1 || true
-( cd "$ROOT" && docker build --platform linux/amd64 -t sproutboat/build:stable -f build-image/Dockerfile . )
+if [ "$SKIP_SERVICES" = 1 ]; then
+  say "Runtime image build — skipped (SB_SKIP_SERVICES)"
+else
+  say "Building the Linux runtime image (docker)"
+  systemctl enable --now docker >/dev/null 2>&1 || true
+  ( cd "$ROOT" && docker build --platform linux/amd64 -t sproutboat/build:stable -f build-image/Dockerfile . )
+fi
 
 say "Building the dashboard"
 ( cd "$ROOT" && "$BUN" run web:build )
@@ -132,8 +151,12 @@ ask SB_ACME_EMAIL  "ACME / Let's Encrypt email"
 ask SB_CF_TOKEN    "Cloudflare API token (Zone:Read + DNS:Edit on that zone)"
 ask SB_OPERATOR    "Operator username (3-32 lowercase, a-z 0-9 -)" "$(echo "${SUDO_USER:-admin}" | tr -cd 'a-z0-9-' | cut -c1-32)"
 [[ "$SB_OPERATOR" =~ ^[a-z0-9]([a-z0-9-]{1,30}[a-z0-9])?$ ]] || die "invalid operator username: $SB_OPERATOR"
-OPERATOR_TOKEN=$(openssl rand -hex 32)
 DASH_URL="https://dashboard.$SB_DOMAIN"
+
+# Reuse secrets across re-runs so an existing CLI login / session keeps working.
+grep_env() { [ -f "$ETC/control.env" ] || return 0; sed -n "s/^$1=//p" "$ETC/control.env" | head -1; }
+OPERATOR_TOKEN=$(grep_env SPROUTBOAT_BOOTSTRAP_TOKEN)
+if [ -n "$OPERATOR_TOKEN" ]; then TOKEN_IS_NEW=0; else OPERATOR_TOKEN=$(openssl rand -hex 32); TOKEN_IS_NEW=1; fi
 
 ask SB_DASHBOARD "Enable the web dashboard? Needs a GitHub OAuth app (yes/no)" "no"
 DASHBOARD_ENABLED=no
@@ -141,7 +164,7 @@ if [[ "$SB_DASHBOARD" =~ ^[Yy] ]]; then
   DASHBOARD_ENABLED=yes
   ask SB_GITHUB_CLIENT_ID     "GitHub OAuth client id"
   ask SB_GITHUB_CLIENT_SECRET "GitHub OAuth client secret"
-  BETTER_AUTH_SECRET=$(openssl rand -hex 32)
+  BETTER_AUTH_SECRET=$(grep_env BETTER_AUTH_SECRET); BETTER_AUTH_SECRET=${BETTER_AUTH_SECRET:-$(openssl rand -hex 32)}
 fi
 
 # --- write env BEFORE starting services -----------------------------
@@ -241,20 +264,29 @@ EOF
 for u in sproutboat-control sproutboat-edge sproutboat-web; do
   install -m 0644 "$ROOT/infra/systemd/$u.service" "/etc/systemd/system/$u.service"
 done
-systemctl daemon-reload
 
-# --- start (control first — its env now exists) ------------------
-say "Starting services"
-units=(sproutboat-control sproutboat-edge caddy)
-[ "$DASHBOARD_ENABLED" = yes ] && units+=(sproutboat-web)
-systemctl enable --now "${units[@]}"
+if [ "$SKIP_SERVICES" = 1 ]; then
+  say "daemon-reload + service start + preflight — skipped (SB_SKIP_SERVICES)"
+else
+  systemctl daemon-reload
 
-# --- verify -----------------------------------------------------
-say "Runtime preflight"
-( cd "$ROOT" && "$BUN" run runtime:preflight ) || warn "preflight reported problems — review above; deployments need bubblewrap working"
+  # --- start (control first — its env now exists) ----------------
+  say "Starting services"
+  units=(sproutboat-control sproutboat-edge caddy)
+  [ "$DASHBOARD_ENABLED" = yes ] && units+=(sproutboat-web)
+  systemctl enable --now "${units[@]}"
+
+  # --- verify ---------------------------------------------------
+  say "Runtime preflight"
+  ( cd "$ROOT" && "$BUN" run runtime:preflight ) || warn "preflight reported problems — review above; deployments need bubblewrap working"
+fi
 
 echo
-say "Done. Save the operator token — it is shown once:"
+if [ "$TOKEN_IS_NEW" = 1 ]; then
+  say "Done. Save the operator token — it is shown once:"
+else
+  say "Done. Operator token unchanged from your last install:"
+fi
 echo
 echo "    SPROUTBOAT_API_URL   https://control.$SB_DOMAIN"
 echo "    SPROUTBOAT_TOKEN     $OPERATOR_TOKEN"
