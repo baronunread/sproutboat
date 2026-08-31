@@ -23,9 +23,17 @@ describe("Phase A contracts", () => {
   });
 
   test("rejects unsupported configuration fields and secret-like vars", () => {
-    const result = parseConfig(`{"name":"Hello","main":"../index.js","compatibility_date":"today","secrets":{},"vars":{"token":3}}`);
+    const result = parseConfig(`{"name":"Hello","main":"../index.js","compatibility_date":"today","bogus":{},"vars":{"token":3}}`);
     expect(result.ok).toBe(false);
-    if (!result.ok) expect(result.errors).toEqual(expect.arrayContaining(["unsupported config field: secrets"]));
+    if (!result.ok) expect(result.errors).toEqual(expect.arrayContaining(["unsupported config field: bogus"]));
+  });
+
+  test("accepts an assets block and rejects a malformed one", () => {
+    const ok = parseConfig(`{"name":"hello","main":"src/index.js","compatibility_date":"2026-08-26","assets":{"directory":"public","binding":"ASSETS","not_found_handling":"single-page-application","run_sprout_first":["/api/*"]}}`);
+    expect(ok.ok).toBe(true);
+    if (ok.ok) expect(ok.value.assets).toEqual({ directory: "public", binding: "ASSETS", not_found_handling: "single-page-application", run_sprout_first: ["/api/*"] });
+    expect(parseConfig(`{"name":"hello","main":"src/index.js","compatibility_date":"2026-08-26","assets":{"binding":"ASSETS"}}`).ok).toBe(false);
+    expect(parseConfig(`{"name":"hello","main":"src/index.js","compatibility_date":"2026-08-26","assets":{"directory":"public","not_found_handling":"spa"}}`).ok).toBe(false);
   });
 
   test("accepts a complete artifact-v2 manifest", () => {
@@ -37,12 +45,12 @@ describe("Phase A contracts", () => {
     const accepted = await Bun.file("tests/porffor/capabilities/01-hello.js").text();
     const rejected = await Bun.file("tests/porffor/rejected/03-outbound-fetch.js").text();
     expect(validateHttpSyncSource(accepted).ok).toBe(true);
-    expect(validateHttpSyncSource(rejected)).toEqual({
-      ok: false,
-      errors: expect.arrayContaining([
-        "outbound networking is not supported",
-      ]),
-    });
+    // bare fetch() is rejected unless the project declares an `outbound` allowlist
+    const rej = validateHttpSyncSource(rejected);
+    expect(rej.ok).toBe(false);
+    if (!rej.ok) expect(rej.errors.join(" ")).toContain("outbound");
+    // ...and accepted once outbound is allowed
+    expect(validateHttpSyncSource(rejected, true).ok).toBe(true);
   });
 
   test("allows console — native-fetch logs go to the worker's stderr, not a protocol stream", () => {

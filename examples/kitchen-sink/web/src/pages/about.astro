@@ -1,0 +1,55 @@
+---
+import Layout from "../layouts/Layout.astro";
+
+const bindings = [
+  ["vars", "baked config values on env.*"],
+  ["secrets", "fetched from the broker on first use"],
+  ["KV", "env.SESSIONS — get / put / delete / list"],
+  ["D1", "env.DB — SQLite: prepare / bind / all / first / batch / exec"],
+  ["R2", "env.UPLOADS — object storage: put / get / head / list / delete"],
+  ["Queues", "env.EMAILS.send() feeds a queue(batch) handler"],
+  ["Durable Objects", "env.VIEWS — a class with per-id serialized state"],
+  ["Analytics Engine", "env.METRICS.writeDataPoint() plus query()"],
+  ["Cron", "a scheduled(event) handler on a */1 trigger"],
+  ["outbound fetch", "fetch() to an allowlisted host, proxied by the broker"],
+  ["static assets", "this Astro build, served through env.ASSETS"],
+];
+---
+
+<Layout title="What is this? — Sproutboat Notes">
+  <header>
+    <div>
+      <h1>What is this?</h1>
+      <p><a href="/">&larr; back to the app</a></p>
+    </div>
+  </header>
+
+  <article class="prose">
+    <p>This is the <strong>kitchen-sink demo</strong> for <a href="https://sproutboat.com" target="_blank" rel="noreferrer">Sproutboat</a>, an open-source, self-hostable platform for deploying JavaScript workers as native binaries. The API is shaped after Cloudflare Workers, so <code>export default &#123; fetch &#125;</code> and <code>env.*</code> bindings look familiar.</p>
+
+    <p>The app you just clicked through is one worker (<code>src/index.js</code>: a <code>fetch</code> handler, a <code>scheduled</code> handler, a <code>queue</code> handler, and a Durable Object class) that exercises <strong>every binding Sproutboat supports</strong>:</p>
+
+    <ul>
+      {bindings.map(([name, what]) => <li><strong>{name}</strong> &mdash; {what}</li>)}
+    </ul>
+
+    <h2>How it runs</h2>
+    <p><code>sproutboat build</code> ahead-of-time compiles the worker with <a href="https://github.com/CanadaHonk/porffor" target="_blank" rel="noreferrer">Porffor</a> into a standalone native HTTP server: no Node, no V8. The worker has no syscalls of its own, so every <code>env.*</code> call is a blocking round-trip to a small per-deployment <strong>broker</strong> (Bun + SQLite) over a loopback frame protocol.</p>
+
+    <p>This UI is a static <strong>Astro</strong> build. <code>sproutboat build</code> copies it next to the worker and records a manifest; at runtime the worker serves it through the <code>ASSETS</code> binding, with single-page-app fallback for unknown routes.</p>
+
+    <h2>More</h2>
+    <ul>
+      <li><a href="https://sproutboat.com" target="_blank" rel="noreferrer">sproutboat.com</a> &mdash; the project</li>
+      <li><a href="https://github.com/baronunread/sproutboat" target="_blank" rel="noreferrer">github.com/baronunread/sproutboat</a> &mdash; source and self-hosting</li>
+    </ul>
+  </article>
+</Layout>
+
+<style>
+  .prose { max-width: 620px; font-size: 15px; line-height: 1.65; }
+  .prose h2 { font-size: 16px; margin: 28px 0 8px; }
+  .prose code { background: var(--code); border-radius: 4px; padding: 1px 5px; font-size: 13px; }
+  .prose ul { padding-left: 20px; }
+  .prose li { margin: 4px 0; }
+</style>

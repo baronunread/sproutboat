@@ -49,15 +49,15 @@ It only signs in an account that already exists — it never creates one.
 
 ## Deploying to it
 
-Building and uploading worker artifacts is the [`@sproutboat/cli`](https://github.com/baronunread/sproutboat-cli)'s
-job — MIT, its own repo, targets any control plane. It cross-compiles the
-handler with Porffor + Zig (no Docker) and ships only the finished native
-binary; the server never sees your source.
+The [`sproutboat`](https://github.com/baronunread/sproutboat-cli) CLI builds and
+uploads worker artifacts — MIT, its own repo, targets any control plane. It
+cross-compiles the handler with Porffor + Zig (no Docker) and ships only the
+finished native binary; the server never sees your source.
 
 ```sh
-bunx @sproutboat/cli init hello
-bunx @sproutboat/cli login --api-url https://control.<your-domain>
-bunx @sproutboat/cli deploy
+bunx sproutboat init hello
+bunx sproutboat login --api-url https://control.<your-domain>
+bunx sproutboat deploy
 ```
 
 `build`, `deploy --dry-run`, `deploy --artifact`, `tail`, `versions list`,
@@ -80,13 +80,13 @@ seeded `andrea` account, and reserve the `andrea` namespace.
 In another terminal, create, authorize, and deploy a project with the CLI:
 
 ```sh
-bunx @sproutboat/cli init hello
-bunx @sproutboat/cli login --api-url https://control.sproutboat.localhost
+bunx sproutboat init hello
+bunx sproutboat login --api-url https://control.sproutboat.localhost
 # approve in the dashboard, then:
-bunx @sproutboat/cli deploy
+bunx sproutboat deploy
 open https://hello.andrea.sproutboat.localhost
-bunx @sproutboat/cli versions list
-bunx @sproutboat/cli tail hello
+bunx sproutboat versions list
+bunx sproutboat tail hello
 ```
 
 The dashboard is at `https://dashboard.sproutboat.localhost/dashboard`. Control

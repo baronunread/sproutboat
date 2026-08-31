@@ -1,0 +1,28 @@
+{
+  "$schema": "https://sproutboat.com/schema.json",
+  "name": "kitchen-sink",
+  "main": "src/index.js",
+  "compatibility_date": "2026-08-26",
+
+  // Every binding Sproutboat supports, in one app.
+  "vars": {
+    "SITE_NAME": "Sproutboat Notes",
+    "QUOTE_URL": "https://api.quotable.local/random"
+  },
+  "secrets": ["ADMIN_TOKEN"],
+  "kv_namespaces": ["SESSIONS"],
+  "d1_databases": ["DB"],
+  "r2_buckets": ["UPLOADS"],
+  "queues": ["EMAILS"],
+  "analytics_engine_datasets": ["METRICS"],
+  "durable_objects": { "VIEWS": "ViewCounter" },
+  "outbound": ["api.quotable.local"],
+  "triggers": { "crons": ["*/1 * * * *"] },
+  "assets": {
+    // built by Astro — run `bun --cwd web run build` (harness.ts / serve.ts do this for you)
+    "directory": "web/dist",
+    "binding": "ASSETS",
+    "not_found_handling": "single-page-application",
+    "run_sprout_first": true
+  }
+}

@@ -1,0 +1,22 @@
+# Style Doctor — react-doctor for prose. Scans Markdown/text for LLM tells
+# (delve, "rich tapestry", "not just X, but Y", em-dash overuse), filler, and
+# grammar problems. Prints a 0-100 score; exits non-zero on error-severity
+# findings or when the score falls below the floor.
+name: style-doctor
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  prose:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.0
+      # --blocking error (default): only error-severity findings fail the build.
+      # --min 90: also fail if the score drops below 90. The naive passive-voice
+      # and em-dash-density checks stay advisory.
+      - run: bunx style-doctor@latest --quiet --min 90

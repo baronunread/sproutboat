@@ -1,0 +1,30 @@
+---
+// Notes tab — D1 rows, a Durable Object view counter, a Queue producer,
+// and an R2 file attach on the "Add note" form.
+---
+<div class="panel" id="tab-notes">
+  <h2>Notes
+    <span class="tag">D1 · env.DB</span>
+    <span class="tag">DO · env.VIEWS</span>
+    <span class="tag">Queue · env.EMAILS</span>
+    <span class="tag">R2 · env.UPLOADS</span>
+  </h2>
+  <p class="what">
+    Creating a note inserts a D1 row and enqueues an <code>EMAILS</code> job (the
+    <code>queue()</code> handler logs it back). Attach a file and it's an R2
+    <code>put</code>. Opening a note bumps an atomic Durable Object counter.
+  </p>
+  <form id="new-note">
+    <input type="text" name="title" placeholder="Title" required />
+    <textarea name="body" placeholder="Write a note…"></textarea>
+    <div class="row">
+      <button type="submit">Add note</button>
+      <input type="file" id="new-file" />
+      <span class="muted" style="font-size:12px">optional file — attaches to the new note (R2, &le; 900&nbsp;KB in the demo)</span>
+    </div>
+  </form>
+  <p class="ok" id="notes-ok"></p>
+  <p class="err" id="notes-err"></p>
+  <ul id="notes-list" class="notes"></ul>
+  <p class="rawapi"><code><a href="/notes">GET /notes</a></code></p>
+</div>

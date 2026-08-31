@@ -1,0 +1,17 @@
+---
+// Attachments tab — R2 list of every object in the bucket.
+---
+<div class="panel" id="tab-attachments" hidden>
+  <h2>Attachments <span class="tag">R2 · env.UPLOADS</span></h2>
+  <p class="what">
+    Every object in the bucket (<code>list</code>). Files come from the Notes tab;
+    each download link is a <code>get</code> carrying the object's sha256
+    <code>httpEtag</code>.
+  </p>
+  <div class="row"><button class="ghost" id="refresh-att">Refresh</button></div>
+  <table id="att-table">
+    <thead><tr><th>key</th><th>size</th><th>uploaded</th><th></th></tr></thead>
+    <tbody></tbody>
+  </table>
+  <p class="rawapi"><code><a href="/attachments">GET /attachments</a></code></p>
+</div>

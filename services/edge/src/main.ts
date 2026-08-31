@@ -1,6 +1,8 @@
 import { appendFile, mkdir, readFile, stat } from "node:fs/promises";
-import { dirname, resolve } from "node:path";
+import { existsSync, readFileSync } from "node:fs";
+import { dirname, join, resolve } from "node:path";
 import { pool } from "../../supervisor/src/run";
+import { isSproutFirst, type AssetManifest } from "../../../tools/assets";
 import { EdgeCache, cacheableForSeconds } from "./cache";
 
 type JsonValue = string | number | boolean | null | EdgeJsonObject | JsonValue[];
@@ -122,6 +124,30 @@ async function log(event: LogEvent): Promise<void> {
 }
 
 /**
+ * Static-asset manifests, keyed by workerPath. Loaded lazily on first request
+ * to a deployment and dropped when its route changes (like the worker process).
+ * `null` = no `assets.json` next to the artifact.
+ */
+const assetManifests = new Map<string, AssetManifest | null>();
+function assetManifestFor(workerPath: string): AssetManifest | null {
+  const cached = assetManifests.get(workerPath);
+  if (cached !== undefined) return cached;
+  const path = join(dirname(workerPath), "assets.json");
+  let manifest: AssetManifest | null = null;
+  try {
+    if (existsSync(path)) {
+      // SAFETY: this file is written only by `sproutboat build` from the AssetManifest
+      // type; a malformed one just yields lookups that miss and fall through to the worker.
+      manifest = JSON.parse(readFileSync(path, "utf8")) as AssetManifest;
+    }
+  } catch (error) {
+    console.error(`asset manifest load failed for ${workerPath}: ${error instanceof Error ? error.message : String(error)}`);
+  }
+  assetManifests.set(workerPath, manifest);
+  return manifest;
+}
+
+/**
  * Swap in a new route snapshot: dispose workers whose route changed or was
  * removed, then eagerly spawn any newly-routed worker so the first real request
  * to a fresh deploy is not a cold start (pre-warm on activate). Warm-up is
@@ -132,6 +158,7 @@ function swapRoutes(nextRoutes: Map<string, string>, nextMtimeMs: number): void 
   for (const [hostname, workerPath] of routes) {
     if (nextRoutes.get(hostname) !== workerPath) {
       pool.dispose(workerPath);
+      assetManifests.delete(workerPath);
       cache?.purgeHost(hostname); // a new version must not serve the old one's cached responses
     }
   }
@@ -167,6 +194,30 @@ const server = Bun.serve({
     }
 
     const target = new URL(request.url);
+
+    // Static assets, served edge-first (Cloudflare's default). Exact matches only
+    // — SPA / 404 fallback belongs to the worker via `env.<ASSETS>.fetch()`.
+    if (request.method === "GET" || request.method === "HEAD") {
+      const manifest = assetManifestFor(workerPath);
+      let assetKey = decodeURIComponent(target.pathname);
+      if (assetKey.endsWith("/")) assetKey += "index.html";
+      const entry = manifest && !isSproutFirst(manifest.runSproutFirst, assetKey) ? manifest.files[assetKey] : undefined;
+      if (entry) {
+        const inm = request.headers.get("if-none-match");
+        const etag = `"${entry.hash}"`;
+        if (inm === etag) {
+          await log({ hostname: host, method: request.method, status: 304, durationMs: elapsed(), reqBytes, resBytes: 0, cacheStatus: "asset" });
+          return new Response(null, { status: 304, headers: { etag } });
+        }
+        const body = request.method === "HEAD" ? null : await readFile(join(dirname(workerPath), "assets", assetKey));
+        await log({ hostname: host, method: request.method, status: 200, durationMs: elapsed(), reqBytes, resBytes: entry.size, cacheStatus: "asset" });
+        return new Response(body, {
+          status: 200,
+          headers: { "content-type": entry.type, etag, "content-length": String(entry.size), "cache-control": "public, max-age=0, must-revalidate" },
+        });
+      }
+    }
+
     const cacheKey = cache && request.method === "GET" ? EdgeCache.key(host, "GET", target.pathname + target.search) : null;
     if (cacheKey) {
       const hit = cache!.get(cacheKey);

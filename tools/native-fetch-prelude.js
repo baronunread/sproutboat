@@ -148,3 +148,538 @@ if (globalThis.crypto.randomUUID == null) {
     return `${h[0]}${h[1]}${h[2]}${h[3]}-${h[4]}${h[5]}-${h[6]}${h[7]}-${h[8]}${h[9]}-${h[10]}${h[11]}${h[12]}${h[13]}${h[14]}${h[15]}`;
   };
 }
+
+// ---------------------------------------------------------------------------
+// Bindings: env.<KV>, env.<SECRET>, env.<D1>, env.<R2>, and globalThis.fetch,
+// backed by a Bun broker on a loopback TCP port. The transport is inline C — blocking
+// socket/connect/write/read per call (http-sync-v0: one worker event-loop turn
+// per request, so a blocking roundtrip is acceptable). Wire frame:
+//   [u32 LE len][ <token> "\n" <json> ]   reply: [u32 LE len][ <json> ]
+// SB_BROKER_PORT / SB_BROKER_TOKEN are set by the supervisor next to $PORT.
+// If SB_BROKER_PORT is unset the shims below are never installed (compile.ts
+// only emits the __sbInstallBindings call when the project declares bindings),
+// so a plain worker is byte-for-byte unchanged.
+// ponytail: blocking IO, fresh connection per call, text values only. Connection
+// pooling + binary values + non-blocking = v2.
+
+Porffor.c`
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <unistd.h>
+#include <string.h>
+#include <stdlib.h>
+#include <stdio.h>
+
+u32 porf_native_fetch_alloc_bytestring(const char* input, size_t len);
+int porf_native_fetch_read_value(jsval value, const char** out_buf, size_t* out_len, char** out_owned);
+
+static int sb_io_all(int fd, unsigned char* buf, size_t len, int writing) {
+  size_t done = 0;
+  while (done < len) {
+    long n = writing ? write(fd, buf + done, len - done) : read(fd, buf + done, len - done);
+    if (n <= 0) return -1;
+    done += (size_t)n;
+  }
+  return 0;
+}
+
+static int sb_broker_roundtrip(const char* req, size_t req_len, char** resp_out, size_t* resp_len_out) {
+  *resp_out = NULL;
+  *resp_len_out = 0;
+
+  const char* port_s = getenv("SB_BROKER_PORT");
+  if (!port_s) return -10;
+  int port = atoi(port_s);
+  const char* tok = getenv("SB_BROKER_TOKEN");
+  size_t tok_len = tok ? strlen(tok) : 0;
+
+  int fd = socket(AF_INET, SOCK_STREAM, 0);
+  if (fd < 0) return -1;
+
+  struct sockaddr_in addr;
+  memset(&addr, 0, sizeof(addr));
+  addr.sin_family = AF_INET;
+  addr.sin_port = htons((unsigned short)port);
+  addr.sin_addr.s_addr = htonl(0x7f000001u); // 127.0.0.1
+  if (connect(fd, (struct sockaddr*)&addr, sizeof(addr)) != 0) { close(fd); return -2; }
+
+  // frame body: token "\n" json
+  size_t body_len = tok_len + 1 + req_len;
+  unsigned char* frame = (unsigned char*)malloc(4 + body_len);
+  if (!frame) { close(fd); return -5; }
+  frame[0] = (unsigned char)(body_len & 0xff);
+  frame[1] = (unsigned char)((body_len >> 8) & 0xff);
+  frame[2] = (unsigned char)((body_len >> 16) & 0xff);
+  frame[3] = (unsigned char)((body_len >> 24) & 0xff);
+  if (tok_len) memcpy(frame + 4, tok, tok_len);
+  frame[4 + tok_len] = '\n';
+  if (req_len) memcpy(frame + 4 + tok_len + 1, req, req_len);
+  int wr = sb_io_all(fd, frame, 4 + body_len, 1);
+  free(frame);
+  if (wr != 0) { close(fd); return -3; }
+
+  unsigned char rhdr[4];
+  if (sb_io_all(fd, rhdr, 4, 0) != 0) { close(fd); return -4; }
+  size_t rlen = (size_t)rhdr[0] | ((size_t)rhdr[1] << 8) | ((size_t)rhdr[2] << 16) | ((size_t)rhdr[3] << 24);
+
+  char* buf = (char*)malloc(rlen ? rlen : 1);
+  if (!buf) { close(fd); return -5; }
+  if (rlen && sb_io_all(fd, (unsigned char*)buf, rlen, 0) != 0) { free(buf); close(fd); return -6; }
+  close(fd);
+
+  *resp_out = buf;
+  *resp_len_out = rlen;
+  return 0;
+}
+`;
+
+// One request string in, one reply string out. `reqJson` is a parameter, so the
+// generated C names it directly in the RawC block below.
+function __sbCall(reqJson) {
+  let res = '';
+  Porffor.c`
+    const char* __req; size_t __reqlen; char* __reqowned = 0;
+    porf_native_fetch_read_value(reqJson, &__req, &__reqlen, &__reqowned);
+    char* __resp = 0; size_t __resplen = 0;
+    int __rc = sb_broker_roundtrip(__req, __reqlen, &__resp, &__resplen);
+    if (__reqowned) free(__reqowned);
+    if (__rc == 0) {
+      res = porf_box((f64)porf_native_fetch_alloc_bytestring(__resp, __resplen), 195);
+      free(__resp);
+    } else {
+      char __e[40];
+      int __n = snprintf(__e, sizeof(__e), "{\"ok\":false,\"error\":\"broker rc %d\"}", __rc);
+      res = porf_box((f64)porf_native_fetch_alloc_bytestring(__e, (size_t)__n), 195);
+    }
+  `;
+  return res;
+}
+
+function __sbRpc(op, extra) {
+  const req = { op };
+  if (extra) for (const k in extra) req[k] = extra[k];
+  const reply = JSON.parse(__sbCall(JSON.stringify(req)));
+  if (reply && reply.ok === false) throw new Error(`sproutboat ${op}: ${reply.error || 'failed'}`);
+  return reply;
+}
+
+// D1: a Cloudflare-shaped `env.<DB>` (prepare / bind / all / run / raw / first,
+// plus batch and exec). Every call is one broker roundtrip.
+function __sbMakeD1(dbName) {
+  function stmt(sql, params) {
+    const s = {
+      __sql: sql,
+      __params: params,
+      bind() { return stmt(sql, Array.prototype.slice.call(arguments)); },
+      all() {
+        const r = __sbRpc('d1.query', { db: dbName, sql, params });
+        return { results: r.results || [], success: true, meta: r.meta || {} };
+      },
+      run() { return s.all(); },
+      raw() {
+        const rows = s.all().results;
+        const out = [];
+        for (let i = 0; i < rows.length; i++) {
+          const cols = [];
+          for (const k in rows[i]) cols.push(rows[i][k]);
+          out.push(cols);
+        }
+        return out;
+      },
+      first(column) {
+        const rows = s.all().results;
+        if (rows.length === 0) return null;
+        return column == null ? rows[0] : rows[0][column];
+      },
+    };
+    return s;
+  }
+  return {
+    prepare(sql) { return stmt(String(sql), []); },
+    batch(statements) {
+      const list = [];
+      for (let i = 0; i < (statements || []).length; i++) list.push({ sql: statements[i].__sql, params: statements[i].__params });
+      const r = __sbRpc('d1.batch', { db: dbName, statements: list });
+      const out = [];
+      for (let i = 0; i < (r.results || []).length; i++) out.push({ results: r.results[i].results || [], success: true, meta: r.results[i].meta || {} });
+      return out;
+    },
+    exec(sql) {
+      __sbRpc('d1.exec', { db: dbName, sql: String(sql) });
+      return { count: (String(sql).match(/;/g) || []).length, duration: 0 };
+    },
+  };
+}
+
+// R2: a Cloudflare-shaped object. When `body` is present the sync accessors
+// mirror R2ObjectBody's async ones (a worker may `await` them harmlessly).
+function __sbR2Object(meta, body) {
+  const obj = {
+    key: meta.key,
+    size: meta.size,
+    etag: meta.etag,
+    httpEtag: '"' + meta.etag + '"',
+    uploaded: meta.uploaded,
+    httpMetadata: meta.httpMetadata || {},
+    customMetadata: meta.customMetadata || {},
+  };
+  if (body != null) {
+    obj.body = body;
+    obj.text = function () { return body; };
+    obj.json = function () { return JSON.parse(body); };
+  }
+  return obj;
+}
+
+// Installed only when the project declares bindings. `env` is the module-scoped
+// object from compile.ts (a `const`, but mutable); we add the binding accessors
+// to it in place. compile.ts emits `__sbInstallBindings(env, {...})` right after
+// the `const env = {...}` line.
+globalThis.__sbInstallBindings = function (target, bindings) {
+  if (!target) return;
+
+  for (let i = 0; i < (bindings.kv || []).length; i++) {
+    const ns = bindings.kv[i];
+    target[ns] = {
+      get(key) {
+        const r = __sbRpc('kv.get', { ns, key: String(key) });
+        return r.found ? r.value : null;
+      },
+      put(key, value) {
+        __sbRpc('kv.put', { ns, key: String(key), value: String(value) });
+      },
+      delete(key) {
+        __sbRpc('kv.delete', { ns, key: String(key) });
+      },
+      list(prefix) {
+        return __sbRpc('kv.list', { ns, prefix: prefix == null ? '' : String(prefix) }).keys || [];
+      },
+    };
+  }
+
+  for (let i = 0; i < (bindings.secrets || []).length; i++) {
+    const name = bindings.secrets[i];
+    Object.defineProperty(target, name, {
+      configurable: true,
+      get() { return __sbRpc('secret.get', { name }).value; },
+    });
+  }
+
+  for (let i = 0; i < (bindings.d1 || []).length; i++) {
+    const name = bindings.d1[i];
+    target[name] = __sbMakeD1(name);
+  }
+
+  for (let i = 0; i < (bindings.r2 || []).length; i++) {
+    const name = bindings.r2[i];
+    target[name] = {
+      put(key, value, options) {
+        const o = options || {};
+        return __sbRpc('r2.put', {
+          bucket: name,
+          key: String(key),
+          body: value == null ? '' : String(value),
+          httpMetadata: o.httpMetadata || {},
+          customMetadata: o.customMetadata || {},
+        }).object;
+      },
+      get(key) {
+        const r = __sbRpc('r2.get', { bucket: name, key: String(key) });
+        return r.found ? __sbR2Object(r.object, r.body == null ? '' : r.body) : null;
+      },
+      head(key) {
+        const r = __sbRpc('r2.head', { bucket: name, key: String(key) });
+        return r.found ? __sbR2Object(r.object, null) : null;
+      },
+      delete(key) {
+        __sbRpc('r2.delete', { bucket: name, key: String(key) });
+      },
+      list(options) {
+        const o = options || {};
+        const r = __sbRpc('r2.list', {
+          bucket: name,
+          prefix: o.prefix == null ? '' : String(o.prefix),
+          cursor: o.cursor == null ? '' : String(o.cursor),
+          limit: o.limit == null ? 1000 : o.limit,
+        });
+        const objects = [];
+        for (let j = 0; j < (r.objects || []).length; j++) objects.push(__sbR2Object(r.objects[j], null));
+        return { objects, truncated: !!r.truncated, cursor: r.cursor || undefined };
+      },
+    };
+  }
+
+  for (let i = 0; i < (bindings.queues || []).length; i++) {
+    const name = bindings.queues[i];
+    target[name] = {
+      send(body, options) {
+        const o = options || {};
+        __sbRpc('queue.send', { queue: name, body: typeof body === 'string' ? body : JSON.stringify(body), delaySeconds: o.delaySeconds || 0 });
+      },
+      sendBatch(messages) {
+        const list = [];
+        for (let j = 0; j < (messages || []).length; j++) {
+          const m = messages[j];
+          list.push({ body: typeof m.body === 'string' ? m.body : JSON.stringify(m.body), delaySeconds: (m.delaySeconds || 0) });
+        }
+        __sbRpc('queue.send_batch', { queue: name, messages: list });
+      },
+    };
+  }
+
+  for (let i = 0; i < (bindings.analytics || []).length; i++) {
+    const name = bindings.analytics[i];
+    target[name] = {
+      writeDataPoint(event) {
+        const e = event || {};
+        __sbRpc('ae.write', {
+          dataset: name,
+          indexes: e.indexes || [],
+          blobs: e.blobs || [],
+          doubles: e.doubles || [],
+        });
+      },
+      // Sproutboat extension (Cloudflare AE is write-only from a Worker — you
+      // query it via the SQL API). Returns { count, rows }.
+      query(options) {
+        const o = options || {};
+        return __sbRpc('ae.query', { dataset: name, limit: o.limit || 20 });
+      },
+    };
+  }
+
+  for (let i = 0; i < (bindings.do || []).length; i++) {
+    const b = bindings.do[i];
+    target[b.binding] = __sbMakeDONamespace(b.binding, b.className);
+  }
+
+  // Static assets: env.<ASSETS>.fetch(request) -> broker `assets.get`. The edge
+  // already serves matching files directly; the worker only calls this for paths
+  // it wants to own (SPA fallback, auth-gated files). Text assets only — binary
+  // files go through the edge (the broker frame is UTF-8 JSON).
+  if (bindings.assets) {
+    target[bindings.assets] = {
+      fetch(input) {
+        let path = typeof input === 'string' ? input : String(input && input.url || '/');
+        try { path = new URL(path, 'http://a').pathname; } catch (_e) { /* use as-is */ }
+        const r = __sbRpc('assets.get', { path });
+        const headers = {};
+        if (r.type) headers['content-type'] = r.type;
+        if (r.found) headers['etag'] = '"' + r.hash + '"';
+        return new Response(r.body == null ? '' : r.body, { status: r.status || (r.found ? 200 : 404), headers });
+      },
+    };
+  }
+
+  if ((bindings.outbound || []).length > 0) {
+    globalThis.fetch = function (input, init) {
+      const url = typeof input === 'string' ? input : String(input.url);
+      const opts = init || {};
+      const headers = [];
+      if (opts.headers) {
+        if (typeof opts.headers.forEach === 'function') opts.headers.forEach((v, k) => headers.push([k, v]));
+        else for (const k in opts.headers) headers.push([k, opts.headers[k]]);
+      }
+      const r = __sbRpc('fetch', {
+        url,
+        method: opts.method || 'GET',
+        headers,
+        body: opts.body == null ? null : String(opts.body),
+      });
+      const respHeaders = new Headers();
+      for (let j = 0; j < (r.headers || []).length; j++) respHeaders.set(r.headers[j][0], r.headers[j][1]);
+      return new Response(r.body == null ? '' : r.body, { status: r.status || 502, headers: respHeaders });
+    };
+  }
+};
+
+// ---------------------------------------------------------------------------
+// Durable Objects. The class runs here in the sandboxed worker. There is exactly
+// one worker process per deployment (the supervisor model) and the native-fetch
+// runtime processes one turn at a time, so calls to a given object id are
+// already serialized — `env.<NS>.get(id).fetch()` invokes the instance directly,
+// no round-trip. Only `state.storage.*` goes to the broker (so object state
+// outlives a worker restart), scoped to (class, id).
+// ponytail: serialization relies on the single worker process; a multi-worker
+// deployment needs the broker to hold a per-id lock (cloud). Storage ops are one
+// key at a time; blockConcurrencyWhile just runs the fn.
+
+function __sbMakeDONamespace(binding, className) {
+  return {
+    idFromName(name) { return { toString() { return 'name:' + String(name); }, name: String(name) }; },
+    idFromString(hex) { return { toString() { return String(hex); } }; },
+    newUniqueId() {
+      const id = (globalThis.crypto && crypto.randomUUID ? crypto.randomUUID() : String(Math.random()).slice(2));
+      return { toString() { return 'uid:' + id; } };
+    },
+    get(id) {
+      const idStr = typeof id === 'string' ? id : id.toString();
+      return {
+        fetch(input, init) {
+          let req;
+          if (input && typeof input === 'object' && typeof input.url === 'string' && !init) {
+            req = input;
+          } else {
+            const url = typeof input === 'string' ? input : String((input && input.url) || 'https://do/');
+            const opts = init || {};
+            const headers = new Headers();
+            if (opts.headers) {
+              if (typeof opts.headers.forEach === 'function') opts.headers.forEach((v, k) => headers.set(k, v));
+              else for (const k in opts.headers) headers.set(k, opts.headers[k]);
+            }
+            req = new Request(url, { method: opts.method || 'GET', headers });
+            if (opts.body != null) req.body = String(opts.body);
+          }
+          return __sbGetDOInstance(className, idStr).fetch(req);
+        },
+      };
+    },
+  };
+}
+
+const __sbDOClasses = {};
+const __sbDOInstances = {};
+globalThis.__sbRegisterDO = function (map) {
+  for (const k in map) __sbDOClasses[k] = map[k];
+};
+
+function __sbGetDOInstance(cls, id) {
+  const Ctor = __sbDOClasses[cls];
+  if (!Ctor) throw new Error('no such Durable Object class: ' + cls);
+  const cacheKey = cls + ' ' + id;
+  let inst = __sbDOInstances[cacheKey];
+  if (!inst) {
+    const state = {
+      id: { toString() { return id; } },
+      storage: __sbDOStorage(cls, id),
+      blockConcurrencyWhile(fn) { return fn(); },
+      waitUntil() {},
+    };
+    inst = new Ctor(state, globalThis.env);
+    __sbDOInstances[cacheKey] = inst;
+  }
+  return inst;
+}
+
+function __sbDOStorage(cls, id) {
+  return {
+    get(key) {
+      if (Array.isArray(key)) {
+        const out = new Map();
+        for (let i = 0; i < key.length; i++) {
+          const r = __sbRpc('do.storage.get', { cls, id, key: String(key[i]) });
+          if (r.found) out.set(key[i], JSON.parse(r.value));
+        }
+        return out;
+      }
+      const r = __sbRpc('do.storage.get', { cls, id, key: String(key) });
+      return r.found ? JSON.parse(r.value) : undefined;
+    },
+    put(key, value) {
+      if (key != null && typeof key === 'object') {
+        for (const k in key) __sbRpc('do.storage.put', { cls, id, key: String(k), value: JSON.stringify(key[k]) });
+        return;
+      }
+      __sbRpc('do.storage.put', { cls, id, key: String(key), value: JSON.stringify(value) });
+    },
+    delete(key) {
+      if (Array.isArray(key)) {
+        let n = 0;
+        for (let i = 0; i < key.length; i++) n += __sbRpc('do.storage.delete', { cls, id, key: String(key[i]) }).deleted ? 1 : 0;
+        return n;
+      }
+      return !!__sbRpc('do.storage.delete', { cls, id, key: String(key) }).deleted;
+    },
+    deleteAll() { __sbRpc('do.storage.delete_all', { cls, id }); },
+    list(options) {
+      const o = options || {};
+      const r = __sbRpc('do.storage.list', { cls, id, prefix: o.prefix == null ? '' : String(o.prefix), limit: o.limit == null ? 1000 : o.limit });
+      const out = new Map();
+      for (let i = 0; i < (r.entries || []).length; i++) out.set(r.entries[i][0], JSON.parse(r.entries[i][1]));
+      return out;
+    },
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Trigger dispatch. The compiled server only ever calls `fetch(request)`; this
+// routes the internal `x-sb-trigger` requests (sent by the broker, authenticated
+// with SB_BROKER_TOKEN) to the right user handler, and everything else to
+// `handlers.fetch`.
+
+function __sbEnv(name) {
+  let res = '';
+  Porffor.c`
+    const char* __n; size_t __nl; char* __no = 0;
+    porf_native_fetch_read_value(name, &__n, &__nl, &__no);
+    char __key[128];
+    size_t __kn = __nl < 127 ? __nl : 127;
+    memcpy(__key, __n, __kn); __key[__kn] = 0;
+    if (__no) free(__no);
+    const char* __v = getenv(__key);
+    if (__v) res = porf_box((f64)porf_native_fetch_alloc_bytestring(__v, strlen(__v)), 195);
+  `;
+  return res;
+}
+
+function __sbTriggerAuthed(request) {
+  const want = __sbEnv('SB_BROKER_TOKEN');
+  if (!want) return true; // no token configured (local/dev)
+  return request.headers.get('x-sb-token') === want;
+}
+
+globalThis.__sbEntry = function (handlers, request) {
+  const trigger = request.headers.get('x-sb-trigger');
+  if (!trigger) return handlers.fetch(request);
+  if (!__sbTriggerAuthed(request)) return new Response('forbidden', { status: 403 });
+
+  if (trigger === 'scheduled') {
+    if (typeof handlers.scheduled !== 'function') return new Response('no scheduled handler', { status: 404 });
+    const body = __sbReadJson(request);
+    handlers.scheduled({ cron: body.cron || '', scheduledTime: body.scheduledTime || Date.now(), noRetry() {} });
+    return new Response('', { status: 204 });
+  }
+
+  if (trigger === 'queue') {
+    if (typeof handlers.queue !== 'function') return new Response('no queue handler', { status: 404 });
+    const body = __sbReadJson(request);
+    const acked = [];
+    const retried = [];
+    const raw = body.messages || [];
+    const messages = [];
+    for (let i = 0; i < raw.length; i++) {
+      const m = raw[i];
+      const msg = {
+        id: m.id,
+        timestamp: m.timestamp,
+        attempts: m.attempts || 1,
+        body: __sbTryParse(m.body),
+        ack() { if (acked.indexOf(m.id) === -1) acked.push(m.id); },
+        retry() { if (retried.indexOf(m.id) === -1) retried.push(m.id); },
+      };
+      messages.push(msg);
+    }
+    const batch = {
+      queue: body.queue || '',
+      messages,
+      ackAll() { for (let i = 0; i < messages.length; i++) messages[i].ack(); },
+      retryAll() { for (let i = 0; i < messages.length; i++) messages[i].retry(); },
+    };
+    handlers.queue(batch);
+    // default: any message neither acked nor retried is treated as acked
+    for (let i = 0; i < messages.length; i++) {
+      if (acked.indexOf(messages[i].id) === -1 && retried.indexOf(messages[i].id) === -1) acked.push(messages[i].id);
+    }
+    return new Response(JSON.stringify({ ack: acked, retry: retried }), { headers: { 'content-type': 'application/json' } });
+  }
+
+  
+  return new Response('unknown trigger', { status: 400 });
+};
+
+function __sbReadJson(request) {
+  try { return JSON.parse(request.body == null ? '{}' : String(request.body)); } catch (e) { return {}; }
+}
+function __sbTryParse(s) {
+  try { return JSON.parse(s); } catch (e) { return s; }
+}

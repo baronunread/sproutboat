@@ -1,4 +1,6 @@
-import { resolve } from "node:path";
+import { existsSync } from "node:fs";
+import { randomBytes } from "node:crypto";
+import { dirname, resolve } from "node:path";
 import { connect } from "node:net";
 import { workerCommand } from "./sandbox";
 
@@ -37,12 +39,62 @@ const defaultReadyTimeoutMs = 10_000;
 const defaultIdleMs = 600_000;
 const defaultPortRange: readonly [number, number] = [40_000, 49_999];
 
-function spawnNativeWorker(workerPath: string, port: number): WorkerChild {
-  return Bun.spawn(workerCommand(workerPath), {
+const brokerEntry = resolve(import.meta.dir, "../../broker/src/broker.ts");
+
+/**
+ * Bindings broker sidecar. Spawned only when the artifact ships a `bindings.json`
+ * (KV / D1 / R2 / queues / secrets / cron / Durable Objects). The worker reaches
+ * it on `SB_BROKER_PORT`; the broker delivers cron + queue triggers back to the
+ * worker on `SB_WORKER_URL`.
+ *
+ * ponytail: broker port is `workerPort + 10000` — deterministic, within the
+ * ephemeral range, no second allocator. Give the broker its own port pool if two
+ * live workers ever land exactly 10000 apart.
+ */
+function spawnWithBroker(workerPath: string, port: number): WorkerChild {
+  const workerDir = dirname(workerPath);
+  const bindingsPath = resolve(workerDir, "bindings.json");
+  let broker: Bun.Subprocess | null = null;
+  const brokerEnv: Record<string, string> = {};
+
+  if (existsSync(bindingsPath)) {
+    const brokerPort = port + 10_000;
+    const token = randomBytes(24).toString("hex");
+    const stateDir = process.env.SPROUTBOAT_BROKER_STATE_DIR || resolve(workerDir, ".broker");
+    const args = [
+      "bun", brokerEntry,
+      "--port", String(brokerPort),
+      "--token", token,
+      "--db", resolve(stateDir, "state.sqlite"),
+      "--data-dir", resolve(stateDir, "d1"),
+      "--bindings", bindingsPath,
+      "--worker-url", `http://127.0.0.1:${port}/`,
+    ];
+    const secretsPath = resolve(workerDir, "secrets.json");
+    if (existsSync(secretsPath)) args.push("--secrets", secretsPath);
+    // Static assets published beside the artifact back `env.<ASSETS>.fetch()`.
+    if (existsSync(resolve(workerDir, "assets.json"))) args.push("--assets-dir", resolve(workerDir, "assets"));
+    broker = Bun.spawn(args, { stdout: "ignore", stderr: "ignore", env: process.env });
+    brokerEnv.SB_BROKER_PORT = String(brokerPort);
+    brokerEnv.SB_BROKER_TOKEN = token;
+  }
+
+  const worker = Bun.spawn(workerCommand(workerPath), {
     stdout: "ignore",
     stderr: "ignore",
-    env: { ...process.env, PORT: String(port) },
+    env: { ...process.env, PORT: String(port), ...brokerEnv },
   });
+  return {
+    exited: worker.exited,
+    kill(signal?: number) {
+      worker.kill(signal ?? 9);
+      broker?.kill(9);
+    },
+  };
+}
+
+function spawnNativeWorker(workerPath: string, port: number): WorkerChild {
+  return spawnWithBroker(workerPath, port);
 }
 
 async function listens(port: number): Promise<boolean> {

@@ -1,0 +1,13 @@
+---
+// Outbound fetch tab — a single allowlisted fetch(env.QUOTE_URL).
+---
+<div class="panel" id="tab-outbound" hidden>
+  <h2>Outbound fetch <span class="tag">env.QUOTE_URL</span></h2>
+  <p class="what">
+    <code>fetch(env.QUOTE_URL)</code> — allowed only because that host is in the
+    <code>outbound</code> allowlist; the call is proxied through the broker.
+  </p>
+  <p class="quote" id="quote">…</p>
+  <div class="row"><button class="ghost" id="refresh-quote">Another</button></div>
+  <p class="rawapi"><code><a href="/quote">GET /quote</a></code></p>
+</div>

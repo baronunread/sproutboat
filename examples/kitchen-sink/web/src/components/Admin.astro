@@ -1,0 +1,28 @@
+---
+// Admin tab — secret-gated dashboard: one tile per binding, recent Analytics
+// events, and the last cron heartbeat.
+---
+<div class="panel" id="tab-admin" hidden>
+  <h2>Admin dashboard
+    <span class="tag">secret · env.ADMIN_TOKEN</span>
+    <span class="tag">Analytics · env.METRICS</span>
+    <span class="tag">cron</span>
+  </h2>
+  <p class="what">
+    Gated by the <code>ADMIN_TOKEN</code> secret. Tiles read one number per
+    binding; the event list comes from <code>env.METRICS.query()</code>;
+    heartbeats are written by the <code>*/1</code> cron.
+  </p>
+  <form id="admin-form" class="row">
+    <input type="password" id="admin-pw" placeholder="admin password" style="max-width:220px" autocomplete="off" />
+    <button type="submit">Unlock</button>
+    <span id="admin-state" class="muted"></span>
+  </form>
+  <p class="hint">demo password: <code>s3cr3t-admin</code></p>
+  <div id="admin-body" hidden>
+    <div class="grid" id="tiles"></div>
+    <div class="events" id="events"></div>
+  </div>
+  <p class="err" id="admin-err"></p>
+  <p class="rawapi"><code>GET /admin/stats</code> — header <code>x-admin-token</code></p>
+</div>

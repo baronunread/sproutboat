@@ -13,7 +13,10 @@
     ".pi/**",
     ".roo/**",
     ".windsurf/**",
-    "tools/oxlint/anti-slop/**"
+    "tools/oxlint/anti-slop/**",
+    "tools/native-fetch-prelude.js",
+    "services/broker/**",
+    "examples/**"
   ],
   "jsPlugins": [
     {

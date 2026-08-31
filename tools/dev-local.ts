@@ -53,7 +53,7 @@ async function main() {
   requireCommand("npx");
   await mkdir(state, { recursive: true });
 
-  // Building worker artifacts is the CLI's job now (`bunx @sproutboat/cli`,
+  // Building worker artifacts is the CLI's job now (`bunx sproutboat`,
   // which cross-compiles with Porffor + Zig — no Docker). This harness only
   // brings up the platform: control, edge, dashboard.
 
@@ -66,7 +66,7 @@ async function main() {
   // The dashboard's SSR auth loader fetches the control API over the self-signed
   // portless cert; let its process trust it for local dev.
   start("dashboard at https://dashboard.sproutboat.localhost", ["portless", "--force", "dashboard.sproutboat", "bun", "run", "web"], environment({ NODE_TLS_REJECT_UNAUTHORIZED: "0" }));
-  console.log("\nReady:\n  Dashboard  https://dashboard.sproutboat.localhost\n  Control    https://control.sproutboat.localhost\n  Deployments https://<project>.<owner>.sproutboat.localhost\n\nDeploy with the CLI:\n  bunx @sproutboat/cli login --api-url https://control.sproutboat.localhost\n  bunx @sproutboat/cli deploy\n");
+  console.log("\nReady:\n  Dashboard  https://dashboard.sproutboat.localhost\n  Control    https://control.sproutboat.localhost\n  Deployments https://<project>.<owner>.sproutboat.localhost\n\nDeploy with the CLI:\n  bunx sproutboat login --api-url https://control.sproutboat.localhost\n  bunx sproutboat deploy\n");
 }
 
 for (const signal of ["SIGINT", "SIGTERM"] as const) process.on(signal, () => {

@@ -1,0 +1,37 @@
+---
+import Layout from "../layouts/Layout.astro";
+import Notes from "../components/Notes.astro";
+import Attachments from "../components/Attachments.astro";
+import Outbound from "../components/Outbound.astro";
+import Admin from "../components/Admin.astro";
+---
+
+<Layout title="Sproutboat Notes">
+  <header>
+    <div>
+      <h1>Sproutboat Notes</h1>
+      <p>One app wired to every Sproutboat binding — one tab per group. <a href="/about.html">What is this?</a></p>
+    </div>
+    <div class="auth">
+      <button id="login">Log in</button>
+      <span id="who">not logged in</span>
+      <span class="cap">KV · env.SESSIONS</span>
+    </div>
+  </header>
+
+  <nav class="tabs">
+    <button data-tab="notes" class="active">Notes</button>
+    <button data-tab="attachments">Attachments</button>
+    <button data-tab="outbound">Outbound&nbsp;fetch</button>
+    <button data-tab="admin">Admin</button>
+  </nav>
+
+  <Notes />
+  <Attachments />
+  <Outbound />
+  <Admin />
+
+  <script>
+    import "../scripts/app.ts";
+  </script>
+</Layout>

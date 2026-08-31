@@ -1,0 +1,11 @@
+{
+  "name": "sproutboat-kitchen-sink",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "bun --cwd web run build",
+    "deploy": "bun run build && bunx sproutboat deploy",
+    "dev": "bun serve.ts",
+    "test": "bun harness.ts"
+  }
+}
