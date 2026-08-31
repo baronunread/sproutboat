@@ -36,6 +36,30 @@ export function contentType(name: string): string {
   return (dot >= 0 ? TYPES.get(name.slice(dot + 1).toLowerCase()) : undefined) ?? "application/octet-stream";
 }
 
+/**
+ * Resolve a request path to a manifest key the way a static host does:
+ *   - an exact hit wins;
+ *   - a directory path (`/docs/`) tries `/docs/index.html`;
+ *   - an extensionless path (`/docs`) tries `/docs.html`, then `/docs/index.html`.
+ * Returns the matched key, or `null`. This only picks which file to serve — no
+ * canonical redirects, and the caller still owns not-found handling. Mirrors
+ * Cloudflare's `html_handling: "auto-trailing-slash"` minus the 3xx responses.
+ */
+export function resolveAssetKey(path: string, has: (key: string) => boolean): string | null {
+  if (!path.startsWith("/")) path = `/${path}`;
+  if (path.endsWith("/")) {
+    const index = `${path}index.html`;
+    return has(index) ? index : null;
+  }
+  if (has(path)) return path;
+  const base = path.slice(path.lastIndexOf("/") + 1);
+  if (!base.includes(".")) {
+    if (has(`${path}.html`)) return `${path}.html`;
+    if (has(`${path}/index.html`)) return `${path}/index.html`;
+  }
+  return null;
+}
+
 /** Walk `dir` recursively, returning `{ "/path": {hash,size,type} }`. */
 export function walkAssets(dir: string) {
   const out: AssetFiles = {};

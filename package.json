@@ -14,6 +14,7 @@
     "e2e:ui": "playwright test --ui",
     "test": "bun test apps/ services/ tests/",
     "example:kitchen-sink": "bun examples/kitchen-sink/harness.ts",
+    "measure:coldstart": "bun tools/measure-coldstart.ts",
     "lint": "oxlint .",
     "style": "bunx style-doctor@latest --quiet",
     "doctor": "react-doctor apps/web --no-telemetry --blocking none -y",

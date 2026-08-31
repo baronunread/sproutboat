@@ -1,8 +1,30 @@
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync, rmSync } from "node:fs";
 import { randomBytes } from "node:crypto";
 import { dirname, resolve } from "node:path";
 import { connect } from "node:net";
 import { workerCommand } from "./sandbox";
+
+/**
+ * Where the worker writes the wall-clock ms at which its bundled JS began
+ * running (#41). Diffed against the spawn time, it splits cold-start into
+ * "process + runtime bootstrap" (spawn -> JS starts) and "module eval + bind"
+ * (JS starts -> listening). Both the spawn env (`SB_STARTUP_FILE`) and the
+ * reader derive the same path.
+ */
+export const startupFilePath = (workerPath: string, port: number): string =>
+  resolve(dirname(workerPath), `.startup-${port}`);
+
+function readBootMs(file: string, spawnedAt: number, startupMs: number): number {
+  try {
+    const jsStartedAt = Number(readFileSync(file, "utf8").trim());
+    if (!Number.isFinite(jsStartedAt)) return 0;
+    const boot = Math.round(jsStartedAt - spawnedAt);
+    // same host, same CLOCK_REALTIME — clamp only to absorb rounding slop
+    return boot < 0 ? 0 : boot > startupMs ? startupMs : boot;
+  } catch {
+    return 0;
+  }
+}
 
 /**
  * One long-lived native-fetch HTTP server per deployment.
@@ -25,7 +47,7 @@ export type WorkerFactory = (workerPath: string, port: number) => WorkerChild;
  * start (0 on a warm hit). The edge records both per request so the dashboard
  * can chart cold-start rate and startup-time percentiles.
  */
-export type Endpoint = { url: string; coldStart: boolean; startupMs: number };
+export type Endpoint = { url: string; coldStart: boolean; startupMs: number; bootMs: number };
 
 export type WorkerPoolOptions = {
   readonly spawn?: WorkerFactory;
@@ -79,10 +101,12 @@ function spawnWithBroker(workerPath: string, port: number): WorkerChild {
     brokerEnv.SB_BROKER_TOKEN = token;
   }
 
+  const startupFile = startupFilePath(workerPath, port);
+  try { rmSync(startupFile, { force: true }); } catch { /* fresh spawn */ }
   const worker = Bun.spawn(workerCommand(workerPath), {
     stdout: "ignore",
     stderr: "ignore",
-    env: { ...process.env, PORT: String(port), ...brokerEnv },
+    env: { ...process.env, PORT: String(port), SB_STARTUP_FILE: startupFile, ...brokerEnv },
   });
   return {
     exited: worker.exited,
@@ -113,6 +137,8 @@ class WorkerServer {
   lastUsedAt: number;
   /** Spawn→listening wait in ms, set once the process accepts a connection. */
   startupMs = 0;
+  /** Spawn->JS-start slice of startupMs: process create + ld.so + runtime init (#41). */
+  bootMs = 0;
 
   constructor(
     readonly workerPath: string,
@@ -127,7 +153,10 @@ class WorkerServer {
     this.lastUsedAt = now();
     const spawnedAt = Date.now();
     this.#child = spawn(workerPath, port);
-    this.#ready = this.#awaitListening(readyTimeoutMs).then(() => { this.startupMs = Date.now() - spawnedAt; });
+    this.#ready = this.#awaitListening(readyTimeoutMs).then(() => {
+      this.startupMs = Date.now() - spawnedAt;
+      this.bootMs = readBootMs(startupFilePath(workerPath, port), spawnedAt, this.startupMs);
+    });
     void this.#child.exited.then(() => { if (!this.#closed) { this.#closed = true; this.onExit(this); } });
   }
 
@@ -231,7 +260,7 @@ export class WorkerPool {
       this.#usedPorts.delete(server.port);
       throw error;
     }
-    return { url: server.url, coldStart, startupMs: coldStart ? server.startupMs : 0 };
+    return { url: server.url, coldStart, startupMs: coldStart ? server.startupMs : 0, bootMs: coldStart ? server.bootMs : 0 };
   }
 
   dispose(workerPath: string): void {

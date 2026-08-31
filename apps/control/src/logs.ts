@@ -5,7 +5,7 @@ import { resolve } from "node:path";
  * #3: bounded, filterable edge-log history + a live tail for one project's
  * route. The edge appends one JSON object per line to SPROUTBOAT_LOG_PATH:
  * `{ at, hostname, method, status, durationMs, ttfbMs?, reqBytes?, resBytes?,
- * coldStart?, startupMs?, error?, errorKind? }`. Older lines carry only the
+ * coldStart?, startupMs?, bootMs?, error?, errorKind? }`. Older lines carry only the
  * first five fields; every added field is read defensively and treated as
  * "unavailable" when absent.
  *
@@ -35,6 +35,7 @@ export type LogRecord = {
   resBytes: number | null;
   coldStart: boolean;
   startupMs: number | null;
+  bootMs: number | null;
   failure: string | null;
   errorKind: string | null;
   cacheStatus: string | null;
@@ -89,6 +90,7 @@ function parseLine(line: string, hostname?: string): LogRecord | undefined {
     resBytes: num(value.resBytes),
     coldStart: value.coldStart === true,
     startupMs: num(value.startupMs),
+    bootMs: num(value.bootMs),
     failure,
     errorKind: isText(value.errorKind) ? value.errorKind : null,
     cacheStatus: isText(value.cacheStatus) ? value.cacheStatus : null,
@@ -168,6 +170,8 @@ export type Metrics = {
   ttfbMs: Percentiles | null;
   /** Spawn → listening wait, over the cold starts in the window. */
   startupMs: Percentiles | null;
+  /** Of startupMs, the spawn → JS-start slice (process + runtime bootstrap). #41 */
+  bootMs: Percentiles | null;
   coldStarts: number;
   bytesIn: number;
   bytesOut: number;
@@ -217,6 +221,7 @@ export async function aggregateLogs(hostname: string, range: string): Promise<Me
   const latencies: number[] = [];
   const ttfbs: number[] = [];
   const startups: number[] = [];
+  const boots: number[] = [];
   let coldStarts = 0;
   let bytesIn = 0;
   let bytesOut = 0;
@@ -252,6 +257,7 @@ export async function aggregateLogs(hostname: string, range: string): Promise<Me
       coldStarts += 1;
       buckets[index].coldStarts += 1;
       if (record.startupMs !== null) startups.push(record.startupMs);
+      if (record.bootMs !== null) boots.push(record.bootMs);
     }
     if (record.reqBytes !== null) bytesIn += record.reqBytes;
     if (record.resBytes !== null) bytesOut += record.resBytes;
@@ -273,6 +279,7 @@ export async function aggregateLogs(hostname: string, range: string): Promise<Me
     latencyMs: percentilesOf(latencies.sort(bySize)),
     ttfbMs: percentilesOf(ttfbs.sort(bySize)),
     startupMs: percentilesOf(startups.sort(bySize)),
+    bootMs: percentilesOf(boots.sort(bySize)),
     coldStarts,
     bytesIn,
     bytesOut,

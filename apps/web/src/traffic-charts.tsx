@@ -15,6 +15,7 @@ type Metrics = {
   latencyMs: Percentiles | null;
   ttfbMs: Percentiles | null;
   startupMs: Percentiles | null;
+  bootMs: Percentiles | null;
   coldStarts: number;
   bytesIn: number;
   bytesOut: number;
@@ -182,9 +183,13 @@ export function TrafficCharts({ name }: { name: string }) {
               <li><strong>{metrics.sampleCount ? `${Math.round((metrics.coldStarts / metrics.sampleCount) * 100)}%` : "—"}</strong><span>of requests</span></li>
               <li><strong>{metrics.startupMs ? `${group(metrics.startupMs.p50)} ms` : "—"}</strong><span>startup p50</span></li>
               <li><strong>{metrics.startupMs ? `${group(metrics.startupMs.p90)} ms` : "—"}</strong><span>startup p90</span></li>
-              <li><strong>{metrics.startupMs ? `${group(metrics.startupMs.p99)} ms` : "—"}</strong><span>startup p99</span></li>
+              <li><strong>{metrics.bootMs ? `${group(metrics.bootMs.p50)} ms` : "—"}</strong><span>boot p50 · process + runtime</span></li>
+              <li>
+                <strong>{metrics.startupMs && metrics.bootMs ? `${group(Math.max(0, metrics.startupMs.p50 - metrics.bootMs.p50))} ms` : "—"}</strong>
+                <span>eval p50 · module + bind</span>
+              </li>
             </ul>
-            <p className="hint">A cold start is a request that had to launch the worker process (first hit after a deploy, crash, or idle eviction).</p>
+            <p className="hint">A cold start is a request that had to launch the worker process (first hit after a deploy, crash, or idle eviction). <strong>boot</strong> is process create + <code>ld.so</code> + runtime init (static linking cuts this); <strong>eval</strong> is JS module evaluation + binding the listen socket (an inherited fd would cut this).</p>
           </div>
 
           <div className="chart-block">

@@ -11,6 +11,26 @@
 // Declared before it is referenced: a getter body that names a later top-level
 // class throws ReferenceError in Porffor (see patches/UPSTREAM.md draft B).
 
+// #41 — cold-start phase marker. Runs as the first thing in the bundle: writes
+// the current wall-clock ms to $SB_STARTUP_FILE so the supervisor can split
+// cold-start into "spawn -> JS starts" (process + runtime bootstrap) and
+// "JS starts -> listening" (module eval + server bind). No-op when unset.
+function __sbStartupMark() {
+  Porffor.c`
+    const char* __f = getenv("SB_STARTUP_FILE");
+    if (__f) {
+      struct timespec __ts;
+      clock_gettime(CLOCK_REALTIME, &__ts);
+      double __ms = (double)__ts.tv_sec * 1000.0 + (double)__ts.tv_nsec / 1000000.0;
+      char __buf[32];
+      int __n = snprintf(__buf, sizeof(__buf), "%.0f", __ms);
+      int __fd = open(__f, O_WRONLY | O_CREAT | O_TRUNC, 0600);
+      if (__fd >= 0) { write(__fd, __buf, (size_t)__n); close(__fd); }
+    }
+  `;
+}
+__sbStartupMark();
+
 class __SproutboatURLSearchParams {
   constructor(init) {
     this._keys = [];
@@ -118,13 +138,21 @@ __sbDefineURLAccessor('username', function () { return ''; });
 __sbDefineURLAccessor('password', function () { return ''; });
 
 // crypto.randomUUID / getRandomValues are absent in native-fetch. Provide them
-// so Worker code (request ids, cache keys, idempotency keys) runs.
-// ponytail: Math.random() is NOT cryptographically strong. Swap for a real
-// CSPRNG the moment Porffor exposes one — do not use these for tokens/secrets.
+// backed by the OS CSPRNG (`__sbRandomBytes` -> inline C -> /dev/urandom), so
+// tokens, idempotency keys and UUIDs are unpredictable. Deliberately no insecure
+// fallback — a silent downgrade to a weak source is worse than throwing.
 if (globalThis.crypto == null) globalThis.crypto = {};
 if (globalThis.crypto.getRandomValues == null) {
   globalThis.crypto.getRandomValues = function (view) {
-    for (let i = 0; i < view.length; i++) view[i] = Math.floor(Math.random() * 256);
+    const n = view.length >>> 0;
+    // WebCrypto caps a single call at 65536 bytes.
+    if (n > 65536) throw new RangeError("crypto.getRandomValues: byte length exceeds 65536");
+    if (n === 0) return view;
+    // One CSPRNG byte per element. Correct for Uint8Array (and randomUUID); a
+    // wider view gets its low byte filled, matching the previous polyfill's shape.
+    const bytes = __sbRandomBytes(String(n));
+    if (bytes.length !== n) throw new Error("crypto.getRandomValues: OS entropy source unavailable");
+    for (let i = 0; i < n; i++) view[i] = bytes.charCodeAt(i) & 0xff;
     return view;
   };
 }
@@ -169,9 +197,32 @@ Porffor.c`
 #include <string.h>
 #include <stdlib.h>
 #include <stdio.h>
+#include <fcntl.h>
+#include <errno.h>
+#include <time.h>
 
 u32 porf_native_fetch_alloc_bytestring(const char* input, size_t len);
 int porf_native_fetch_read_value(jsval value, const char** out_buf, size_t* out_len, char** out_owned);
+
+// Fill buf with n bytes from the OS CSPRNG. /dev/urandom is present on Linux and
+// macOS and inside the bubblewrap sandbox; blocking is not a concern after the
+// pool is seeded. Returns 0, or -1 if the source could not be read in full.
+static int sb_os_random(unsigned char* buf, size_t n) {
+  int fd = open("/dev/urandom", O_RDONLY | O_CLOEXEC);
+  if (fd < 0) return -1;
+  size_t off = 0;
+  while (off < n) {
+    long r = read(fd, buf + off, n - off);
+    if (r <= 0) {
+      if (r < 0 && errno == EINTR) continue;
+      close(fd);
+      return -1;
+    }
+    off += (size_t)r;
+  }
+  close(fd);
+  return 0;
+}
 
 static int sb_io_all(int fd, unsigned char* buf, size_t len, int writing) {
   size_t done = 0;
@@ -253,6 +304,30 @@ function __sbCall(reqJson) {
     }
   `;
   return res;
+}
+
+// `nStr` is the decimal byte count as a string (same string-param pattern as
+// __sbEnv). Returns a bytestring of that many CSPRNG bytes, or '' on failure.
+function __sbRandomBytes(nStr) {
+  let out = '';
+  Porffor.c`
+    const char* __ns; size_t __nsl; char* __nso = 0;
+    porf_native_fetch_read_value(nStr, &__ns, &__nsl, &__nso);
+    char __nb[16];
+    size_t __k = __nsl < 15 ? __nsl : 15;
+    memcpy(__nb, __ns, __k); __nb[__k] = 0;
+    if (__nso) free(__nso);
+    long __n = atol(__nb);
+    if (__n > 0 && __n <= 65536) {
+      unsigned char* __b = (unsigned char*)malloc((size_t)__n);
+      if (__b) {
+        if (sb_os_random(__b, (size_t)__n) == 0)
+          out = porf_box((f64)porf_native_fetch_alloc_bytestring((const char*)__b, (size_t)__n), 195);
+        free(__b);
+      }
+    }
+  `;
+  return out;
 }
 
 function __sbRpc(op, extra) {
@@ -509,8 +584,7 @@ function __sbMakeDONamespace(binding, className) {
     idFromName(name) { return { toString() { return 'name:' + String(name); }, name: String(name) }; },
     idFromString(hex) { return { toString() { return String(hex); } }; },
     newUniqueId() {
-      const id = (globalThis.crypto && crypto.randomUUID ? crypto.randomUUID() : String(Math.random()).slice(2));
-      return { toString() { return 'uid:' + id; } };
+      return { toString() { return 'uid:' + crypto.randomUUID(); } };
     },
     get(id) {
       const idStr = typeof id === 'string' ? id : id.toString();

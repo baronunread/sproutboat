@@ -158,7 +158,9 @@ export async function compileHandler(input: string, output?: string): Promise<Co
     const [source, prelude] = await Promise.all([readFile(inputPath, "utf8"), readFile(preludePath, "utf8")]);
     await writeFile(generatedPath, wrapNativeFetchHandler(source, prelude, readVarsFromEnv(), readBindingsFromEnv()));
 
-    const child = Bun.spawn(["node", porfEntry, "native", generatedPath, "-o", outputPath], {
+    // `-s`: strip at link. Porffor emits full DWARF by default (~90% of a
+    // static-musl binary); nothing needs it at runtime.
+    const child = Bun.spawn(["node", porfEntry, "native", generatedPath, "-o", outputPath, "-s"], {
       cwd: root,
       stdout: "pipe",
       stderr: "pipe",

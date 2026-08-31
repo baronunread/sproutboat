@@ -2,7 +2,7 @@ import { appendFile, mkdir, readFile, stat } from "node:fs/promises";
 import { existsSync, readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { pool } from "../../supervisor/src/run";
-import { isSproutFirst, type AssetManifest } from "../../../tools/assets";
+import { isSproutFirst, resolveAssetKey, type AssetManifest } from "../../../tools/assets";
 import { EdgeCache, cacheableForSeconds } from "./cache";
 
 type JsonValue = string | number | boolean | null | EdgeJsonObject | JsonValue[];
@@ -26,6 +26,8 @@ interface LogEvent {
   readonly coldStart?: boolean;
   /** Spawn→listening wait for that cold start, in ms. */
   readonly startupMs?: number | null;
+  /** Of startupMs, the spawn→JS-start slice (process + runtime bootstrap). #41 */
+  readonly bootMs?: number | null;
   readonly error?: string;
   /** Coarse failure taxonomy: no-route | worker-unavailable | proxy | timed-out
    *  | response-too-large | upstream-5xx. Absent on a clean response. */
@@ -195,14 +197,17 @@ const server = Bun.serve({
 
     const target = new URL(request.url);
 
-    // Static assets, served edge-first (Cloudflare's default). Exact matches only
-    // — SPA / 404 fallback belongs to the worker via `env.<ASSETS>.fetch()`.
+    // Static assets, served edge-first (Cloudflare's default). Static-host path
+    // resolution (`/docs` -> `/docs.html`, `/docs/` -> `/docs/index.html`); the
+    // SPA / 404 fallback still belongs to the worker via `env.<ASSETS>.fetch()`.
     if (request.method === "GET" || request.method === "HEAD") {
       const manifest = assetManifestFor(workerPath);
-      let assetKey = decodeURIComponent(target.pathname);
-      if (assetKey.endsWith("/")) assetKey += "index.html";
-      const entry = manifest && !isSproutFirst(manifest.runSproutFirst, assetKey) ? manifest.files[assetKey] : undefined;
-      if (entry) {
+      const assetKey = manifest
+        ? resolveAssetKey(decodeURIComponent(target.pathname), (k) => Boolean(manifest.files[k]))
+        : null;
+      const entry =
+        manifest && assetKey && !isSproutFirst(manifest.runSproutFirst, assetKey) ? manifest.files[assetKey] : undefined;
+      if (entry && assetKey) {
         const inm = request.headers.get("if-none-match");
         const etag = `"${entry.hash}"`;
         if (inm === etag) {
@@ -230,11 +235,13 @@ const server = Bun.serve({
     let base: string;
     let coldStart = false;
     let startupMs: number | null = null;
+    let bootMs: number | null = null;
     try {
       const endpoint = await pool.endpoint(workerPath);
       base = endpoint.url;
       coldStart = endpoint.coldStart;
       startupMs = endpoint.coldStart ? endpoint.startupMs : null;
+      bootMs = endpoint.coldStart ? endpoint.bootMs : null;
     } catch (error) {
       console.error(`worker unavailable for ${host}: ${error instanceof Error ? error.message : String(error)}`);
       await log({ hostname: host, method: request.method, status: 502, durationMs: elapsed(), reqBytes, ttfbMs: null, error: "worker unavailable", errorKind: "worker-unavailable" });
@@ -256,7 +263,7 @@ const server = Bun.serve({
       const ttfbMs = elapsed();
       const declared = Number(upstream.headers.get("content-length"));
       if (Number.isFinite(declared) && declared > responseMaxBytes) {
-        await log({ hostname: host, method: request.method, status: 502, durationMs: ttfbMs, ttfbMs, reqBytes, resBytes: declared, coldStart, startupMs, error: "response too large", errorKind: "response-too-large" });
+        await log({ hostname: host, method: request.method, status: 502, durationMs: ttfbMs, ttfbMs, reqBytes, resBytes: declared, coldStart, startupMs, bootMs, error: "response too large", errorKind: "response-too-large" });
         return new Response("response too large", { status: 502 });
       }
 
@@ -265,7 +272,7 @@ const server = Bun.serve({
         const buffered = await upstream.arrayBuffer();
         const headers: [string, string][] = [...upstream.headers.entries()];
         cache!.set(cacheKey, upstream.status, headers, buffered, ttl);
-        await log({ hostname: host, method: "GET", status: upstream.status, durationMs: elapsed(), ttfbMs, reqBytes, resBytes: buffered.byteLength, coldStart, startupMs, cacheStatus: "miss" });
+        await log({ hostname: host, method: "GET", status: upstream.status, durationMs: elapsed(), ttfbMs, reqBytes, resBytes: buffered.byteLength, coldStart, startupMs, bootMs, cacheStatus: "miss" });
         return new Response(buffered, { status: upstream.status, headers: [...headers, ["sb-cache", "MISS"]] });
       }
 
@@ -276,7 +283,7 @@ const server = Bun.serve({
         void log({
           hostname: host, method: request.method, status: upstream.status, durationMs: elapsed(),
           ttfbMs, reqBytes, resBytes: Number.isFinite(declared) ? declared : bytes,
-          coldStart, startupMs, errorKind: upstream.status >= 500 ? "upstream-5xx" : undefined, cacheStatus,
+          coldStart, startupMs, bootMs, errorKind: upstream.status >= 500 ? "upstream-5xx" : undefined, cacheStatus,
         });
       });
       const headers = new Headers(upstream.headers);
@@ -286,7 +293,7 @@ const server = Bun.serve({
       const timedOut = error instanceof Error && (error.name === "TimeoutError" || error.name === "AbortError");
       const status = timedOut ? 504 : 502;
       console.error(`worker ${timedOut ? "timed out" : "failure"} for ${host}: ${error instanceof Error ? error.message : String(error)}`);
-      await log({ hostname: host, method: request.method, status, durationMs: elapsed(), reqBytes, ttfbMs: null, coldStart, startupMs, error: timedOut ? "request timed out" : "worker failure", errorKind: timedOut ? "timed-out" : "proxy" });
+      await log({ hostname: host, method: request.method, status, durationMs: elapsed(), reqBytes, ttfbMs: null, coldStart, startupMs, bootMs, error: timedOut ? "request timed out" : "worker failure", errorKind: timedOut ? "timed-out" : "proxy" });
       return new Response(timedOut ? "request timed out" : "worker failed", { status });
     }
   },

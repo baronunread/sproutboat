@@ -22,7 +22,7 @@ import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync } from "node:fs";
 import { dirname, join, normalize, resolve } from "node:path";
 import { parseArgs } from "node:util";
-import type { AssetManifest } from "./assets";
+import { resolveAssetKey, type AssetManifest } from "./assets";
 
 export type Bindings = {
   kv: string[];
@@ -384,10 +384,9 @@ export function createBroker(opts: BrokerOptions = {}): Broker {
 
       case "assets.get": {
         if (!bindings.assets) throw new Error("assets not bound");
-        let path = str(msg.path) || "/";
-        if (!path.startsWith("/")) path = `/${path}`;
-        if (path.endsWith("/")) path += "index.html";
-        const hit = readAsset(path);
+        const reqPath = str(msg.path) || "/";
+        const key = resolveAssetKey(reqPath, (k) => !!assetManifest?.files[k]);
+        const hit = key ? readAsset(key) : null;
         if (hit) return { ok: true, found: true, status: 200, type: hit.type, hash: hit.hash, body: hit.body };
         const nfh = assetManifest?.notFound ?? "none";
         if (nfh === "single-page-application") {

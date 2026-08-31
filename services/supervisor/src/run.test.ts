@@ -1,5 +1,8 @@
 import { afterEach, expect, test } from "bun:test";
-import { WorkerPool } from "./run";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { WorkerPool, startupFilePath } from "./run";
 import { workerCommand } from "./sandbox";
 import type { WorkerChild, WorkerFactory } from "./run";
 
@@ -45,9 +48,31 @@ test("endpoint reports the cold start and its startup time, then warm hits", asy
   const cold = await pool.endpoint("/tmp/app/worker");
   expect(cold.coldStart).toBe(true);
   expect(cold.startupMs).toBeGreaterThanOrEqual(0);
+  expect(cold.bootMs).toBe(0); // fake spawn writes no SB_STARTUP_FILE
   const warm = await pool.endpoint("/tmp/app/worker");
   expect(warm.coldStart).toBe(false);
   expect(warm.startupMs).toBe(0);
+  expect(warm.bootMs).toBe(0);
+});
+
+test("cold start splits out a boot slice from the worker's startup marker (#41)", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "sb-startup-"));
+  const workerPath = join(dir, "worker");
+  const { spawn } = fakeSpawn();
+  // Stand in for the prelude's __sbStartupMark: record "JS started" at spawn time.
+  const spawnWithMarker: WorkerFactory = (path, port) => {
+    writeFileSync(startupFilePath(path, port), String(Date.now()));
+    return spawn(path, port);
+  };
+  try {
+    const pool = makePool(spawnWithMarker);
+    const cold = await pool.endpoint(workerPath);
+    expect(cold.coldStart).toBe(true);
+    expect(cold.bootMs).toBeGreaterThanOrEqual(0);
+    expect(cold.bootMs).toBeLessThanOrEqual(cold.startupMs);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });
 
 test("separate deployments get separate ports", async () => {
