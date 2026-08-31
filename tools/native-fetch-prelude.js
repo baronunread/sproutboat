@@ -434,9 +434,17 @@ globalThis.__sbInstallBindings = function (target, bindings) {
 
   for (let i = 0; i < (bindings.secrets || []).length; i++) {
     const name = bindings.secrets[i];
+    // Fetch lazily, then freeze as a data property: a secret is process-lifetime
+    // immutable (a new value means a redeploy = a new process), so one broker
+    // round-trip on first read, zero after. A getter that RPCs on every access
+    // turns `'Bearer ' + env.KEY` in a loop into a syscall storm.
     Object.defineProperty(target, name, {
       configurable: true,
-      get() { return __sbRpc('secret.get', { name }).value; },
+      get() {
+        const value = __sbRpc('secret.get', { name }).value;
+        Object.defineProperty(target, name, { value, configurable: true, enumerable: true });
+        return value;
+      },
     });
   }
 

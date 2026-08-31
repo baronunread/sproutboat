@@ -1,5 +1,5 @@
-import { appendFile, mkdir, readFile, stat } from "node:fs/promises";
-import { existsSync, readFileSync } from "node:fs";
+import { readFile, stat } from "node:fs/promises";
+import { createWriteStream, existsSync, mkdirSync, readFileSync, type WriteStream } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { pool } from "../../supervisor/src/run";
 import { isSproutFirst, resolveAssetKey, type AssetManifest } from "../../../tools/assets";
@@ -115,14 +115,24 @@ const port = Number(process.env.PORT || 8080);
 const bindHost = process.env.SPROUTBOAT_BIND_HOST || "127.0.0.1";
 const logPath = process.env.SPROUTBOAT_LOG_PATH;
 
-async function log(event: LogEvent): Promise<void> {
-  if (!logPath) return;
+// One long-lived append stream, opened once. `appendFile` was open+write+close
+// (~28µs) per call and it was `await`ed on the fastest paths (404s, asset 304s,
+// cache hits) — more than the work the request did. `write()` here is buffered,
+// non-blocking, fire-and-forget; a line lost to a crash is acceptable for a
+// request log.
+let logStream: WriteStream | null = null;
+if (logPath) {
   try {
-    await mkdir(dirname(logPath), { recursive: true });
-    await appendFile(logPath, `${JSON.stringify({ at: new Date().toISOString(), ...event })}\n`);
+    mkdirSync(dirname(logPath), { recursive: true });
+    logStream = createWriteStream(logPath, { flags: "a" });
+    logStream.on("error", (error) => console.error(`request log stream error: ${error.message}`));
   } catch (error) {
-    console.error(`request log write failed: ${error instanceof Error ? error.message : String(error)}`);
+    console.error(`request log init failed: ${error instanceof Error ? error.message : String(error)}`);
   }
+}
+
+function log(event: LogEvent): void {
+  logStream?.write(`${JSON.stringify({ at: new Date().toISOString(), ...event })}\n`);
 }
 
 /**
@@ -171,7 +181,14 @@ function swapRoutes(nextRoutes: Map<string, string>, nextMtimeMs: number): void 
   }
 }
 
+// Belt-and-braces reload: SIGHUP (below) is the authoritative path. Throttle the
+// stat() so a hot node isn't calling it thousands of times a second for a file
+// that changes on deploy; 250ms is well inside the staleness people already tolerate.
+let lastRouteCheck = 0;
 async function refreshRoutes(): Promise<void> {
+  const now = Date.now();
+  if (now - lastRouteCheck < 250) return;
+  lastRouteCheck = now;
   const currentMtimeMs = await snapshotMtime(routesPath);
   if (currentMtimeMs > routesMtimeMs) swapRoutes(await loadRoutes(routesPath), currentMtimeMs);
 }
@@ -191,7 +208,7 @@ const server = Bun.serve({
     if (host === deploymentDomain) return Response.redirect(dashboardUrl, 302);
     const workerPath = host ? routes.get(host) : undefined;
     if (!workerPath || !host) {
-      await log({ hostname: host || null, method: request.method, status: 404, durationMs: elapsed(), reqBytes, errorKind: "no-route" });
+      log({ hostname: host || null, method: request.method, status: 404, durationMs: elapsed(), reqBytes, errorKind: "no-route" });
       return new Response("unknown deployment", { status: 404 });
     }
 
@@ -211,11 +228,11 @@ const server = Bun.serve({
         const inm = request.headers.get("if-none-match");
         const etag = `"${entry.hash}"`;
         if (inm === etag) {
-          await log({ hostname: host, method: request.method, status: 304, durationMs: elapsed(), reqBytes, resBytes: 0, cacheStatus: "asset" });
+          log({ hostname: host, method: request.method, status: 304, durationMs: elapsed(), reqBytes, resBytes: 0, cacheStatus: "asset" });
           return new Response(null, { status: 304, headers: { etag } });
         }
         const body = request.method === "HEAD" ? null : await readFile(join(dirname(workerPath), "assets", assetKey));
-        await log({ hostname: host, method: request.method, status: 200, durationMs: elapsed(), reqBytes, resBytes: entry.size, cacheStatus: "asset" });
+        log({ hostname: host, method: request.method, status: 200, durationMs: elapsed(), reqBytes, resBytes: entry.size, cacheStatus: "asset" });
         return new Response(body, {
           status: 200,
           headers: { "content-type": entry.type, etag, "content-length": String(entry.size), "cache-control": "public, max-age=0, must-revalidate" },
@@ -227,7 +244,7 @@ const server = Bun.serve({
     if (cacheKey) {
       const hit = cache!.get(cacheKey);
       if (hit) {
-        await log({ hostname: host, method: "GET", status: hit.status, durationMs: elapsed(), reqBytes, resBytes: hit.body.byteLength, cacheStatus: "hit" });
+        log({ hostname: host, method: "GET", status: hit.status, durationMs: elapsed(), reqBytes, resBytes: hit.body.byteLength, cacheStatus: "hit" });
         return new Response(hit.body, { status: hit.status, headers: [...hit.headers, ["sb-cache", "HIT"]] });
       }
     }
@@ -244,7 +261,7 @@ const server = Bun.serve({
       bootMs = endpoint.coldStart ? endpoint.bootMs : null;
     } catch (error) {
       console.error(`worker unavailable for ${host}: ${error instanceof Error ? error.message : String(error)}`);
-      await log({ hostname: host, method: request.method, status: 502, durationMs: elapsed(), reqBytes, ttfbMs: null, error: "worker unavailable", errorKind: "worker-unavailable" });
+      log({ hostname: host, method: request.method, status: 502, durationMs: elapsed(), reqBytes, ttfbMs: null, error: "worker unavailable", errorKind: "worker-unavailable" });
       return new Response("worker failed", { status: 502 });
     }
 
@@ -261,9 +278,14 @@ const server = Bun.serve({
         signal: AbortSignal.timeout(requestTimeoutMs),
       });
       const ttfbMs = elapsed();
-      const declared = Number(upstream.headers.get("content-length"));
+      // `Number(null)` is 0, not NaN — so a missing content-length would read as
+      // a finite 0 and slip past both the response-size cap and the cache-entry
+      // cap. Treat "absent" as unknown.
+      const declared = upstream.headers.has("content-length")
+        ? Number(upstream.headers.get("content-length"))
+        : NaN;
       if (Number.isFinite(declared) && declared > responseMaxBytes) {
-        await log({ hostname: host, method: request.method, status: 502, durationMs: ttfbMs, ttfbMs, reqBytes, resBytes: declared, coldStart, startupMs, bootMs, error: "response too large", errorKind: "response-too-large" });
+        log({ hostname: host, method: request.method, status: 502, durationMs: ttfbMs, ttfbMs, reqBytes, resBytes: declared, coldStart, startupMs, bootMs, error: "response too large", errorKind: "response-too-large" });
         return new Response("response too large", { status: 502 });
       }
 
@@ -272,7 +294,7 @@ const server = Bun.serve({
         const buffered = await upstream.arrayBuffer();
         const headers: [string, string][] = [...upstream.headers.entries()];
         cache!.set(cacheKey, upstream.status, headers, buffered, ttl);
-        await log({ hostname: host, method: "GET", status: upstream.status, durationMs: elapsed(), ttfbMs, reqBytes, resBytes: buffered.byteLength, coldStart, startupMs, bootMs, cacheStatus: "miss" });
+        log({ hostname: host, method: "GET", status: upstream.status, durationMs: elapsed(), ttfbMs, reqBytes, resBytes: buffered.byteLength, coldStart, startupMs, bootMs, cacheStatus: "miss" });
         return new Response(buffered, { status: upstream.status, headers: [...headers, ["sb-cache", "MISS"]] });
       }
 
@@ -280,7 +302,7 @@ const server = Bun.serve({
       // #31 — log once the response body has actually finished streaming, so
       // durationMs is the full request duration and resBytes is the real count.
       const body = cappedBody(upstream.body, host, (bytes) => {
-        void log({
+        log({
           hostname: host, method: request.method, status: upstream.status, durationMs: elapsed(),
           ttfbMs, reqBytes, resBytes: Number.isFinite(declared) ? declared : bytes,
           coldStart, startupMs, bootMs, errorKind: upstream.status >= 500 ? "upstream-5xx" : undefined, cacheStatus,
@@ -293,7 +315,7 @@ const server = Bun.serve({
       const timedOut = error instanceof Error && (error.name === "TimeoutError" || error.name === "AbortError");
       const status = timedOut ? 504 : 502;
       console.error(`worker ${timedOut ? "timed out" : "failure"} for ${host}: ${error instanceof Error ? error.message : String(error)}`);
-      await log({ hostname: host, method: request.method, status, durationMs: elapsed(), reqBytes, ttfbMs: null, coldStart, startupMs, bootMs, error: timedOut ? "request timed out" : "worker failure", errorKind: timedOut ? "timed-out" : "proxy" });
+      log({ hostname: host, method: request.method, status, durationMs: elapsed(), reqBytes, ttfbMs: null, coldStart, startupMs, bootMs, error: timedOut ? "request timed out" : "worker failure", errorKind: timedOut ? "timed-out" : "proxy" });
       return new Response(timedOut ? "request timed out" : "worker failed", { status });
     }
   },
@@ -307,6 +329,7 @@ const evictionTimer = setInterval(() => pool.evictIdle(new Set(routes.values()))
 
 function shutdown(): void {
   clearInterval(evictionTimer);
+  logStream?.end();
   pool.disposeAll();
   server.stop();
 }

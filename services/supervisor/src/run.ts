@@ -175,7 +175,7 @@ class WorkerServer {
   async #awaitListening(timeoutMs: number): Promise<void> {
     const deadline = Date.now() + timeoutMs;
     // Fast poll early (most workers listen within a few ms), then back off so a
-    // slow start doesn't spin. #43: replace polling entirely with an inherited
+    // slow start doesn't spin. #39: replace polling entirely with an inherited
     // listening fd once Porffor supports it.
     let wait = 1;
     while (Date.now() < deadline) {

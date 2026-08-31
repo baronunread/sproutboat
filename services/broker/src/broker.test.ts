@@ -63,3 +63,29 @@ test("assets.get: SPA fallback still applies only after resolution misses", asyn
     fx.cleanup();
   }
 });
+
+test("list ops honour a bound LIMIT (do.storage.list, ae.query, r2.list)", async () => {
+  const broker = createBroker({
+    bindings: { assets: "", do: [{ binding: "OBJ", className: "C" }], analytics: ["M"], r2: ["B"] },
+  });
+  try {
+    const d = (msg: Record<string, unknown>) => broker.dispatch(msg);
+    for (let i = 0; i < 12; i++) {
+      await d({ op: "do.storage.put", cls: "C", id: "1", key: `k${String(i).padStart(2, "0")}`, value: "v" });
+      await d({ op: "ae.write", dataset: "M", indexes: [`i${i}`], blobs: [], doubles: [i] });
+      await d({ op: "r2.put", bucket: "B", key: `o${String(i).padStart(2, "0")}`, body: "x" });
+    }
+
+    const doList = await d({ op: "do.storage.list", cls: "C", id: "1", prefix: "k", limit: 5 });
+    expect((doList.entries as unknown[]).length).toBe(5);
+
+    const ae = await d({ op: "ae.query", dataset: "M", limit: 4 });
+    expect((ae.rows as unknown[]).length).toBe(4);
+
+    const r2 = await d({ op: "r2.list", bucket: "B", limit: 3 });
+    expect((r2.objects as unknown[]).length).toBe(3);
+    expect(r2.truncated).toBe(true);
+  } finally {
+    broker.close();
+  }
+});

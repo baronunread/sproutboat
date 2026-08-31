@@ -109,6 +109,11 @@ export function createBroker(opts: BrokerOptions = {}): Broker {
 
   const db = new Database(dbPath);
   db.exec("PRAGMA journal_mode = WAL");
+  // WAL + NORMAL is the standard pairing: a write no longer fsyncs the WAL, so
+  // host power loss can drop the last few committed txns, but a process crash
+  // never can and the file never corrupts. Right trade for a single-VPS
+  // KV/queue/DO store; on real block storage this is ~10-100x on writes.
+  db.exec("PRAGMA synchronous = NORMAL");
   db.exec("CREATE TABLE IF NOT EXISTS kv (ns TEXT NOT NULL, key TEXT NOT NULL, value TEXT NOT NULL, PRIMARY KEY (ns, key))");
   db.exec(
     "CREATE TABLE IF NOT EXISTS r2 (bucket TEXT NOT NULL, key TEXT NOT NULL, body TEXT NOT NULL, size INTEGER NOT NULL, " +
@@ -158,6 +163,7 @@ export function createBroker(opts: BrokerOptions = {}): Broker {
       if (d1Dir) mkdirSync(d1Dir, { recursive: true });
       conn = new Database(d1Dir ? join(d1Dir, `${name}.sqlite`) : ":memory:", { create: true });
       conn.exec("PRAGMA journal_mode = WAL");
+      conn.exec("PRAGMA synchronous = NORMAL");
       d1Conns.set(name, conn);
     }
     return conn;
@@ -290,9 +296,9 @@ export function createBroker(opts: BrokerOptions = {}): Broker {
         const prefix = str(msg.prefix);
         const cursor = str(msg.cursor);
         const limit = Math.min(Math.max(Number(msg.limit) || 1000, 1), 1000);
-        const rows = db.query<R2Row, [string, string, string]>(
-          "SELECT * FROM r2 WHERE bucket = ? AND key LIKE ? || '%' AND key > ? ORDER BY key LIMIT " + (limit + 1),
-        ).all(bucket, prefix, cursor);
+        const rows = db.query<R2Row, [string, string, string, number]>(
+          "SELECT * FROM r2 WHERE bucket = ? AND key LIKE ? || '%' AND key > ? ORDER BY key LIMIT ?",
+        ).all(bucket, prefix, cursor, limit + 1);
         const truncated = rows.length > limit;
         const page = truncated ? rows.slice(0, limit) : rows;
         return {
@@ -335,9 +341,9 @@ export function createBroker(opts: BrokerOptions = {}): Broker {
         // query it via the SQL API). Exposed here so a dashboard can read back.
         const ds = requireAe(msg.dataset);
         const limit = Math.min(Math.max(Number(msg.limit) || 20, 1), 200);
-        const rows = db.query<{ ts: number; indexes_json: string; blobs_json: string; doubles_json: string }, [string]>(
-          "SELECT ts, indexes_json, blobs_json, doubles_json FROM ae WHERE dataset = ? ORDER BY ts DESC, rowid DESC LIMIT " + limit,
-        ).all(ds);
+        const rows = db.query<{ ts: number; indexes_json: string; blobs_json: string; doubles_json: string }, [string, number]>(
+          "SELECT ts, indexes_json, blobs_json, doubles_json FROM ae WHERE dataset = ? ORDER BY ts DESC, rowid DESC LIMIT ?",
+        ).all(ds, limit);
         const total = db.query<{ n: number }, [string]>("SELECT count(*) AS n FROM ae WHERE dataset = ?").get(ds);
         return {
           ok: true,
@@ -376,9 +382,9 @@ export function createBroker(opts: BrokerOptions = {}): Broker {
       case "do.storage.list": {
         const cls = requireDoClass(msg.cls);
         const limit = Math.min(Math.max(Number(msg.limit) || 1000, 1), 10000);
-        const rows = db.query<{ key: string; value: string }, [string, string, string]>(
-          "SELECT key, value FROM do_storage WHERE cls = ? AND id = ? AND key LIKE ? || '%' ORDER BY key LIMIT " + limit,
-        ).all(cls, str(msg.id), str(msg.prefix));
+        const rows = db.query<{ key: string; value: string }, [string, string, string, number]>(
+          "SELECT key, value FROM do_storage WHERE cls = ? AND id = ? AND key LIKE ? || '%' ORDER BY key LIMIT ?",
+        ).all(cls, str(msg.id), str(msg.prefix), limit);
         return { ok: true, entries: rows.map((r) => [r.key, r.value]) };
       }
 
