@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { readFile, readdir, stat } from "node:fs/promises";
 import { resolve } from "node:path";
-import { validateManifest, type ArtifactManifest } from "./manifest";
+import { validateManifest, type ArtifactManifest } from "sproutboat/runtime/manifest";
 
 export type ValidatedArtifact = { manifest: ArtifactManifest; workerPath: string };
 export type ArtifactValidation = { ok: true; value: ValidatedArtifact } | { ok: false; errors: string[] };

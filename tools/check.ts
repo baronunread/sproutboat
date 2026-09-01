@@ -2,7 +2,7 @@ import { readdir, readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { fixtures } from "./fixtures";
 import { invokeHandler, loadHandler } from "./refserve";
-import { validateHttpSyncSource } from "../packages/config/src/source";
+import { validateHttpSyncSource } from "sproutboat/runtime/source";
 import { porfforVersion } from "./porffor";
 
 const root = resolve(import.meta.dir, "..");

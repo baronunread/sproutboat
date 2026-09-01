@@ -5,7 +5,7 @@
  *
  * Patch: compiler/render.js — honour $PORT at runtime in the native-fetch server.
  * The missing-polyfill gaps (URLSearchParams / Response.json) are handled in our
- * own prelude instead (tools/native-fetch-prelude.js), not by patching Porffor.
+ * own prelude instead (sproutboat/runtime/prelude), not by patching Porffor.
  */
 import { resolve } from "node:path";
 

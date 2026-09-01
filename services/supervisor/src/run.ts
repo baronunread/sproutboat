@@ -1,6 +1,7 @@
 import { existsSync, readFileSync, rmSync } from "node:fs";
 import { randomBytes } from "node:crypto";
 import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { connect } from "node:net";
 import { workerCommand } from "./sandbox";
 
@@ -61,7 +62,9 @@ const defaultReadyTimeoutMs = 10_000;
 const defaultIdleMs = 600_000;
 const defaultPortRange: readonly [number, number] = [40_000, 49_999];
 
-const brokerEntry = resolve(import.meta.dir, "../../broker/src/broker.ts");
+// The broker runs as a subprocess (not an import): resolve the CLI package's
+// `runtime/broker` export to a path Bun can spawn.
+const brokerEntry = fileURLToPath(import.meta.resolve("sproutboat/runtime/broker"));
 
 /**
  * Bindings broker sidecar. Spawned only when the artifact ships a `bindings.json`

@@ -1,7 +1,7 @@
 import { chmod, mkdir, rename, rm, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { randomUUID } from "node:crypto";
-import { validateArtifactDirectory } from "../../../packages/artifact/src/validate";
+import { validateArtifactDirectory } from "./artifact";
 import { actorFor, purgeUser, type Actor } from "./identity";
 import { guardDeploy, guardNewProject, LIMITS } from "./limits";
 import { aggregateLogs, readLogHistory, readLogTailText, routeTraffic, tailLogs } from "./logs";

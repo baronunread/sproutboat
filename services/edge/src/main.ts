@@ -2,7 +2,7 @@ import { readFile, stat } from "node:fs/promises";
 import { createWriteStream, existsSync, mkdirSync, readFileSync, type WriteStream } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { pool } from "../../supervisor/src/run";
-import { isSproutFirst, resolveAssetKey, type AssetManifest } from "../../../tools/assets";
+import { isSproutFirst, resolveAssetKey, type AssetManifest } from "sproutboat/runtime/assets";
 import { EdgeCache, cacheableForSeconds } from "./cache";
 
 type JsonValue = string | number | boolean | null | EdgeJsonObject | JsonValue[];

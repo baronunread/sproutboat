@@ -18,8 +18,8 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { connect } from "node:net";
-import { EMPTY_BINDINGS, wrapNativeFetchHandler, type Bindings } from "./compile";
-import { parseConfig } from "../packages/config/src/config";
+import { EMPTY_BINDINGS, preludePath, wrapNativeFetchHandler, type Bindings } from "./compile";
+import { parseConfig } from "sproutboat/runtime/config";
 import { startupFilePath } from "../services/supervisor/src/run";
 
 const ROOT = join(import.meta.dir, "..");
@@ -33,7 +33,7 @@ const flag = (name: string) => {
 const runs = Number(flag("-n") ?? flag("--runs") ?? 25);
 const prebuilt = flag("--bin");
 const projectDir = argv.find((a) => !a.startsWith("-") && a !== flag("-n") && a !== flag("--runs"))
-  ?? join(ROOT, "examples/kitchen-sink");
+  ?? join(ROOT, "node_modules/sproutboat/examples/kitchen-sink");
 
 const work = mkdtempSync(join(tmpdir(), "sb-coldstart-"));
 process.on("exit", () => { try { rmSync(work, { recursive: true, force: true }); } catch { /* best effort */ } });
@@ -60,7 +60,7 @@ if (prebuilt) {
     crons: c.triggers?.crons ?? [],
     assets: c.assets?.binding ?? "",
   };
-  const prelude = readFileSync(join(ROOT, "tools/native-fetch-prelude.js"), "utf8");
+  const prelude = readFileSync(preludePath, "utf8");
   const src = readFileSync(join(projectDir, c.main ?? "src/index.js"), "utf8");
   const gen = join(work, "worker.generated.js");
   bin = join(work, "worker.bin");
