@@ -24,7 +24,7 @@ alpha-3 provides real `Request`, `Response`, `Headers`, `URL`,
 `URLSearchParams` (added by `patches/porffor-fetch-globals.patch`), `JSON`,
 `TextEncoder`/`TextDecoder`, and `console` (logs go to the worker's stderr).
 Handlers are import-free and validated by `validateHttpSyncSource`
-(`packages/config/src/source.ts`): no `import`/`require`, no Node/Bun/Deno
+(`sproutboat/runtime/source`): no `import`/`require`, no Node/Bun/Deno
 globals, no outbound `fetch`/`WebSocket` (a deliberate capability boundary — see
 issue #19, and the sandbox blocks egress regardless).
 

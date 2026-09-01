@@ -39,7 +39,7 @@ handler ──env.KV.get("k")──▶ binding shim (in the bundle, prepended li
 ```
 
 - **Binding shim**: a small JS module the build prepends (same mechanism as
-  `tools/native-fetch-prelude.js`). It defines `env.<NAME>` objects whose methods
+  `sproutboat/runtime/prelude`). It defines `env.<NAME>` objects whose methods
   serialise a request frame and call the host primitive.
 - **Wire format**: length-prefixed CBOR or JSON frames —
   `{ op, binding, args }` → `{ ok, value | error }`. Synchronous round-trip
