@@ -132,6 +132,7 @@ ask SB_DOMAIN     "Deployment domain, e.g. fn.example.com (must be one you contr
 ask SB_ACME_EMAIL "Email for Let's Encrypt (cert expiry notices)"
 ask SB_ADMIN      "Admin username (3-32 lowercase a-z 0-9 -)" "$(echo "${SUDO_USER:-admin}" | tr -cd 'a-z0-9-' | cut -c1-32)"
 [[ "$SB_ADMIN" =~ ^[a-z0-9]([a-z0-9-]{1,30}[a-z0-9])?$ ]] || die "invalid admin username: $SB_ADMIN"
+note "domain $SB_DOMAIN · acme $SB_ACME_EMAIL · admin $SB_ADMIN"
 # The dashboard ships with every install. GitHub sign-in is opt-in via env; the
 # admin always signs in with the bootstrap token.
 SB_GITHUB_CLIENT_ID=${SB_GITHUB_CLIENT_ID:-}
