@@ -89,7 +89,10 @@ function spawnWithBroker(sproutPath: string, port: number, secretsPath?: string 
     const token = randomBytes(24).toString("hex");
     const stateDir = process.env.SPROUTBOAT_BROKER_STATE_DIR || resolve(workerDir, ".broker");
     const args = [
-      "bun", brokerEntry,
+      // `process.execPath`, not "bun": sproutboat-edge.service runs with a
+      // hardened PATH that doesn't include the pinned /opt/sproutboat/bun, so a
+      // bare "bun" is ENOENT and every sprout with bindings fails to launch.
+      process.execPath, brokerEntry,
       "--port", String(brokerPort),
       "--token", token,
       "--db", resolve(stateDir, "state.sqlite"),
