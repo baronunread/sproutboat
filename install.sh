@@ -81,7 +81,7 @@ if [ "${1:-}" = --uninstall ]; then
   # only remove caddy.service if this installer created it (has our marker path)
   grep -q "$CADDY_BIN" /etc/systemd/system/caddy.service 2>/dev/null && rm -f /etc/systemd/system/caddy.service
   systemctl daemon-reload
-  rm -f "$CADDY_BIN" /etc/sysctl.d/80-sproutboat-userns.conf /root/sproutboat-admin.env
+  rm -f "$CADDY_BIN" /usr/local/bin/sbctl /etc/sysctl.d/80-sproutboat-userns.conf /root/sproutboat-admin.env
   rm -rf "$ROOT" /opt/sproutboat-src /etc/sproutboat /etc/caddy
   [ "$KEEP_STATE" = 1 ] || rm -rf "$STATE"
   for u in sproutboat-control sproutboat-edge; do id "$u" >/dev/null 2>&1 && userdel "$u" || true; done
@@ -353,6 +353,7 @@ for u in sproutboat-control sproutboat-edge; do
 done
 install -m 0644 "$ROOT/infra/systemd/sproutboat-backup.service" /etc/systemd/system/sproutboat-backup.service
 install -m 0644 "$ROOT/infra/systemd/sproutboat-backup.timer"   /etc/systemd/system/sproutboat-backup.timer
+install -m 0755 "$ROOT/infra/sbctl" /usr/local/bin/sbctl
 
 # --- Better Auth schema (dashboard + admin token login) ---------------
 say "Migrating the auth database"
@@ -401,11 +402,12 @@ say "Deploy from your workstation"
 note "bunx @sproutboat/cli login --api-url https://control.$SB_DOMAIN --token <token>"
 note "sproutboat init hello && cd hello && sproutboat deploy"
 
-say "Operate"
-note "systemctl status caddy sproutboat-control sproutboat-edge   # health"
-note "journalctl -fu caddy                                        # watch the first cert"
-note "sudo systemctl stop  sproutboat-control sproutboat-edge caddy   # pause everything"
-note "sudo $ROOT/install.sh --uninstall                           # remove everything"
+say "Operate  (sudo sbctl <cmd>)"
+note "sbctl status            health of every unit"
+note "sbctl logs [control|edge|caddy]   follow logs"
+note "sbctl down / sbctl up   pause / resume everything"
+note "sbctl update            re-run installer, then restart"
+note "sbctl uninstall         remove everything (--keep-state to keep the db)"
 
 say "Backups"
 note "daily to $STATE/backups (last 7 kept); manage under Admin -> Backups"

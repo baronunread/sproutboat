@@ -1,0 +1,75 @@
+#!/usr/bin/env bash
+#
+# sbctl — thin host-side control for a single-VPS Sproutboat install.
+# Installed to /usr/local/bin/sbctl by install.sh. Wraps systemctl/journalctl
+# so you don't memorise four unit names. This is NOT the deploy CLI — that's
+# `sproutboat` (npm, runs on your workstation).
+#
+set -euo pipefail
+
+ROOT=/opt/sproutboat
+TOKEN_FILE=/root/sproutboat-admin.env
+SERVICES=(sproutboat-control sproutboat-edge caddy)
+UNITS=("${SERVICES[@]}" sproutboat-backup.timer)
+
+if [ -t 1 ]; then OK=$'\033[1;32m'; NO=$'\033[1;31m'; D=$'\033[2m'; Z=$'\033[0m'
+else OK=; NO=; D=; Z=; fi
+die() { printf '%s✗%s %s\n' "$NO" "$Z" "$*" >&2; exit 1; }
+[ "$(id -u)" = 0 ] || die "run as root (sudo sbctl ...)"
+
+usage() {
+  cat <<EOF
+sbctl — Sproutboat single-VPS control
+
+  sbctl up                 start all services
+  sbctl down               stop all services
+  sbctl restart            restart control + edge + caddy
+  sbctl status             one-line health per unit
+  sbctl logs [name] [-n N] follow logs (name: control|edge|caddy|backup; default: all three)
+  sbctl token              print the admin API URL + token
+  sbctl preflight          re-run the runtime sandbox checks
+  sbctl update             re-run the installer (idempotent), then restart
+  sbctl uninstall [args]   hand off to install.sh --uninstall
+EOF
+}
+
+unit_of() { case "$1" in
+  control|edge) echo "sproutboat-$1" ;;
+  caddy) echo caddy ;;
+  backup) echo sproutboat-backup ;;
+  *) die "unknown service '$1' (control|edge|caddy|backup)" ;;
+esac; }
+
+cmd=${1:-status}; shift || true
+case "$cmd" in
+  up)      systemctl start "${UNITS[@]}"; exec "$0" status ;;
+  down)    systemctl stop  "${UNITS[@]}" ;;
+  restart) systemctl restart "${SERVICES[@]}"; exec "$0" status ;;
+  status)
+    for u in "${UNITS[@]}"; do
+      if systemctl is-active --quiet "$u"; then printf '  %s●%s %-26s %s\n' "$OK" "$Z" "$u" "$(systemctl show -p ActiveState --value "$u")"
+      else printf '  %s●%s %-26s %s%s%s\n' "$NO" "$Z" "$u" "$D" "$(systemctl is-active "$u" 2>/dev/null || true) — journalctl -u $u" "$Z"; fi
+    done ;;
+  logs)
+    n=200; sel=()
+    while [ $# -gt 0 ]; do case "$1" in
+      -n) n=$2; shift 2 ;;
+      *) sel+=("$(unit_of "$1")"); shift ;;
+    esac; done
+    [ ${#sel[@]} -gt 0 ] || sel=("${SERVICES[@]}")
+    args=(); for u in "${sel[@]}"; do args+=(-u "$u"); done
+    exec journalctl -n "$n" -f "${args[@]}" ;;
+  token)
+    [ -f "$TOKEN_FILE" ] || die "$TOKEN_FILE not found — is this a Sproutboat host?"
+    cat "$TOKEN_FILE" ;;
+  preflight) exec sh -c "cd '$ROOT' && '$ROOT/bun/bin/bun' run runtime:preflight" ;;
+  update)
+    [ -x "$ROOT/install.sh" ] || die "$ROOT/install.sh missing"
+    "$ROOT/install.sh"
+    systemctl restart "${SERVICES[@]}" ;;
+  uninstall)
+    [ -x "$ROOT/install.sh" ] || die "$ROOT/install.sh missing"
+    exec "$ROOT/install.sh" --uninstall "$@" ;;
+  -h|--help|help) usage ;;
+  *) usage; exit 1 ;;
+esac
