@@ -1,5 +1,5 @@
 import { chmod, mkdir, rename, rm, writeFile } from "node:fs/promises";
-import { resolve } from "node:path";
+import { dirname, resolve } from "node:path";
 import { randomUUID } from "node:crypto";
 import { validateArtifactDirectory } from "./artifact";
 import { actorFor, purgeUser, type Actor } from "./identity";
@@ -231,6 +231,15 @@ export async function deployArtifact(request: Request, project: string): Promise
   const worker = form.get("worker");
   if (!(manifest instanceof File) || !(worker instanceof File)) return Response.json({ error: "upload must include manifest and worker files" }, { status: 400 });
   if (manifest.size > 64 * 1024 || worker.size > 16 * 1024 * 1024) return Response.json({ error: "artifact exceeds upload limit" }, { status: 413 });
+  // #1 — optional sidecars: bindings.json (drives the per-deployment broker) and
+  // the static-asset tree (assets.json + one `asset` part per file, keyed by its
+  // posix path). validateArtifactDirectory re-checks their shape and hashes.
+  const bindings = form.get("bindings");
+  const assetsManifest = form.get("assets_manifest");
+  const assetFiles = form.getAll("asset").filter((part): part is File => part instanceof File);
+  if (bindings instanceof File && bindings.size > 64 * 1024) return Response.json({ error: "bindings.json exceeds 64 KiB" }, { status: 413 });
+  if (assetFiles.length > 4096) return Response.json({ error: "too many asset files" }, { status: 413 });
+  if (assetFiles.reduce((sum, file) => sum + file.size, 0) > 64 * 1024 * 1024) return Response.json({ error: "assets exceed the 64 MiB limit" }, { status: 413 });
 
   const temporary = resolve(artifactRoot, `.upload-${randomUUID()}`);
   await mkdir(temporary, { recursive: true, mode: 0o750 });
@@ -240,6 +249,20 @@ export async function deployArtifact(request: Request, project: string): Promise
       writeFile(resolve(temporary, "worker"), new Uint8Array(await worker.arrayBuffer()), { mode: 0o555 }),
     ]);
     await chmod(resolve(temporary, "worker"), 0o555);
+    if (bindings instanceof File) {
+      await writeFile(resolve(temporary, "bindings.json"), new Uint8Array(await bindings.arrayBuffer()), { mode: 0o640 });
+    }
+    if (assetsManifest instanceof File) {
+      await writeFile(resolve(temporary, "assets.json"), new Uint8Array(await assetsManifest.arrayBuffer()), { mode: 0o640 });
+      for (const file of assetFiles) {
+        const key = file.name.startsWith("/") ? file.name : `/${file.name}`;
+        if (key.includes("..") || key.includes("\0")) return Response.json({ error: `invalid asset path: ${file.name}` }, { status: 400 });
+        const target = resolve(temporary, "assets", `.${key}`);
+        if (!target.startsWith(resolve(temporary, "assets") + "/")) return Response.json({ error: `asset path escapes the tree: ${file.name}` }, { status: 400 });
+        await mkdir(dirname(target), { recursive: true, mode: 0o750 });
+        await writeFile(target, new Uint8Array(await file.arrayBuffer()), { mode: 0o640 });
+      }
+    }
     const validation = await validateArtifactDirectory(temporary);
     if (!validation.ok) return Response.json({ error: "invalid artifact", details: validation.errors }, { status: 400 });
     if (validation.value.manifest.project !== project) return Response.json({ error: "manifest project does not match request path" }, { status: 400 });
