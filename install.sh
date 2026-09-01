@@ -119,6 +119,13 @@ if [ -z "$SRC" ] || [ ! -f "$SRC/package.json" ] || [ ! -d "$SRC/apps/control" ]
 fi
 
 # --- ask everything up front, then run unattended -----------------------
+# Backfill from a previous install so a re-run (`sbctl update`, or piping the
+# script again) is unattended — `ask` no-ops for anything already set.
+val_env() { [ -f "$1" ] || return 0; sed -n "s/^$2=//p" "$1" | head -1; }
+SB_DOMAIN=${SB_DOMAIN:-$(val_env "$ETC/sproutboat.env" SPROUTBOAT_DEPLOYMENT_DOMAIN)}
+SB_ADMIN=${SB_ADMIN:-$(val_env "$ETC/control.env" SPROUTBOAT_BOOTSTRAP_USERNAME)}
+SB_ACME_EMAIL=${SB_ACME_EMAIL:-$(val_env "$ETC/caddy.env" ACME_EMAIL)}
+
 say "Configuration"
 ask SB_DOMAIN     "Deployment domain, e.g. fn.example.com (must be one you control)"
 [[ "$SB_DOMAIN" =~ ^([a-z0-9]([a-z0-9-]*[a-z0-9])?\.)+[a-z]{2,}$ ]] || die "not a valid domain: $SB_DOMAIN"
@@ -132,10 +139,9 @@ SB_GITHUB_CLIENT_SECRET=${SB_GITHUB_CLIENT_SECRET:-}
 DASH_URL="https://dashboard.$SB_DOMAIN"
 
 # Reuse secrets across re-runs so an existing CLI login / session keeps working.
-grep_env() { [ -f "$ETC/control.env" ] || return 0; sed -n "s/^$1=//p" "$ETC/control.env" | head -1; }
-ADMIN_TOKEN=$(grep_env SPROUTBOAT_BOOTSTRAP_TOKEN)
+ADMIN_TOKEN=$(val_env "$ETC/control.env" SPROUTBOAT_BOOTSTRAP_TOKEN)
 if [ -n "$ADMIN_TOKEN" ]; then TOKEN_IS_NEW=0; else ADMIN_TOKEN=$(randhex); TOKEN_IS_NEW=1; fi
-BETTER_AUTH_SECRET=$(grep_env BETTER_AUTH_SECRET); BETTER_AUTH_SECRET=${BETTER_AUTH_SECRET:-$(randhex)}
+BETTER_AUTH_SECRET=$(val_env "$ETC/control.env" BETTER_AUTH_SECRET); BETTER_AUTH_SECRET=${BETTER_AUTH_SECRET:-$(randhex)}
 
 # --- unprivileged user namespaces (bubblewrap needs them) ------------------
 say "Enabling unprivileged user namespaces"

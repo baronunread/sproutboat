@@ -65,7 +65,9 @@ case "$cmd" in
   preflight) exec sh -c "cd '$ROOT' && '$ROOT/bun/bin/bun' run runtime:preflight" ;;
   update)
     [ -x "$ROOT/install.sh" ] || die "$ROOT/install.sh missing"
-    "$ROOT/install.sh"
+    # install.sh backfills domain/email/admin + secrets from /etc/sproutboat,
+    # so this runs unattended. DNS is already live; don't re-wait.
+    SB_SKIP_DNS_CHECK=1 "$ROOT/install.sh"
     systemctl restart "${SERVICES[@]}" ;;
   uninstall)
     [ -x "$ROOT/install.sh" ] || die "$ROOT/install.sh missing"
