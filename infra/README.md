@@ -54,6 +54,20 @@ Remove it and `systemctl reload caddy` to switch to production.
 `DNS:Edit`) only if inbound `:80` is blocked — the installer then switches Caddy
 to DNS-01.
 
+### Custom domains
+
+A project owner can attach their own hostname (`sproutboat domains add
+www.example.com`, then `… verify` once the TXT record is live, or the project
+**Settings** page). Verification is a `_sproutboat.<hostname>` TXT record
+carrying `sproutboat-verify=<token>`; control resolves it and, on a match, adds
+the hostname to `routes.json`. From then the edge serves it from whatever
+version of the project is active, and Caddy issues its cert on demand through
+the same `/internal/tls/allow` gate and per-hour ceiling as generated
+hostnames. The visitor's DNS must point the hostname at this box (A/AAAA or
+CNAME to the deployment domain). `SPROUTBOAT_MAX_DOMAINS_PER_PROJECT` (default
+5) caps how many a project may hold; deleting the project or the domain drops
+it from the snapshot on the next sync.
+
 ## Hosts and binding
 
 `control` (`:8787`) and `edge` (`:8080`) bind `127.0.0.1` only. Caddy is the
@@ -221,6 +235,7 @@ All configurable in `/etc/sproutboat/control.env`; sane defaults apply if unset.
 | `SPROUTBOAT_DEPLOY_RATE_PER_IP_PER_MIN` | 20 | deploys per source IP per minute |
 | `SPROUTBOAT_MAX_PROJECTS_PER_ACCOUNT` | 50 | distinct projects one account may hold |
 | `SPROUTBOAT_MAX_VERSIONS_PER_PROJECT` | 25 | retained inactive versions; older ones are deleted and their artifacts GC'd |
+| `SPROUTBOAT_MAX_DOMAINS_PER_PROJECT` | 5 | custom domains one project may attach |
 | `SPROUTBOAT_AUTH_RATE_MAX` / `_WINDOW_SEC` | 30 / 60 | Better Auth throttle on `/api/auth/*` (login, token) |
 
 Rejections are written to `<state>/logs/control.ndjson` as

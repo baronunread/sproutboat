@@ -97,6 +97,16 @@ function connection(): Database {
       owner_id TEXT PRIMARY KEY,
       banned_at TEXT NOT NULL
     );
+    CREATE TABLE IF NOT EXISTS custom_domains (
+      hostname TEXT PRIMARY KEY,
+      owner_id TEXT NOT NULL,
+      project TEXT NOT NULL,
+      token TEXT NOT NULL,
+      verified_at TEXT,
+      created_at TEXT NOT NULL,
+      FOREIGN KEY (owner_id, project) REFERENCES projects(owner_id, name) ON DELETE CASCADE
+    );
+    CREATE INDEX IF NOT EXISTS custom_domains_by_project ON custom_domains(owner_id, project);
   `);
   db = database;
   dbConnectedPath = dbPath();
@@ -305,6 +315,60 @@ export function deleteOwner(ownerId: string): ProjectDeletion {
   })();
 }
 
+// --- custom domains (#2) ----------------------------------------------
+
+export type CustomDomain = {
+  hostname: string; project: string; ownerId: string;
+  token: string; verifiedAt: string | null; createdAt: string;
+};
+type CustomDomainRow = {
+  hostname: string; owner_id: string; project: string;
+  token: string; verified_at: string | null; created_at: string;
+};
+const toCustomDomain = (row: CustomDomainRow): CustomDomain => ({
+  hostname: row.hostname, project: row.project, ownerId: row.owner_id,
+  token: row.token, verifiedAt: row.verified_at, createdAt: row.created_at,
+});
+
+export function projectCustomDomains(ownerId: string, project: string): CustomDomain[] {
+  return q<CustomDomainRow>(
+    "SELECT * FROM custom_domains WHERE owner_id = ? AND project = ? ORDER BY hostname",
+    ownerId, project,
+  ).map(toCustomDomain);
+}
+
+/** Any owner's claim on `hostname` — hostname is globally unique (the PK). */
+export function customDomainByHostname(hostname: string): CustomDomain | undefined {
+  const row = q1<CustomDomainRow>("SELECT * FROM custom_domains WHERE hostname = ?", hostname);
+  return row ? toCustomDomain(row) : undefined;
+}
+
+/** Claims `hostname` for a project, unverified. Returns undefined if it is
+ *  already claimed (by this project or anyone else). */
+export function addCustomDomain(input: { hostname: string; ownerId: string; project: string; token: string }): CustomDomain | undefined {
+  if (customDomainByHostname(input.hostname)) return undefined;
+  const createdAt = new Date().toISOString();
+  run(
+    "INSERT INTO custom_domains (hostname, owner_id, project, token, verified_at, created_at) VALUES (?, ?, ?, ?, NULL, ?)",
+    input.hostname, input.ownerId, input.project, input.token, createdAt,
+  );
+  return { ...input, verifiedAt: null, createdAt };
+}
+
+export function markCustomDomainVerified(ownerId: string, project: string, hostname: string): boolean {
+  return run(
+    "UPDATE custom_domains SET verified_at = ? WHERE hostname = ? AND owner_id = ? AND project = ? AND verified_at IS NULL",
+    new Date().toISOString(), hostname, ownerId, project,
+  ) > 0;
+}
+
+export function deleteCustomDomain(ownerId: string, project: string, hostname: string): boolean {
+  return run(
+    "DELETE FROM custom_domains WHERE hostname = ? AND owner_id = ? AND project = ?",
+    hostname, ownerId, project,
+  ) > 0;
+}
+
 // --- routes snapshot + artifact GC --------------------------------------
 
 /**
@@ -319,9 +383,18 @@ export function syncRoutes(): Promise<void> {
   return routeSync;
 }
 async function writeRouteSnapshot(): Promise<void> {
+  // Generated `<project>.<user>.<domain>` hosts, plus every verified custom
+  // domain (#2) pointed at whatever version of its project is active right now.
   const routes = q<{ hostname: string; worker_path: string }>(
     `SELECT hostname, worker_path FROM deployments
-     WHERE active = 1 AND owner_id NOT IN (SELECT owner_id FROM banned_owners)
+       WHERE active = 1 AND owner_id NOT IN (SELECT owner_id FROM banned_owners)
+     UNION
+     SELECT cd.hostname AS hostname, d.worker_path AS worker_path
+       FROM custom_domains cd
+       JOIN deployments d
+         ON d.owner_id = cd.owner_id AND d.project = cd.project AND d.active = 1
+       WHERE cd.verified_at IS NOT NULL
+         AND cd.owner_id NOT IN (SELECT owner_id FROM banned_owners)
      ORDER BY hostname`,
   ).map((row) => ({ hostname: row.hostname, workerPath: row.worker_path }));
   await mkdir(dirname(routesPath()), { recursive: true });

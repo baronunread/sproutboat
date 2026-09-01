@@ -24,6 +24,8 @@ export const LIMITS = {
   projectsPerAccount: () => num("SPROUTBOAT_MAX_PROJECTS_PER_ACCOUNT", 50),
   /** retained inactive versions per project (active is always kept) */
   versionsPerProject: () => num("SPROUTBOAT_MAX_VERSIONS_PER_PROJECT", 25),
+  /** custom domains one project may attach (#2) */
+  domainsPerProject: () => num("SPROUTBOAT_MAX_DOMAINS_PER_PROJECT", 5),
 };
 
 const WINDOW_MS = 60_000;

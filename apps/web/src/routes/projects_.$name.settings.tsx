@@ -21,6 +21,113 @@ function Value({ label, value, copy }: { label: string; value: string; copy?: bo
   );
 }
 
+type DomainRecord = {
+  hostname: string; verified: boolean;
+  verification: { type: string; name: string; value: string } | null;
+};
+
+function CustomDomains({ name, hasActive }: { name: string; hasActive: boolean }) {
+  const [list, setList] = useState<DomainRecord[]>([]);
+  const [state, setState] = useState<"loading" | "ready" | "error">("loading");
+  const [hostname, setHostname] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const base = `/api/projects/${encodeURIComponent(name)}/domains`;
+
+  const fetchList = async (): Promise<DomainRecord[] | null> => {
+    try {
+      const response = await fetch(base, { credentials: "include" });
+      if (!response.ok) return null;
+      // SAFETY: a 2xx from the domains endpoint is DomainRecord[].
+      return await response.json() as DomainRecord[];
+    } catch { return null; }
+  };
+
+  useEffect(() => {
+    let ignore = false;
+    setState("loading");
+    void fetchList().then((rows) => {
+      if (ignore) return;
+      if (rows) { setList(rows); setState("ready"); } else { setState("error"); }
+    });
+    return () => { ignore = true; };
+  }, [name]);
+
+  const call = async (url: string, init: RequestInit, onOk: () => void) => {
+    setBusy(true);
+    setError(null);
+    try {
+      const response = await fetch(url, { credentials: "include", ...init });
+      if (!response.ok) {
+        // SAFETY: an error body from this API is { error: string }.
+        const body = await response.json().catch(() => ({})) as { error?: string };
+        setError(body.error ?? `request failed (${response.status})`);
+      } else {
+        onOk();
+        const rows = await fetchList();
+        if (rows) setList(rows);
+      }
+    } catch {
+      setError("network error");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <section className="data-panel settings-panel">
+      <h2>Custom domains</h2>
+      <p>Point your own hostname at this project. It serves whichever version is active, alongside the generated hostname.</p>
+
+      {state === "loading" ? <p className="loading-state" aria-live="polite">Loading domains…</p>
+        : state === "error" ? <p className="form-error" role="alert">Could not load custom domains.</p>
+        : list.length === 0 ? <p className="empty-state">No custom domains attached.</p>
+        : (
+          <dl className="detail-grid">
+            {list.map((domain) => (
+              <div key={domain.hostname}>
+                <dt><code>{domain.hostname}</code> — {domain.verified ? "verified" : "pending verification"}</dt>
+                <dd>
+                  {domain.verification && (
+                    <p className="hint">
+                      Add DNS <code>{domain.verification.type}</code> <code>{domain.verification.name}</code> ={" "}
+                      <code>{domain.verification.value}</code>, then verify.
+                    </p>
+                  )}
+                  {!domain.verified && (
+                    <button type="button" disabled={busy} onClick={() => void call(`${base}/${domain.hostname}/verify`, { method: "POST" }, () => {})}>
+                      Verify
+                    </button>
+                  )}
+                  <button type="button" disabled={busy} onClick={() => void call(`${base}/${domain.hostname}`, { method: "DELETE" }, () => {})}>
+                    Remove
+                  </button>
+                </dd>
+              </div>
+            ))}
+          </dl>
+        )}
+
+      <form
+        onSubmit={(event) => {
+          event.preventDefault();
+          if (!hostname.trim()) return;
+          void call(base, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ hostname: hostname.trim() }) }, () => setHostname(""));
+        }}
+      >
+        <label>
+          Add a hostname
+          <input type="text" inputMode="url" placeholder="www.example.com" value={hostname} onChange={(event) => setHostname(event.target.value)} disabled={busy || !hasActive} />
+        </label>
+        <button type="submit" disabled={busy || !hasActive || !hostname.trim()}>Add</button>
+        {!hasActive && <p className="hint">Deploy a version first.</p>}
+        {error && <p className="form-error" role="alert">{error}</p>}
+      </form>
+    </section>
+  );
+}
+
 function ProjectSettings() {
   const { name, active } = useProject();
   const navigate = useNavigate();
@@ -91,6 +198,8 @@ function ProjectSettings() {
         )}
         <p className="hint">The <code>http-sync-v0</code> profile has no runtime variables, secrets, storage bindings, or triggers.</p>
       </section>
+
+      <CustomDomains name={name} hasActive={Boolean(active)} />
 
       <section className="data-panel settings-panel danger-panel">
         <h2>Danger zone</h2>

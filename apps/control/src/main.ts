@@ -1,7 +1,8 @@
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { adminEmail, ensureAdminSeeded, getAuth, githubSignInConfigured } from "./auth";
-import { activateDeployment, dashboardOverview, deleteAccount, deleteDeployment, deleteProject, deploymentDetail, deployArtifact, isDeploymentHostname, listDeployments, listProjects, projectLogHistory, projectLogs, projectLogTail, projectMetrics } from "./deployments";
+import { activateDeployment, dashboardOverview, deleteAccount, deleteDeployment, deleteProject, deploymentDetail, deployArtifact, listDeployments, listProjects, projectLogHistory, projectLogs, projectLogTail, projectMetrics } from "./deployments";
+import { addDomain, deleteDomain, listDomains, verifyDomain } from "./domains";
 import { actorFor, profileForUser, reserveUsername, sessionUser } from "./identity";
 import { clientIp, logLimitEvent, rateHit, tlsIssuanceAllowed } from "./limits";
 import { approveCliAuthorization, createCliAuthorization, exchangeCliAuthorization, listCliCredentials, revokeAllCliCredentials, revokeCliCredential } from "./cli-authorization";
@@ -166,10 +167,19 @@ const server = Bun.serve({
     if (request.method === "GET" && logsTail) return projectLogTail(request, logsTail[1]);
     const logsRecent = /^\/api\/projects\/([a-z0-9-]+)\/logs\/recent$/.exec(url.pathname);
     if (request.method === "GET" && logsRecent) return projectLogs(request, logsRecent[1]);
+    const domains = /^\/api\/projects\/([a-z0-9-]+)\/domains$/.exec(url.pathname);
+    if (request.method === "GET" && domains) return listDomains(request, domains[1]);
+    if (request.method === "POST" && domains) return addDomain(request, domains[1]);
+    const domainVerify = /^\/api\/projects\/([a-z0-9-]+)\/domains\/([a-z0-9.-]+)\/verify$/.exec(url.pathname);
+    if (request.method === "POST" && domainVerify) return verifyDomain(request, domainVerify[1], domainVerify[2]);
+    const domainRecord = /^\/api\/projects\/([a-z0-9-]+)\/domains\/([a-z0-9.-]+)$/.exec(url.pathname);
+    if (request.method === "DELETE" && domainRecord) return deleteDomain(request, domainRecord[1], domainRecord[2]);
     if (url.pathname === "/internal/health") return Response.json({ ok: true, service: "control" });
     if (url.pathname === "/internal/tls/allow") {
       const domain = url.searchParams.get("domain")?.toLowerCase() || "";
-      if (!isDeploymentHostname(domain) || !(await activeHostnames()).has(domain)) {
+      // The route snapshot is the source of truth for "a real active hostname" —
+      // it now carries verified custom domains (#2) as well as generated ones.
+      if (!(await activeHostnames()).has(domain)) {
         return new Response("unknown deployment", { status: 403 });
       }
       // #26 — real deployment, but bound how fast NEW certs get ordered.
