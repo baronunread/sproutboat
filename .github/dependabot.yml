@@ -1,0 +1,27 @@
+version: 2
+updates:
+  # Keep the workflow actions current (ci.yml, react-doctor.yml, style-doctor.yml).
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      actions:
+        patterns: ["*"]
+
+  # npm deps (root package.json covers apps/web too — one lockfile, not a workspace).
+  # Ignored, both bumped by hand:
+  #   porffor    — branch-pinned git dep, coupled to tools/ pins
+  #   sproutboat — our own CLI (github:#main); move the pin with `bun update sproutboat`
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    ignore:
+      - dependency-name: porffor
+      - dependency-name: sproutboat
+    groups:
+      npm:
+        patterns: ["*"]
+        update-types: [minor, patch]
