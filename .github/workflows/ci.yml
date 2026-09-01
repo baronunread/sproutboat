@@ -9,28 +9,13 @@ jobs:
   check:
     runs-on: ubuntu-latest
     steps:
-      # The monorepo depends on ../sproutboat-cli via a file: path, so CI needs
-      # both repos checked out as siblings. sproutboat-cli is private, so the
-      # cross-repo checkout needs a PAT with read access in secrets
-      # (SPROUTBOAT_CLI_TOKEN). If that repo is ever made public, drop the token
-      # line and switch the package.json dep to github:baronunread/sproutboat-cli#main.
       - uses: actions/checkout@v4
-        with:
-          path: sproutboat
-      - uses: actions/checkout@v4
-        with:
-          repository: baronunread/sproutboat-cli
-          ref: main
-          token: ${{ secrets.SPROUTBOAT_CLI_TOKEN }}
-          path: sproutboat-cli
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: "1.4.0"
-      - working-directory: sproutboat
-        run: bun install --frozen-lockfile
-      - working-directory: sproutboat
-        run: bun run typecheck
-      - working-directory: sproutboat
-        run: bun run lint
-      - working-directory: sproutboat
-        run: bun test apps/ services/ tests/
+      # Pulls the sproutboat CLI package (github:baronunread/sproutboat-cli#main,
+      # public); bun.lock pins the resolved commit.
+      - run: bun install --frozen-lockfile
+      - run: bun run typecheck
+      - run: bun run lint
+      - run: bun test apps/ services/ tests/
