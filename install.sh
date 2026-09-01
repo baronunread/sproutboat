@@ -25,9 +25,19 @@ CADDY_BIN=/usr/local/bin/caddy-sproutboat
 SB_REPO=${SB_REPO:-https://github.com/baronunread/sproutboat.git}
 SB_REF=${SB_REF:-main}
 
-say()  { printf '\033[1;32m==>\033[0m %s\n' "$*"; }
-warn() { printf '\033[1;33m!  \033[0m %s\n' "$*" >&2; }
-die()  { printf '\033[1;31mx  \033[0m %s\n' "$*" >&2; exit 1; }
+# Colours only when stdout is a terminal (never in CI logs / pipes).
+if [ -t 1 ]; then
+  C_HEAD=$'\033[1;36m'; C_DIM=$'\033[2m'; C_OK=$'\033[1;32m'; C_WARN=$'\033[1;33m'; C_ERR=$'\033[1;31m'; C_0=$'\033[0m'
+else
+  C_HEAD=; C_DIM=; C_OK=; C_WARN=; C_ERR=; C_0=
+fi
+
+say()  { printf '\n%s▸%s %s%s%s\n' "$C_HEAD" "$C_0" "$C_HEAD" "$*" "$C_0"; }  # section header
+note() { printf '  %s%s%s\n' "$C_DIM" "$*" "$C_0"; }                          # indented detail
+ok()   { printf '  %s✓%s %s\n' "$C_OK" "$C_0" "$*"; }
+warn() { printf '%s !%s %s\n' "$C_WARN" "$C_0" "$*" >&2; }
+die()  { printf '%s ✗%s %s\n' "$C_ERR" "$C_0" "$*" >&2; exit 1; }
+rule() { printf '  %s────────────────────────────────────────────────────%s\n' "$C_DIM" "$C_0"; }
 randhex() { od -An -tx1 -N32 /dev/urandom | tr -d " \n"; }  # 64 hex chars, no external deps
 
 # `curl ... | sudo bash` leaves stdin on the pipe, not the terminal. Prompts and
@@ -51,6 +61,36 @@ SKIP_SERVICES=${SB_SKIP_SERVICES:-0}
 
 [ "$(id -u)" = 0 ] || die "run as root (sudo ./install.sh)"
 [ "$(uname -s)" = Linux ] || die "Linux only"
+
+# --- uninstall: `install.sh --uninstall [--keep-state]` -------------------
+if [ "${1:-}" = --uninstall ]; then
+  KEEP_STATE=0; [ "${2:-}" = --keep-state ] && KEEP_STATE=1
+  say "Uninstall Sproutboat"
+  note "removes services, Caddy config, /opt/sproutboat, users, and the sysctl drop-in"
+  [ "$KEEP_STATE" = 1 ] && note "keeps $STATE (database, artifacts, backups)" \
+                        || note "ALSO deletes $STATE — database, artifacts, backups"
+  if [ "${SB_UNINSTALL_YES:-0}" != 1 ]; then
+    [ -n "$PROMPT_TTY" ] || die "not a TTY; re-run with SB_UNINSTALL_YES=1 to confirm"
+    read -r -p "  type 'remove' to confirm: " __c < "$PROMPT_TTY" || true
+    [ "$__c" = remove ] || die "aborted"
+  fi
+  systemctl disable --now sproutboat-control sproutboat-edge caddy sproutboat-backup.timer sproutboat-backup.service >/dev/null 2>&1 || true
+  rm -f /etc/systemd/system/sproutboat-control.service /etc/systemd/system/sproutboat-edge.service \
+        /etc/systemd/system/sproutboat-backup.service /etc/systemd/system/sproutboat-backup.timer
+  rm -rf /etc/systemd/system/caddy.service.d
+  # only remove caddy.service if this installer created it (has our marker path)
+  grep -q "$CADDY_BIN" /etc/systemd/system/caddy.service 2>/dev/null && rm -f /etc/systemd/system/caddy.service
+  systemctl daemon-reload
+  rm -f "$CADDY_BIN" /etc/sysctl.d/80-sproutboat-userns.conf /root/sproutboat-admin.env
+  rm -rf "$ROOT" /opt/sproutboat-src /etc/sproutboat /etc/caddy
+  [ "$KEEP_STATE" = 1 ] || rm -rf "$STATE"
+  for u in sproutboat-control sproutboat-edge; do id "$u" >/dev/null 2>&1 && userdel "$u" || true; done
+  getent group sproutboat >/dev/null && groupdel sproutboat 2>/dev/null || true
+  ok "removed"
+  note "firewall rules for 22/80/443 were left in place — 'ufw delete allow 80/tcp' etc. to drop them"
+  exit 0
+fi
+
 [ "$(uname -m)" = x86_64 ] || die "x86-64 only (artifact target is linux-x86_64)"
 if [ "$SKIP_SERVICES" != 1 ]; then
   command -v systemctl >/dev/null || die "systemd required"
@@ -178,10 +218,10 @@ if [ -n "${SB_CF_TOKEN:-}" ]; then
 fi
 
 say "Installing application dependencies"
-( cd "$ROOT" && "$BUN" install --frozen-lockfile )
+( cd "$ROOT" && "$BUN" install --frozen-lockfile --silent ) && ok "dependencies ready"
 
 say "Building the dashboard"
-( cd "$ROOT" && "$BUN" run web:build )
+( cd "$ROOT" && "$BUN" run --silent web:build >/dev/null ) && ok "dashboard built -> $ROOT/apps/web/dist"
 
 # --- write env BEFORE starting services -----------------------------
 say "Writing $ETC/{sproutboat,control}.env"
@@ -264,27 +304,25 @@ done
 
 # --- DNS: guide the one record, then wait for it to resolve here --------
 PUBLIC_IP=$(curl -fsS4 -m 5 https://api.ipify.org 2>/dev/null || true)
-echo
-say "Add ONE DNS record, then Caddy can issue TLS certificates:"
-echo
-echo "      Type:   A"
-echo "      Name:   *.$SB_DOMAIN     (a wildcard — the name is literally  *  )"
-echo "      Value:  ${PUBLIC_IP:-<the public IPv4 of this box>}"
-echo "      Proxy:  OFF / DNS only / grey cloud"
-echo
-echo "  One record covers control.$SB_DOMAIN, dashboard.$SB_DOMAIN, and every"
-echo "  <project>.$SB_ADMIN.$SB_DOMAIN deployment. No DNS API token needed."
-echo
+say "Add ONE DNS record, then Caddy can issue TLS certificates"
+rule
+note "Type   A"
+note "Name   *.$SB_DOMAIN     (a wildcard — the name is literally  *  )"
+note "Value  ${PUBLIC_IP:-<the public IPv4 of this box>}"
+note "Proxy  OFF / DNS only / grey cloud"
+rule
+note "Covers control.$SB_DOMAIN, dashboard.$SB_DOMAIN, and every"
+note "<project>.$SB_ADMIN.$SB_DOMAIN deployment. No DNS API token needed."
 if [ "$SKIP_SERVICES" = 1 ] || [ "${SB_SKIP_DNS_CHECK:-0}" = 1 ] || [ -z "$PUBLIC_IP" ] || [ -z "$PROMPT_TTY" ]; then
   warn "Not waiting for DNS — the record must exist before the first HTTPS request."
 else
   probe="sbdns-$RANDOM.$SB_DOMAIN"
   say "Waiting up to 5 min for *.$SB_DOMAIN -> $PUBLIC_IP"
-  say "Press any key to skip — you can add the record later, certs just wait for it."
+  note "press any key to skip — you can add the record later, certs just wait for it"
   for _ in $(seq 1 60); do
     got=$(getent ahostsv4 "$probe" 2>/dev/null | awk 'NR==1{print $1}' || true)
-    [ "$got" = "$PUBLIC_IP" ] && { say "DNS is live."; break; }
-    if read -r -t 5 -n 1 -s _k < "$PROMPT_TTY"; then warn "Skipped the DNS wait."; break; fi
+    [ "$got" = "$PUBLIC_IP" ] && { ok "DNS is live"; break; }
+    if read -r -t 5 -n 1 -s _k < "$PROMPT_TTY"; then warn "skipped the DNS wait"; break; fi
   done
 fi
 
@@ -320,18 +358,21 @@ install -m 0644 "$ROOT/infra/systemd/sproutboat-backup.timer"   /etc/systemd/sys
 say "Migrating the auth database"
 ( cd "$ROOT" && SPROUTBOAT_DATABASE_PATH="$STATE/sproutboat.sqlite" \
     BETTER_AUTH_SECRET="$BETTER_AUTH_SECRET" BETTER_AUTH_URL="$DASH_URL" \
-    "$BUN" x --bun auth@1.7.1 migrate --config apps/control/src/auth.migrate.ts --yes )
+    "$BUN" x --bun auth@1.7.1 migrate --config apps/control/src/auth.migrate.ts --yes >/dev/null ) && ok "auth schema up to date"
 chown sproutboat-control:sproutboat "$STATE"/sproutboat.sqlite* 2>/dev/null || true
 
 if [ "$SKIP_SERVICES" = 1 ]; then
-  say "daemon-reload + service start + preflight — skipped (SB_SKIP_SERVICES)"
+  say "Services — skipped (SB_SKIP_SERVICES)"
 else
   systemctl daemon-reload
 
   # --- start (control first — its env now exists) ----------------
   say "Starting services"
   units=(sproutboat-control sproutboat-edge caddy sproutboat-backup.timer)
-  systemctl enable --now "${units[@]}"
+  systemctl enable --now "${units[@]}" >/dev/null 2>&1
+  for u in "${units[@]}"; do
+    systemctl is-active --quiet "$u" && ok "$u" || warn "$u is not active — check: journalctl -u $u"
+  done
 
   # --- verify ---------------------------------------------------
   say "Runtime preflight"
@@ -342,27 +383,30 @@ fi
 printf 'SPROUTBOAT_API_URL=https://control.%s\nSPROUTBOAT_TOKEN=%s\n' "$SB_DOMAIN" "$ADMIN_TOKEN" > /root/sproutboat-admin.env
 chmod 0600 /root/sproutboat-admin.env
 
-echo
-say "Done."
-echo
-if [ "$TOKEN_IS_NEW" = 1 ]; then echo "  Admin credentials (also saved to /root/sproutboat-admin.env):"
-else echo "  Admin credentials (unchanged from your last install):"; fi
-echo
-echo "      SPROUTBOAT_API_URL   https://control.$SB_DOMAIN"
-echo "      SPROUTBOAT_TOKEN     $ADMIN_TOKEN"
-echo
-say "Dashboard:  $DASH_URL"
-echo "      Sign in with the admin token above (field: \"Admin token\")."
+printf '\n%s▸ Sproutboat is up%s\n' "$C_OK" "$C_0"
+rule
+if [ "$TOKEN_IS_NEW" = 1 ]; then note "admin credentials (saved to /root/sproutboat-admin.env)"
+else note "admin credentials (unchanged from your last install)"; fi
+printf '    SPROUTBOAT_API_URL  %shttps://control.%s%s\n' "$C_HEAD" "$SB_DOMAIN" "$C_0"
+printf '    SPROUTBOAT_TOKEN    %s%s%s\n' "$C_HEAD" "$ADMIN_TOKEN" "$C_0"
+rule
+
+say "Dashboard  $DASH_URL"
+note "sign in with the admin token above (field: \"Admin token\")"
 if [ -n "$SB_GITHUB_CLIENT_ID" ] && [ -n "$SB_GITHUB_CLIENT_SECRET" ]; then
-  echo "      GitHub sign-in enabled. OAuth callback URL: $DASH_URL/api/auth/callback/github"
+  note "GitHub sign-in enabled — OAuth callback: $DASH_URL/api/auth/callback/github"
 fi
-echo
-say "On your workstation, install the CLI and log in:"
-echo "      bunx @sproutboat/cli login --api-url https://control.$SB_DOMAIN --token <token>"
-echo "      sproutboat init hello && cd hello && sproutboat deploy"
-echo
-say "Check it came up:   systemctl status caddy sproutboat-control sproutboat-edge"
-echo "                    journalctl -fu caddy      # watch the first certificate"
-echo
-say "Backups: daily to $STATE/backups (last 7 kept). Manage them at $DASH_URL under Admin -> Backups."
-warn "Also take a provider snapshot now, and copy backups off-box."
+
+say "Deploy from your workstation"
+note "bunx @sproutboat/cli login --api-url https://control.$SB_DOMAIN --token <token>"
+note "sproutboat init hello && cd hello && sproutboat deploy"
+
+say "Operate"
+note "systemctl status caddy sproutboat-control sproutboat-edge   # health"
+note "journalctl -fu caddy                                        # watch the first cert"
+note "sudo systemctl stop  sproutboat-control sproutboat-edge caddy   # pause everything"
+note "sudo $ROOT/install.sh --uninstall                           # remove everything"
+
+say "Backups"
+note "daily to $STATE/backups (last 7 kept); manage under Admin -> Backups"
+warn "take a provider snapshot now, and copy backups off-box"
