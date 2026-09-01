@@ -137,13 +137,19 @@ if (seccompActions === null || !/^Seccomp:\s*\d+/m.test(seccompStatus || "")) {
   add("seccomp", "pass", `actions: ${seccompActions.trim()}`);
 }
 
+const tally = (status: Status) => checks.filter((check) => check.status === status).length;
+
 if (process.argv.includes("--json")) {
   console.log(JSON.stringify({ ok: !checks.some((check) => check.status === "fail"), checks }, null, 2));
 } else {
-  for (const check of checks) {
+  // --quiet: only surface what needs attention, then a one-line tally. The full
+  // list stays available via `sbctl preflight` / `bun run runtime:preflight`.
+  const quiet = process.argv.includes("--quiet");
+  for (const check of quiet ? checks.filter((check) => check.status !== "pass") : checks) {
     console.log(`${check.status.toUpperCase()} ${check.name}: ${check.detail}`);
-    if (check.fix) console.log(`  fix: ${check.fix}`);
+    if (check.fix && check.status !== "pass") console.log(`  fix: ${check.fix}`);
   }
+  console.log(`${tally("pass")} pass, ${tally("warn")} warn, ${tally("fail")} fail`);
 }
 
 if (checks.some((check) => check.status === "fail")) process.exitCode = 1;

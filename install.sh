@@ -377,7 +377,9 @@ else
 
   # --- verify ---------------------------------------------------
   say "Runtime preflight"
-  ( cd "$ROOT" && "$BUN" run runtime:preflight ) || warn "preflight reported problems — review above; deployments need bubblewrap working"
+  ( cd "$ROOT" && "$BUN" run --silent runtime:preflight --quiet ) \
+    && ok "sandbox ready" \
+    || warn "preflight reported problems — run 'sudo sbctl preflight' for detail; deployments need bubblewrap working"
 fi
 
 # Keep the token retrievable — the SSH scrollback is not a safe home for it.
