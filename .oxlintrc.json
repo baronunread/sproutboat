@@ -15,8 +15,7 @@
     ".windsurf/**",
     "tools/oxlint/anti-slop/**",
     "tools/native-fetch-prelude.js",
-    "services/broker/**",
-    "examples/**"
+    "services/broker/**"
   ],
   "jsPlugins": [
     {
