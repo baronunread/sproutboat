@@ -1,13 +1,14 @@
-import { createFileRoute, useLoaderData } from "@tanstack/react-router";
+import { createFileRoute } from "@tanstack/react-router";
 import { Shell } from "../components";
 import { CliCredentials, DeleteAccount } from "../account";
+import { useAccount } from "../dashboard-data";
 
 export const Route = createFileRoute("/settings")({ component: Settings, head: () => ({ meta: [{ title: "Settings · Sproutboat" }] }) });
 
 function setTheme(theme: "light" | "dark") { document.documentElement.dataset.theme = theme; localStorage.setItem("sproutboat-theme", theme); }
 
 function Settings() {
-  const account = useLoaderData({ from: "__root__" });
+  const { account } = useAccount();
   return (
     <Shell>
       <section className="page-heading">

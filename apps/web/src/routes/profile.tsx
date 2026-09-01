@@ -1,15 +1,17 @@
 import { useState } from "react";
-import { createFileRoute, Link, useLoaderData } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { Avatar, Shell } from "../components";
+import { useAccount } from "../dashboard-data";
 
 export const Route = createFileRoute("/profile")({ component: Profile, head: () => ({ meta: [{ title: "Profile · Sproutboat" }] }) });
 function Profile() {
-  const account = useLoaderData({ from: "__root__" });
+  const { account, refresh } = useAccount();
   const [profile, setProfile] = useState<{ username: string }>();
   const [username, setUsername] = useState("");
   const [error, setError] = useState("");
   const reserve = async () => { setError(""); const response = await fetch("/api/account/namespace", { method: "POST", credentials: "include", headers: { "content-type": "application/json" }, body: JSON.stringify({ username }) }); if (response.ok) { // SAFETY: successful namespace reservation returns the updated profile contract.
       setProfile((await response.json() as { profile: { username: string } }).profile);
+      refresh();
     } else setError("Choose an available 3–32 character lowercase namespace."); };
   const currentProfile = profile ?? account?.profile;
   const identityLabel = currentProfile?.username || account?.user?.name || "account";

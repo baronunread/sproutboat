@@ -1,10 +1,8 @@
-import { createFileRoute, Link, Outlet, redirect } from "@tanstack/react-router";
+import { createFileRoute, Link, Navigate, Outlet } from "@tanstack/react-router";
 import { Shell } from "../components";
+import { useAccount } from "../dashboard-data";
 
 export const Route = createFileRoute("/admin")({
-  beforeLoad: ({ context }: { context: { account?: { isAdmin?: boolean } } }) => {
-    if (!context.account?.isAdmin) throw redirect({ to: "/" });
-  },
   component: AdminLayout,
   head: () => ({ meta: [{ title: "Admin · Sproutboat" }] }),
 });
@@ -12,6 +10,9 @@ export const Route = createFileRoute("/admin")({
 const activeProps = { "aria-current": "page" as const };
 
 function AdminLayout() {
+  const { account, state } = useAccount();
+  if (state === "loading") return null;
+  if (!account?.isAdmin) return <Navigate to="/" />;
   return (
     <Shell>
       <section className="page-heading">

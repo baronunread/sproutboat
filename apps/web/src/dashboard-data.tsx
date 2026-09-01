@@ -1,4 +1,45 @@
-import { createContext, useCallback, useContext, useEffect, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from "react";
+
+export type Account = {
+  profile?: { username?: string };
+  isAdmin?: boolean;
+  user?: { name?: string | null; email?: string; image?: string | null };
+};
+
+type AccountState = { account?: Account; state: "loading" | "authed" | "anon"; refresh: () => void };
+const AccountContext = createContext<AccountState | undefined>(undefined);
+
+/**
+ * Client-side session state, shared by every screen. The dashboard is a
+ * prerendered SPA: the shell is built with the API offline, so auth cannot come
+ * from a router loader (its baked `account: undefined` would stick across hard
+ * reloads and show logged-out chrome on /profile, /settings, and the nav).
+ */
+export function AccountProvider({ children }: { children: ReactNode }) {
+  const [account, setAccount] = useState<Account>();
+  const [state, setState] = useState<"loading" | "authed" | "anon">("loading");
+  const [nonce, setNonce] = useState(0);
+  useEffect(() => {
+    let alive = true;
+    fetch("/api/account", { credentials: "include" })
+      .then((response) => (response.ok ? response.json() : null))
+      .then((body) => {
+        if (!alive) return;
+        // SAFETY: /api/account returns the Account contract on 2xx; null otherwise.
+        setAccount(body === null ? undefined : (body as Account));
+        setState(body === null ? "anon" : "authed");
+      })
+      .catch(() => { if (alive) setState("anon"); });
+    return () => { alive = false; };
+  }, [nonce]);
+  return <AccountContext.Provider value={{ account, state, refresh: () => setNonce((n) => n + 1) }}>{children}</AccountContext.Provider>;
+}
+
+export function useAccount(): AccountState {
+  const value = useContext(AccountContext);
+  if (!value) throw new Error("useAccount must be used inside AccountProvider");
+  return value;
+}
 
 export type Overview = {
   metrics: { activeProjects: number; deployments: number; requestsLast24Hours: number; successRate: number | null };

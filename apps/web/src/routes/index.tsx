@@ -2,7 +2,8 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { Arrow, Metric, Shell } from "../components";
 import { relativeTime, useOverview } from "../dashboard-data";
 
-// Auth is gated in __root.tsx; an unauthenticated visitor never reaches here.
+// __root.tsx's AuthGate redirects anon visitors to /login once the session
+// check resolves; useOverview also has its own sign-in state as a fallback.
 export const Route = createFileRoute("/")({
   component: Overview,
   head: () => ({ meta: [{ title: "Sproutboat" }] }),

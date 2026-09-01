@@ -1,5 +1,6 @@
-import { useLoaderData, useRouterState, Link } from "@tanstack/react-router";
+import { useRouterState, Link } from "@tanstack/react-router";
 import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
+import { useAccount } from "./dashboard-data";
 
 export function SproutboatMark() {
   return (
@@ -56,7 +57,7 @@ export function Shell({
   const pathname = useRouterState({
     select: (state) => state.location.pathname,
   });
-  const account = useLoaderData({ from: "__root__" });
+  const { account } = useAccount();
   const username = account?.profile?.username;
   const displayName = username || account?.user?.name || "account";
   return (
