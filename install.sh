@@ -282,7 +282,7 @@ else
   say "Waiting up to 5 min for *.$SB_DOMAIN -> $PUBLIC_IP"
   say "Press any key to skip — you can add the record later, certs just wait for it."
   for _ in $(seq 1 60); do
-    got=$(getent ahostsv4 "$probe" 2>/dev/null | awk 'NR==1{print $1}')
+    got=$(getent ahostsv4 "$probe" 2>/dev/null | awk 'NR==1{print $1}' || true)
     [ "$got" = "$PUBLIC_IP" ] && { say "DNS is live."; break; }
     if read -r -t 5 -n 1 -s _k < "$PROMPT_TTY"; then warn "Skipped the DNS wait."; break; fi
   done
