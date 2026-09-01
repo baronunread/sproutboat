@@ -264,8 +264,6 @@ done
 
 # --- DNS: guide the one record, then wait for it to resolve here --------
 PUBLIC_IP=$(curl -fsS4 -m 5 https://api.ipify.org 2>/dev/null || true)
-covers="control.$SB_DOMAIN"
-covers=", dashboard."
 echo
 say "Add ONE DNS record, then Caddy can issue TLS certificates:"
 echo
@@ -274,18 +272,19 @@ echo "      Name:   *.$SB_DOMAIN     (a wildcard — the name is literally  *  )
 echo "      Value:  ${PUBLIC_IP:-<the public IPv4 of this box>}"
 echo "      Proxy:  OFF / DNS only / grey cloud"
 echo
-echo "  Covers $covers, and every <project>.$SB_ADMIN.$SB_DOMAIN"
-echo "  deployment. No DNS API token needed."
+echo "  One record covers control.$SB_DOMAIN, dashboard.$SB_DOMAIN, and every"
+echo "  <project>.$SB_ADMIN.$SB_DOMAIN deployment. No DNS API token needed."
 echo
 if [ "$SKIP_SERVICES" = 1 ] || [ "${SB_SKIP_DNS_CHECK:-0}" = 1 ] || [ -z "$PUBLIC_IP" ] || [ -z "$PROMPT_TTY" ]; then
   warn "Not waiting for DNS — the record must exist before the first HTTPS request."
 else
   probe="sbdns-$RANDOM.$SB_DOMAIN"
-  say "Waiting for *.$SB_DOMAIN -> $PUBLIC_IP   (any key to skip)"
-  for _ in $(seq 1 120); do
+  say "Waiting up to 5 min for *.$SB_DOMAIN -> $PUBLIC_IP"
+  say "Press any key to skip — you can add the record later, certs just wait for it."
+  for _ in $(seq 1 60); do
     got=$(getent ahostsv4 "$probe" 2>/dev/null | awk 'NR==1{print $1}')
     [ "$got" = "$PUBLIC_IP" ] && { say "DNS is live."; break; }
-    if read -r -t 10 -n 1 -s _k < "$PROMPT_TTY"; then warn "Skipped the DNS wait."; break; fi
+    if read -r -t 5 -n 1 -s _k < "$PROMPT_TTY"; then warn "Skipped the DNS wait."; break; fi
   done
 fi
 
