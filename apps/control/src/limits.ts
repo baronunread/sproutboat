@@ -26,6 +26,8 @@ export const LIMITS = {
   versionsPerProject: () => num("SPROUTBOAT_MAX_VERSIONS_PER_PROJECT", 25),
   /** custom domains one project may attach (#2) */
   domainsPerProject: () => num("SPROUTBOAT_MAX_DOMAINS_PER_PROJECT", 5),
+  /** secrets one project may hold (#2) */
+  secretsPerProject: () => num("SPROUTBOAT_MAX_SECRETS_PER_PROJECT", 64),
 };
 
 const WINDOW_MS = 60_000;

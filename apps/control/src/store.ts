@@ -1,8 +1,9 @@
 import { Database } from "bun:sqlite";
 import { readFileSync, renameSync } from "node:fs";
 import { mkdir, rename, rm, writeFile } from "node:fs/promises";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { dirname, resolve } from "node:path";
+import { decryptSecret, encryptSecret } from "./secrets-crypto";
 
 /**
  * Transactional metadata store for projects, deployments, and artifacts (#17).
@@ -107,6 +108,15 @@ function connection(): Database {
       FOREIGN KEY (owner_id, project) REFERENCES projects(owner_id, name) ON DELETE CASCADE
     );
     CREATE INDEX IF NOT EXISTS custom_domains_by_project ON custom_domains(owner_id, project);
+    CREATE TABLE IF NOT EXISTS secrets (
+      owner_id TEXT NOT NULL,
+      project TEXT NOT NULL,
+      name TEXT NOT NULL,
+      ciphertext TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      PRIMARY KEY (owner_id, project, name),
+      FOREIGN KEY (owner_id, project) REFERENCES projects(owner_id, name) ON DELETE CASCADE
+    );
   `);
   db = database;
   dbConnectedPath = dbPath();
@@ -369,6 +379,36 @@ export function deleteCustomDomain(ownerId: string, project: string, hostname: s
   ) > 0;
 }
 
+// --- project secrets (#2) -------------------------------------------------
+
+export function setSecret(ownerId: string, project: string, name: string, value: string): void {
+  run(
+    `INSERT INTO secrets (owner_id, project, name, ciphertext, updated_at) VALUES (?, ?, ?, ?, ?)
+     ON CONFLICT(owner_id, project, name) DO UPDATE SET ciphertext = excluded.ciphertext, updated_at = excluded.updated_at`,
+    ownerId, project, name, encryptSecret(value), new Date().toISOString(),
+  );
+}
+
+/** Secret names for one project — never the values. Backs the API list. */
+export function secretNames(ownerId: string, project: string): string[] {
+  return q<{ name: string }>("SELECT name FROM secrets WHERE owner_id = ? AND project = ? ORDER BY name", ownerId, project)
+    .map((row) => row.name);
+}
+
+export function secretCount(ownerId: string, project: string): number {
+  return q1<{ n: number }>("SELECT COUNT(*) AS n FROM secrets WHERE owner_id = ? AND project = ?", ownerId, project)?.n ?? 0;
+}
+
+export function deleteSecret(ownerId: string, project: string, name: string): boolean {
+  return run("DELETE FROM secrets WHERE owner_id = ? AND project = ? AND name = ?", ownerId, project, name) > 0;
+}
+
+/** Decrypted `{ NAME: value }` for one project — internal only (writes `secrets.json`). */
+function projectSecretValues(ownerId: string, project: string) {
+  const rows = q<{ name: string; ciphertext: string }>("SELECT name, ciphertext FROM secrets WHERE owner_id = ? AND project = ?", ownerId, project);
+  return Object.fromEntries(rows.map((row) => [row.name, decryptSecret(row.ciphertext)]));
+}
+
 // --- routes snapshot + artifact GC --------------------------------------
 
 /**
@@ -382,21 +422,50 @@ export function syncRoutes(): Promise<void> {
   routeSync = routeSync.catch(() => {}).then(writeRouteSnapshot);
   return routeSync;
 }
+const secretsDir = () => resolve(dirname(routesPath()), "secrets");
+const secretsFile = (ownerId: string, project: string) =>
+  resolve(secretsDir(), `${ownerId}__${project}`.replace(/[^A-Za-z0-9_-]/g, "_") + ".json");
+
 async function writeRouteSnapshot(): Promise<void> {
   // Generated `<project>.<user>.<domain>` hosts, plus every verified custom
   // domain (#2) pointed at whatever version of its project is active right now.
-  const routes = q<{ hostname: string; worker_path: string }>(
-    `SELECT hostname, worker_path FROM deployments
+  // owner_id/project ride along so each route can carry its decrypted secrets
+  // file path (#2) — the supervisor hands it to the per-deployment broker.
+  const rows = q<{ hostname: string; worker_path: string; owner_id: string; project: string }>(
+    `SELECT hostname, worker_path, owner_id, project FROM deployments
        WHERE active = 1 AND owner_id NOT IN (SELECT owner_id FROM banned_owners)
      UNION
-     SELECT cd.hostname AS hostname, d.worker_path AS worker_path
+     SELECT cd.hostname AS hostname, d.worker_path AS worker_path, d.owner_id AS owner_id, d.project AS project
        FROM custom_domains cd
        JOIN deployments d
          ON d.owner_id = cd.owner_id AND d.project = cd.project AND d.active = 1
        WHERE cd.verified_at IS NOT NULL
          AND cd.owner_id NOT IN (SELECT owner_id FROM banned_owners)
      ORDER BY hostname`,
-  ).map((row) => ({ hostname: row.hostname, workerPath: row.worker_path }));
+  );
+
+  await mkdir(secretsDir(), { recursive: true, mode: 0o700 });
+  const written = new Map<string, { secretsPath: string; secretsHash: string } | null>(); // "<owner>\0<project>" -> file info
+  const routes: Array<{ hostname: string; workerPath: string; secretsPath?: string; secretsHash?: string }> = [];
+  for (const row of rows) {
+    const key = `${row.owner_id}\0${row.project}`;
+    if (!written.has(key)) {
+      const values = projectSecretValues(row.owner_id, row.project);
+      const path = secretsFile(row.owner_id, row.project);
+      if (Object.keys(values).length > 0) {
+        // Deterministic bytes so the hash only moves when a value actually changes.
+        const content = JSON.stringify(values, Object.keys(values).sort());
+        await writeFile(path, content, { mode: 0o600 });
+        written.set(key, { secretsPath: path, secretsHash: createHash("sha256").update(content).digest("hex").slice(0, 16) });
+      } else {
+        await rm(path, { force: true });
+        written.set(key, null);
+      }
+    }
+    const info = written.get(key);
+    routes.push(info ? { hostname: row.hostname, workerPath: row.worker_path, ...info } : { hostname: row.hostname, workerPath: row.worker_path });
+  }
+
   await mkdir(dirname(routesPath()), { recursive: true });
   const temporary = `${routesPath()}.${randomUUID()}.tmp`;
   await writeFile(temporary, `${JSON.stringify(routes, null, 2)}\n`, { mode: 0o640 });

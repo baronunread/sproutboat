@@ -46,6 +46,12 @@ test("createBackup: bundles the sqlite snapshot + artifacts + routes.json", asyn
   expect(members).toContain("routes.json");
 });
 
+test("createBackup: includes secrets.key so encrypted secrets stay recoverable (#2)", async () => {
+  await writeFile(join(dir, "secrets.key"), Buffer.alloc(32, 7));
+  const entry = await mod.createBackup();
+  expect(await tarList(join(dir, "backups", entry.name))).toContain("secrets.key");
+});
+
 test("listBackups: newest first, ignores non-backup files", async () => {
   await mod.createBackup();
   await Bun.sleep(1100); // distinct second-resolution stamp

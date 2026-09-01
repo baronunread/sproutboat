@@ -236,7 +236,21 @@ All configurable in `/etc/sproutboat/control.env`; sane defaults apply if unset.
 | `SPROUTBOAT_MAX_PROJECTS_PER_ACCOUNT` | 50 | distinct projects one account may hold |
 | `SPROUTBOAT_MAX_VERSIONS_PER_PROJECT` | 25 | retained inactive versions; older ones are deleted and their artifacts GC'd |
 | `SPROUTBOAT_MAX_DOMAINS_PER_PROJECT` | 5 | custom domains one project may attach |
+| `SPROUTBOAT_MAX_SECRETS_PER_PROJECT` | 64 | secrets one project may hold |
 | `SPROUTBOAT_AUTH_RATE_MAX` / `_WINDOW_SEC` | 30 / 60 | Better Auth throttle on `/api/auth/*` (login, token) |
+
+## Secrets (#2)
+
+Set per project with `sproutboat secrets set NAME` (or the dashboard); the worker
+reads them as `env.NAME`. A running worker keeps the values it started with — a
+change applies on the next deploy or worker restart, like Cloudflare.
+
+Encrypted at rest with AES-256-GCM. The key is `SPROUTBOAT_SECRETS_KEY` (base64,
+32 bytes) if set, otherwise `<state>/secrets.key` — 32 random bytes written mode
+`0600` on first use. **The backup archive includes `secrets.key`**; if you rely
+on an off-box `SPROUTBOAT_BACKUP_S3_*` copy, understand that the key travels with
+the ciphertext there. To keep them separate, set `SPROUTBOAT_SECRETS_KEY` from a
+secret store your box reads at boot and delete `<state>/secrets.key`.
 
 Rejections are written to `<state>/logs/control.ndjson` as
 `{"kind":"limit","event":"deploy-rate-account"|"deploy-rate-ip"|"project-cap", ...}`.

@@ -3,6 +3,7 @@ import { resolve } from "node:path";
 import { adminEmail, ensureAdminSeeded, getAuth, githubSignInConfigured } from "./auth";
 import { activateDeployment, dashboardOverview, deleteAccount, deleteDeployment, deleteProject, deploymentDetail, deployArtifact, listDeployments, listProjects, projectLogHistory, projectLogs, projectLogTail, projectMetrics } from "./deployments";
 import { addDomain, deleteDomain, listDomains, verifyDomain } from "./domains";
+import { listSecrets, putSecret, removeSecret } from "./secrets";
 import { actorFor, profileForUser, reserveUsername, sessionUser } from "./identity";
 import { clientIp, logLimitEvent, rateHit, tlsIssuanceAllowed } from "./limits";
 import { approveCliAuthorization, createCliAuthorization, exchangeCliAuthorization, listCliCredentials, revokeAllCliCredentials, revokeCliCredential } from "./cli-authorization";
@@ -174,6 +175,11 @@ const server = Bun.serve({
     if (request.method === "POST" && domainVerify) return verifyDomain(request, domainVerify[1], domainVerify[2]);
     const domainRecord = /^\/api\/projects\/([a-z0-9-]+)\/domains\/([a-z0-9.-]+)$/.exec(url.pathname);
     if (request.method === "DELETE" && domainRecord) return deleteDomain(request, domainRecord[1], domainRecord[2]);
+    const secrets = /^\/api\/projects\/([a-z0-9-]+)\/secrets$/.exec(url.pathname);
+    if (request.method === "GET" && secrets) return listSecrets(request, secrets[1]);
+    const secretRecord = /^\/api\/projects\/([a-z0-9-]+)\/secrets\/([A-Za-z0-9_]+)$/.exec(url.pathname);
+    if (request.method === "PUT" && secretRecord) return putSecret(request, secretRecord[1], secretRecord[2]);
+    if (request.method === "DELETE" && secretRecord) return removeSecret(request, secretRecord[1], secretRecord[2]);
     if (url.pathname === "/internal/health") return Response.json({ ok: true, service: "control" });
     if (url.pathname === "/internal/tls/allow") {
       const domain = url.searchParams.get("domain")?.toLowerCase() || "";

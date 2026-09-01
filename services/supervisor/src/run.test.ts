@@ -184,3 +184,13 @@ test("workerCommand wraps the worker in the bwrap launcher on Linux, runs it dir
     Object.defineProperty(process, "platform", { value: saved, configurable: true });
   }
 });
+
+test("endpoint forwards the secrets path to the spawn factory (#2)", async () => {
+  const seen: Array<string | null | undefined> = [];
+  const { spawn } = fakeSpawn();
+  const spy: WorkerFactory = (path, port, secretsPath) => { seen.push(secretsPath); return spawn(path, port); };
+  const pool = makePool(spy);
+  await pool.endpoint("/tmp/withsecrets/worker", "/var/lib/sproutboat/secrets/u__app.json");
+  await pool.endpoint("/tmp/nosecrets/worker");
+  expect(seen).toEqual(["/var/lib/sproutboat/secrets/u__app.json", undefined]);
+});

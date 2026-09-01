@@ -145,9 +145,12 @@ export async function createBackup(): Promise<BackupEntry> {
     finally { source.close(); }
 
     // Archive root: sproutboat.sqlite + the artifacts dir + routes.json (+ the
-    // legacy deployments.json), each taken from its real location.
+    // legacy deployments.json) + secrets.key. The key MUST be in the backup —
+    // without it the encrypted secrets in the SQLite snapshot are unrecoverable
+    // (#2). The decrypted secrets/ dir is not archived: `syncRoutes()`
+    // regenerates it from the DB on restore.
     const tar = ["tar", "-czf", outPath, "-C", staging, "sproutboat.sqlite"];
-    for (const path of [artifactsDir(), routesPath(), resolve(stateDir(), "deployments.json")]) {
+    for (const path of [artifactsDir(), routesPath(), resolve(stateDir(), "deployments.json"), resolve(stateDir(), "secrets.key")]) {
       if (await exists(path)) tar.push("-C", dirname(path), basename(path));
     }
     await run(tar);

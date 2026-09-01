@@ -40,7 +40,9 @@ function readBootMs(file: string, spawnedAt: number, startupMs: number): number 
  */
 
 export type WorkerChild = { readonly exited: Promise<number>; kill(signal?: number): void };
-export type WorkerFactory = (workerPath: string, port: number) => WorkerChild;
+/** `secretsPath` (#2) points at the project's decrypted `secrets.json`, written
+ *  outside the content-addressed artifact dir; null when the project has none. */
+export type WorkerFactory = (workerPath: string, port: number, secretsPath?: string | null) => WorkerChild;
 
 /**
  * What `endpoint()` resolved to. `coldStart` is true when this call had to spawn
@@ -76,7 +78,7 @@ const brokerEntry = fileURLToPath(import.meta.resolve("sproutboat/runtime/broker
  * ephemeral range, no second allocator. Give the broker its own port pool if two
  * live workers ever land exactly 10000 apart.
  */
-function spawnWithBroker(workerPath: string, port: number): WorkerChild {
+function spawnWithBroker(workerPath: string, port: number, secretsPath?: string | null): WorkerChild {
   const workerDir = dirname(workerPath);
   const bindingsPath = resolve(workerDir, "bindings.json");
   let broker: Bun.Subprocess | null = null;
@@ -95,8 +97,9 @@ function spawnWithBroker(workerPath: string, port: number): WorkerChild {
       "--bindings", bindingsPath,
       "--worker-url", `http://127.0.0.1:${port}/`,
     ];
-    const secretsPath = resolve(workerDir, "secrets.json");
-    if (existsSync(secretsPath)) args.push("--secrets", secretsPath);
+    // #2 — secrets come from a per-project file the control plane writes outside
+    // the shared artifact dir; the path rides in on the route snapshot.
+    if (secretsPath && existsSync(secretsPath)) args.push("--secrets", secretsPath);
     // Static assets published beside the artifact back `env.<ASSETS>.fetch()`.
     if (existsSync(resolve(workerDir, "assets.json"))) args.push("--assets-dir", resolve(workerDir, "assets"));
     broker = Bun.spawn(args, { stdout: "ignore", stderr: "ignore", env: process.env });
@@ -111,17 +114,23 @@ function spawnWithBroker(workerPath: string, port: number): WorkerChild {
     stderr: "ignore",
     env: { ...process.env, PORT: String(port), SB_STARTUP_FILE: startupFile, ...brokerEnv },
   });
-  return {
-    exited: worker.exited,
-    kill(signal?: number) {
-      worker.kill(signal ?? 9);
-      broker?.kill(9);
-    },
-  };
+
+  // #4 — bind the two lifecycles. A worker with a `bindings.json` is useless
+  // without its broker, so if either process exits the other is torn down and
+  // the pool respawns the pair on the next request:
+  //  - worker exits (crash / evict / dispose) -> stop the orphaned broker
+  //  - broker exits (crash) -> kill the worker so `exited` fires and the route
+  //    doesn't keep serving binding calls into a closed socket
+  let stopped = false;
+  const stop = () => { if (stopped) return; stopped = true; worker.kill(9); broker?.kill(9); };
+  void worker.exited.then(stop);
+  if (broker) void broker.exited.then(stop);
+
+  return { exited: worker.exited, kill: stop };
 }
 
-function spawnNativeWorker(workerPath: string, port: number): WorkerChild {
-  return spawnWithBroker(workerPath, port);
+function spawnNativeWorker(workerPath: string, port: number, secretsPath?: string | null): WorkerChild {
+  return spawnWithBroker(workerPath, port, secretsPath);
 }
 
 async function listens(port: number): Promise<boolean> {
@@ -150,12 +159,13 @@ class WorkerServer {
     readyTimeoutMs: number,
     now: () => number,
     private readonly onExit: (server: WorkerServer) => void,
+    secretsPath?: string | null,
   ) {
     this.port = port;
     this.url = `http://127.0.0.1:${port}`;
     this.lastUsedAt = now();
     const spawnedAt = Date.now();
-    this.#child = spawn(workerPath, port);
+    this.#child = spawn(workerPath, port, secretsPath);
     this.#ready = this.#awaitListening(readyTimeoutMs).then(() => {
       this.startupMs = Date.now() - spawnedAt;
       this.bootMs = readBootMs(startupFilePath(workerPath, port), spawnedAt, this.startupMs);
@@ -236,7 +246,7 @@ export class WorkerPool {
   }
 
   /** Base URL of the deployment's server, starting and awaiting it if needed. */
-  async endpoint(workerPath: string): Promise<Endpoint> {
+  async endpoint(workerPath: string, secretsPath?: string | null): Promise<Endpoint> {
     const key = resolve(workerPath);
     let server = this.#servers.get(key);
     let coldStart = false;
@@ -250,7 +260,7 @@ export class WorkerPool {
       server = new WorkerServer(key, port, this.#spawn, this.#readyTimeoutMs, this.#now, (dead) => {
         if (this.#servers.get(key) === dead) this.#servers.delete(key);
         this.#usedPorts.delete(dead.port);
-      });
+      }, secretsPath);
       this.#servers.set(key, server);
     }
     server.lastUsedAt = this.#now();

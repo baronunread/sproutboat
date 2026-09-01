@@ -48,13 +48,17 @@ function isString(value: EdgeInput): value is string {
   return Object(value) !== value && value === String(value);
 }
 
-async function loadRoutes(path: string): Promise<Map<string, string>> {
+/** `secretsPath` / `secretsHash` are present when the project has ≥1 secret (#2). */
+type Route = { workerPath: string; secretsPath: string | null; secretsHash: string | null };
+
+async function loadRoutes(path: string): Promise<Map<string, Route>> {
   const routes: EdgeInput = JSON.parse(await readFile(path, "utf8"));
   if (!Array.isArray(routes)) throw new TypeError("invalid route snapshot");
-  const result = new Map<string, string>();
+  const result = new Map<string, Route>();
   for (const route of routes) {
     if (!isObject(route) || !isString(route.hostname) || !/^[a-z0-9.-]+$/.test(route.hostname) || !isString(route.workerPath) || !route.workerPath.startsWith("/")) throw new TypeError("invalid route snapshot");
-    result.set(route.hostname, route.workerPath);
+    const secretsPath = isString(route.secretsPath) && route.secretsPath.startsWith("/") ? route.secretsPath : null;
+    result.set(route.hostname, { workerPath: route.workerPath, secretsPath, secretsHash: isString(route.secretsHash) ? route.secretsHash : null });
   }
   return result;
 }
@@ -110,7 +114,7 @@ async function snapshotMtime(path: string): Promise<number> {
   }
 }
 
-let routes = new Map<string, string>();
+let routes = new Map<string, Route>();
 let routesMtimeMs = await snapshotMtime(routesPath);
 if (routesMtimeMs > 0) routes = await loadRoutes(routesPath);
 const port = Number(process.env.PORT || 8080);
@@ -168,19 +172,22 @@ function assetManifestFor(workerPath: string): AssetManifest | null {
  * to a fresh deploy is not a cold start (pre-warm on activate). Warm-up is
  * fire-and-forget — a broken artifact must not stall the reload.
  */
-function swapRoutes(nextRoutes: Map<string, string>, nextMtimeMs: number): void {
-  const oldPaths = new Set(routes.values());
-  for (const [hostname, workerPath] of routes) {
-    if (nextRoutes.get(hostname) !== workerPath) {
-      pool.dispose(workerPath);
-      assetManifests.delete(workerPath);
+function swapRoutes(nextRoutes: Map<string, Route>, nextMtimeMs: number): void {
+  const oldPaths = new Set([...routes.values()].map((route) => route.workerPath));
+  for (const [hostname, route] of routes) {
+    const next = nextRoutes.get(hostname);
+    // A changed worker path OR a changed secrets hash (#2) means the running
+    // worker is stale — dispose it so the next request respawns it fresh.
+    if (!next || next.workerPath !== route.workerPath || next.secretsHash !== route.secretsHash) {
+      pool.dispose(route.workerPath);
+      assetManifests.delete(route.workerPath);
       cache?.purgeHost(hostname); // a new version must not serve the old one's cached responses
     }
   }
   routes = nextRoutes;
   routesMtimeMs = nextMtimeMs;
-  for (const workerPath of new Set(nextRoutes.values())) {
-    if (!oldPaths.has(workerPath)) void pool.endpoint(workerPath).catch(() => { /* first request will report it */ });
+  for (const route of nextRoutes.values()) {
+    if (!oldPaths.has(route.workerPath)) void pool.endpoint(route.workerPath, route.secretsPath).catch(() => { /* first request will report it */ });
   }
 }
 
@@ -209,11 +216,12 @@ const server = Bun.serve({
     if (new URL(request.url).pathname === "/__sb/pool") return Response.json(pool.stats());
     const host = request.headers.get("host")?.split(":")[0]?.toLowerCase();
     if (host === deploymentDomain) return Response.redirect(dashboardUrl, 302);
-    const workerPath = host ? routes.get(host) : undefined;
-    if (!workerPath || !host) {
+    const route = host ? routes.get(host) : undefined;
+    if (!route || !host) {
       log({ hostname: host || null, method: request.method, status: 404, durationMs: elapsed(), reqBytes, errorKind: "no-route" });
       return new Response("unknown deployment", { status: 404 });
     }
+    const workerPath = route.workerPath;
 
     const target = new URL(request.url);
 
@@ -257,7 +265,7 @@ const server = Bun.serve({
     let startupMs: number | null = null;
     let bootMs: number | null = null;
     try {
-      const endpoint = await pool.endpoint(workerPath);
+      const endpoint = await pool.endpoint(workerPath, route.secretsPath);
       base = endpoint.url;
       coldStart = endpoint.coldStart;
       startupMs = endpoint.coldStart ? endpoint.startupMs : null;
@@ -333,7 +341,7 @@ console.log(`Sproutboat edge router listening on http://${bindHost}:${server.por
 
 // Never evict a deployment that still has a live route — its next request should
 // not pay a cold start. Idle eviction then only reaps workers whose route is gone.
-const evictionTimer = setInterval(() => pool.evictIdle(new Set(routes.values())), 60_000);
+const evictionTimer = setInterval(() => pool.evictIdle(new Set([...routes.values()].map((route) => route.workerPath))), 60_000);
 
 function shutdown(): void {
   clearInterval(evictionTimer);
@@ -347,7 +355,7 @@ process.once("SIGTERM", shutdown);
 
 process.on("SIGHUP", async () => {
   const nextRoutesMtimeMs = await snapshotMtime(routesPath);
-  const nextRoutes = nextRoutesMtimeMs > 0 ? await loadRoutes(routesPath) : new Map<string, string>();
+  const nextRoutes = nextRoutesMtimeMs > 0 ? await loadRoutes(routesPath) : new Map<string, Route>();
   swapRoutes(nextRoutes, nextRoutesMtimeMs);
   console.log("route snapshot reloaded");
 });
