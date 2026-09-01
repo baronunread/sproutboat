@@ -41,6 +41,16 @@ export function githubSignInConfigured(): boolean {
   return Boolean(githubClientId() && githubClientSecret());
 }
 
+export function authDatabase(): Database {
+  const database = new Database(process.env.SPROUTBOAT_DATABASE_PATH || "/var/lib/sproutboat/sproutboat.sqlite");
+  // Same file as store.ts, which runs it in WAL. Without a busy_timeout this
+  // connection fails SQLITE_BUSY the instant a session read/write races a WAL
+  // checkpoint or another connection's write — which logs the user straight
+  // back out. Match store.ts / identity.ts so it waits instead.
+  database.exec("PRAGMA journal_mode = WAL; PRAGMA busy_timeout = 5000; PRAGMA foreign_keys = ON;");
+  return database;
+}
+
 function createAuth() {
   const secret = process.env.BETTER_AUTH_SECRET;
   const baseURL = process.env.BETTER_AUTH_URL;
@@ -85,7 +95,7 @@ function createAuth() {
     : {};
   return betterAuth({
     appName: "Sproutboat",
-    database: new Database(process.env.SPROUTBOAT_DATABASE_PATH || "/var/lib/sproutboat/sproutboat.sqlite"),
+    database: authDatabase(),
     secret,
     baseURL,
     trustedOrigins: [dashboardUrl],

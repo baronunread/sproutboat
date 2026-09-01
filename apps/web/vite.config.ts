@@ -9,7 +9,7 @@ import react from "@vitejs/plugin-react";
 const logger = createLogger();
 const baseError = logger.error;
 logger.error = (msg, opts) => {
-  if (typeof msg === "string" && msg.includes("http proxy error: /api")) return;
+  if (msg.includes("http proxy error: /api")) return; // Vite types `msg` as string
   baseError(msg, opts);
 };
 

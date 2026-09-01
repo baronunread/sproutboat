@@ -9,6 +9,8 @@ let database: Database | undefined;
 function db(): Database {
   if (!database) {
     database = new Database(process.env.SPROUTBOAT_DATABASE_PATH || "/var/lib/sproutboat/sproutboat.sqlite");
+    // Shared file (WAL, set by store.ts); wait on locks instead of failing BUSY.
+    database.exec("PRAGMA busy_timeout = 5000; PRAGMA foreign_keys = ON;");
     database.run("CREATE TABLE IF NOT EXISTS cli_authorizations (user_code TEXT PRIMARY KEY, device_hash TEXT NOT NULL UNIQUE, user_id TEXT, state TEXT NOT NULL, expires_at TEXT NOT NULL, token_issued_at TEXT)");
   }
   return database;
