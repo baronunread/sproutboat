@@ -1,6 +1,6 @@
-import { existsSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, rmSync } from "node:fs";
 import { randomBytes } from "node:crypto";
-import { dirname, resolve } from "node:path";
+import { basename, dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { connect } from "node:net";
 import { sproutCommand } from "./sandbox";
@@ -87,7 +87,14 @@ function spawnWithBroker(sproutPath: string, port: number, secretsPath?: string 
   if (existsSync(bindingsPath)) {
     const brokerPort = port + 10_000;
     const token = randomBytes(24).toString("hex");
-    const stateDir = process.env.SPROUTBOAT_BROKER_STATE_DIR || resolve(workerDir, ".broker");
+    // The artifact dir is read-only to the edge (0750 sproutboat-control), so
+    // broker state can't live in `workerDir/.broker`. Put it beside the request
+    // log, whose dir the edge owns; fall back to the artifact dir for dev/tests
+    // where it is writable. Nothing creates the tree, so mkdir it here.
+    const stateBase = process.env.SPROUTBOAT_BROKER_STATE_DIR
+      || (process.env.SPROUTBOAT_LOG_PATH ? resolve(dirname(process.env.SPROUTBOAT_LOG_PATH), "brokers") : workerDir);
+    const stateDir = resolve(stateBase, basename(workerDir));
+    mkdirSync(resolve(stateDir, "d1"), { recursive: true });
     const args = [
       // `process.execPath`, not "bun": sproutboat-edge.service runs with a
       // hardened PATH that doesn't include the pinned /opt/sproutboat/bun, so a
@@ -98,7 +105,9 @@ function spawnWithBroker(sproutPath: string, port: number, secretsPath?: string 
       "--db", resolve(stateDir, "state.sqlite"),
       "--data-dir", resolve(stateDir, "d1"),
       "--bindings", bindingsPath,
-      "--worker-url", `http://127.0.0.1:${port}/`,
+      // The broker's flag is `--sprout-url` (worker->sprout rename); passing the
+      // old `--worker-url` makes its parseArgs throw and the broker never starts.
+      "--sprout-url", `http://127.0.0.1:${port}/`,
     ];
     // #2 — secrets come from a per-project file the control plane writes outside
     // the shared artifact dir; the path rides in on the route snapshot.
