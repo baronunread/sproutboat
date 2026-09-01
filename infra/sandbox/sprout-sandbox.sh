@@ -55,8 +55,15 @@ bwrap_args=(
   --ro-bind "$artifact_dir" "$artifact_dir"
 )
 
-# --clearenv wiped everything; forward the port the supervisor assigned.
-[ -n "${PORT:-}" ] && bwrap_args+=(--setenv PORT "$PORT")
+# --clearenv wiped everything; forward the vars the compiled sprout reads via
+# getenv(): the listen port, and — for a sprout with bindings — the broker's
+# loopback port + auth token. Without the broker vars every env.KV / env.ASSETS
+# / env.SECRET call fails ("broker rc -2") and the sprout aborts the request.
+# (SB_STARTUP_FILE is deliberately left out — it points into the read-only
+# artifact bind, so the sprout can't write it under the sandbox anyway.)
+for __v in PORT SB_BROKER_PORT SB_BROKER_TOKEN; do
+  [ -n "${!__v:-}" ] && bwrap_args+=(--setenv "$__v" "${!__v}")
+done
 
 # Read-only host paths the dynamic loader + libc need. Override for a minimal set.
 default_robind='/usr:/lib:/lib64:/etc/ld.so.cache:/etc/ld.so.conf:/etc/ld.so.conf.d:/etc/alternatives'
