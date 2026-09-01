@@ -22,7 +22,7 @@ async function bootWith(deploymentsJson: string): Promise<typeof import("./store
 const row = (over: Partial<import("./store").Deployment>) => ({
   id: "id", project: "app", ownerId: "user-1", username: "alice",
   hostname: "app.alice.test", artifact: "a".repeat(64),
-  workerPath: "/w", deployedAt: "2026-01-01T00:00:00.000Z", active: false, ...over,
+  sproutPath: "/w", deployedAt: "2026-01-01T00:00:00.000Z", active: false, ...over,
 });
 
 afterEach(async () => {

@@ -122,7 +122,7 @@ export async function deploymentDetail(request: Request, project: string, id: st
   const validation = await validateArtifactDirectory(resolve(artifactRoot, found.artifact));
   return Response.json({
     id: found.id, project: found.project, hostname: found.hostname, artifact: found.artifact,
-    workerPath: found.workerPath, deployedAt: found.deployedAt, active: found.active,
+    sproutPath: found.sproutPath, deployedAt: found.deployedAt, active: found.active,
     manifest: validation.ok ? validation.value.manifest : null,
     manifestError: validation.ok ? null : validation.errors.join("; "),
   });
@@ -228,9 +228,9 @@ export async function deployArtifact(request: Request, project: string): Promise
   try { form = await request.formData(); }
   catch { return Response.json({ error: "expected multipart artifact upload" }, { status: 400 }); }
   const manifest = form.get("manifest");
-  const worker = form.get("worker");
-  if (!(manifest instanceof File) || !(worker instanceof File)) return Response.json({ error: "upload must include manifest and worker files" }, { status: 400 });
-  if (manifest.size > 64 * 1024 || worker.size > 16 * 1024 * 1024) return Response.json({ error: "artifact exceeds upload limit" }, { status: 413 });
+  const sprout = form.get("sprout");
+  if (!(manifest instanceof File) || !(sprout instanceof File)) return Response.json({ error: "upload must include manifest and sprout files" }, { status: 400 });
+  if (manifest.size > 64 * 1024 || sprout.size > 16 * 1024 * 1024) return Response.json({ error: "artifact exceeds upload limit" }, { status: 413 });
   // #1 — optional sidecars: bindings.json (drives the per-deployment broker) and
   // the static-asset tree (assets.json + one `asset` part per file, keyed by its
   // posix path). validateArtifactDirectory re-checks their shape and hashes.
@@ -246,9 +246,9 @@ export async function deployArtifact(request: Request, project: string): Promise
   try {
     await Promise.all([
       writeFile(resolve(temporary, "manifest.json"), new Uint8Array(await manifest.arrayBuffer()), { mode: 0o640 }),
-      writeFile(resolve(temporary, "worker"), new Uint8Array(await worker.arrayBuffer()), { mode: 0o555 }),
+      writeFile(resolve(temporary, "sprout"), new Uint8Array(await sprout.arrayBuffer()), { mode: 0o555 }),
     ]);
-    await chmod(resolve(temporary, "worker"), 0o555);
+    await chmod(resolve(temporary, "sprout"), 0o555);
     if (bindings instanceof File) {
       await writeFile(resolve(temporary, "bindings.json"), new Uint8Array(await bindings.arrayBuffer()), { mode: 0o640 });
     }
@@ -278,7 +278,7 @@ export async function deployArtifact(request: Request, project: string): Promise
     const hostname = deploymentHostname(project, actor.username);
     const deployment = recordDeployment({
       id: randomUUID(), project, ownerId: actor.id, username: actor.username,
-      hostname, artifact: digest, workerPath: resolve(destination, "worker"), deployedAt: new Date().toISOString(),
+      hostname, artifact: digest, sproutPath: resolve(destination, "sprout"), deployedAt: new Date().toISOString(),
     });
     await syncRoutes();
     // #25 — keep the retained-versions cap; GC any artifact it orphans.

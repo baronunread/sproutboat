@@ -9,7 +9,7 @@ import { clientIp, logLimitEvent, rateHit, tlsIssuanceAllowed } from "./limits";
 import { approveCliAuthorization, createCliAuthorization, exchangeCliAuthorization, listCliCredentials, revokeAllCliCredentials, revokeCliCredential } from "./cli-authorization";
 import { adminBackups, adminCreateBackup, adminCreateUser, adminDeleteBackup, adminDownloadBackup, adminOverview, adminUserDetail, adminUsers, banUser, revokeUserSessions, unbanUser } from "./admin";
 
-type Route = { hostname: string; workerPath: string };
+type Route = { hostname: string; sproutPath: string };
 const routesPath = resolve(process.env.SPROUTBOAT_ROUTE_SNAPSHOT || "/var/lib/sproutboat/routes.json");
 const port = Number(process.env.PORT || 8787);
 // Loopback only: Caddy is the sole public listener and reverse-proxies here.

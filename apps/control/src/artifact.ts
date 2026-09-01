@@ -3,10 +3,10 @@ import { readFile, readdir, stat } from "node:fs/promises";
 import { resolve } from "node:path";
 import { validateManifest, type ArtifactManifest } from "sproutboat/runtime/manifest";
 
-export type ValidatedArtifact = { manifest: ArtifactManifest; workerPath: string };
+export type ValidatedArtifact = { manifest: ArtifactManifest; sproutPath: string };
 export type ArtifactValidation = { ok: true; value: ValidatedArtifact } | { ok: false; errors: string[] };
 
-// The worker is always present; these may sit beside it (#1 — deploy carries
+// The sprout is always present; these may sit beside it (#1 — deploy carries
 // them so the supervisor can start the binding broker and serve static assets).
 const OPTIONAL_ENTRIES = new Set(["bindings.json", "assets.json", "assets"]);
 const MAX_ASSET_BYTES = 64 * 1024 * 1024;
@@ -86,11 +86,11 @@ export async function validateArtifactDirectory(directory: string): Promise<Arti
   } catch {
     return { ok: false, errors: ["artifact directory does not exist"] };
   }
-  const unexpected = entries.filter((entry) => entry !== "manifest.json" && entry !== "worker" && !OPTIONAL_ENTRIES.has(entry));
-  if (!entries.includes("manifest.json") || !entries.includes("worker")) errors.push("artifact directory must contain manifest.json and worker");
+  const unexpected = entries.filter((entry) => entry !== "manifest.json" && entry !== "sprout" && !OPTIONAL_ENTRIES.has(entry));
+  if (!entries.includes("manifest.json") || !entries.includes("sprout")) errors.push("artifact directory must contain manifest.json and sprout");
   if (unexpected.length) errors.push(`artifact directory has unexpected entries: ${unexpected.join(", ")}`);
   const manifestPath = resolve(directory, "manifest.json");
-  const workerPath = resolve(directory, "worker");
+  const sproutPath = resolve(directory, "sprout");
   let manifest: ArtifactManifest | undefined;
   try {
     const parsed = JSON.parse(await readFile(manifestPath, "utf8"));
@@ -100,17 +100,17 @@ export async function validateArtifactDirectory(directory: string): Promise<Arti
   } catch {
     errors.push("manifest.json is not valid JSON");
   }
-  let worker: Buffer | undefined;
+  let sprout: Buffer | undefined;
   try {
-    worker = await readFile(workerPath);
-    const info = await stat(workerPath);
-    if (!info.isFile() || info.size < 1 || info.size > 16 * 1024 * 1024) errors.push("worker must be a 1 byte–16 MiB regular file");
-    if (worker[0] !== 0x7f || worker[1] !== 0x45 || worker[2] !== 0x4c || worker[3] !== 0x46) errors.push("worker is not an ELF executable");
-    else if (worker[4] !== 2 || worker[5] !== 1 || worker.readUInt16LE(18) !== 62) errors.push("worker must be a 64-bit little-endian x86-64 ELF executable");
+    sprout = await readFile(sproutPath);
+    const info = await stat(sproutPath);
+    if (!info.isFile() || info.size < 1 || info.size > 16 * 1024 * 1024) errors.push("sprout must be a 1 byte–16 MiB regular file");
+    if (sprout[0] !== 0x7f || sprout[1] !== 0x45 || sprout[2] !== 0x4c || sprout[3] !== 0x46) errors.push("sprout is not an ELF executable");
+    else if (sprout[4] !== 2 || sprout[5] !== 1 || sprout.readUInt16LE(18) !== 62) errors.push("sprout must be a 64-bit little-endian x86-64 ELF executable");
   } catch {
-    errors.push("worker is missing or unreadable");
+    errors.push("sprout is missing or unreadable");
   }
-  if (manifest && worker && digest(worker) !== manifest.binaryHash) errors.push("worker digest does not match manifest binaryHash");
+  if (manifest && sprout && digest(sprout) !== manifest.binaryHash) errors.push("sprout digest does not match manifest binaryHash");
 
   if (entries.includes("bindings.json")) {
     const parsed = parseJson(await readFile(resolve(directory, "bindings.json"), "utf8").catch(() => ""));
@@ -121,5 +121,5 @@ export async function validateArtifactDirectory(directory: string): Promise<Arti
   if (hasAssetsJson !== hasAssetsDir) errors.push("assets.json and the assets/ directory must be present together");
   else if (hasAssetsJson) errors.push(...await assetsErrors(directory));
 
-  return errors.length || !manifest ? { ok: false, errors } : { ok: true, value: { manifest, workerPath } };
+  return errors.length || !manifest ? { ok: false, errors } : { ok: true, value: { manifest, sproutPath } };
 }

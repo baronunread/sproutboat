@@ -20,7 +20,7 @@ completeness: Sproutboat implements KV, not Porffor.
   handler*; there is no client `fetch`, no `getenv`, no FFI escape hatch.
 
 So anything dynamic (KV reads/writes, secrets that must not sit in the artifact,
-outbound HTTP) needs the worker to call out, which it currently cannot.
+outbound HTTP) needs the sprout to call out, which it currently cannot.
 
 ## Proposed architecture
 
@@ -49,7 +49,7 @@ handler ──env.KV.get("k")──▶ binding shim (in the bundle, prepended li
   path *is* the capability — no token needed if the socket is only visible
   inside that deployment's mount namespace. Broker enforces per-deployment
   scoping, quotas, and the egress allowlist.
-- **Sandbox change**: `worker-sandbox.sh` bind-mounts the one socket
+- **Sandbox change**: `sprout-sandbox.sh` bind-mounts the one socket
   (`--bind /run/sproutboat/bind-<id>.sock …`) and nothing else changes;
   `IPAddressDeny=any` stays.
 - **Config**: `sproutboat.jsonc` gains `kv_namespaces`, `r2_buckets`,

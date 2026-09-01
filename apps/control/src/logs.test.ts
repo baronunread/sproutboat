@@ -28,7 +28,7 @@ test("filters by hostname, status class, and free text; drops malformed lines", 
   await writeFile(logFile, [
     line({ at: "2026-01-01T00:00:01.000Z", status: 200 }),
     line({ at: "2026-01-01T00:00:02.000Z", status: 404 }),
-    line({ at: "2026-01-01T00:00:03.000Z", status: 503, error: "worker failure" }),
+    line({ at: "2026-01-01T00:00:03.000Z", status: 503, error: "sprout failure" }),
     line({ hostname: "other.bob.test", status: 500 }),
     "not json\n",
     `${JSON.stringify({ at: "x", hostname: HOST })}\n`,
@@ -39,10 +39,10 @@ test("filters by hostname, status class, and free text; drops malformed lines", 
 
   const server = await logs.readLogHistory(HOST, { statusClass: "5xx" });
   expect(server.events.map((event) => event.status)).toEqual([503]);
-  expect(server.events[0].failure).toBe("worker failure");
+  expect(server.events[0].failure).toBe("sprout failure");
   expect(server.events[0].statusClass).toBe("5xx");
 
-  const text = await logs.readLogHistory(HOST, { q: "worker failure" });
+  const text = await logs.readLogHistory(HOST, { q: "sprout failure" });
   expect(text.events).toHaveLength(1);
 
   const missing = await logs.readLogHistory(HOST, { statusClass: "4xx" });
@@ -87,7 +87,7 @@ test("aggregateLogs: 24 buckets over the range, right bucket, errors, distributi
   await writeFile(logFile, [
     line({ at: ago(2 * 3_600_000 + 60_000), status: 200, durationMs: 10 }), // ~22h into a 24h range
     line({ at: ago(2 * 3_600_000 + 30_000), status: 200, durationMs: 20 }),
-    line({ at: ago(2 * 3_600_000 + 10_000), status: 503, durationMs: 900, error: "worker failure" }),
+    line({ at: ago(2 * 3_600_000 + 10_000), status: 503, durationMs: 900, error: "sprout failure" }),
     line({ at: ago(60_000), status: 404, durationMs: 5 }),                    // last bucket
     line({ at: ago(48 * 3_600_000), status: 200, durationMs: 1 }),            // older than 24h -> ignored
   ].join(""));
@@ -209,7 +209,7 @@ test("tailLogs emits a ready frame, streams new lines, and closes on abort", asy
   const firstFrame = decoder.decode((await reader.read()).value);
   expect(firstFrame).toContain('"type":"ready"');
 
-  await appendFile(logFile, line({ at: "2026-09-09T00:00:00.000Z", status: 502, error: "worker failure" }));
+  await appendFile(logFile, line({ at: "2026-09-09T00:00:00.000Z", status: 502, error: "sprout failure" }));
   let streamed = "";
   const deadline = Date.now() + 4000;
   while (!streamed.includes('"type":"event"') && Date.now() < deadline) {

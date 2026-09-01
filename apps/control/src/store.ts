@@ -22,18 +22,18 @@ const legacyDeploymentsPath = () => resolve(process.env.SPROUTBOAT_DEPLOYMENTS_P
 
 export type Deployment = {
   id: string; project: string; ownerId: string; username: string;
-  hostname: string; artifact: string; workerPath: string; deployedAt: string; active: boolean;
+  hostname: string; artifact: string; sproutPath: string; deployedAt: string; active: boolean;
 };
 export type ProjectSummary = { name: string; hostname: string; activeDeploymentId: string; deployedAt: string };
 
 type DeploymentRow = {
   id: string; project: string; owner_id: string; username: string;
-  hostname: string; artifact_digest: string; worker_path: string; deployed_at: string; active: number;
+  hostname: string; artifact_digest: string; sprout_path: string; deployed_at: string; active: number;
 };
 
 const toDeployment = (row: DeploymentRow): Deployment => ({
   id: row.id, project: row.project, ownerId: row.owner_id, username: row.username,
-  hostname: row.hostname, artifact: row.artifact_digest, workerPath: row.worker_path,
+  hostname: row.hostname, artifact: row.artifact_digest, sproutPath: row.sprout_path,
   deployedAt: row.deployed_at, active: row.active === 1,
 });
 
@@ -55,7 +55,7 @@ function run(sql: string, ...args: Array<string | number | null>): number {
 }
 
 function present(deployment: Deployment): boolean {
-  for (const field of [deployment.id, deployment.ownerId, deployment.project, deployment.username, deployment.hostname, deployment.artifact, deployment.workerPath]) {
+  for (const field of [deployment.id, deployment.ownerId, deployment.project, deployment.username, deployment.hostname, deployment.artifact, deployment.sproutPath]) {
     if (Object(field) === field || field !== String(field) || field === "") return false;
   }
   return true;
@@ -85,7 +85,7 @@ function connection(): Database {
       username TEXT NOT NULL,
       hostname TEXT NOT NULL,
       artifact_digest TEXT NOT NULL REFERENCES artifacts(digest),
-      worker_path TEXT NOT NULL,
+      sprout_path TEXT NOT NULL,
       deployed_at TEXT NOT NULL,
       active INTEGER NOT NULL DEFAULT 0,
       FOREIGN KEY (owner_id, project) REFERENCES projects(owner_id, name) ON DELETE CASCADE
@@ -118,6 +118,12 @@ function connection(): Database {
       FOREIGN KEY (owner_id, project) REFERENCES projects(owner_id, name) ON DELETE CASCADE
     );
   `);
+  // worker -> sprout rename: bring a pre-rename DB's column name forward.
+  // SAFETY: PRAGMA table_info rows always expose a string `name` column.
+  const cols = database.query("PRAGMA table_info(deployments)").all() as Array<{ name: string }>;
+  if (cols.some((column) => column.name === "worker_path") && !cols.some((column) => column.name === "sprout_path")) {
+    database.run("ALTER TABLE deployments RENAME COLUMN worker_path TO sprout_path");
+  }
   db = database;
   dbConnectedPath = dbPath();
   importLegacyDeployments();
@@ -144,8 +150,8 @@ function importLegacyDeployments(): void {
       const at = Object(d.deployedAt) !== d.deployedAt && d.deployedAt === String(d.deployedAt) && d.deployedAt !== "" ? d.deployedAt : now;
       run("INSERT OR IGNORE INTO projects (owner_id, name, username, created_at) VALUES (?, ?, ?, ?)", d.ownerId, d.project, d.username, at);
       run("INSERT OR IGNORE INTO artifacts (digest, created_at) VALUES (?, ?)", d.artifact, at);
-      run(`INSERT OR IGNORE INTO deployments (id, owner_id, project, username, hostname, artifact_digest, worker_path, deployed_at, active)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`, d.id, d.ownerId, d.project, d.username, d.hostname, d.artifact, d.workerPath, at, d.active === true ? 1 : 0);
+      run(`INSERT OR IGNORE INTO deployments (id, owner_id, project, username, hostname, artifact_digest, sprout_path, deployed_at, active)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`, d.id, d.ownerId, d.project, d.username, d.hostname, d.artifact, d.sproutPath, at, d.active === true ? 1 : 0);
     }
   })();
   try { renameSync(legacyDeploymentsPath(), `${legacyDeploymentsPath()}.imported`); } catch { /* best effort */ }
@@ -252,9 +258,9 @@ export function recordDeployment(input: Omit<Deployment, "active">): Deployment 
     run("INSERT OR IGNORE INTO projects (owner_id, name, username, created_at) VALUES (?, ?, ?, ?)", input.ownerId, input.project, input.username, input.deployedAt);
     run("INSERT OR IGNORE INTO artifacts (digest, created_at) VALUES (?, ?)", input.artifact, input.deployedAt);
     run("UPDATE deployments SET active = 0 WHERE owner_id = ? AND project = ?", input.ownerId, input.project);
-    run(`INSERT INTO deployments (id, owner_id, project, username, hostname, artifact_digest, worker_path, deployed_at, active)
+    run(`INSERT INTO deployments (id, owner_id, project, username, hostname, artifact_digest, sprout_path, deployed_at, active)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1)`,
-      input.id, input.ownerId, input.project, input.username, input.hostname, input.artifact, input.workerPath, input.deployedAt);
+      input.id, input.ownerId, input.project, input.username, input.hostname, input.artifact, input.sproutPath, input.deployedAt);
     return { ...input, active: true };
   })();
 }
@@ -431,11 +437,11 @@ async function writeRouteSnapshot(): Promise<void> {
   // domain (#2) pointed at whatever version of its project is active right now.
   // owner_id/project ride along so each route can carry its decrypted secrets
   // file path (#2) — the supervisor hands it to the per-deployment broker.
-  const rows = q<{ hostname: string; worker_path: string; owner_id: string; project: string }>(
-    `SELECT hostname, worker_path, owner_id, project FROM deployments
+  const rows = q<{ hostname: string; sprout_path: string; owner_id: string; project: string }>(
+    `SELECT hostname, sprout_path, owner_id, project FROM deployments
        WHERE active = 1 AND owner_id NOT IN (SELECT owner_id FROM banned_owners)
      UNION
-     SELECT cd.hostname AS hostname, d.worker_path AS worker_path, d.owner_id AS owner_id, d.project AS project
+     SELECT cd.hostname AS hostname, d.sprout_path AS sprout_path, d.owner_id AS owner_id, d.project AS project
        FROM custom_domains cd
        JOIN deployments d
          ON d.owner_id = cd.owner_id AND d.project = cd.project AND d.active = 1
@@ -446,7 +452,7 @@ async function writeRouteSnapshot(): Promise<void> {
 
   await mkdir(secretsDir(), { recursive: true, mode: 0o700 });
   const written = new Map<string, { secretsPath: string; secretsHash: string } | null>(); // "<owner>\0<project>" -> file info
-  const routes: Array<{ hostname: string; workerPath: string; secretsPath?: string; secretsHash?: string }> = [];
+  const routes: Array<{ hostname: string; sproutPath: string; secretsPath?: string; secretsHash?: string }> = [];
   for (const row of rows) {
     const key = `${row.owner_id}\0${row.project}`;
     if (!written.has(key)) {
@@ -463,7 +469,7 @@ async function writeRouteSnapshot(): Promise<void> {
       }
     }
     const info = written.get(key);
-    routes.push(info ? { hostname: row.hostname, workerPath: row.worker_path, ...info } : { hostname: row.hostname, workerPath: row.worker_path });
+    routes.push(info ? { hostname: row.hostname, sproutPath: row.sprout_path, ...info } : { hostname: row.hostname, sproutPath: row.sprout_path });
   }
 
   await mkdir(dirname(routesPath()), { recursive: true });

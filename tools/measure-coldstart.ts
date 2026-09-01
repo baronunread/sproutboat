@@ -6,7 +6,7 @@
  *
  *   bun tools/measure-coldstart.ts                     # kitchen-sink, 25 runs
  *   bun tools/measure-coldstart.ts <project-dir> -n 50
- *   bun tools/measure-coldstart.ts --bin ./worker.bin  # skip the build
+ *   bun tools/measure-coldstart.ts --bin ./sprout.bin  # skip the build
  *
  * Compiles a host-native binary once (Porffor, no --musl), then repeatedly
  * spawns it exactly as the supervisor does — PORT + SB_STARTUP_FILE in the env,
@@ -38,7 +38,7 @@ const projectDir = argv.find((a) => !a.startsWith("-") && a !== flag("-n") && a 
 const work = mkdtempSync(join(tmpdir(), "sb-coldstart-"));
 process.on("exit", () => { try { rmSync(work, { recursive: true, force: true }); } catch { /* best effort */ } });
 
-// ---- build the worker (host-native) -------------------------------------------
+// ---- build the sprout (host-native) -------------------------------------------
 let bin: string;
 if (prebuilt) {
   bin = prebuilt;
@@ -62,8 +62,8 @@ if (prebuilt) {
   };
   const prelude = readFileSync(preludePath, "utf8");
   const src = readFileSync(join(projectDir, c.main ?? "src/index.js"), "utf8");
-  const gen = join(work, "worker.generated.js");
-  bin = join(work, "worker.bin");
+  const gen = join(work, "sprout.generated.js");
+  bin = join(work, "sprout.bin");
   writeFileSync(gen, wrapNativeFetchHandler(src, prelude, c.vars ?? {}, bindings));
 
   console.log(`compiling ${projectDir} (host native)…`);
@@ -146,5 +146,5 @@ if (haveBoot) {
   console.log("  boot   " + col(boots) + "   (process + runtime)");
   console.log("  eval   " + col(evals) + "   (module + bind)");
 } else {
-  console.log("  boot   unavailable — the worker did not write SB_STARTUP_FILE (old prelude?)");
+  console.log("  boot   unavailable — the sprout did not write SB_STARTUP_FILE (old prelude?)");
 }

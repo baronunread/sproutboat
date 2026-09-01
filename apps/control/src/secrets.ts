@@ -4,7 +4,7 @@
  * `syncRoutes()`, which the supervisor hands to the deployment's binding broker.
  *
  * A running worker keeps the secrets it started with — a change takes effect on
- * the next deploy or worker restart, matching Cloudflare ("secrets apply to the
+ * the next deploy or sprout restart, matching Cloudflare ("secrets apply to the
  * next deployment"). The API never returns a secret value, only its name.
  */
 import { actorFor, type Actor } from "./identity";
@@ -52,7 +52,7 @@ export async function putSecret(request: Request, project: string, name: string)
 
   setSecret(actor.id, project, name, value);
   await syncRoutes();
-  return Response.json({ name, set: true, appliesOn: "next deploy or worker restart" }, { status: isNew ? 201 : 200 });
+  return Response.json({ name, set: true, appliesOn: "next deploy or sprout restart" }, { status: isNew ? 201 : 200 });
 }
 
 export async function removeSecret(request: Request, project: string, name: string): Promise<Response> {

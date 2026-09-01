@@ -1,7 +1,7 @@
 /**
  * #25 — control-plane abuse limits: rate-limit deploys per account and per IP,
  * cap projects per account, and record every rejection as its own event line so
- * limit violations are observable. Runtime (per-worker cgroup) caps live in the
+ * limit violations are observable. Runtime (per-sprout cgroup) caps live in the
  * supervisor; this file is the API side.
  *
  * The limiter is an in-process fixed-window counter — correct for the

@@ -101,7 +101,7 @@ if (!bwrap) {
   if (version.code !== 0 || help.code !== 0) add("bubblewrap", "fail", `bwrap could not run: ${version.output || help.output}`, "Install a working bubblewrap package.");
   else if (!help.output.includes("--seccomp")) add("bubblewrap", "fail", "bwrap does not advertise --seccomp", "Install a bubblewrap build with seccomp support.");
   else {
-    // Functional check: the exact isolation worker-sandbox.sh relies on.
+    // Functional check: the exact isolation sprout-sandbox.sh relies on.
     const sandboxRun = await commandOutput(bwrap, [
       "--unshare-user", "--unshare-pid", "--unshare-net", "--unshare-ipc", "--unshare-uts",
       "--clearenv", "--uid", "65534", "--gid", "65534",
@@ -117,16 +117,16 @@ if (!bwrap) {
 const systemdRun = Bun.which("systemd-run");
 add("systemd-run", "warn",
   systemdRun
-    ? "present; the POC still uses aggregate edge-cgroup limits (SPROUTBOAT_WORKER_CGROUP=off) rather than per-worker scopes"
-    : "absent; the POC caps the whole edge cgroup instead of per-worker scopes",
-  "For per-worker CPU/memory/pids limits: loginctl enable-linger sproutboat-edge, Delegate=yes on its user slice, then SPROUTBOAT_WORKER_CGROUP=auto.");
+    ? "present; the POC still uses aggregate edge-cgroup limits (SPROUTBOAT_SPROUT_CGROUP=off) rather than per-sprout scopes"
+    : "absent; the POC caps the whole edge cgroup instead of per-sprout scopes",
+  "For per-sprout CPU/memory/pids limits: loginctl enable-linger sproutboat-edge, Delegate=yes on its user slice, then SPROUTBOAT_SPROUT_CGROUP=auto.");
 
-const sandboxScript = resolve(import.meta.dir, "../infra/sandbox/worker-sandbox.sh");
+const sandboxScript = resolve(import.meta.dir, "../infra/sandbox/sprout-sandbox.sh");
 try {
   await access(sandboxScript, constants.X_OK);
-  add("worker-sandbox launcher", "pass", sandboxScript);
+  add("sprout-sandbox launcher", "pass", sandboxScript);
 } catch {
-  add("worker-sandbox launcher", "fail", `${sandboxScript} is missing or not executable`, "chmod +x infra/sandbox/worker-sandbox.sh");
+  add("sprout-sandbox launcher", "fail", `${sandboxScript} is missing or not executable`, "chmod +x infra/sandbox/sprout-sandbox.sh");
 }
 
 const seccompActions = await readable("/proc/sys/kernel/seccomp/actions_avail");

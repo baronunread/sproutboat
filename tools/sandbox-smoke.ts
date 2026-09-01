@@ -1,7 +1,7 @@
 /**
  * Linux-only. Run on the target VPS AFTER `bun run runtime:preflight` passes.
  *
- * Verifies that infra/sandbox/worker-sandbox.sh actually confines an untrusted
+ * Verifies that infra/sandbox/sprout-sandbox.sh actually confines an untrusted
  * native worker: it serves HTTP, and it cannot reach the host filesystem, other
  * processes, or fork a shell. Exits non-zero on the first failure.
  *
@@ -11,7 +11,7 @@ import { resolve } from "node:path";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { compileHandler } from "./compile";
-import { WorkerPool } from "../services/supervisor/src/run";
+import { SproutPool } from "../services/supervisor/src/run";
 
 if (process.platform !== "linux") {
   console.log(`skip: sandbox smoke is Linux-only (this host is ${process.platform})`);
@@ -19,7 +19,7 @@ if (process.platform !== "linux") {
 }
 
 const root = resolve(import.meta.dir, "..");
-const launcher = process.env.SPROUTBOAT_WORKER_SANDBOX_CMD || resolve(root, "infra/sandbox/worker-sandbox.sh");
+const launcher = process.env.SPROUTBOAT_SPROUT_SANDBOX_CMD || resolve(root, "infra/sandbox/sprout-sandbox.sh");
 let failures = 0;
 function check(name: string, ok: boolean, detail = "") {
   console.log(`${ok ? "PASS" : "FAIL"} ${name}${detail ? ` — ${detail}` : ""}`);
@@ -35,20 +35,20 @@ async function sandboxed(script: string): Promise<{ code: number; out: string; e
   return { code, out: out.trim(), err: err.trim() };
 }
 
-// 1. Functional: a real compiled native-fetch worker serves HTTP through the sandbox.
+// 1. Functional: a real compiled native-fetch sprout serves HTTP through the sandbox.
 {
   const bin = resolve(probeDir, "echo");
   const compiled = await compileHandler(resolve(root, "tests/porffor/capabilities/03-echo-method.js"), bin);
-  check("worker compiles", compiled.ok, compiled.error || "");
+  check("sprout compiles", compiled.ok, compiled.error || "");
   if (compiled.ok) {
-    const pool = new WorkerPool();
+    const pool = new SproutPool();
     try {
       const { url: base } = await pool.endpoint(bin);
       const a = await (await fetch(base, { method: "GET" })).text();
       const b = await (await fetch(base, { method: "POST" })).text();
-      check("sandboxed worker serves HTTP", a === "GET" && b === "POST", `${a},${b}`);
+      check("sandboxed sprout serves HTTP", a === "GET" && b === "POST", `${a},${b}`);
     } catch (error) {
-      check("sandboxed worker serves HTTP", false, String(error));
+      check("sandboxed sprout serves HTTP", false, String(error));
     } finally {
       pool.disposeAll();
     }
@@ -93,14 +93,14 @@ check("PID namespace hides host processes", inSandbox > 0 && inSandbox < 12 && i
 const uid = await sandboxed("id -u");
 check("runs as an unprivileged uid", uid.out.trim() !== "0", `uid ${uid.out.trim()}`);
 
-// 3. Lifecycle: killing the launcher takes the worker with it (--die-with-parent).
+// 3. Lifecycle: killing the launcher takes the sprout with it (--die-with-parent).
 {
   const bin = resolve(probeDir, "echo");
   const child = Bun.spawn([launcher, bin], { stdin: "pipe", stdout: "pipe", stderr: "pipe" });
   await Bun.sleep(300);
   child.kill("SIGKILL");
   const exited = await Promise.race([child.exited.then(() => true), Bun.sleep(2000).then(() => false)]);
-  check("worker dies with its launcher", exited);
+  check("sprout dies with its launcher", exited);
 }
 
 await rm(probeDir, { recursive: true, force: true });

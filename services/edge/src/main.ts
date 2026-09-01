@@ -18,21 +18,21 @@ interface LogEvent {
   readonly method?: string;
   readonly status: number;
   readonly durationMs: number;
-  /** Time to the upstream response headers; null when the worker never answered. */
+  /** Time to the upstream response headers; null when the sprout never answered. */
   readonly ttfbMs?: number | null;
   readonly reqBytes?: number;
   readonly resBytes?: number | null;
-  /** True when this request had to spawn the worker process. */
+  /** True when this request had to spawn the sprout process. */
   readonly coldStart?: boolean;
   /** Spawn→listening wait for that cold start, in ms. */
   readonly startupMs?: number | null;
   /** Of startupMs, the spawn→JS-start slice (process + runtime bootstrap). #41 */
   readonly bootMs?: number | null;
-  /** Worker CPU time for this invocation, ms — self-reported via `x-sb-cpu-ms`.
-   *  Absent for async handlers and pre-#28 workers. #28 */
+  /** Sprout CPU time for this invocation, ms — self-reported via `x-sb-cpu-ms`.
+   *  Absent for async handlers and pre-#28 sprouts. #28 */
   readonly cpuMs?: number | null;
   readonly error?: string;
-  /** Coarse failure taxonomy: no-route | worker-unavailable | proxy | timed-out
+  /** Coarse failure taxonomy: no-route | sprout-unavailable | proxy | timed-out
    *  | response-too-large | upstream-5xx. Absent on a clean response. */
   readonly errorKind?: string;
   /** Edge cache outcome for a GET: hit | miss | dynamic | bypass. */
@@ -49,16 +49,16 @@ function isString(value: EdgeInput): value is string {
 }
 
 /** `secretsPath` / `secretsHash` are present when the project has ≥1 secret (#2). */
-type Route = { workerPath: string; secretsPath: string | null; secretsHash: string | null };
+type Route = { sproutPath: string; secretsPath: string | null; secretsHash: string | null };
 
 async function loadRoutes(path: string): Promise<Map<string, Route>> {
   const routes: EdgeInput = JSON.parse(await readFile(path, "utf8"));
   if (!Array.isArray(routes)) throw new TypeError("invalid route snapshot");
   const result = new Map<string, Route>();
   for (const route of routes) {
-    if (!isObject(route) || !isString(route.hostname) || !/^[a-z0-9.-]+$/.test(route.hostname) || !isString(route.workerPath) || !route.workerPath.startsWith("/")) throw new TypeError("invalid route snapshot");
+    if (!isObject(route) || !isString(route.hostname) || !/^[a-z0-9.-]+$/.test(route.hostname) || !isString(route.sproutPath) || !route.sproutPath.startsWith("/")) throw new TypeError("invalid route snapshot");
     const secretsPath = isString(route.secretsPath) && route.secretsPath.startsWith("/") ? route.secretsPath : null;
-    result.set(route.hostname, { workerPath: route.workerPath, secretsPath, secretsHash: isString(route.secretsHash) ? route.secretsHash : null });
+    result.set(route.hostname, { sproutPath: route.sproutPath, secretsPath, secretsHash: isString(route.secretsHash) ? route.secretsHash : null });
   }
   return result;
 }
@@ -72,7 +72,7 @@ const responseMaxBytes = Number(process.env.SPROUTBOAT_RESPONSE_MAX_BYTES) || 10
 const cache = process.env.SPROUTBOAT_EDGE_CACHE === "off" ? null : new EdgeCache();
 const MAX_CACHE_ENTRY_BYTES = 512 * 1024;
 
-/** Fail the stream (and log) if the worker's response body runs past the cap. */
+/** Fail the stream (and log) if the sprout's response body runs past the cap. */
 /**
  * Wrap the upstream body to (a) enforce the byte cap and (b) call `onEnd` with
  * the total bytes streamed once the response body actually finishes — so the
@@ -143,51 +143,51 @@ function log(event: LogEvent): void {
 }
 
 /**
- * Static-asset manifests, keyed by workerPath. Loaded lazily on first request
- * to a deployment and dropped when its route changes (like the worker process).
+ * Static-asset manifests, keyed by sproutPath. Loaded lazily on first request
+ * to a deployment and dropped when its route changes (like the sprout process).
  * `null` = no `assets.json` next to the artifact.
  */
 const assetManifests = new Map<string, AssetManifest | null>();
-function assetManifestFor(workerPath: string): AssetManifest | null {
-  const cached = assetManifests.get(workerPath);
+function assetManifestFor(sproutPath: string): AssetManifest | null {
+  const cached = assetManifests.get(sproutPath);
   if (cached !== undefined) return cached;
-  const path = join(dirname(workerPath), "assets.json");
+  const path = join(dirname(sproutPath), "assets.json");
   let manifest: AssetManifest | null = null;
   try {
     if (existsSync(path)) {
       // SAFETY: this file is written only by `sproutboat build` from the AssetManifest
-      // type; a malformed one just yields lookups that miss and fall through to the worker.
+      // type; a malformed one just yields lookups that miss and fall through to the sprout.
       manifest = JSON.parse(readFileSync(path, "utf8")) as AssetManifest;
     }
   } catch (error) {
-    console.error(`asset manifest load failed for ${workerPath}: ${error instanceof Error ? error.message : String(error)}`);
+    console.error(`asset manifest load failed for ${sproutPath}: ${error instanceof Error ? error.message : String(error)}`);
   }
-  assetManifests.set(workerPath, manifest);
+  assetManifests.set(sproutPath, manifest);
   return manifest;
 }
 
 /**
- * Swap in a new route snapshot: dispose workers whose route changed or was
- * removed, then eagerly spawn any newly-routed worker so the first real request
+ * Swap in a new route snapshot: dispose sprouts whose route changed or was
+ * removed, then eagerly spawn any newly-routed sprout so the first real request
  * to a fresh deploy is not a cold start (pre-warm on activate). Warm-up is
  * fire-and-forget — a broken artifact must not stall the reload.
  */
 function swapRoutes(nextRoutes: Map<string, Route>, nextMtimeMs: number): void {
-  const oldPaths = new Set([...routes.values()].map((route) => route.workerPath));
+  const oldPaths = new Set([...routes.values()].map((route) => route.sproutPath));
   for (const [hostname, route] of routes) {
     const next = nextRoutes.get(hostname);
-    // A changed worker path OR a changed secrets hash (#2) means the running
+    // A changed sprout path OR a changed secrets hash (#2) means the running
     // worker is stale — dispose it so the next request respawns it fresh.
-    if (!next || next.workerPath !== route.workerPath || next.secretsHash !== route.secretsHash) {
-      pool.dispose(route.workerPath);
-      assetManifests.delete(route.workerPath);
+    if (!next || next.sproutPath !== route.sproutPath || next.secretsHash !== route.secretsHash) {
+      pool.dispose(route.sproutPath);
+      assetManifests.delete(route.sproutPath);
       cache?.purgeHost(hostname); // a new version must not serve the old one's cached responses
     }
   }
   routes = nextRoutes;
   routesMtimeMs = nextMtimeMs;
   for (const route of nextRoutes.values()) {
-    if (!oldPaths.has(route.workerPath)) void pool.endpoint(route.workerPath, route.secretsPath).catch(() => { /* first request will report it */ });
+    if (!oldPaths.has(route.sproutPath)) void pool.endpoint(route.sproutPath, route.secretsPath).catch(() => { /* first request will report it */ });
   }
 }
 
@@ -221,15 +221,15 @@ const server = Bun.serve({
       log({ hostname: host || null, method: request.method, status: 404, durationMs: elapsed(), reqBytes, errorKind: "no-route" });
       return new Response("unknown deployment", { status: 404 });
     }
-    const workerPath = route.workerPath;
+    const sproutPath = route.sproutPath;
 
     const target = new URL(request.url);
 
     // Static assets, served edge-first (Cloudflare's default). Static-host path
     // resolution (`/docs` -> `/docs.html`, `/docs/` -> `/docs/index.html`); the
-    // SPA / 404 fallback still belongs to the worker via `env.<ASSETS>.fetch()`.
+    // SPA / 404 fallback still belongs to the sprout via `env.<ASSETS>.fetch()`.
     if (request.method === "GET" || request.method === "HEAD") {
-      const manifest = assetManifestFor(workerPath);
+      const manifest = assetManifestFor(sproutPath);
       const assetKey = manifest
         ? resolveAssetKey(decodeURIComponent(target.pathname), (k) => Boolean(manifest.files[k]))
         : null;
@@ -242,7 +242,7 @@ const server = Bun.serve({
           log({ hostname: host, method: request.method, status: 304, durationMs: elapsed(), reqBytes, resBytes: 0, cacheStatus: "asset" });
           return new Response(null, { status: 304, headers: { etag } });
         }
-        const body = request.method === "HEAD" ? null : await readFile(join(dirname(workerPath), "assets", assetKey));
+        const body = request.method === "HEAD" ? null : await readFile(join(dirname(sproutPath), "assets", assetKey));
         log({ hostname: host, method: request.method, status: 200, durationMs: elapsed(), reqBytes, resBytes: entry.size, cacheStatus: "asset" });
         return new Response(body, {
           status: 200,
@@ -265,15 +265,15 @@ const server = Bun.serve({
     let startupMs: number | null = null;
     let bootMs: number | null = null;
     try {
-      const endpoint = await pool.endpoint(workerPath, route.secretsPath);
+      const endpoint = await pool.endpoint(sproutPath, route.secretsPath);
       base = endpoint.url;
       coldStart = endpoint.coldStart;
       startupMs = endpoint.coldStart ? endpoint.startupMs : null;
       bootMs = endpoint.coldStart ? endpoint.bootMs : null;
     } catch (error) {
-      console.error(`worker unavailable for ${host}: ${error instanceof Error ? error.message : String(error)}`);
-      log({ hostname: host, method: request.method, status: 502, durationMs: elapsed(), reqBytes, ttfbMs: null, error: "worker unavailable", errorKind: "worker-unavailable" });
-      return new Response("worker failed", { status: 502 });
+      console.error(`sprout unavailable for ${host}: ${error instanceof Error ? error.message : String(error)}`);
+      log({ hostname: host, method: request.method, status: 502, durationMs: elapsed(), reqBytes, ttfbMs: null, error: "sprout unavailable", errorKind: "sprout-unavailable" });
+      return new Response("sprout failed", { status: 502 });
     }
 
     try {
@@ -289,7 +289,7 @@ const server = Bun.serve({
         signal: AbortSignal.timeout(requestTimeoutMs),
       });
       const ttfbMs = elapsed();
-      // #28 — per-invocation CPU time the worker self-reports; read it here and
+      // #28 — per-invocation CPU time the sprout self-reports; read it here and
       // strip it from every copy of the headers that leaves the edge below.
       const cpuHeader = upstream.headers.get("x-sb-cpu-ms");
       const cpuMs = cpuHeader != null && Number.isFinite(Number(cpuHeader)) ? Number(cpuHeader) : null;
@@ -330,9 +330,9 @@ const server = Bun.serve({
     } catch (error) {
       const timedOut = error instanceof Error && (error.name === "TimeoutError" || error.name === "AbortError");
       const status = timedOut ? 504 : 502;
-      console.error(`worker ${timedOut ? "timed out" : "failure"} for ${host}: ${error instanceof Error ? error.message : String(error)}`);
-      log({ hostname: host, method: request.method, status, durationMs: elapsed(), reqBytes, ttfbMs: null, coldStart, startupMs, bootMs, error: timedOut ? "request timed out" : "worker failure", errorKind: timedOut ? "timed-out" : "proxy" });
-      return new Response(timedOut ? "request timed out" : "worker failed", { status });
+      console.error(`sprout ${timedOut ? "timed out" : "failure"} for ${host}: ${error instanceof Error ? error.message : String(error)}`);
+      log({ hostname: host, method: request.method, status, durationMs: elapsed(), reqBytes, ttfbMs: null, coldStart, startupMs, bootMs, error: timedOut ? "request timed out" : "sprout failure", errorKind: timedOut ? "timed-out" : "proxy" });
+      return new Response(timedOut ? "request timed out" : "sprout failed", { status });
     }
   },
 });
@@ -340,8 +340,8 @@ const server = Bun.serve({
 console.log(`Sproutboat edge router listening on http://${bindHost}:${server.port}`);
 
 // Never evict a deployment that still has a live route — its next request should
-// not pay a cold start. Idle eviction then only reaps workers whose route is gone.
-const evictionTimer = setInterval(() => pool.evictIdle(new Set([...routes.values()].map((route) => route.workerPath))), 60_000);
+// not pay a cold start. Idle eviction then only reaps sprouts whose route is gone.
+const evictionTimer = setInterval(() => pool.evictIdle(new Set([...routes.values()].map((route) => route.sproutPath))), 60_000);
 
 function shutdown(): void {
   clearInterval(evictionTimer);

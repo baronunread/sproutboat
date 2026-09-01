@@ -52,9 +52,9 @@ function AdminOverview() {
       </section>
       {rt && (
         <section className="metrics" aria-label="Runtime">
-          <Metric label="Live workers" value={String(rt.live)} detail="Resident worker processes" />
+          <Metric label="Live sprouts" value={String(rt.live)} detail="Resident sprout processes" />
           <Metric label="Spawns" value={String(rt.spawns)} detail="Since edge start" />
-          <Metric label="Restarts" value={String(rt.restarts)} detail="Replaced a crashed/evicted worker" tone={rt.restarts > 0 ? "warning" : "neutral"} />
+          <Metric label="Restarts" value={String(rt.restarts)} detail="Replaced a crashed/evicted sprout" tone={rt.restarts > 0 ? "warning" : "neutral"} />
           <Metric label="Ready failures" value={String(rt.readyFailures)} detail="Never began listening" tone={rt.readyFailures > 0 ? "warning" : "neutral"} />
           <Metric label="Idle evictions" value={String(rt.idleEvictions)} detail="Reaped after the idle window" />
           <Metric label="Port pool" value={`${rt.portsInUse} / ${rt.portPoolSize}`} detail="Loopback ports in use" tone={rt.portsInUse > rt.portPoolSize * 0.8 ? "warning" : "neutral"} />

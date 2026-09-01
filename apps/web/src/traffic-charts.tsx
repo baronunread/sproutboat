@@ -168,7 +168,7 @@ export function TrafficCharts({ name }: { name: string }) {
 
           {metrics.ttfbMs && (
             <div className="chart-block">
-              <h3>Time to first byte <small>· edge → worker response</small></h3>
+              <h3>Time to first byte <small>· edge → sprout response</small></h3>
               <ul className="latency-tiles">
                 <li><strong>{group(metrics.ttfbMs.p50)} ms</strong><span>p50</span></li>
                 <li><strong>{group(metrics.ttfbMs.p90)} ms</strong><span>p90</span></li>
@@ -202,7 +202,7 @@ export function TrafficCharts({ name }: { name: string }) {
                 <span>eval p50 · module + bind</span>
               </li>
             </ul>
-            <p className="hint">A cold start is a request that had to launch the worker process (first hit after a deploy, crash, or idle eviction). <strong>boot</strong> is process create + <code>ld.so</code> + runtime init (static linking cuts this); <strong>eval</strong> is JS module evaluation + binding the listen socket (an inherited fd would cut this).</p>
+            <p className="hint">A cold start is a request that had to launch the sprout process (first hit after a deploy, crash, or idle eviction). <strong>boot</strong> is process create + <code>ld.so</code> + runtime init (static linking cuts this); <strong>eval</strong> is JS module evaluation + binding the listen socket (an inherited fd would cut this).</p>
           </div>
 
           <div className="chart-block">
@@ -229,7 +229,7 @@ export function TrafficCharts({ name }: { name: string }) {
                   );
                 })}
               </dl>
-              <p className="hint">`timed-out` and `response-too-large` are platform caps (#27); `worker-unavailable` / `proxy` are runtime failures.</p>
+              <p className="hint">`timed-out` and `response-too-large` are platform caps (#27); `sprout-unavailable` / `proxy` are runtime failures.</p>
             </div>
           )}
 

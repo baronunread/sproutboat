@@ -3,17 +3,17 @@ import { randomBytes } from "node:crypto";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { connect } from "node:net";
-import { workerCommand } from "./sandbox";
+import { sproutCommand } from "./sandbox";
 
 /**
- * Where the worker writes the wall-clock ms at which its bundled JS began
+ * Where the sprout writes the wall-clock ms at which its bundled JS began
  * running (#41). Diffed against the spawn time, it splits cold-start into
  * "process + runtime bootstrap" (spawn -> JS starts) and "module eval + bind"
  * (JS starts -> listening). Both the spawn env (`SB_STARTUP_FILE`) and the
  * reader derive the same path.
  */
-export const startupFilePath = (workerPath: string, port: number): string =>
-  resolve(dirname(workerPath), `.startup-${port}`);
+export const startupFilePath = (sproutPath: string, port: number): string =>
+  resolve(dirname(sproutPath), `.startup-${port}`);
 
 function readBootMs(file: string, spawnedAt: number, startupMs: number): number {
   try {
@@ -39,21 +39,21 @@ function readBootMs(file: string, spawnedAt: number, startupMs: number): number 
  * working memory management (verified flat RSS over 500k requests).
  */
 
-export type WorkerChild = { readonly exited: Promise<number>; kill(signal?: number): void };
+export type SproutChild = { readonly exited: Promise<number>; kill(signal?: number): void };
 /** `secretsPath` (#2) points at the project's decrypted `secrets.json`, written
  *  outside the content-addressed artifact dir; null when the project has none. */
-export type WorkerFactory = (workerPath: string, port: number, secretsPath?: string | null) => WorkerChild;
+export type SproutFactory = (sproutPath: string, port: number, secretsPath?: string | null) => SproutChild;
 
 /**
  * What `endpoint()` resolved to. `coldStart` is true when this call had to spawn
- * the worker process; `startupMs` is the spawn→listening wait for that cold
+ * the sprout process; `startupMs` is the spawn→listening wait for that cold
  * start (0 on a warm hit). The edge records both per request so the dashboard
  * can chart cold-start rate and startup-time percentiles.
  */
 export type Endpoint = { url: string; coldStart: boolean; startupMs: number; bootMs: number };
 
-export type WorkerPoolOptions = {
-  readonly spawn?: WorkerFactory;
+export type SproutPoolOptions = {
+  readonly spawn?: SproutFactory;
   readonly readyTimeoutMs?: number;
   readonly idleMs?: number;
   readonly now?: () => number;
@@ -72,14 +72,14 @@ const brokerEntry = fileURLToPath(import.meta.resolve("sproutboat/runtime/broker
  * Bindings broker sidecar. Spawned only when the artifact ships a `bindings.json`
  * (KV / D1 / R2 / queues / secrets / cron / Durable Objects). The worker reaches
  * it on `SB_BROKER_PORT`; the broker delivers cron + queue triggers back to the
- * worker on `SB_WORKER_URL`.
+ * worker on `SB_SPROUT_URL`.
  *
  * ponytail: broker port is `workerPort + 10000` — deterministic, within the
  * ephemeral range, no second allocator. Give the broker its own port pool if two
- * live workers ever land exactly 10000 apart.
+ * live sprouts ever land exactly 10000 apart.
  */
-function spawnWithBroker(workerPath: string, port: number, secretsPath?: string | null): WorkerChild {
-  const workerDir = dirname(workerPath);
+function spawnWithBroker(sproutPath: string, port: number, secretsPath?: string | null): SproutChild {
+  const workerDir = dirname(sproutPath);
   const bindingsPath = resolve(workerDir, "bindings.json");
   let broker: Bun.Subprocess | null = null;
   const brokerEnv: Record<string, string> = {};
@@ -107,9 +107,9 @@ function spawnWithBroker(workerPath: string, port: number, secretsPath?: string 
     brokerEnv.SB_BROKER_TOKEN = token;
   }
 
-  const startupFile = startupFilePath(workerPath, port);
+  const startupFile = startupFilePath(sproutPath, port);
   try { rmSync(startupFile, { force: true }); } catch { /* fresh spawn */ }
-  const worker = Bun.spawn(workerCommand(workerPath), {
+  const sprout = Bun.spawn(sproutCommand(sproutPath), {
     stdout: "ignore",
     stderr: "ignore",
     env: { ...process.env, PORT: String(port), SB_STARTUP_FILE: startupFile, ...brokerEnv },
@@ -119,18 +119,18 @@ function spawnWithBroker(workerPath: string, port: number, secretsPath?: string 
   // without its broker, so if either process exits the other is torn down and
   // the pool respawns the pair on the next request:
   //  - worker exits (crash / evict / dispose) -> stop the orphaned broker
-  //  - broker exits (crash) -> kill the worker so `exited` fires and the route
+  //  - broker exits (crash) -> kill the sprout so `exited` fires and the route
   //    doesn't keep serving binding calls into a closed socket
   let stopped = false;
-  const stop = () => { if (stopped) return; stopped = true; worker.kill(9); broker?.kill(9); };
-  void worker.exited.then(stop);
+  const stop = () => { if (stopped) return; stopped = true; sprout.kill(9); broker?.kill(9); };
+  void sprout.exited.then(stop);
   if (broker) void broker.exited.then(stop);
 
-  return { exited: worker.exited, kill: stop };
+  return { exited: sprout.exited, kill: stop };
 }
 
-function spawnNativeWorker(workerPath: string, port: number, secretsPath?: string | null): WorkerChild {
-  return spawnWithBroker(workerPath, port, secretsPath);
+function spawnSprout(sproutPath: string, port: number, secretsPath?: string | null): SproutChild {
+  return spawnWithBroker(sproutPath, port, secretsPath);
 }
 
 async function listens(port: number): Promise<boolean> {
@@ -140,10 +140,10 @@ async function listens(port: number): Promise<boolean> {
   });
 }
 
-class WorkerServer {
+class SproutServer {
   readonly port: number;
   readonly url: string;
-  #child: WorkerChild;
+  #child: SproutChild;
   #closed = false;
   #ready: Promise<void>;
   lastUsedAt: number;
@@ -153,22 +153,22 @@ class WorkerServer {
   bootMs = 0;
 
   constructor(
-    readonly workerPath: string,
+    readonly sproutPath: string,
     port: number,
-    spawn: WorkerFactory,
+    spawn: SproutFactory,
     readyTimeoutMs: number,
     now: () => number,
-    private readonly onExit: (server: WorkerServer) => void,
+    private readonly onExit: (server: SproutServer) => void,
     secretsPath?: string | null,
   ) {
     this.port = port;
     this.url = `http://127.0.0.1:${port}`;
     this.lastUsedAt = now();
     const spawnedAt = Date.now();
-    this.#child = spawn(workerPath, port, secretsPath);
+    this.#child = spawn(sproutPath, port, secretsPath);
     this.#ready = this.#awaitListening(readyTimeoutMs).then(() => {
       this.startupMs = Date.now() - spawnedAt;
-      this.bootMs = readBootMs(startupFilePath(workerPath, port), spawnedAt, this.startupMs);
+      this.bootMs = readBootMs(startupFilePath(sproutPath, port), spawnedAt, this.startupMs);
     });
     void this.#child.exited.then(() => { if (!this.#closed) { this.#closed = true; this.onExit(this); } });
   }
@@ -187,18 +187,18 @@ class WorkerServer {
 
   async #awaitListening(timeoutMs: number): Promise<void> {
     const deadline = Date.now() + timeoutMs;
-    // Fast poll early (most workers listen within a few ms), then back off so a
+    // Fast poll early (most sprouts listen within a few ms), then back off so a
     // slow start doesn't spin. #39: replace polling entirely with an inherited
     // listening fd once Porffor supports it.
     let wait = 1;
     while (Date.now() < deadline) {
-      if (this.#closed) throw new Error("worker exited before it began listening");
+      if (this.#closed) throw new Error("sprout exited before it began listening");
       if (await listens(this.port)) return;
       await Bun.sleep(wait);
       if (wait < 20) wait = Math.min(20, wait * 2);
     }
     this.dispose();
-    throw new Error(`worker did not listen on :${this.port} within ${timeoutMs}ms`);
+    throw new Error(`sprout did not listen on :${this.port} within ${timeoutMs}ms`);
   }
 }
 
@@ -214,10 +214,10 @@ export type PoolStats = {
   portPoolSize: number;
 };
 
-export class WorkerPool {
-  readonly #servers = new Map<string, WorkerServer>();
+export class SproutPool {
+  readonly #servers = new Map<string, SproutServer>();
   readonly #usedPorts = new Set<number>();
-  readonly #spawn: WorkerFactory;
+  readonly #spawn: SproutFactory;
   readonly #readyTimeoutMs: number;
   readonly #idleMs: number;
   readonly #now: () => number;
@@ -228,7 +228,7 @@ export class WorkerPool {
   #readyFailures = 0;
   #idleEvictions = 0;
 
-  constructor({ spawn = spawnNativeWorker, readyTimeoutMs = defaultReadyTimeoutMs, idleMs = defaultIdleMs, now = Date.now, portRange = defaultPortRange }: WorkerPoolOptions = {}) {
+  constructor({ spawn = spawnSprout, readyTimeoutMs = defaultReadyTimeoutMs, idleMs = defaultIdleMs, now = Date.now, portRange = defaultPortRange }: SproutPoolOptions = {}) {
     this.#spawn = spawn;
     this.#readyTimeoutMs = readyTimeoutMs;
     this.#idleMs = idleMs;
@@ -242,12 +242,12 @@ export class WorkerPool {
       const port = lo + Math.floor(Math.random() * (hi - lo + 1));
       if (!this.#usedPorts.has(port)) return port;
     }
-    throw new Error("no free worker port available");
+    throw new Error("no free sprout port available");
   }
 
   /** Base URL of the deployment's server, starting and awaiting it if needed. */
-  async endpoint(workerPath: string, secretsPath?: string | null): Promise<Endpoint> {
-    const key = resolve(workerPath);
+  async endpoint(sproutPath: string, secretsPath?: string | null): Promise<Endpoint> {
+    const key = resolve(sproutPath);
     let server = this.#servers.get(key);
     let coldStart = false;
     if (!server || server.closed) {
@@ -257,7 +257,7 @@ export class WorkerPool {
       const port = this.#freePort();
       this.#usedPorts.add(port);
       this.#spawns += 1;
-      server = new WorkerServer(key, port, this.#spawn, this.#readyTimeoutMs, this.#now, (dead) => {
+      server = new SproutServer(key, port, this.#spawn, this.#readyTimeoutMs, this.#now, (dead) => {
         if (this.#servers.get(key) === dead) this.#servers.delete(key);
         this.#usedPorts.delete(dead.port);
       }, secretsPath);
@@ -276,8 +276,8 @@ export class WorkerPool {
     return { url: server.url, coldStart, startupMs: coldStart ? server.startupMs : 0, bootMs: coldStart ? server.bootMs : 0 };
   }
 
-  dispose(workerPath: string): void {
-    const key = resolve(workerPath);
+  dispose(sproutPath: string): void {
+    const key = resolve(sproutPath);
     this.#servers.get(key)?.dispose();
     this.#servers.delete(key);
   }
@@ -289,10 +289,10 @@ export class WorkerPool {
   }
 
   /**
-   * Stop workers idle past the window. `keepWarm` — the worker paths of
+   * Stop sprouts idle past the window. `keepWarm` — the sprout paths of
    * currently-routed deployments — are never evicted, so an active deployment
    * stays hot and its next request is not a cold start; idle eviction then only
-   * reaps workers whose route is gone.
+   * reaps sprouts whose route is gone.
    *
    * ponytail: keeps every routed deployment resident. Add an LRU cap or
    * memory-pressure trigger once one node carries many hundreds of deployments.
@@ -327,4 +327,4 @@ export class WorkerPool {
 }
 
 /** Process-wide worker pool the edge proxies through. */
-export const pool = new WorkerPool();
+export const pool = new SproutPool();

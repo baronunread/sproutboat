@@ -2,9 +2,9 @@ import { afterEach, expect, test } from "bun:test";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { WorkerPool, startupFilePath } from "./run";
-import { workerCommand } from "./sandbox";
-import type { WorkerChild, WorkerFactory } from "./run";
+import { SproutPool, startupFilePath } from "./run";
+import { sproutCommand } from "./sandbox";
+import type { SproutChild, SproutFactory } from "./run";
 
 // A stand-in worker: a tiny HTTP server on the assigned port, so the pool's real
 // TCP readiness check and the edge's proxy both work without compiling Porffor.
@@ -17,17 +17,17 @@ function fakeSpawn() {
     exits.get(port)?.(code);
     exits.delete(port);
   };
-  const spawn: WorkerFactory = (workerPath, port): WorkerChild => {
-    servers.set(port, Bun.serve({ port, fetch: () => new Response(`ok ${workerPath} ${port}`) }));
+  const spawn: SproutFactory = (sproutPath, port): SproutChild => {
+    servers.set(port, Bun.serve({ port, fetch: () => new Response(`ok ${sproutPath} ${port}`) }));
     return { exited: new Promise<number>((resolve) => exits.set(port, resolve)), kill: () => stop(port, 137) };
   };
   return { spawn, servers, crash: (port: number) => stop(port, 139) };
 }
 
-const pools: WorkerPool[] = [];
+const pools: SproutPool[] = [];
 afterEach(() => { for (const p of pools) p.disposeAll(); pools.length = 0; });
-function makePool(spawn: WorkerFactory, opts = {}) {
-  const pool = new WorkerPool({ spawn, portRange: [45_000, 45_999], ...opts });
+function makePool(spawn: SproutFactory, opts = {}) {
+  const pool = new SproutPool({ spawn, portRange: [45_000, 45_999], ...opts });
   pools.push(pool);
   return pool;
 }
@@ -35,38 +35,38 @@ function makePool(spawn: WorkerFactory, opts = {}) {
 test("endpoint starts one server per deployment and reuses it", async () => {
   const { spawn, servers } = fakeSpawn();
   const pool = makePool(spawn);
-  const a = await pool.endpoint("/tmp/app/worker");
-  const b = await pool.endpoint("/tmp/app/worker");
+  const a = await pool.endpoint("/tmp/app/sprout");
+  const b = await pool.endpoint("/tmp/app/sprout");
   expect(a.url).toBe(b.url);
   expect(servers.size).toBe(1);
-  expect((await (await fetch(a.url)).text())).toContain("/tmp/app/worker");
+  expect((await (await fetch(a.url)).text())).toContain("/tmp/app/sprout");
 });
 
 test("endpoint reports the cold start and its startup time, then warm hits", async () => {
   const { spawn } = fakeSpawn();
   const pool = makePool(spawn);
-  const cold = await pool.endpoint("/tmp/app/worker");
+  const cold = await pool.endpoint("/tmp/app/sprout");
   expect(cold.coldStart).toBe(true);
   expect(cold.startupMs).toBeGreaterThanOrEqual(0);
   expect(cold.bootMs).toBe(0); // fake spawn writes no SB_STARTUP_FILE
-  const warm = await pool.endpoint("/tmp/app/worker");
+  const warm = await pool.endpoint("/tmp/app/sprout");
   expect(warm.coldStart).toBe(false);
   expect(warm.startupMs).toBe(0);
   expect(warm.bootMs).toBe(0);
 });
 
-test("cold start splits out a boot slice from the worker's startup marker (#41)", async () => {
+test("cold start splits out a boot slice from the sprout's startup marker (#41)", async () => {
   const dir = mkdtempSync(join(tmpdir(), "sb-startup-"));
-  const workerPath = join(dir, "worker");
+  const sproutPath = join(dir, "sprout");
   const { spawn } = fakeSpawn();
   // Stand in for the prelude's __sbStartupMark: record "JS started" at spawn time.
-  const spawnWithMarker: WorkerFactory = (path, port) => {
+  const spawnWithMarker: SproutFactory = (path, port) => {
     writeFileSync(startupFilePath(path, port), String(Date.now()));
     return spawn(path, port);
   };
   try {
     const pool = makePool(spawnWithMarker);
-    const cold = await pool.endpoint(workerPath);
+    const cold = await pool.endpoint(sproutPath);
     expect(cold.coldStart).toBe(true);
     expect(cold.bootMs).toBeGreaterThanOrEqual(0);
     expect(cold.bootMs).toBeLessThanOrEqual(cold.startupMs);
@@ -78,8 +78,8 @@ test("cold start splits out a boot slice from the worker's startup marker (#41)"
 test("separate deployments get separate ports", async () => {
   const { spawn, servers } = fakeSpawn();
   const pool = makePool(spawn);
-  const a = await pool.endpoint("/tmp/one/worker");
-  const b = await pool.endpoint("/tmp/two/worker");
+  const a = await pool.endpoint("/tmp/one/sprout");
+  const b = await pool.endpoint("/tmp/two/sprout");
   expect(a.url).not.toBe(b.url);
   expect(servers.size).toBe(2);
 });
@@ -87,8 +87,8 @@ test("separate deployments get separate ports", async () => {
 test("stats() tracks live count, spawns, restarts, evictions and the port pool", async () => {
   const { spawn, crash } = fakeSpawn();
   const pool = makePool(spawn, { idleMs: 0, portRange: [46_000, 46_099] });
-  await pool.endpoint("/tmp/a/worker");
-  await pool.endpoint("/tmp/b/worker");
+  await pool.endpoint("/tmp/a/sprout");
+  await pool.endpoint("/tmp/b/sprout");
   let s = pool.stats();
   expect(s.live).toBe(2);
   expect(s.spawns).toBe(2);
@@ -96,10 +96,10 @@ test("stats() tracks live count, spawns, restarts, evictions and the port pool",
   expect(s.portsInUse).toBe(2);
   expect(s.portPoolSize).toBe(100);
 
-  const first = await pool.endpoint("/tmp/a/worker"); // warm, no new spawn
+  const first = await pool.endpoint("/tmp/a/sprout"); // warm, no new spawn
   crash(Number(new URL(first.url).port));
   await Bun.sleep(10);
-  await pool.endpoint("/tmp/a/worker");               // restart
+  await pool.endpoint("/tmp/a/sprout");               // restart
   s = pool.stats();
   expect(s.spawns).toBe(3);
   expect(s.restarts).toBe(1);
@@ -112,34 +112,34 @@ test("stats() tracks live count, spawns, restarts, evictions and the port pool",
 test("a crashed worker is replaced on the next request", async () => {
   const { spawn, crash } = fakeSpawn();
   const pool = makePool(spawn);
-  const first = await pool.endpoint("/tmp/app/worker");
+  const first = await pool.endpoint("/tmp/app/sprout");
   const port = Number(new URL(first.url).port);
   crash(port);
   await Bun.sleep(10);
-  const second = await pool.endpoint("/tmp/app/worker");
+  const second = await pool.endpoint("/tmp/app/sprout");
   expect(Number(new URL(second.url).port)).not.toBe(port);
   expect(second.coldStart).toBe(true);
   expect((await fetch(second.url)).ok).toBe(true);
 });
 
 test("readiness failure surfaces and does not leak the port", async () => {
-  const spawn: WorkerFactory = (): WorkerChild => ({ exited: new Promise(() => {}), kill() {} }); // never listens
+  const spawn: SproutFactory = (): SproutChild => ({ exited: new Promise(() => {}), kill() {} }); // never listens
   const pool = makePool(spawn, { readyTimeoutMs: 150 });
-  await expect(pool.endpoint("/tmp/app/worker")).rejects.toThrow("did not listen");
+  await expect(pool.endpoint("/tmp/app/sprout")).rejects.toThrow("did not listen");
 });
 
 test("evictIdle stops servers past the idle window", async () => {
   const { spawn } = fakeSpawn();
   let now = 0;
   const pool = makePool(spawn, { idleMs: 100, now: () => now });
-  const { url } = await pool.endpoint("/tmp/app/worker");
+  const { url } = await pool.endpoint("/tmp/app/sprout");
   now = 100;
   expect(pool.evictIdle()).toBe(1);
   await Bun.sleep(10);
   await expect(fetch(url)).rejects.toThrow();
 });
 
-test("evictIdle keeps idle workers whose deployment is still routed", async () => {
+test("evictIdle keeps idle sprouts whose deployment is still routed", async () => {
   const { spawn } = fakeSpawn();
   let now = 0;
   const pool = makePool(spawn, { idleMs: 100, now: () => now });
@@ -150,36 +150,36 @@ test("evictIdle keeps idle workers whose deployment is still routed", async () =
   expect((await fetch(routed.url)).ok).toBe(true);                  // routed one still warm
 });
 
-test("workerCommand wraps the worker in the bwrap launcher on Linux, runs it directly off Linux", () => {
+test("sproutCommand wraps the sprout in the bwrap launcher on Linux, runs it directly off Linux", () => {
   const saved = process.platform;
   const set = (v: string) => Object.defineProperty(process, "platform", { value: v, configurable: true });
   try {
     set("darwin");
-    expect(workerCommand("/x/worker")).toEqual(["/x/worker"]);
+    expect(sproutCommand("/x/sprout")).toEqual(["/x/sprout"]);
     set("linux");
-    process.env.SPROUTBOAT_WORKER_SANDBOX_CMD = "/opt/sproutboat/infra/sandbox/worker-sandbox.sh";
-    // The sandboxed path never adds a cgroup wrapper — worker-sandbox.sh owns
-    // the scope. Even with SPROUTBOAT_WORKER_CGROUP=1 it's just [launcher, path].
-    process.env.SPROUTBOAT_WORKER_CGROUP = "1";
-    expect(workerCommand("/var/lib/sproutboat/artifacts/a/worker")).toEqual(["/opt/sproutboat/infra/sandbox/worker-sandbox.sh", "/var/lib/sproutboat/artifacts/a/worker"]);
-    delete process.env.SPROUTBOAT_WORKER_SANDBOX_CMD;
-    process.env.SPROUTBOAT_WORKER_SANDBOX = "none";
-    delete process.env.SPROUTBOAT_WORKER_CGROUP;
-    expect(() => workerCommand("/x/worker")).toThrow("refusing to run an untrusted native worker unsandboxed");
+    process.env.SPROUTBOAT_SPROUT_SANDBOX_CMD = "/opt/sproutboat/infra/sandbox/sprout-sandbox.sh";
+    // The sandboxed path never adds a cgroup wrapper — sprout-sandbox.sh owns
+    // the scope. Even with SPROUTBOAT_SPROUT_CGROUP=1 it's just [launcher, path].
+    process.env.SPROUTBOAT_SPROUT_CGROUP = "1";
+    expect(sproutCommand("/var/lib/sproutboat/artifacts/a/sprout")).toEqual(["/opt/sproutboat/infra/sandbox/sprout-sandbox.sh", "/var/lib/sproutboat/artifacts/a/sprout"]);
+    delete process.env.SPROUTBOAT_SPROUT_SANDBOX_CMD;
+    process.env.SPROUTBOAT_SPROUT_SANDBOX = "none";
+    delete process.env.SPROUTBOAT_SPROUT_CGROUP;
+    expect(() => sproutCommand("/x/sprout")).toThrow("refusing to run an untrusted native sprout unsandboxed");
 
     // The `none` path (trusted local Linux) does wrap in a cgroup scope so a dev
     // run can exercise the limits.
     process.env.SPROUTBOAT_UNSAFE_NO_SANDBOX = "1";
-    process.env.SPROUTBOAT_WORKER_CGROUP = "1";
-    process.env.SPROUTBOAT_WORKER_MEMORY_MAX = "96M";
-    expect(workerCommand("/x/worker")).toEqual([
+    process.env.SPROUTBOAT_SPROUT_CGROUP = "1";
+    process.env.SPROUTBOAT_SPROUT_MEMORY_MAX = "96M";
+    expect(sproutCommand("/x/sprout")).toEqual([
       "systemd-run", "--scope", "--quiet", "--collect",
-      "-p", "MemoryMax=96M", "-p", "MemorySwapMax=0", "-p", "CPUQuota=50%", "-p", "TasksMax=24", "--", "/x/worker",
+      "-p", "MemoryMax=96M", "-p", "MemorySwapMax=0", "-p", "CPUQuota=50%", "-p", "TasksMax=24", "--", "/x/sprout",
     ]);
-    delete process.env.SPROUTBOAT_WORKER_CGROUP;
-    delete process.env.SPROUTBOAT_WORKER_MEMORY_MAX;
+    delete process.env.SPROUTBOAT_SPROUT_CGROUP;
+    delete process.env.SPROUTBOAT_SPROUT_MEMORY_MAX;
     delete process.env.SPROUTBOAT_UNSAFE_NO_SANDBOX;
-    delete process.env.SPROUTBOAT_WORKER_SANDBOX;
+    delete process.env.SPROUTBOAT_SPROUT_SANDBOX;
   } finally {
     Object.defineProperty(process, "platform", { value: saved, configurable: true });
   }
@@ -188,7 +188,7 @@ test("workerCommand wraps the worker in the bwrap launcher on Linux, runs it dir
 test("endpoint forwards the secrets path to the spawn factory (#2)", async () => {
   const seen: Array<string | null | undefined> = [];
   const { spawn } = fakeSpawn();
-  const spy: WorkerFactory = (path, port, secretsPath) => { seen.push(secretsPath); return spawn(path, port); };
+  const spy: SproutFactory = (path, port, secretsPath) => { seen.push(secretsPath); return spawn(path, port); };
   const pool = makePool(spy);
   await pool.endpoint("/tmp/withsecrets/worker", "/var/lib/sproutboat/secrets/u__app.json");
   await pool.endpoint("/tmp/nosecrets/worker");

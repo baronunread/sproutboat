@@ -7,19 +7,19 @@ let dir: string;
 let store: typeof import("./store");
 const deployedAt = () => new Date().toISOString();
 
-async function routes(): Promise<Array<{ hostname: string; workerPath: string }>> {
+async function routes(): Promise<Array<{ hostname: string; sproutPath: string }>> {
   return JSON.parse(await readFile(join(dir, "routes.json"), "utf8"));
 }
 async function makeArtifact(digest: string): Promise<string> {
   const path = join(dir, "artifacts", digest);
   await mkdir(path, { recursive: true });
-  await writeFile(join(path, "worker"), "binary");
-  return join(path, "worker");
+  await writeFile(join(path, "sprout"), "binary");
+  return join(path, "sprout");
 }
 const D = (over: Partial<import("./store").Deployment> & { id: string; artifact: string }) => ({
   id: over.id, project: over.project ?? "app", ownerId: over.ownerId ?? "user-1", username: over.username ?? "alice",
   hostname: over.hostname ?? `${over.project ?? "app"}.alice.test`, artifact: over.artifact,
-  workerPath: over.workerPath ?? join(dir, "artifacts", over.artifact, "worker"), deployedAt: over.deployedAt ?? deployedAt(),
+  sproutPath: over.sproutPath ?? join(dir, "artifacts", over.artifact, "sprout"), deployedAt: over.deployedAt ?? deployedAt(),
 });
 
 beforeAll(async () => {
@@ -44,7 +44,7 @@ test("recordDeployment keeps exactly one active version per project", async () =
   expect(versions.map((v) => v.active)).toEqual([true, false]); // newest first, only d2 active
   expect(store.activeProjects("user-1")).toHaveLength(1);
   await store.syncRoutes();
-  expect(await routes()).toEqual([{ hostname: "app.alice.test", workerPath: join(dir, "artifacts", b, "worker") }]);
+  expect(await routes()).toEqual([{ hostname: "app.alice.test", sproutPath: join(dir, "artifacts", b, "sprout") }]);
 });
 
 test("activateDeployment rolls back to an older version without a second active row", () => {
@@ -95,7 +95,7 @@ test("collectArtifacts never removes an artifact a deployment still references",
   const out = await store.collectArtifacts([e]);
   expect(out).toEqual({ removed: [], failed: [] });
   let bytesGone = false;
-  try { await access(join(dir, "artifacts", e, "worker")); } catch { bytesGone = true; }
+  try { await access(join(dir, "artifacts", e, "sprout")); } catch { bytesGone = true; }
   expect(bytesGone).toBe(false); // bytes untouched
 
   store.deleteProject("user-1", "keep");

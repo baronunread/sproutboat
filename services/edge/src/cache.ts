@@ -1,6 +1,6 @@
 /**
  * #38: a small in-memory edge response cache. One process, one node — not a
- * shared/distributed cache. Only GET responses the worker explicitly marks
+ * shared/distributed cache. Only GET responses the sprout explicitly marks
  * cacheable (`Cache-Control: max-age` / `s-maxage`) are stored, bounded by an
  * entry count and a total-byte cap, evicted oldest-first.
  *

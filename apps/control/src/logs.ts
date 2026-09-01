@@ -165,17 +165,17 @@ export type Metrics = {
   buckets: MetricsBucket[];
   statusDistribution: Record<StatusClass, number>;
   methodDistribution: Record<string, number>;
-  /** ok | timed-out | worker-unavailable | proxy | response-too-large | upstream-5xx | no-route */
+  /** ok | timed-out | sprout-unavailable | proxy | response-too-large | upstream-5xx | no-route */
   invocationStatus: Record<string, number>;
   latencyMs: Percentiles | null;
-  /** Edge → first upstream byte. Null until some request reached a worker. */
+  /** Edge → first upstream byte. Null until some request reached a sprout. */
   ttfbMs: Percentiles | null;
   /** Spawn → listening wait, over the cold starts in the window. */
   startupMs: Percentiles | null;
   /** Of startupMs, the spawn → JS-start slice (process + runtime bootstrap). #41 */
   bootMs: Percentiles | null;
-  /** Worker CPU time per invocation, over requests that reported it. #28
-   *  Excludes streamed-body and Set-Cookie responses (the worker can't tag those). */
+  /** Sprout CPU time per invocation, over requests that reported it. #28
+   *  Excludes streamed-body and Set-Cookie responses (the sprout can't tag those). */
   cpuMs: Percentiles | null;
   coldStarts: number;
   bytesIn: number;

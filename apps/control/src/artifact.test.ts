@@ -20,7 +20,7 @@ function elf(): Uint8Array {
 
 async function seed(over: { bindings?: unknown; assets?: { manifest: unknown; files: Record<string, string> } } = {}) {
   const worker = elf();
-  await writeFile(join(dir, "worker"), worker);
+  await writeFile(join(dir, "sprout"), worker);
   const manifest = {
     schemaVersion: 2, project: "app", target: "linux-x86_64", runtime: "native-fetch",
     capabilityProfile: "http-sync-v0", porfforVersion: "alpha-4 (a415d19)", esbuildVersion: "0.28.2",
@@ -41,7 +41,7 @@ async function seed(over: { bindings?: unknown; assets?: { manifest: unknown; fi
 beforeEach(async () => { dir = await mkdtemp(join(tmpdir(), "sb-artifact-")); });
 afterEach(async () => { await rm(dir, { recursive: true, force: true }); });
 
-test("bare manifest + worker validates", async () => {
+test("bare manifest + sprout validates", async () => {
   await seed();
   const result = await validateArtifactDirectory(dir);
   expect(result.ok).toBe(true);

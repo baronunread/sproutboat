@@ -115,7 +115,7 @@ function seedTraffic(hostname: string, lines: string[]): void {
     const status = roll < 0.85 ? 200 : roll < 0.93 ? 404 : roll < 0.98 ? 503 : 301;
     const durationMs = status >= 500 ? 350 + Math.floor(Math.random() * 600) : 3 + Math.floor(Math.random() * 55);
     lines.push(JSON.stringify(status >= 500
-      ? { at, hostname, status, durationMs, error: "worker failure" }
+      ? { at, hostname, status, durationMs, error: "sprout failure" }
       : { at, hostname, status, durationMs }));
   }
 }
@@ -155,8 +155,8 @@ async function main(): Promise<void> {
       let activeId = "";
       for (let v = 0; v < spec.versions; v++) {
         const id = randomUUID();
-        const worker = elfStub(`${user.login}/${spec.project}/${v}`);
-        const digest = sha256(worker).slice("sha256:".length);
+        const sprout = elfStub(`${user.login}/${spec.project}/${v}`);
+        const digest = sha256(sprout).slice("sha256:".length);
         const dir = resolve(process.env.SPROUTBOAT_ARTIFACTS_DIR!, digest);
         await mkdir(dir, { recursive: true });
         const builtAt = new Date(Date.now() - (spec.versions - v) * 36 * 3_600_000).toISOString();
@@ -164,13 +164,13 @@ async function main(): Promise<void> {
           schemaVersion: 2, project: spec.project, target: "linux-x86_64", runtime: "native-fetch",
           capabilityProfile: "http-sync-v0", porfforVersion: "alpha-3 (seed000)", esbuildVersion: "0.28.2",
           buildImage: "zig-musl/0.16.0+porffor/a415d19+uws/360c276d",
-          sourceHash: sha256(`src:${user.login}/${spec.project}/${v}`), binaryHash: sha256(worker),
-          binarySize: worker.length, builtAt,
+          sourceHash: sha256(`src:${user.login}/${spec.project}/${v}`), binaryHash: sha256(sprout),
+          binarySize: sprout.length, builtAt,
         };
         await writeFile(resolve(dir, "manifest.json"), JSON.stringify(manifest, null, 2));
-        await writeFile(resolve(dir, "worker"), worker, { mode: 0o555 });
+        await writeFile(resolve(dir, "sprout"), sprout, { mode: 0o555 });
         const hostname = `${spec.project}.${user.namespace}.${domain}`;
-        store.recordDeployment({ id, ownerId, project: spec.project, username: user.namespace, hostname, artifact: digest, workerPath: resolve(dir, "worker"), deployedAt: builtAt });
+        store.recordDeployment({ id, ownerId, project: spec.project, username: user.namespace, hostname, artifact: digest, sproutPath: resolve(dir, "sprout"), deployedAt: builtAt });
         activeId = id;
       }
       if (spec.active) {

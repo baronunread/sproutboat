@@ -17,7 +17,7 @@ generates one admin identity, writes `/etc/sproutboat/{sproutboat,control}.env`
 runs `runtime:preflight`, and prints the admin token, the DNS record to create,
 and the CLI commands to deploy your first function.
 
-No Docker on the server — deployments run under bubblewrap, and workers are
+No Docker on the server — deployments run under bubblewrap, and sprouts are
 built by the CLI (Porffor + Zig), never here.
 
 Non-interactive: set `SB_DOMAIN`, `SB_ACME_EMAIL`, `SB_ADMIN`. GitHub sign-in is
@@ -81,17 +81,17 @@ the dashboard; `control.<domain>` is the CLI/API origin.
 Each active deployment is ONE long-lived process: a native-fetch HTTP server
 (Porffor `alpha-3` + uWebSockets) — see `docs/runtime-native-fetch.md`. The
 supervisor (`services/supervisor/src/run.ts`) assigns it a loopback port, starts
-it through `infra/sandbox/worker-sandbox.sh`, waits for it to accept a
+it through `infra/sandbox/sprout-sandbox.sh`, waits for it to accept a
 connection, and restarts it if it exits. The edge reverse-proxies each request
 to that port.
 
-`worker-sandbox.sh` wraps the binary in bubblewrap: private
+`sprout-sandbox.sh` wraps the binary in bubblewrap: private
 user/pid/mount/ipc/uts namespaces, an unprivileged uid, a read-only view of only
 the runtime libraries plus the one artifact directory, `--die-with-parent`, and
 an optional seccomp filter. It does **not** unshare the network namespace — the
 worker must serve loopback for the edge to reach it. Egress isolation comes from
 the edge unit instead: `IPAddressDeny=any` / `IPAddressAllow=localhost` in
-`sproutboat-edge.service`, which every worker it spawns inherits, so a worker can
+`sproutboat-edge.service`, which every sprout it spawns inherits, so a sprout can
 serve loopback but cannot reach the host network, the control plane, or the
 cloud metadata endpoint.
 
@@ -108,11 +108,11 @@ It fails for a non-x86-64 CPU, cgroups v1, unavailable namespaces, disabled
 unprivileged user namespaces, a bwrap that cannot create the sandbox, or missing
 seccomp. `systemd-run` is a warning only: the edge cgroup carries aggregate caps
 (`MemoryMax`/`CPUQuota`/`TasksMax` in `sproutboat-edge.service`); opt into
-per-worker scopes with `SPROUTBOAT_WORKER_CGROUP=1` (see Limits below).
+per-sprout scopes with `SPROUTBOAT_SPROUT_CGROUP=1` (see Limits below).
 
 ### 2. Seccomp filter (optional but recommended)
 
-`worker-sandbox.sh` passes `--seccomp` when `SPROUTBOAT_WORKER_SECCOMP` points at
+`sprout-sandbox.sh` passes `--seccomp` when `SPROUTBOAT_SPROUT_SECCOMP` points at
 a compiled BPF program (the unit sets `/etc/sproutboat/worker-seccomp.bpf`).
 Build it from a real trace of a pinned artifact under load, then turn the
 syscall set into a filter (e.g. with a libseccomp helper):
@@ -133,7 +133,7 @@ layer. Do not reuse a trace across Porffor or libc updates.
 ### 3. Verify containment
 
 ```sh
-bun run sandbox:smoke     # compiles a worker, serves it through the sandbox, then
+bun run sandbox:smoke     # compiles a sprout, serves it through the sandbox, then
                           # asserts it cannot read the host fs, see other PIDs, or fork
 ```
 
@@ -148,8 +148,8 @@ systemd-run --uid=sproutboat-edge --slice=$(systemctl show -p Slice --value spro
 
 ### Local development
 
-Off Linux the sandbox is skipped and the worker is spawned directly. On a Linux
-dev box that is fine to trust, `SPROUTBOAT_WORKER_SANDBOX=none` plus
+Off Linux the sandbox is skipped and the sprout is spawned directly. On a Linux
+dev box that is fine to trust, `SPROUTBOAT_SPROUT_SANDBOX=none` plus
 `SPROUTBOAT_UNSAFE_NO_SANDBOX=1` does the same; anything else is refused.
 
 ## First deploy
@@ -241,9 +241,9 @@ All configurable in `/etc/sproutboat/control.env`; sane defaults apply if unset.
 
 ## Secrets (#2)
 
-Set per project with `sproutboat secrets set NAME` (or the dashboard); the worker
+Set per project with `sproutboat secrets set NAME` (or the dashboard); the sprout
 reads them as `env.NAME`. A running worker keeps the values it started with — a
-change applies on the next deploy or worker restart, like Cloudflare.
+change applies on the next deploy or sprout restart, like Cloudflare.
 
 Encrypted at rest with AES-256-GCM. The key is `SPROUTBOAT_SECRETS_KEY` (base64,
 32 bytes) if set, otherwise `<state>/secrets.key` — 32 random bytes written mode
@@ -256,15 +256,15 @@ Rejections are written to `<state>/logs/control.ndjson` as
 `{"kind":"limit","event":"deploy-rate-account"|"deploy-rate-ip"|"project-cap", ...}`.
 
 **Per-worker runtime caps** (memory / CPU / pids) are opt-in and Linux-only —
-each worker gets its own `systemd-run --scope`:
+each sprout gets its own `systemd-run --scope`:
 
 | Env var | Default | |
 | --- | --- | --- |
-| `SPROUTBOAT_WORKER_CGROUP` | unset | `1` to enable |
-| `SPROUTBOAT_WORKER_MEMORY_MAX` | `128M` | scope `MemoryMax` |
-| `SPROUTBOAT_WORKER_CPU_QUOTA` | `50%` | scope `CPUQuota` |
-| `SPROUTBOAT_WORKER_TASKS_MAX` | `64` | scope `TasksMax` |
+| `SPROUTBOAT_SPROUT_CGROUP` | unset | `1` to enable |
+| `SPROUTBOAT_SPROUT_MEMORY_MAX` | `128M` | scope `MemoryMax` |
+| `SPROUTBOAT_SPROUT_CPU_QUOTA` | `50%` | scope `CPUQuota` |
+| `SPROUTBOAT_SPROUT_TASKS_MAX` | `64` | scope `TasksMax` |
 
 The edge unit still carries aggregate caps (`MemoryMax`/`CPUQuota`/`TasksMax`) as
 a backstop. Verify `systemd-run` is reachable for the `sproutboat-edge` user
-before enabling per-worker scopes.
+before enabling per-sprout scopes.

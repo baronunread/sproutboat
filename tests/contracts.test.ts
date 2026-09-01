@@ -53,7 +53,7 @@ describe("Phase A contracts", () => {
     expect(validateHttpSyncSource(rejected, true).ok).toBe(true);
   });
 
-  test("allows console — native-fetch logs go to the worker's stderr, not a protocol stream", () => {
+  test("allows console — native-fetch logs go to the sprout's stderr, not a protocol stream", () => {
     expect(validateHttpSyncSource(`export default { fetch() { console.log("hello"); return new Response("ok"); } }`).ok).toBe(true);
   });
 
@@ -77,12 +77,12 @@ describe("Phase A contracts", () => {
     expect(readVarsFromEnv()).toEqual({});
   });
 
-  test("rejects an artifact directory that is missing its worker", async () => {
+  test("rejects an artifact directory that is missing its sprout", async () => {
     const path = await mkdtemp(join(tmpdir(), "sproutboat-invalid-artifact-"));
     await Bun.write(`${path}/manifest.json`, "{}");
     const result = await validateArtifactDirectory(path);
     expect(result.ok).toBe(false);
-    if (!result.ok) expect(result.errors).toEqual(expect.arrayContaining(["worker is missing or unreadable"]));
+    if (!result.ok) expect(result.errors).toEqual(expect.arrayContaining(["sprout is missing or unreadable"]));
   });
 
   test("uses a reserved user namespace in nested deployment hostnames", async () => {

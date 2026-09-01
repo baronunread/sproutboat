@@ -24,7 +24,7 @@ beforeEach(async () => {
   db.run("INSERT INTO deployment VALUES ('d1')");
   db.close();
   await mkdir(join(dir, "artifacts", "abc123"), { recursive: true });
-  await writeFile(join(dir, "artifacts", "abc123", "worker"), "ELFDATA");
+  await writeFile(join(dir, "artifacts", "abc123", "sprout"), "ELFDATA");
   await writeFile(join(dir, "routes.json"), "[]");
 });
 afterEach(async () => { await rm(dir, { recursive: true, force: true }); });
@@ -42,7 +42,7 @@ test("createBackup: bundles the sqlite snapshot + artifacts + routes.json", asyn
   expect(entry.offsite).toBe(false); // no SPROUTBOAT_BACKUP_S3_* -> local only
   const members = await tarList(join(dir, "backups", entry.name));
   expect(members).toContain("sproutboat.sqlite");
-  expect(members).toContain("artifacts/abc123/worker");
+  expect(members).toContain("artifacts/abc123/sprout");
   expect(members).toContain("routes.json");
 });
 

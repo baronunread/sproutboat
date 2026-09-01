@@ -34,7 +34,7 @@ async function listens(port: number): Promise<boolean> {
   });
 }
 
-/** Run a compiled native-fetch worker once and probe it with every fixture. */
+/** Run a compiled native-fetch sprout once and probe it with every fixture. */
 async function probe(binary: string): Promise<ResponseSnapshot[]> {
   const port = nextPort++;
   const child = Bun.spawn([binary], { stdout: "ignore", stderr: "pipe", env: { ...process.env, PORT: String(port) } });

@@ -9,17 +9,17 @@ let store: typeof import("./store");
 const now = () => new Date().toISOString();
 
 async function routeHosts(): Promise<Record<string, string>> {
-  const list: Array<{ hostname: string; workerPath: string }> = JSON.parse(await readFile(join(dir, "routes.json"), "utf8"));
-  return Object.fromEntries(list.map((route) => [route.hostname, route.workerPath]));
+  const list: Array<{ hostname: string; sproutPath: string }> = JSON.parse(await readFile(join(dir, "routes.json"), "utf8"));
+  return Object.fromEntries(list.map((route) => [route.hostname, route.sproutPath]));
 }
 async function deploy(project: string, digest: string, id: string): Promise<string> {
   const artifactDir = join(dir, "artifacts", digest);
   await mkdir(artifactDir, { recursive: true });
-  await writeFile(join(artifactDir, "worker"), "binary");
-  const workerPath = join(artifactDir, "worker");
-  store.recordDeployment({ id, ownerId: "user-1", project, username: "alice", hostname: `${project}.alice.test`, artifact: digest, workerPath, deployedAt: now() });
+  await writeFile(join(artifactDir, "sprout"), "binary");
+  const sproutPath = join(artifactDir, "sprout");
+  store.recordDeployment({ id, ownerId: "user-1", project, username: "alice", hostname: `${project}.alice.test`, artifact: digest, sproutPath, deployedAt: now() });
   await store.syncRoutes();
-  return workerPath;
+  return sproutPath;
 }
 
 let roots: string[] = [];

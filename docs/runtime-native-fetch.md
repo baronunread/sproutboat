@@ -8,7 +8,7 @@ runtime parses the request and calls `fetch`; the handler returns a `Response`.
 ## Lifecycle
 
 - The supervisor (`services/supervisor/src/run.ts`, `WorkerPool`) assigns each
-  deployment a loopback port, starts the worker with `PORT` in its environment
+  deployment a loopback port, starts the sprout with `PORT` in its environment
   (honoured by `patches/porffor-render.patch`), waits for it to accept a TCP
   connection, and restarts it if it exits.
 - One process serves the deployment for its whole life. alpha-3 has working
@@ -22,7 +22,7 @@ runtime parses the request and calls `fetch`; the handler returns a `Response`.
 
 alpha-3 provides real `Request`, `Response`, `Headers`, `URL`,
 `URLSearchParams` (added by `patches/porffor-fetch-globals.patch`), `JSON`,
-`TextEncoder`/`TextDecoder`, and `console` (logs go to the worker's stderr).
+`TextEncoder`/`TextDecoder`, and `console` (logs go to the sprout's stderr).
 Handlers are import-free and validated by `validateHttpSyncSource`
 (`sproutboat/runtime/source`): no `import`/`require`, no Node/Bun/Deno
 globals, no outbound `fetch`/`WebSocket` (a deliberate capability boundary — see
@@ -30,7 +30,7 @@ issue #19, and the sandbox blocks egress regardless).
 
 ## Sandbox
 
-On Linux the worker runs inside `infra/sandbox/worker-sandbox.sh` (bubblewrap):
+On Linux the sprout runs inside `infra/sandbox/sprout-sandbox.sh` (bubblewrap):
 private user/pid/mount/ipc/uts namespaces, unprivileged uid, read-only rootfs
 exposing only the runtime libraries and the artifact directory, `--die-with-parent`,
 optional seccomp. It keeps the caller's network namespace so the edge can reach
