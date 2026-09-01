@@ -60,7 +60,11 @@ compatibility status from versioned test data rather than hard-code a percentage
 - Custom domains, teams, billing, public signup, Git deployments, preview
   environments, or multiple regions.
 - Kubernetes, Redis, Kafka, a distributed database, or a central log stack.
-- Automatic migration of existing deployments to a newer Porffor compiler.
+- Automatic migration of existing deployments to a newer Porffor compiler. A
+  deployed artifact is frozen at the `porfforVersion` recorded in its manifest;
+  redeploying with a newer CLI is the only way to move a route onto a newer pin,
+  and the deploy response flags the change (`porfforDrift`) so the operator can
+  roll back if the alpha compiler's output shifted.
 
 ## 3. User flow
 

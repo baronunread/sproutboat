@@ -49,6 +49,20 @@ export function isDeploymentHostname(hostname: string): boolean {
   return /^[a-z0-9-]+\.[a-z0-9-]+$/.test(hostname.slice(0, -suffix.length));
 }
 
+/**
+ * #55: the Porffor pin the currently-active version of this project was built
+ * with, or null if there is no active version or its manifest is unreadable.
+ * Deployed artifacts are frozen at their build-time Porffor — a redeploy is the
+ * only way to move — so a deploy that changes this value is worth flagging: the
+ * alpha compiler's output can differ between pins (see the CLI's COMPAT.md).
+ */
+async function activePorfforVersion(ownerId: string, project: string): Promise<string | null> {
+  const active = projectDeployments(ownerId, project).find((deployment) => deployment.active);
+  if (!active) return null;
+  const validation = await validateArtifactDirectory(resolve(artifactRoot, active.artifact));
+  return validation.ok ? validation.value.manifest.porfforVersion : null;
+}
+
 async function authorized(request: Request): Promise<Actor | Response> {
   try {
     const actor = await actorFor(request);
@@ -229,6 +243,8 @@ export async function deployArtifact(request: Request, project: string): Promise
     const validation = await validateArtifactDirectory(temporary);
     if (!validation.ok) return Response.json({ error: "invalid artifact", details: validation.errors }, { status: 400 });
     if (validation.value.manifest.project !== project) return Response.json({ error: "manifest project does not match request path" }, { status: 400 });
+    // #55: capture the outgoing version's Porffor pin before it is replaced.
+    const previousPorffor = await activePorfforVersion(actor.id, project);
     const digest = validation.value.manifest.binaryHash.slice("sha256:".length);
     const destination = resolve(artifactRoot, digest);
     try { await rename(temporary, destination); }
@@ -245,7 +261,11 @@ export async function deployArtifact(request: Request, project: string): Promise
     // #25 — keep the retained-versions cap; GC any artifact it orphans.
     const orphaned = pruneProjectDeployments(actor.id, project, LIMITS.versionsPerProject());
     if (orphaned.length > 0) await collectArtifacts(orphaned);
-    return Response.json({ id: deployment.id, hostname, url: `https://${hostname}`, artifact: digest, activated: true }, { status: 201 });
+    const incomingPorffor = validation.value.manifest.porfforVersion;
+    const porfforDrift = previousPorffor && previousPorffor !== incomingPorffor
+      ? { from: previousPorffor, to: incomingPorffor }
+      : undefined;
+    return Response.json({ id: deployment.id, hostname, url: `https://${hostname}`, artifact: digest, activated: true, porfforDrift }, { status: 201 });
   } catch (error) {
     await rm(temporary, { recursive: true, force: true });
     return Response.json({ error: error instanceof Error ? error.message : "deployment failed" }, { status: 500 });
