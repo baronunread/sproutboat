@@ -28,6 +28,9 @@ interface LogEvent {
   readonly startupMs?: number | null;
   /** Of startupMs, the spawn→JS-start slice (process + runtime bootstrap). #41 */
   readonly bootMs?: number | null;
+  /** Worker CPU time for this invocation, ms — self-reported via `x-sb-cpu-ms`.
+   *  Absent for async handlers and pre-#28 workers. #28 */
+  readonly cpuMs?: number | null;
   readonly error?: string;
   /** Coarse failure taxonomy: no-route | worker-unavailable | proxy | timed-out
    *  | response-too-large | upstream-5xx. Absent on a clean response. */
@@ -278,6 +281,10 @@ const server = Bun.serve({
         signal: AbortSignal.timeout(requestTimeoutMs),
       });
       const ttfbMs = elapsed();
+      // #28 — per-invocation CPU time the worker self-reports; read it here and
+      // strip it from every copy of the headers that leaves the edge below.
+      const cpuHeader = upstream.headers.get("x-sb-cpu-ms");
+      const cpuMs = cpuHeader != null && Number.isFinite(Number(cpuHeader)) ? Number(cpuHeader) : null;
       // `Number(null)` is 0, not NaN — so a missing content-length would read as
       // a finite 0 and slip past both the response-size cap and the cache-entry
       // cap. Treat "absent" as unknown.
@@ -292,9 +299,9 @@ const server = Bun.serve({
       const ttl = cacheKey ? cacheableForSeconds(upstream.headers.get("cache-control")) : null;
       if (cacheKey && ttl !== null && Number.isFinite(declared) && declared <= MAX_CACHE_ENTRY_BYTES) {
         const buffered = await upstream.arrayBuffer();
-        const headers: [string, string][] = [...upstream.headers.entries()];
+        const headers: [string, string][] = [...upstream.headers.entries()].filter(([name]) => name !== "x-sb-cpu-ms");
         cache!.set(cacheKey, upstream.status, headers, buffered, ttl);
-        log({ hostname: host, method: "GET", status: upstream.status, durationMs: elapsed(), ttfbMs, reqBytes, resBytes: buffered.byteLength, coldStart, startupMs, bootMs, cacheStatus: "miss" });
+        log({ hostname: host, method: "GET", status: upstream.status, durationMs: elapsed(), ttfbMs, reqBytes, resBytes: buffered.byteLength, coldStart, startupMs, bootMs, cpuMs, cacheStatus: "miss" });
         return new Response(buffered, { status: upstream.status, headers: [...headers, ["sb-cache", "MISS"]] });
       }
 
@@ -305,10 +312,11 @@ const server = Bun.serve({
         log({
           hostname: host, method: request.method, status: upstream.status, durationMs: elapsed(),
           ttfbMs, reqBytes, resBytes: Number.isFinite(declared) ? declared : bytes,
-          coldStart, startupMs, bootMs, errorKind: upstream.status >= 500 ? "upstream-5xx" : undefined, cacheStatus,
+          coldStart, startupMs, bootMs, cpuMs, errorKind: upstream.status >= 500 ? "upstream-5xx" : undefined, cacheStatus,
         });
       });
       const headers = new Headers(upstream.headers);
+      headers.delete("x-sb-cpu-ms");
       if (cacheStatus) headers.set("sb-cache", cacheStatus === "dynamic" ? "DYNAMIC" : "MISS");
       return new Response(body, { status: upstream.status, headers });
     } catch (error) {

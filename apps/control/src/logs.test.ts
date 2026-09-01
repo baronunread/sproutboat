@@ -10,7 +10,7 @@ let logs: typeof import("./logs");
 const HOST = "app.alice.test";
 type LineOverride = Partial<{
   at: string; hostname: string; status: number; durationMs: number; error: string; errorKind: string;
-  method: string; ttfbMs: number; reqBytes: number; resBytes: number; coldStart: boolean; startupMs: number; bootMs: number; cacheStatus: string;
+  method: string; ttfbMs: number; reqBytes: number; resBytes: number; coldStart: boolean; startupMs: number; bootMs: number; cpuMs: number; cacheStatus: string;
 }>;
 const line = (over: LineOverride) =>
   `${JSON.stringify({ at: "2026-01-01T00:00:00.000Z", hostname: HOST, status: 200, durationMs: 5, ...over })}\n`;
@@ -111,8 +111,8 @@ test("aggregateLogs: cold starts, startup/ttfb percentiles, byte totals, method 
   const now = Date.now();
   const ago = (ms: number) => new Date(now - ms).toISOString();
   await writeFile(logFile, [
-    line({ at: ago(60_000), status: 200, method: "GET", ttfbMs: 4, reqBytes: 0, resBytes: 100, coldStart: true, startupMs: 30, bootMs: 12 }),
-    line({ at: ago(50_000), status: 200, method: "GET", ttfbMs: 8, reqBytes: 0, resBytes: 100 }),
+    line({ at: ago(60_000), status: 200, method: "GET", ttfbMs: 4, reqBytes: 0, resBytes: 100, coldStart: true, startupMs: 30, bootMs: 12, cpuMs: 2 }),
+    line({ at: ago(50_000), status: 200, method: "GET", ttfbMs: 8, reqBytes: 0, resBytes: 100, cpuMs: 6 }),
     line({ at: ago(40_000), status: 201, method: "POST", ttfbMs: 12, reqBytes: 50, resBytes: 20, coldStart: true, startupMs: 90, bootMs: 40 }),
   ].join(""));
 
@@ -123,6 +123,8 @@ test("aggregateLogs: cold starts, startup/ttfb percentiles, byte totals, method 
   expect(metrics.startupMs).toEqual({ p50: 90, p90: 90, p99: 90 });
   expect(metrics.bootMs).toEqual({ p50: 40, p90: 40, p99: 40 });
   expect(metrics.ttfbMs).toEqual({ p50: 8, p90: 12, p99: 12 });
+  expect(metrics.cpuMs).toEqual({ p50: 6, p90: 6, p99: 6 }); // #28 — only the 2 lines that reported it
+
   expect(metrics.bytesIn).toBe(50);
   expect(metrics.bytesOut).toBe(220);
   expect(metrics.methodDistribution).toEqual({ GET: 2, POST: 1 });

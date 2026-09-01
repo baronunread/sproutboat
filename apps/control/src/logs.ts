@@ -5,7 +5,7 @@ import { resolve } from "node:path";
  * #3: bounded, filterable edge-log history + a live tail for one project's
  * route. The edge appends one JSON object per line to SPROUTBOAT_LOG_PATH:
  * `{ at, hostname, method, status, durationMs, ttfbMs?, reqBytes?, resBytes?,
- * coldStart?, startupMs?, bootMs?, error?, errorKind? }`. Older lines carry only the
+ * coldStart?, startupMs?, bootMs?, cpuMs?, error?, errorKind? }`. Older lines carry only the
  * first five fields; every added field is read defensively and treated as
  * "unavailable" when absent.
  *
@@ -36,6 +36,7 @@ export type LogRecord = {
   coldStart: boolean;
   startupMs: number | null;
   bootMs: number | null;
+  cpuMs: number | null;
   failure: string | null;
   errorKind: string | null;
   cacheStatus: string | null;
@@ -91,6 +92,7 @@ function parseLine(line: string, hostname?: string): LogRecord | undefined {
     coldStart: value.coldStart === true,
     startupMs: num(value.startupMs),
     bootMs: num(value.bootMs),
+    cpuMs: num(value.cpuMs),
     failure,
     errorKind: isText(value.errorKind) ? value.errorKind : null,
     cacheStatus: isText(value.cacheStatus) ? value.cacheStatus : null,
@@ -172,6 +174,9 @@ export type Metrics = {
   startupMs: Percentiles | null;
   /** Of startupMs, the spawn → JS-start slice (process + runtime bootstrap). #41 */
   bootMs: Percentiles | null;
+  /** Worker CPU time per invocation, over requests that reported it. #28
+   *  Excludes streamed-body and Set-Cookie responses (the worker can't tag those). */
+  cpuMs: Percentiles | null;
   coldStarts: number;
   bytesIn: number;
   bytesOut: number;
@@ -222,6 +227,7 @@ export async function aggregateLogs(hostname: string, range: string): Promise<Me
   const ttfbs: number[] = [];
   const startups: number[] = [];
   const boots: number[] = [];
+  const cpus: number[] = [];
   let coldStarts = 0;
   let bytesIn = 0;
   let bytesOut = 0;
@@ -253,6 +259,7 @@ export async function aggregateLogs(hostname: string, range: string): Promise<Me
     invocationStatus[invStatus] = (invocationStatus[invStatus] ?? 0) + 1;
     latencies.push(record.durationMs);
     if (record.ttfbMs !== null) ttfbs.push(record.ttfbMs);
+    if (record.cpuMs !== null) cpus.push(record.cpuMs);
     if (record.coldStart) {
       coldStarts += 1;
       buckets[index].coldStarts += 1;
@@ -280,6 +287,7 @@ export async function aggregateLogs(hostname: string, range: string): Promise<Me
     ttfbMs: percentilesOf(ttfbs.sort(bySize)),
     startupMs: percentilesOf(startups.sort(bySize)),
     bootMs: percentilesOf(boots.sort(bySize)),
+    cpuMs: percentilesOf(cpus.sort(bySize)),
     coldStarts,
     bytesIn,
     bytesOut,

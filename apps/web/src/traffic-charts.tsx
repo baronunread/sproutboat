@@ -14,6 +14,7 @@ type Metrics = {
   invocationStatus: Record<string, number>;
   latencyMs: Percentiles | null;
   ttfbMs: Percentiles | null;
+  cpuMs: Percentiles | null;
   startupMs: Percentiles | null;
   bootMs: Percentiles | null;
   coldStarts: number;
@@ -173,6 +174,18 @@ export function TrafficCharts({ name }: { name: string }) {
                 <li><strong>{group(metrics.ttfbMs.p90)} ms</strong><span>p90</span></li>
                 <li><strong>{group(metrics.ttfbMs.p99)} ms</strong><span>p99</span></li>
               </ul>
+            </div>
+          )}
+
+          {metrics.cpuMs && (
+            <div className="chart-block">
+              <h3>CPU time <small>· per invocation</small></h3>
+              <ul className="latency-tiles">
+                <li><strong>{group(metrics.cpuMs.p50)} ms</strong><span>p50</span></li>
+                <li><strong>{group(metrics.cpuMs.p90)} ms</strong><span>p90</span></li>
+                <li><strong>{group(metrics.cpuMs.p99)} ms</strong><span>p99</span></li>
+              </ul>
+              <p className="hint">Worker CPU consumed by the handler, self-reported per request (sync and <code>async</code>). Responses with a streamed body or a <code>Set-Cookie</code> header are excluded, so this covers a subset of requests.</p>
             </div>
           )}
 

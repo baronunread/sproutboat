@@ -798,7 +798,7 @@
 
     "source-map-js": ["source-map-js@1.2.1", "", {}, "sha512-UXWMKhLOwVKb728IUtQPXxfYU+usdybtUrK/8uGE8CQMvrhOpwvzDBwj0QhSL7MQc7vIsISBG8VQ8+IDQxpfQA=="],
 
-    "sproutboat": ["sproutboat@github:baronunread/sproutboat-cli#8381477", { "dependencies": { "esbuild": "^0.28.2", "porffor": "github:CanadaHonk/porffor#alpha-4" }, "bin": { "sproutboat": "src/main.ts" } }, "baronunread-sproutboat-cli-8381477", "sha512-tjVQwIqoLuTCsmiZ8mn7bTVlLyJvwINfF/zuE0I+BOSKb4kS92jxxKFKsoeMlSbvjMx9DQjdKbLloIPbG4yp+A=="],
+    "sproutboat": ["sproutboat@github:baronunread/sproutboat-cli#7c30ff0", { "dependencies": { "esbuild": "^0.28.2", "porffor": "github:CanadaHonk/porffor#alpha-4" }, "bin": { "sproutboat": "src/main.ts" } }, "baronunread-sproutboat-cli-7c30ff0", "sha512-NFsxyLaXpcngUtq3GS0eVTnZ/qdDvhFsRgsTLBeoa5yLOfJqMmh6yV3Ga4ianc/GXoGYBUOnZ+gm5pz+eYOimQ=="],
 
     "srvx": ["srvx@0.11.22", "", { "bin": { "srvx": "bin/srvx.mjs" } }, "sha512-LqZxxBDMKuMAZzFzJnDCkFOrs9MZQZr0LvHiO/SuSZVdQaXD7xQ5UWTUxheJrQPve1qk9MG2B/yttUvJxw8egQ=="],
 
