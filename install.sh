@@ -29,11 +29,19 @@ say()  { printf '\033[1;32m==>\033[0m %s\n' "$*"; }
 warn() { printf '\033[1;33m!  \033[0m %s\n' "$*" >&2; }
 die()  { printf '\033[1;31mx  \033[0m %s\n' "$*" >&2; exit 1; }
 randhex() { od -An -tx1 -N32 /dev/urandom | tr -d " \n"; }  # 64 hex chars, no external deps
+
+# `curl ... | sudo bash` leaves stdin on the pipe, not the terminal. Prompts and
+# the DNS-wait keypress read from $PROMPT_TTY instead; empty means truly no
+# terminal (CI / cron) and interactive input is impossible.
+if [ -t 0 ]; then PROMPT_TTY=/dev/stdin
+elif [ -r /dev/tty ]; then PROMPT_TTY=/dev/tty
+else PROMPT_TTY=; fi
+
 ask()  { # ask VAR "prompt" ["default"]
   local __v=$1 __p=$2 __d=${3:-} __a
   if [ -n "${!__v:-}" ]; then return; fi
-  if [ ! -t 0 ]; then die "$__v is unset and stdin is not a TTY (set it in the environment for non-interactive installs)"; fi
-  read -r -p "$__p${__d:+ [$__d]}: " __a || true
+  [ -n "$PROMPT_TTY" ] || die "$__v is unset and no terminal is available (set it in the environment for non-interactive installs)"
+  read -r -p "$__p${__d:+ [$__d]}: " __a < "$PROMPT_TTY" || true
   printf -v "$__v" '%s' "${__a:-$__d}"
 }
 
@@ -269,7 +277,7 @@ echo
 echo "  Covers $covers, and every <project>.$SB_ADMIN.$SB_DOMAIN"
 echo "  deployment. No DNS API token needed."
 echo
-if [ "$SKIP_SERVICES" = 1 ] || [ "${SB_SKIP_DNS_CHECK:-0}" = 1 ] || [ -z "$PUBLIC_IP" ] || [ ! -t 0 ]; then
+if [ "$SKIP_SERVICES" = 1 ] || [ "${SB_SKIP_DNS_CHECK:-0}" = 1 ] || [ -z "$PUBLIC_IP" ] || [ -z "$PROMPT_TTY" ]; then
   warn "Not waiting for DNS — the record must exist before the first HTTPS request."
 else
   probe="sbdns-$RANDOM.$SB_DOMAIN"
@@ -277,7 +285,7 @@ else
   for _ in $(seq 1 120); do
     got=$(getent ahostsv4 "$probe" 2>/dev/null | awk 'NR==1{print $1}')
     [ "$got" = "$PUBLIC_IP" ] && { say "DNS is live."; break; }
-    if read -r -t 10 -n 1 -s _k; then warn "Skipped the DNS wait."; break; fi
+    if read -r -t 10 -n 1 -s _k < "$PROMPT_TTY"; then warn "Skipped the DNS wait."; break; fi
   done
 fi
 
