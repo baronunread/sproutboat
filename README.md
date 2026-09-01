@@ -1,83 +1,162 @@
-# Sproutboat
+<div align="center">
 
-Host small JavaScript functions, compiled locally with
-[Porffor](https://porffor.dev/), on **one Linux VPS you control**. Upload only
-the finished native artifact — the server never sees your source. Stable HTTPS
-endpoint, immutable versions, rollback, logs.
+# 🌱 Sproutboat
 
-This repo is the **single-machine, single-admin** deployment: control API,
-edge runtime, dashboard, and the `install.sh` provisioner. The CLI is its own
-MIT repo ([`sproutboat-cli`](https://github.com/baronunread/sproutboat-cli)).
+**Compile a JavaScript function to a native binary on your laptop.
+Ship the binary. The server never sees your code.**
 
-> **Managed cloud hosting is coming soon.** Until then, self-host with the
-> steps below. The CLI already works against a managed control plane too, so
-> nothing changes for you when the cloud opens.
+Workers-style HTTP handlers, hosted on **one Linux VPS you control** — stable
+HTTPS, immutable versions, instant rollback, live logs. No Docker, no build
+servers, no vendor.
+
+[![License: MIT](https://img.shields.io/badge/License-MIT-c8ff5a.svg)](LICENSE)
+[![Compat: GO](https://img.shields.io/badge/Porffor%20alpha--4-31%2F31%20compile%20·%2029%2F31%20match-66d6ff.svg)](COMPAT.md)
+[![Runtime: no Docker](https://img.shields.io/badge/server-bubblewrap%2C%20not%20Docker-f1f7f3.svg)](infra/README.md)
+
+</div>
+
+---
+
+## The idea
+
+Your handler is compiled **locally** with [Porffor](https://porffor.dev/) (+ Zig
+cross-compile) into a single `linux-x86_64` executable. What you upload is an
+**artifact** — `manifest.json` plus one `worker` binary — and nothing else. No
+source, no `node_modules`, no bundler config leaves your machine.
+
+```mermaid
+flowchart LR
+    A["src/index.js<br/>export default { fetch }"] -->|"sproutboat deploy<br/>(Porffor + Zig, on your laptop)"| B["artifact-v1<br/>manifest.json + worker"]
+    B -->|"HTTPS upload"| C["control API<br/>verify · store · route"]
+    C --> D["supervisor<br/>one process per deploy<br/>under bubblewrap"]
+    D --> E["edge<br/>reverse proxy"]
+    E --> F["https://hello.you.example.com<br/>Caddy · auto TLS"]
+```
+
+The server's job is narrow: **verify, store, route, and run** immutable
+artifacts in a sandbox. It never builds anything.
+
+## What's in this repo
+
+The **single-machine, single-admin** deployment:
+
+| Piece | Path | Role |
+|---|---|---|
+| **Control API** | `apps/control` | Auth, projects, artifact intake + verification, routes, backups. Artifact-only — no source ever. |
+| **Edge** | `services/edge` | Public request path. Reverse-proxies each route to its running worker; records metrics + logs. |
+| **Supervisor** | `services/supervisor` | One long-lived native worker process per deployment, under `bubblewrap`. Restarts on exit. No per-request spawn. |
+| **Dashboard** | `apps/web` | React SPA Caddy serves from disk. Metrics, versions, users, backups. |
+| **Installer** | `install.sh` | The whole runbook: user namespaces, Caddy + bubblewrap, default-deny firewall, systemd units, one admin identity. |
+
+The **CLI is its own MIT repo** —
+[`baronunread/sproutboat-cli`](https://github.com/baronunread/sproutboat-cli).
+It does the Porffor build and targets any control plane.
+
+> ⚠️ **Experimental proof of concept.** Not production-ready, not generally
+> Workers-compatible. Managed cloud hosting is coming; the CLI already works
+> against a hosted control plane, so nothing changes for you when it opens.
 
 ## Deploy to a VPS
 
-SSH into a fresh Linux box (Debian/Ubuntu or RHEL-family, x86-64) and:
+SSH into a fresh Linux box — Debian/Ubuntu or RHEL-family, x86-64 — and:
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/baronunread/sproutboat/main/install.sh | sudo bash
-# from a checkout instead:  sudo ./install.sh
+#  …or, from a checkout:  sudo ./install.sh
 ```
 
-It asks 3–4 questions (domain, email, admin name), then runs unattended:
-user namespaces, Caddy + bubblewrap, a default-deny firewall, the dashboard
-build, one admin identity, and the services. No Docker — the server only runs
-worker artifacts, it never builds them. It pauses once to let you add a single
-wildcard DNS record and waits for it to resolve. See
-[infra/README.md](infra/README.md).
+It asks 3–4 questions (domain, ACME email, admin name), then runs unattended:
+unprivileged user namespaces, Caddy + bubblewrap, a default-deny firewall
+(22/80/443 only), the dashboard build, one admin identity, and the systemd
+services. It pauses **once** for you to add a single wildcard DNS record and
+waits for it to resolve.
 
-## Dashboard
+```
+Type:  A       Name:  *.example.com   (literally  *  )
+Value: <your box's public IPv4>       Proxy: OFF / DNS only
+```
 
-Always installed, at `https://dashboard.<your-domain>` — a static SPA Caddy
-serves from disk (no service, no port).
+That one record covers `control.`, `dashboard.`, and every
+`<project>.<admin>.example.com` deployment. Per-hostname certs via
+HTTP-01 / TLS-ALPN-01 — **no DNS API token, no wildcard cert**. Full runbook:
+[`infra/README.md`](infra/README.md).
 
-**Sign in** with **email + password** or, if configured, **GitHub**. The admin's
-email is the ACME email you gave the installer; the admin's password is the token
-in `/root/sproutboat-admin.env` (the same token the CLI uses).
+Non-interactive: set `SB_DOMAIN`, `SB_ACME_EMAIL`, `SB_ADMIN`. GitHub sign-in is
+opt-in via `SB_GITHUB_CLIENT_ID` + `SB_GITHUB_CLIENT_SECRET`.
 
-**No self-service sign-up.** The admin creates every other account from
-**Admin → Users** (email + a starting password); those users then sign in with
-email + password, or link GitHub to the same email. `POST /api/auth/sign-up`
-always returns 403.
-
-GitHub sign-in is optional: set `SB_GITHUB_CLIENT_ID` + `SB_GITHUB_CLIENT_SECRET`
-before running `install.sh` (callback `https://dashboard.<domain>/api/auth/callback/github`).
-It only signs in an account that already exists — it never creates one.
-
-## Deploying to it
-
-The [`sproutboat`](https://github.com/baronunread/sproutboat-cli) CLI builds and
-uploads worker artifacts — MIT, its own repo, targets any control plane. It
-cross-compiles the handler with Porffor + Zig (no Docker) and ships only the
-finished native binary; the server never sees your source.
+## Ship your first function
 
 ```sh
 bunx sproutboat init hello
-bunx sproutboat login --api-url https://control.<your-domain>
+bunx sproutboat login --api-url https://control.example.com
 bunx sproutboat deploy
 ```
 
-`build`, `deploy --dry-run`, `deploy --artifact`, `tail`, `versions list`,
-`rollback`, and `delete --yes` are also available.
+A handler is a Cloudflare-style default export:
 
-## Local end-to-end test
+```js
+// hello/src/index.js
+export default {
+  fetch(request) {
+    const name = new URL(request.url).searchParams.get("name");
+    return new Response(name ? `${env.GREETING}, ${name}` : env.GREETING);
+  }
+};
+```
 
-Install dependencies and start the complete local stack. It starts Portless,
-the GitHub emulator, Control, Edge, and the React dashboard.
+```jsonc
+// hello/sproutboat.jsonc
+{
+  "name": "hello",
+  "main": "src/index.js",
+  "compatibility_date": "2026-08-26",
+  "vars": { "GREETING": "hello from Sproutboat" }
+}
+```
+
+`env.*` carries your `vars` (baked into the artifact) and any project
+**secrets**, which are encrypted at rest with AES-256-GCM and never sit in the
+uploaded binary. Also on the CLI: `build`, `deploy --dry-run`,
+`deploy --artifact`, `tail`, `versions list`, `rollback`, `delete --yes`.
+
+**Immutable by construction.** Every deploy is a new content-addressed version.
+Rollback re-points the route — it never rebuilds. A compile error uploads
+**zero bytes** and leaves the live version untouched.
+
+## The runtime
+
+Porffor `alpha-4` compiles `export default { fetch }` into a
+[µWebSockets](https://github.com/uNetworking/uWebSockets) server binary
+(~0.42 MB). The supervisor gives it a loopback port, starts it, waits for
+`listen`, and restarts it if it exits — flat RSS verified over 500k requests, so
+no recycle. On Linux every worker runs under `bubblewrap` (`sprout-sandbox.sh`):
+loopback only, no outbound network, read-only filesystem, own UID, and a
+per-sprout cgroup scope for memory / CPU / pids caps.
+
+## Dashboard & accounts
+
+`https://dashboard.<domain>` — a static SPA, no service, no port.
+
+- **Sign in** with email + password, or GitHub (if configured). The admin's
+  email is the ACME email; the admin's password is the token in
+  `/root/sproutboat-admin.env` (same token the CLI uses).
+- **No self-service sign-up.** `POST /api/auth/sign-up` always returns 403. The
+  admin creates every other account from **Admin → Users**; those users then
+  sign in with email + password or link GitHub to the same address.
+
+## Local end-to-end
+
+Runs the whole stack — Portless, a GitHub emulator, Control, Edge, and the
+dashboard — on `*.sproutboat.localhost`.
 
 ```sh
 bun install
 bun run dev:local
 ```
 
-On Portless's first run, trust its local certificate authority. Open
-`https://dashboard.sproutboat.localhost/`, select **Sign in with GitHub**, use the
-seeded `andrea` account, and reserve the `andrea` namespace.
-
-In another terminal, create, authorize, and deploy a project with the CLI:
+Trust Portless's local CA on first run, open
+`https://dashboard.sproutboat.localhost/`, sign in as the seeded `andrea`
+account, reserve the `andrea` namespace, then in another terminal:
 
 ```sh
 bunx sproutboat init hello
@@ -85,111 +164,70 @@ bunx sproutboat login --api-url https://control.sproutboat.localhost
 # approve in the dashboard, then:
 bunx sproutboat deploy
 open https://hello.andrea.sproutboat.localhost
-bunx sproutboat versions list
-bunx sproutboat tail hello
 ```
 
-The dashboard is at `https://dashboard.sproutboat.localhost/dashboard`. Control
-is API-only; it has no user-facing dashboard.
-
-### Reset local state
-
-Stop the launcher with `Ctrl-C`, then remove local state and saved CLI
-credentials before starting it again:
-
-```sh
-rm -rf .local/sproutboat
-rm -rf ~/.config/sproutboat
-bun run dev:local
-```
-
-Portless certificates remain intact.
+Reset: `Ctrl-C`, then `rm -rf .local/sproutboat ~/.config/sproutboat` and
+restart. Portless certs survive.
 
 ## Compatibility harness
 
-The harness answers one question: **does the installed Porffor version correctly
-run enough simple webhook-style handlers to justify the supported capability
-profile?**
-
-The frozen threshold is at least 40% of capability handlers matching Bun on all
-three probes. Compilation alone does not count; behavior must match.
-
-## Retest a new Porffor release
-
-Requirements: Bun, macOS or Linux, and a C compiler (`clang` or `gcc`). Do not
-use npm in this repository.
-
-From the repository root:
+One question: **does the installed Porffor run enough real webhook-style
+handlers to justify the supported capability profile?** The kill threshold is
+40% of capability handlers matching Bun on all three probes — compilation alone
+doesn't count, behavior must match.
 
 ```sh
-bun add --dev porffor@latest
-bun run retest
+bun add --dev porffor@latest && bun run retest   # rebuilds report.json + COMPAT.md
 ```
 
-To test a specific release instead:
+`COMPAT.md` starts with the compiler version, compile/match counts, median
+binary size, and a **GO / NO-GO** decision, then groups failures into
+*compile* / *runtime* / *output mismatch*. To test an unpublished compiler:
 
 ```sh
-bun add --dev porffor@0.70.0
-bun run retest
+PORFFOR_BIN=/path/to/porf PORFFOR_VERSION='alpha 2 (…)' PORFFOR_MODE=native-fetch bun run retest
 ```
 
-To test an official compiler release that is not published to npm, point the
-harness at its `porf` launcher and provide the exact release identity:
-
-```sh
-PORFFOR_BIN=/path/to/porf \
-PORFFOR_VERSION='alpha 2 (20383ef 2026-08-26)' \
-PORFFOR_MODE=native-fetch \
-bun run retest
-```
-
-The first command updates both `package.json` and `bun.lock`. The retest takes
-roughly one to two minutes and overwrites two tracked artifacts:
-
-- `report.json`: machine-readable results for every handler.
-- `COMPAT.md`: the human-readable matrix and **GO** or **NO-GO** decision.
-
-Commit the dependency files and both generated artifacts together when keeping
-an npm result. By default the report records the version installed in
-`node_modules`; non-npm runs record the explicit `PORFFOR_VERSION` identity.
-
-## Commands
-
-```sh
-bun run check   # validate tools, capability-suite shape, and all Bun reference probes
-bun run diff    # compile and compare every handler; write report.json
-bun run report  # regenerate COMPAT.md from an existing report.json
-bun run retest  # run all three steps in order
-```
-
-The harness continues past individual Porffor failures so one unsupported
-handler cannot prevent the report from being generated. Native compilation is
-limited to 30 seconds per handler and binary execution to 5 seconds, so a
-compiler or program hang is recorded as a failure instead of stalling the run.
-
-## Reading a result
-
-`COMPAT.md` starts with the installed compiler version, compile and match
-counts, median binary size, and the decision. It also groups failures into:
-
-- **compile**: Porffor could not produce a native binary;
-- **runtime**: the binary compiled but crashed or emitted invalid output;
-- **output mismatch**: the native response differed from Bun.
-
-If nearly every handler suddenly fails with the same compiler/CLI error, treat
-that as a likely harness integration change and inspect the first error before
-using the decision. Normal compatibility regressions usually affect particular
-language or Web API features rather than every file identically.
+Current: **Porffor alpha-4 — 31/31 compile, 29/31 match** (the two misses are
+`Date` parsing). See [`COMPAT.md`](COMPAT.md).
 
 ## Repository map
 
-- `tests/porffor/capabilities/`: 31 import-free handlers comprising the accepted
-  Porffor capability suite, using the frozen Workers-style contract.
-- `tools/refserve.ts`: Bun reference implementation.
-- `tools/compile.ts`: Porffor native compiler wrapper.
-- `tools/shim.js`: stdin/stdout JSON ABI used by compiled probes.
-- `tools/diff.ts`: three-probe differential runner.
-- `tools/report.ts`: compatibility matrix and threshold decision.
+```
+apps/control       control API — auth, projects, artifacts, routes, backups
+apps/web           React dashboard (Vite + TanStack Router)
+services/edge      public request path, metrics, logs
+services/supervisor  sandboxed per-deploy worker processes
+install.sh         single-VPS provisioner  ·  infra/  systemd units + runbook
+tools/             compat harness (refserve, compile, diff, report) + dev-local
+tests/porffor/capabilities/   the 31-handler Porffor capability suite
+docs/              artifact-v1, bindings-v1, self-hosted-v1, runtime, metrics
+```
 
-Generated binaries and wrapped sources live under `.phase0/` and are ignored
-by Git.
+## Handy scripts
+
+```sh
+bun run dev:local     # full local stack
+bun test              # apps/ services/ tests/
+bun run typecheck     # tsc --noEmit
+bun run lint          # oxlint (+ anti-slop plugin)
+bun run check         # validate tools + capability-suite shape + Bun probes
+bun run retest        # typecheck + test + check + diff + report
+```
+
+Use **Bun**, not npm, in this repo.
+
+## Roadmap
+
+Bindings v1 landed: an artifact that ships a `bindings.json` gets a **broker
+sidecar** (from `sproutboat/runtime/broker`) on a token-gated port, giving
+handlers a host-implemented `env` surface plus cron/queue triggers.
+[`docs/bindings-v1.md`](docs/bindings-v1.md) is the original design sketch.
+More Workers-parity bindings — D1, R2 multipart, Cache API, Durable Objects,
+Service bindings, `ctx.waitUntil`, WebSockets, push-to-deploy — are tracked in
+[issues](https://github.com/baronunread/sproutboat/issues). Scale beyond one
+box is deliberately deferred until traffic data asks for it.
+
+## License
+
+[MIT](LICENSE) © 2026 Andrea Bruno
