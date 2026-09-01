@@ -109,8 +109,11 @@ esac
 say "Host: ${PRETTY_NAME:-$ID} ($PKG)"
 
 # --- locate (or fetch) the source tree ------------------------------------
+# SB_PULL=1 (set by `sbctl update`) forces a git refresh even when the script
+# is run from inside an already-provisioned $ROOT, which would otherwise be
+# treated as the source and rebuilt as-is.
 SRC=$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" 2>/dev/null && pwd || true)
-if [ -z "$SRC" ] || [ ! -f "$SRC/package.json" ] || [ ! -d "$SRC/apps/control" ]; then
+if [ "${SB_PULL:-0}" = 1 ] || [ -z "$SRC" ] || [ ! -f "$SRC/package.json" ] || [ ! -d "$SRC/apps/control" ]; then
   say "Fetching Sproutboat ($SB_REF)"
   command -v git >/dev/null || { [ "$PKG" = apt ] && apt-get install -y -qq git || dnf install -y -q git; }
   SRC=/opt/sproutboat-src
