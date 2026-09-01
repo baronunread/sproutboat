@@ -7,22 +7,9 @@ export type Account = {
   user?: { name?: string | null; email?: string; image?: string | null };
 };
 
-async function loadAccount({ serverContext }: { serverContext?: { request: Request } }): Promise<Account | undefined> {
+async function loadAccount(): Promise<Account | undefined> {
   try {
-    const request = serverContext?.request;
-    let target: URL | string = "/api/account";
-    if (request) {
-      const url = new URL("/api/account", request.url);
-      // Behind a TLS terminator (portless in dev, the edge proxy in prod) the
-      // internal request scheme is http; hitting it triggers a 302 to https that
-      // drops the forwarded Cookie. Talk to the public origin over https.
-      if (url.hostname !== "localhost" && url.hostname !== "127.0.0.1") url.protocol = "https:";
-      target = url;
-    }
-    const response = await fetch(target, {
-      credentials: "include",
-      headers: request ? { cookie: request.headers.get("cookie") ?? "" } : undefined,
-    });
+    const response = await fetch("/api/account", { credentials: "include" });
     if (!response.ok) return undefined;
     // SAFETY: /api/account returns the authenticated account contract on successful responses.
     return await response.json() as Account;
@@ -32,9 +19,15 @@ async function loadAccount({ serverContext }: { serverContext?: { request: Reque
 }
 
 export const Route = createRootRoute({
-  // Gate every route: no session -> straight to /login, on the server render too.
-  beforeLoad: async ({ location, serverContext }: { location: { pathname: string }; serverContext?: { request: Request } }) => {
-    const account = await loadAccount({ serverContext });
+  // Browser-only auth gate. This is an SPA: `_shell.html` is prerendered at
+  // build time with no API reachable, so gating during prerender would bake a
+  // logged-out state (the /login title + account:undefined) into the single
+  // static file `try_files` serves for every route — every hard reload would
+  // show /login until a client-side nav re-checked. Prerender a neutral shell;
+  // the browser re-runs this against the live session.
+  beforeLoad: async ({ location }: { location: { pathname: string } }) => {
+    if (import.meta.env.SSR) return { account: undefined };
+    const account = await loadAccount();
     if (!account && location.pathname !== "/login") throw redirect({ to: "/login", search: (previous) => previous });
     if (account && location.pathname === "/login") throw redirect({ to: "/" });
     return { account };
