@@ -395,7 +395,7 @@ printf '    SPROUTBOAT_TOKEN    %s%s%s\n' "$C_HEAD" "$ADMIN_TOKEN" "$C_0"
 rule
 
 say "Dashboard  $DASH_URL"
-note "sign in with the admin token above (field: \"Admin token\")"
+note "sign in with email $SB_ACME_EMAIL + the token above as the password"
 if [ -n "$SB_GITHUB_CLIENT_ID" ] && [ -n "$SB_GITHUB_CLIENT_SECRET" ]; then
   note "GitHub sign-in enabled — OAuth callback: $DASH_URL/api/auth/callback/github"
 fi
