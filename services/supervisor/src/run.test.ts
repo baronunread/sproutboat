@@ -139,15 +139,16 @@ test("evictIdle stops servers past the idle window", async () => {
   await expect(fetch(url)).rejects.toThrow();
 });
 
-test("evictIdle keeps idle sprouts whose deployment is still routed", async () => {
+test("evictIdle reaps any idle sprout; a still-hot one survives", async () => {
   const { spawn } = fakeSpawn();
   let now = 0;
   const pool = makePool(spawn, { idleMs: 100, now: () => now });
-  const routed = await pool.endpoint("/tmp/routed/worker");
-  await pool.endpoint("/tmp/orphan/worker");
-  now = 200;
-  expect(pool.evictIdle(new Set(["/tmp/routed/worker"]))).toBe(1); // only the orphan
-  expect((await fetch(routed.url)).ok).toBe(true);                  // routed one still warm
+  await pool.endpoint("/tmp/cold/worker");
+  now = 90;
+  const hot = await pool.endpoint("/tmp/hot/worker"); // used at t=90
+  now = 150;                                          // cold idle 150, hot idle 60
+  expect(pool.evictIdle()).toBe(1);                   // only the cold one
+  expect((await fetch(hot.url)).ok).toBe(true);
 });
 
 test("sproutCommand wraps the sprout in the bwrap launcher on Linux, runs it directly off Linux", () => {

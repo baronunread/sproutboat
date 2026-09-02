@@ -168,12 +168,12 @@ function assetManifestFor(sproutPath: string): AssetManifest | null {
 
 /**
  * Swap in a new route snapshot: dispose sprouts whose route changed or was
- * removed, then eagerly spawn any newly-routed sprout so the first real request
- * to a fresh deploy is not a cold start (pre-warm on activate). Warm-up is
- * fire-and-forget — a broken artifact must not stall the reload.
+ * removed. Newly-routed sprouts are NOT pre-spawned — that stampeded the node
+ * on startup (every route at once) and pinned idle deployments resident. A
+ * fresh deploy's first request cold-starts (~1ms + broker wait), and
+ * `sproutboat deploy` already warms it with its post-upload health check.
  */
 function swapRoutes(nextRoutes: Map<string, Route>, nextMtimeMs: number): void {
-  const oldPaths = new Set([...routes.values()].map((route) => route.sproutPath));
   for (const [hostname, route] of routes) {
     const next = nextRoutes.get(hostname);
     // A changed sprout path OR a changed secrets hash (#2) means the running
@@ -186,9 +186,6 @@ function swapRoutes(nextRoutes: Map<string, Route>, nextMtimeMs: number): void {
   }
   routes = nextRoutes;
   routesMtimeMs = nextMtimeMs;
-  for (const route of nextRoutes.values()) {
-    if (!oldPaths.has(route.sproutPath)) void pool.endpoint(route.sproutPath, route.secretsPath).catch(() => { /* first request will report it */ });
-  }
 }
 
 // Belt-and-braces reload: SIGHUP (below) is the authoritative path. Throttle the
@@ -339,9 +336,10 @@ const server = Bun.serve({
 
 console.log(`Sproutboat edge router listening on http://${bindHost}:${server.port}`);
 
-// Never evict a deployment that still has a live route — its next request should
-// not pay a cold start. Idle eviction then only reaps sprouts whose route is gone.
-const evictionTimer = setInterval(() => pool.evictIdle(new Set([...routes.values()].map((route) => route.sproutPath))), 60_000);
+// Reap any sprout with no traffic for the idle window (default 10 min), routed
+// or not. Hot deployments keep themselves warm; cold ones free their sprout +
+// broker and pay a ~1ms cold start on the next request.
+const evictionTimer = setInterval(() => pool.evictIdle(), 60_000);
 
 function shutdown(): void {
   clearInterval(evictionTimer);

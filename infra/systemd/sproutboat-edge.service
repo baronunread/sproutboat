@@ -37,11 +37,17 @@ PrivateTmp=true
 ProtectHome=true
 ProtectSystem=strict
 ReadWritePaths=/var/lib/sproutboat
-# Aggregate limits for the edge plus every sandboxed sprout it spawns.
-MemoryMax=1G
+# Aggregate cap for the edge plus every sprout + broker it spawns. This is the
+# node's density wall, not the VPS: at ~10 MB per (sprout + broker + bwrap) the
+# old 1G OOM'd the node around 80-100 deployments while RAM sat unused. Raise it
+# in step with the box; it stays the backstop against a runaway tenant since
+# per-sprout cgroup caps are off (SPROUTBOAT_SPROUT_CGROUP).
+MemoryMax=2500M
 MemorySwapMax=0
 CPUQuota=200%
-TasksMax=512
+# ~5-7 threads per deployment (Bun broker pool + 2x bwrap + uWS); 512 capped
+# density near the memory wall too.
+TasksMax=2048
 # Egress isolation for the edge and every sprout it spawns: they may talk to
 # each other over loopback (Caddy -> edge, edge -> worker) but cannot reach the
 # host network, the control plane, or the cloud metadata endpoint.

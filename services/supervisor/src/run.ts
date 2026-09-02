@@ -99,7 +99,9 @@ function spawnWithBroker(sproutPath: string, port: number, secretsPath?: string 
       // `process.execPath`, not "bun": sproutboat-edge.service runs with a
       // hardened PATH that doesn't include the pinned /opt/sproutboat/bun, so a
       // bare "bun" is ENOENT and every sprout with bindings fails to launch.
-      process.execPath, brokerEntry,
+      // `--smol`: the broker is near-idle and one per deployment — trade GC CPU
+      // (idle here) for a smaller JSC heap.
+      process.execPath, "--smol", brokerEntry,
       "--port", String(brokerPort),
       "--token", token,
       "--db", resolve(stateDir, "state.sqlite"),
@@ -328,18 +330,18 @@ export class SproutPool {
   }
 
   /**
-   * Stop sprouts idle past the window. `keepWarm` — the sprout paths of
-   * currently-routed deployments — are never evicted, so an active deployment
-   * stays hot and its next request is not a cold start; idle eviction then only
-   * reaps sprouts whose route is gone.
+   * Stop any sprout idle past the window — routed or not. A hot deployment
+   * keeps `lastUsedAt` fresh and is never touched; a deployment with a route
+   * but no traffic for `idleMs` is reaped and cold-starts (~1ms + broker wait)
+   * on its next request. Deployments whose route was removed are disposed
+   * eagerly by the edge on snapshot swap; this is the traffic-based reaper.
    *
-   * ponytail: keeps every routed deployment resident. Add an LRU cap or
-   * memory-pressure trigger once one node carries many hundreds of deployments.
+   * Previously every routed deployment was pinned resident, so a node with N
+   * deployments held N sprouts (+ N brokers) forever regardless of traffic.
    */
-  evictIdle(keepWarm?: ReadonlySet<string>, now = this.#now()): number {
+  evictIdle(now = this.#now()): number {
     let evicted = 0;
     for (const [key, server] of Array.from(this.#servers.entries())) {
-      if (keepWarm?.has(key)) continue;
       if (now - server.lastUsedAt >= this.#idleMs) {
         server.dispose();
         this.#servers.delete(key);
