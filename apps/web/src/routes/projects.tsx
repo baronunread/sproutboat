@@ -29,7 +29,8 @@ function Projects() {
                 </div>
                 <span>Deployed {relativeTime(project.deployedAt)}</span>
                 <Link className="text-link" to="/projects/$name" params={{ name: project.name }}>Open project</Link>
-                <DeleteProject name={project.name} onDeleted={() => { setRemoved(project.name); void refresh(); }} />
+                <DeleteProject name={project.name} triggerLabel="Delete" triggerVariant="quiet"
+                  onDeleted={() => { setRemoved(project.name); void refresh(); }} />
               </li>
             ))}
           </ul>

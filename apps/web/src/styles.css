@@ -507,17 +507,14 @@ label:not(.field-label) {
   max-width: 35rem;
 }
 .metrics {
-  border-top: 1px solid var(--line);
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  gap: 0.75rem;
+  grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr));
   margin-bottom: 2.2rem;
 }
 .metric-card {
   min-height: 10rem;
   padding: 1.2rem;
-}
-.metric-card:not(:last-child) {
-  border-right: 1px solid var(--line);
 }
 .metric-card p {
   color: var(--muted);
@@ -696,15 +693,6 @@ label:not(.field-label) {
   .dashboard-intro {
     margin-bottom: 2.5rem;
   }
-  .metrics {
-    grid-template-columns: repeat(2, 1fr);
-  }
-  .metric-card:nth-child(2) {
-    border-right: 0;
-  }
-  .metric-card:nth-child(-n + 2) {
-    border-bottom: 1px solid var(--line);
-  }
   .content-grid {
     grid-template-columns: 1fr;
   }
@@ -728,13 +716,6 @@ label:not(.field-label) {
   }
   .metrics {
     grid-template-columns: 1fr;
-  }
-  .metric-card {
-    border-bottom: 1px solid var(--line) !important;
-    border-right: 0 !important;
-  }
-  .metric-card:last-child {
-    border-bottom: 0 !important;
   }
   .button {
     width: 100%;
@@ -829,8 +810,8 @@ body { letter-spacing: -0.006em; }
 }
 .nav-icon { flex: 0 0 auto; height: 1rem; width: 1rem; }
 .nav-link:hover { background: var(--panel-2); }
-.nav-link.active { background: var(--panel-2); box-shadow: none; color: var(--text); font-weight: 550; }
-.nav-link.active .nav-icon { color: var(--lime); }
+.nav-link[aria-current="page"] { background: var(--panel-2); box-shadow: none; color: var(--text); font-weight: 550; }
+.nav-link[aria-current="page"] .nav-icon { color: var(--lime); }
 .sidebar-bottom { border-top: 1px solid var(--line); margin: auto 0.5rem 0; padding-top: 1rem; }
 .status-dot { background: #22c55e; box-shadow: 0 0 0 3px color-mix(in srgb, #22c55e 15%, transparent); }
 .topbar { background: color-mix(in srgb, var(--ink) 90%, transparent); height: 3.5rem; padding: 0 2rem; position: sticky; top: 0; z-index: 5; }
@@ -855,7 +836,7 @@ body { letter-spacing: -0.006em; }
 .connection-banner { align-items: center; background: color-mix(in srgb, var(--sky) 8%, var(--panel)); border-color: color-mix(in srgb, var(--sky) 25%, var(--line)); border-radius: 8px; margin-bottom: 1.5rem; padding: 1.25rem; }
 .connection-banner h2 { font-size: 1rem; letter-spacing: -0.015em; }
 .connection-banner p { font-size: 0.8rem; margin: 0.35rem 0 0; }
-.metrics { border: 1px solid var(--line); border-radius: 8px; margin-bottom: 1.5rem; overflow: hidden; }
+.metrics { margin-bottom: 1.5rem; }
 .metric-card { min-height: 8.25rem; padding: 1rem 1.15rem; }
 .metric-card p, .metric-card span { font-size: 0.72rem; }
 .metric-card strong { font-size: 2rem; font-variant-numeric: tabular-nums; letter-spacing: -0.04em; margin: 1.35rem 0 0.25rem; }
@@ -900,6 +881,25 @@ body { letter-spacing: -0.006em; }
 .deploy-steps li { align-items: center; padding: 0.7rem 0; }
 .deploy-steps code { color: var(--muted); }
 .settings-panel { max-width: 46rem; padding: 1.5rem; }
+/* Panels come in two flavours. A bare .data-panel has no padding so its rows
+   can hover and divide edge to edge — its children own the 1.25rem inset. A
+   padded panel (.settings-panel/.wide-panel) already insets, so the same child
+   must not inset again or its edge drifts from the fields beside it. */
+.data-panel > .log-filters,
+.data-panel > .pager,
+.data-panel > .form-grid,
+.data-panel > .form-actions,
+.data-panel > .status-message { padding-inline: 1.25rem; }
+.settings-panel .record-list li,
+.wide-panel .record-list li,
+.settings-panel .credential-list li,
+.wide-panel .credential-list li { padding-inline: 0; }
+
+/* An empty state that fills a whole panel is a centred hero; one that sits
+   between a heading and a form is just a line of text. */
+.settings-panel .empty-state,
+.wide-panel .empty-state { padding: 1.25rem 0; text-align: start; }
+
 /* Charts and tables are not forms: 46rem is a reading measure for fields and
    prose, and squeezing a six-column table or a 24-bucket chart into it wastes
    the column it actually has. */
@@ -926,7 +926,7 @@ body { letter-spacing: -0.006em; }
 @media (max-width: 480px) {
   .topbar p span, .topbar p b { display: none; }
   .page-heading h1 { font-size: 1.6rem; }
-  .metrics { border-radius: 7px; }
+  .metrics { gap: 0.6rem; }
   .data-panel, .activity-panel, .deployment-panel, .routes-panel { border-radius: 7px; }
 }
 
@@ -942,7 +942,7 @@ body { letter-spacing: -0.006em; }
 .danger-confirm label strong { color: var(--text); }
 .danger-confirm-row { align-items: end; display: flex; flex-wrap: wrap; gap: 0.6rem; }
 .danger-confirm-row .field { flex: 1 1 12rem; }
-.settings-panel + .settings-panel { margin-top: 1.5rem; }
+.data-panel + .data-panel { margin-top: 1.5rem; }
 
 /* #5 project control room */
 .record-title { font-size: 0.84rem; font-weight: 550; text-underline-offset: 0.2em; }
@@ -1288,3 +1288,34 @@ body { letter-spacing: -0.006em; }
 .row-actions .button { min-height: 2rem; padding: 0 0.7rem; }
 .account-trend { margin-bottom: 1.5rem; max-width: none; }
 .account-trend .bars { height: 5rem; margin-top: 1rem; }
+
+/* Grouped sidebar sections (#76). <details> is the disclosure widget the
+   platform already ships: keyboard operable, no script, and it keeps the group
+   open when the current route lives inside it. */
+.nav-group { margin: 0; }
+.nav-group-summary { cursor: pointer; list-style: none; width: 100%; }
+.nav-group-summary::-webkit-details-marker { display: none; }
+.nav-group-summary > span { flex: 1 1 auto; }
+.nav-chevron { flex: 0 0 auto; height: 0.85rem; transition: rotate 150ms ease; width: 0.85rem; }
+.nav-group[open] > .nav-group-summary .nav-chevron { rotate: 90deg; }
+.nav-group-items { display: grid; gap: 0.15rem; margin: 0.15rem 0 0.35rem; }
+/* Children align to the group label's text, not its icon. */
+.nav-group-items .nav-link { padding-inline-start: 2.3rem; }
+.nav-group-items .nav-link[aria-current="page"] { box-shadow: inset 2px 0 var(--lime); }
+@media (prefers-reduced-motion: reduce) { .nav-chevron { transition: none; } }
+
+/* Segmented control: a set of mutually exclusive options where the current one
+   is visible without opening anything. aria-pressed carries the state. */
+.segmented { border: 1px solid var(--line); border-radius: 7px; display: inline-flex; gap: 2px; margin-top: 1.25rem; padding: 2px; }
+.segment {
+  background: transparent;
+  border: 0;
+  border-radius: 5px;
+  color: var(--muted);
+  font-size: 0.8rem;
+  min-height: 2rem;
+  padding: 0 0.9rem;
+  transition: background 120ms ease, color 120ms ease;
+}
+.segment:hover { color: var(--text); }
+.segment[aria-pressed="true"] { background: var(--panel-2); color: var(--text); font-weight: 550; }

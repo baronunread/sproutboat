@@ -7,9 +7,9 @@ test("project deletion requires the exact typed name", async ({ browser }) => {
   await page.goto("/projects");
 
   const row = page.locator(".record-list li", { hasText: "scratch" });
-  await row.getByRole("button", { name: /delete…/i }).click();
+  await row.getByRole("button", { name: /^delete$/i }).click();
 
-  const confirmButton = row.getByRole("button", { name: /delete project/i });
+  const confirmButton = row.getByRole("button", { name: /delete permanently/i });
   await expect(confirmButton).toBeDisabled();
   await row.getByPlaceholder("scratch").fill("wrong");
   await expect(confirmButton).toBeDisabled();

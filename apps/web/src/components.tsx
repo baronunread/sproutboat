@@ -207,10 +207,16 @@ export function SproutboatMark() {
 
 const NAV_ICON_PATHS = {
     overview: <><rect x="2.5" y="2.5" width="4" height="4" rx=".75" /><rect x="9.5" y="2.5" width="4" height="4" rx=".75" /><rect x="2.5" y="9.5" width="4" height="4" rx=".75" /><rect x="9.5" y="9.5" width="4" height="4" rx=".75" /></>,
-    projects: <><path d="M2.5 4.5h4l1.2 1.5h5.8v6.5h-11z" /><path d="M2.5 4.5v-1h4l1.2 1.5" /></>,
+    // Compute: a processor die, the way every console draws "runs your code".
+    compute: <><rect x="4.5" y="4.5" width="7" height="7" rx="1" /><path d="M6.5 2.5v2M9.5 2.5v2M6.5 11.5v2M9.5 11.5v2M2.5 6.5h2M2.5 9.5h2M11.5 6.5h2M11.5 9.5h2" /></>,
+    // A sprout, for the unit that actually serves requests.
+    sprouts: <><path d="M8 13.5V7" /><path d="M8 7C8 4.8 6.2 3 4 3c0 2.2 1.8 4 4 4Z" /><path d="M8 8.5c0-1.9 1.5-3.4 3.4-3.4 0 1.9-1.5 3.4-3.4 3.4Z" /></>,
     deployments: <><path d="M8 2.5v7" /><path d="m5.5 7 2.5 2.5L10.5 7" /><path d="M3 11.5v2h10v-2" /></>,
-    settings: <><circle cx="8" cy="8" r="2" /><path d="M8 2.5v1.2M8 12.3v1.2M2.5 8h1.2M12.3 8h1.2M4.1 4.1l.9.9M11 11l.9.9M11.9 4.1l-.9.9M5 11l-.9.9" /></>,
     storage: <><ellipse cx="8" cy="4" rx="5" ry="1.8" /><path d="M3 4v8c0 1 2.2 1.8 5 1.8s5-.8 5-1.8V4" /><path d="M3 8c0 1 2.2 1.8 5 1.8s5-.8 5-1.8" /></>,
+    // Sliders, not a sun: settings are things you adjust.
+    settings: <><path d="M2.5 5h6M11 5h2.5M2.5 11h2.5M7.5 11h6" /><circle cx="9.75" cy="5" r="1.6" /><circle cx="6.25" cy="11" r="1.6" /></>,
+    // A shield reads as "privileged area" where a second gear reads as "more settings".
+    admin: <><path d="M8 2.5 3.5 4.2v3.5c0 3 1.9 5 4.5 5.8 2.6-.8 4.5-2.8 4.5-5.8V4.2z" /></>,
 };
 function NavIcon({ name }: { name: keyof typeof NAV_ICON_PATHS }) {
   return <svg className="nav-icon" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="1.25" strokeLinecap="round" strokeLinejoin="round">{NAV_ICON_PATHS[name]}</svg>;
@@ -241,6 +247,39 @@ function toggleTheme() {
   localStorage.setItem("sproutboat-theme", theme);
 }
 
+/* Cloudflare files Queues under Compute (it is a consumer, not a store) and the
+   rest under Storage & databases; ours are all resource kinds under the hood,
+   so both groups link into the same /storage/:kind pages. */
+const STORAGE_KINDS = [["kv", "KV"], ["d1", "D1"], ["r2", "R2"]] as const;
+
+const NAV_ACTIVE = { "aria-current": "page" as const };
+const EXACT = { exact: true } as const;
+
+/**
+ * A collapsible nav section. `<details>` is the platform's disclosure widget —
+ * keyboard operable and expandable without script — and `open` starts the group
+ * expanded whenever the current route lives inside it.
+ */
+function NavGroup({ label, icon, open, children }: {
+  label: string;
+  icon: keyof typeof NAV_ICON_PATHS;
+  open: boolean;
+  children: ReactNode;
+}) {
+  return (
+    <details className="nav-group" open={open}>
+      <summary className="nav-link nav-group-summary">
+        <NavIcon name={icon} />
+        <span>{label}</span>
+        <svg className="nav-chevron" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="1.25" strokeLinecap="round" strokeLinejoin="round">
+          <path d="m6 4 4 4-4 4" />
+        </svg>
+      </summary>
+      <div className="nav-group-items">{children}</div>
+    </details>
+  );
+}
+
 export function Shell({
   children,
 }: {
@@ -250,6 +289,9 @@ export function Shell({
     select: (state) => state.location.pathname,
   });
   const { account } = useAccount();
+  const computeOpen = pathname.startsWith("/projects") || pathname.startsWith("/deployments")
+    || pathname === "/storage/queue";
+  const storageOpen = pathname.startsWith("/storage") && pathname !== "/storage/queue";
   const username = account?.profile?.username;
   const displayName = username || account?.user?.name || "account";
   return (
@@ -260,24 +302,27 @@ export function Shell({
           <span>Sproutboat</span>
         </Link>
         <nav aria-label="Primary navigation">
-          <span className="nav-section-label">Workspace</span>
-          <Link
-            className={
-              pathname === "/" ? "nav-link active" : "nav-link"
-            }
-            to="/"
-          >
+          <Link className="nav-link" to="/" activeOptions={EXACT} activeProps={NAV_ACTIVE}>
             <NavIcon name="overview" />Overview
           </Link>
-          <Link className={pathname === "/projects" ? "nav-link active" : "nav-link"} to="/projects">
-            <NavIcon name="projects" />Projects
-          </Link>
-          <Link className={pathname === "/deployments" ? "nav-link active" : "nav-link"} to="/deployments"><NavIcon name="deployments" />Deployments</Link>
-          <Link className={pathname.startsWith("/storage") ? "nav-link active" : "nav-link"} to="/storage"><NavIcon name="storage" />Storage</Link>
+
+          <span className="nav-section-label">Build</span>
+          <NavGroup label="Compute" icon="compute" open={computeOpen}>
+            <Link className="nav-link" to="/projects" activeProps={NAV_ACTIVE}>Sprouts</Link>
+            <Link className="nav-link" to="/deployments" activeOptions={EXACT} activeProps={NAV_ACTIVE}>Deployments</Link>
+            <Link className="nav-link" to="/storage/$kind" params={{ kind: "queue" }} activeProps={NAV_ACTIVE}>Queues</Link>
+          </NavGroup>
+          <NavGroup label="Storage &amp; databases" icon="storage" open={storageOpen}>
+            <Link className="nav-link" to="/storage" activeOptions={EXACT} activeProps={NAV_ACTIVE}>All resources</Link>
+            {STORAGE_KINDS.map(([kind, label]) => (
+              <Link key={kind} className="nav-link" to="/storage/$kind" params={{ kind }} activeProps={NAV_ACTIVE}>{label}</Link>
+            ))}
+          </NavGroup>
+
           <span className="nav-section-label nav-section-secondary">Account</span>
-          <Link className={pathname === "/settings" ? "nav-link active" : "nav-link"} to="/settings"><NavIcon name="settings" />Settings</Link>
+          <Link className="nav-link" to="/settings" activeProps={NAV_ACTIVE}><NavIcon name="settings" />Settings</Link>
           {account?.isAdmin && (
-            <Link className={pathname.startsWith("/admin") ? "nav-link active" : "nav-link"} to="/admin"><NavIcon name="settings" />Admin</Link>
+            <Link className="nav-link" to="/admin" activeProps={NAV_ACTIVE}><NavIcon name="admin" />Admin</Link>
           )}
         </nav>
         <div className="sidebar-bottom">
@@ -311,7 +356,13 @@ export function Shell({
  * Delete button stays disabled until the field matches. `onDeleted` is the
  * caller's list refresh — the row unmounts this component on success.
  */
-export function DeleteProject({ name, onDeleted }: { name: string; onDeleted: () => void }) {
+export function DeleteProject({ name, onDeleted, triggerLabel = "Delete project", triggerVariant = "danger" }: {
+  name: string;
+  onDeleted: () => void;
+  /** Rows use a short, quiet trigger; the danger zone names the action in full. */
+  triggerLabel?: string;
+  triggerVariant?: "quiet" | "danger";
+}) {
   const [open, setOpen] = useState(false);
   const [confirm, setConfirm] = useState("");
   const [busy, setBusy] = useState(false);
@@ -319,7 +370,7 @@ export function DeleteProject({ name, onDeleted }: { name: string; onDeleted: ()
   const fieldId = `delete-project-${name}`;
 
   if (!open) {
-    return <button type="button" className="text-button danger" onClick={() => setOpen(true)}>Delete…</button>;
+    return <Button variant={triggerVariant} onClick={() => setOpen(true)}>{triggerLabel}</Button>;
   }
 
   const reset = () => { setOpen(false); setConfirm(""); setError(""); };
@@ -357,7 +408,7 @@ export function DeleteProject({ name, onDeleted }: { name: string; onDeleted: ()
           error={mismatch ? "That does not match the project name." : error || null}
         />
         <Button variant="quiet" onClick={reset} disabled={busy}>Cancel</Button>
-        <Button type="submit" variant="danger" busy={busy} busyLabel="Deleting…" disabled={confirm !== name}>Delete project</Button>
+        <Button type="submit" variant="danger" busy={busy} busyLabel="Deleting…" disabled={confirm !== name}>Delete permanently</Button>
       </div>
     </form>
   );
