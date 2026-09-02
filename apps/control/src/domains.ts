@@ -10,7 +10,7 @@
  * and Caddy's `on_demand_tls` ask endpoint (`/internal/tls/allow`) will issue a
  * cert for it because it now appears in the snapshot.
  */
-import { resolve4, resolve6, resolveTxt } from "node:dns/promises";
+import { Resolver, resolveTxt } from "node:dns/promises";
 import { randomUUID } from "node:crypto";
 import { actorFor, type Actor } from "./identity";
 import { LIMITS } from "./limits";
@@ -55,8 +55,11 @@ async function authorized(request: Request): Promise<Actor | Response> {
 }
 
 async function addressesOf(hostname: string): Promise<string[]> {
+  // A fresh Resolver per call: the control process is long-lived, and a stale
+  // negative answer (the hostname had no A record a minute ago) must not stick.
+  const resolver = new Resolver();
   const out: string[] = [];
-  for (const query of [resolve4, resolve6]) {
+  for (const query of [resolver.resolve4.bind(resolver), resolver.resolve6.bind(resolver)]) {
     try { out.push(...(await query(hostname))); } catch { /* that record type is absent */ }
   }
   return out;
@@ -88,7 +91,7 @@ async function withReachability<T extends object>(view: T, hostname: string): Pr
   if (hits) return view;
   return {
     ...view,
-    warning: `${hostname} has no A or AAAA record pointing at this server (${servers[0]}). Add one as DNS-only (not proxied), or the domain will not load once its certificate is issued.`,
+    warning: `${hostname} does not resolve to this server (${servers[0]}) yet. Add an A or AAAA record for it, DNS-only (not proxied). If you just added one, DNS may still be propagating — re-run verify in a minute.`,
     serverAddresses: servers,
   };
 }
