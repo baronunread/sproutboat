@@ -1,7 +1,7 @@
 import { Database } from "bun:sqlite";
 import { readFileSync, renameSync } from "node:fs";
 import { mkdir, rename, rm, writeFile } from "node:fs/promises";
-import { createHash, randomUUID } from "node:crypto";
+import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { dirname, resolve } from "node:path";
 import { decryptSecret, encryptSecret } from "./secrets-crypto";
 
@@ -117,6 +117,15 @@ function connection(): Database {
       PRIMARY KEY (owner_id, project, name),
       FOREIGN KEY (owner_id, project) REFERENCES projects(owner_id, name) ON DELETE CASCADE
     );
+    CREATE TABLE IF NOT EXISTS resources (
+      id TEXT PRIMARY KEY,
+      owner_id TEXT NOT NULL,
+      kind TEXT NOT NULL,
+      name TEXT NOT NULL,
+      created_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS resources_by_owner ON resources(owner_id);
+    CREATE UNIQUE INDEX IF NOT EXISTS resource_name_per_owner_kind ON resources(owner_id, kind, name);
   `);
   // worker -> sprout rename: bring a pre-rename DB's column name forward.
   // SAFETY: PRAGMA table_info rows always expose a string `name` column.
@@ -327,6 +336,7 @@ export function deleteOwner(ownerId: string): ProjectDeletion {
     const rows = q<DeploymentRow>("SELECT * FROM deployments WHERE owner_id = ?", ownerId);
     const digests = rows.map((row) => row.artifact_digest);
     run("DELETE FROM projects WHERE owner_id = ?", ownerId);
+    run("DELETE FROM resources WHERE owner_id = ?", ownerId);
     return { removed: rows.length, hostnames: [...new Set(rows.map((row) => row.hostname))], orphanedArtifacts: orphanedAmong(digests) };
   })();
 }
@@ -413,6 +423,58 @@ export function deleteSecret(ownerId: string, project: string, name: string): bo
 function projectSecretValues(ownerId: string, project: string) {
   const rows = q<{ name: string; ciphertext: string }>("SELECT name, ciphertext FROM secrets WHERE owner_id = ? AND project = ?", ownerId, project);
   return Object.fromEntries(rows.map((row) => [row.name, decryptSecret(row.ciphertext)]));
+}
+
+// --- account-level storage resources (#74) ------------------------------
+//
+// KV namespaces, D1 databases, R2 buckets, queues and analytics datasets as
+// first-class owned objects with a stable id, independent of any deployment.
+// A later chunk resolves `{ binding, id }` config entries against this table at
+// deploy time and keys the broker's backing store by `id` instead of digest.
+
+export type ResourceKind = "kv" | "d1" | "r2" | "queue" | "analytics";
+export const RESOURCE_KINDS: readonly ResourceKind[] = ["kv", "d1", "r2", "queue", "analytics"];
+
+export type StorageResource = { id: string; ownerId: string; kind: ResourceKind; name: string; createdAt: string };
+type ResourceRow = { id: string; owner_id: string; kind: string; name: string; created_at: string };
+function toResource(row: ResourceRow): StorageResource {
+  // SAFETY: `kind` is only ever written by createResource(), whose parameter is
+  // typed ResourceKind — the column holds nothing else.
+  const kind = row.kind as ResourceKind;
+  return { id: row.id, ownerId: row.owner_id, kind, name: row.name, createdAt: row.created_at };
+}
+
+export function ownerResources(ownerId: string): StorageResource[] {
+  return q<ResourceRow>("SELECT * FROM resources WHERE owner_id = ? ORDER BY kind, name", ownerId).map(toResource);
+}
+
+export function resourceById(ownerId: string, id: string): StorageResource | undefined {
+  const row = q1<ResourceRow>("SELECT * FROM resources WHERE id = ? AND owner_id = ?", id, ownerId);
+  return row ? toResource(row) : undefined;
+}
+
+export function resourceCount(ownerId: string): number {
+  return q1<{ n: number }>("SELECT COUNT(*) AS n FROM resources WHERE owner_id = ?", ownerId)?.n ?? 0;
+}
+
+/** Creates a resource with a fresh `<kind>_<24hex>` id. Throws on a name collision
+ *  (the unique index) — callers check first and return 409. */
+export function createResource(ownerId: string, kind: ResourceKind, name: string): StorageResource {
+  const resource: StorageResource = {
+    id: `${kind}_${randomBytes(12).toString("hex")}`,
+    ownerId, kind, name, createdAt: new Date().toISOString(),
+  };
+  run("INSERT INTO resources (id, owner_id, kind, name, created_at) VALUES (?, ?, ?, ?, ?)",
+    resource.id, ownerId, kind, name, resource.createdAt);
+  return resource;
+}
+
+export function renameResource(ownerId: string, id: string, name: string): boolean {
+  return run("UPDATE resources SET name = ? WHERE id = ? AND owner_id = ?", name, id, ownerId) > 0;
+}
+
+export function deleteResource(ownerId: string, id: string): boolean {
+  return run("DELETE FROM resources WHERE id = ? AND owner_id = ?", id, ownerId) > 0;
 }
 
 // --- routes snapshot + artifact GC --------------------------------------
