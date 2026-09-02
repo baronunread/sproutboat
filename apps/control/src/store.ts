@@ -285,6 +285,24 @@ export function recordDeployment(input: Omit<Deployment, "active"> & { resourceI
 }
 
 /**
+ * #77 — every owned resource's bound projects in one query, so a list view can
+ * show "bound to" without running resourceReferencingProjects per row.
+ */
+export function ownerResourceProjects(ownerId: string): Map<string, string[]> {
+  const rows = q<{ resource_id: string; project: string }>(
+    `SELECT DISTINCT dr.resource_id AS resource_id, d.project AS project
+       FROM deployment_resources dr
+       JOIN deployments d ON d.id = dr.deployment_id
+     WHERE d.owner_id = ?
+     ORDER BY d.project`,
+    ownerId,
+  );
+  const byResource = new Map<string, string[]>();
+  for (const row of rows) byResource.set(row.resource_id, [...(byResource.get(row.resource_id) ?? []), row.project]);
+  return byResource;
+}
+
+/**
  * #74 — distinct project names that still have a deployment (any version) bound
  * to `resourceId`. Empty means the resource can be deleted.
  */

@@ -15,6 +15,7 @@ import { LIMITS } from "./limits";
 import {
   createResource,
   deleteResource,
+  ownerResourceProjects,
   ownerResources,
   renameResource,
   resourceById,
@@ -50,6 +51,74 @@ export async function listResources(request: Request): Promise<Response> {
   const actor = await authorized(request);
   if (actor instanceof Response) return actor;
   return Response.json({ resources: ownerResources(actor.id) });
+}
+
+/* ---------------------------------------------------------------------------
+ * #77 — per-kind collections.
+ *
+ * `/api/resources` stays the aggregate view the CLI and the deploy-time
+ * resolver use. Each kind also gets its own collection, so a KV namespace is
+ * addressed as a KV namespace rather than as "a resource that happens to have
+ * kind=kv" — which is what lets a kind grow its own nouns later (the keys in a
+ * namespace, the objects in a bucket) without overloading one endpoint.
+ *
+ * The URL segment is the plural a person would type; `queues` maps to the
+ * `queue` kind the store records.
+ * ------------------------------------------------------------------------- */
+
+export const KIND_SEGMENTS = {
+  kv: "kv", d1: "d1", r2: "r2", queues: "queue",
+} as const satisfies Readonly<Record<string, ResourceKind>>;
+
+export function resourceKindForSegment(segment: string): ResourceKind | undefined {
+  if (!Object.hasOwn(KIND_SEGMENTS, segment)) return undefined;
+  // SAFETY: the hasOwn guard above is exactly the key predicate — a segment
+  // that passes it is one of KIND_SEGMENTS' own keys.
+  return KIND_SEGMENTS[segment as keyof typeof KIND_SEGMENTS];
+}
+
+/** List one kind, each row carrying the projects still bound to it. */
+export async function listResourcesOfKind(request: Request, kind: ResourceKind): Promise<Response> {
+  const actor = await authorized(request);
+  if (actor instanceof Response) return actor;
+  const bound = ownerResourceProjects(actor.id);
+  const resources = ownerResources(actor.id)
+    .filter((resource) => resource.kind === kind)
+    .map((resource) => ({ ...resource, projects: bound.get(resource.id) ?? [] }));
+  return Response.json({ kind, resources });
+}
+
+/** Create within one kind: the body carries a name, the path carries the kind. */
+export async function createResourceOfKind(request: Request, kind: ResourceKind): Promise<Response> {
+  const actor = await authorized(request);
+  if (actor instanceof Response) return actor;
+
+  const body: { readonly [key: string]: JsonInput } = await request.json().catch(() => ({}));
+  const name = asText(body.name);
+  if (!NAME.test(name)) {
+    return Response.json({ error: "name must be a 2–63 character lowercase slug (a–z, 0–9, hyphen)" }, { status: 400 });
+  }
+  const existing = ownerResources(actor.id).find((resource) => resource.kind === kind && resource.name === name);
+  if (existing) {
+    if (asText(body.ifExists) === "return") return Response.json({ resource: existing }, { status: 200 });
+    return Response.json({ error: `a ${kind} named "${name}" already exists` }, { status: 409 });
+  }
+  if (resourceCount(actor.id) >= LIMITS.resourcesPerAccount()) {
+    return Response.json({ error: `an account may hold at most ${LIMITS.resourcesPerAccount()} resources` }, { status: 429 });
+  }
+  return Response.json({ resource: createResource(actor.id, kind, name) }, { status: 201 });
+}
+
+/**
+ * Guard for the per-kind item routes: an id whose kind prefix disagrees with
+ * the collection it was addressed through is a 404, not someone else's row.
+ */
+export async function resourceOfKind(request: Request, kind: ResourceKind, id: string): Promise<Response | null> {
+  const actor = await authorized(request);
+  if (actor instanceof Response) return actor;
+  const resource = resourceById(actor.id, id);
+  if (!resource || resource.kind !== kind) return Response.json({ error: "resource not found" }, { status: 404 });
+  return null;
 }
 
 export async function createResourceHandler(request: Request): Promise<Response> {

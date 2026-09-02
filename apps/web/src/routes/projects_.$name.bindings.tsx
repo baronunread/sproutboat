@@ -29,6 +29,9 @@ const KIND_LABEL = new Map([
 
 type Row = { binding: string; kind: string; target: string; resourceId: string | null };
 
+/** #77 — each kind now has its own product page to link a bound resource to. */
+const KIND_PAGE = new Map([["kv", "/kv"], ["d1", "/d1"], ["r2", "/r2"], ["queue", "/queues"]]);
+
 /** Flattens the artifact's binding set into one table the way Cloudflare lists them. */
 function rowsFor(bindings: Bindings, resources: Resource[]): Row[] {
   const byId = new Map(resources.map((resource) => [resource.id, resource]));
@@ -113,8 +116,8 @@ function ProjectBindings() {
                     <td><code>{row.binding}</code></td>
                     <td>{KIND_LABEL.get(row.kind) ?? row.kind}</td>
                     <td>
-                      {row.resourceId
-                        ? <Link className="text-link" to="/storage">{row.target}</Link>
+                      {row.resourceId && KIND_PAGE.has(row.kind)
+                        ? <Link className="text-link" to={KIND_PAGE.get(row.kind)!}>{row.target}</Link>
                         : row.target}
                       {row.resourceId && <small className="binding-id"> · <code>{row.resourceId}</code></small>}
                     </td>

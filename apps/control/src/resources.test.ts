@@ -101,3 +101,30 @@ test("deleting the deployment (project) frees the resource reference (FK cascade
   store.deleteProject("user-1", "app");
   expect(store.resourceReferencingProjects("user-1", r2.id)).toEqual([]);
 });
+
+test("#77 — ownerResourceProjects groups bindings by resource in one pass", async () => {
+  const kv = store.createResource("acct", "kv", "sessions");
+  const r2 = store.createResource("acct", "r2", "uploads");
+  const unused = store.createResource("acct", "queue", "jobs");
+  const other = store.createResource("stranger", "kv", "theirs");
+
+  const digest = "c".repeat(64);
+  await mkdir(join(dir, "artifacts", digest), { recursive: true });
+  await writeFile(join(dir, "artifacts", digest, "sprout"), "binary");
+  const base = {
+    ownerId: "acct", username: "acct", artifact: digest,
+    sproutPath: join(dir, "artifacts", digest, "sprout"), deployedAt: new Date().toISOString(),
+  };
+  store.recordDeployment({ ...base, id: "d-blog", project: "blog", hostname: "blog.acct.test", resourceIds: [kv.id, r2.id] });
+  store.recordDeployment({ ...base, id: "d-api", project: "api", hostname: "api.acct.test", resourceIds: [kv.id] });
+  store.recordDeployment({
+    ...base, id: "d-them", ownerId: "stranger", username: "stranger", project: "theirs",
+    hostname: "theirs.stranger.test", resourceIds: [other.id],
+  });
+
+  const bound = store.ownerResourceProjects("acct");
+  expect(bound.get(kv.id)).toEqual(["api", "blog"]); // both projects, deduped and ordered
+  expect(bound.get(r2.id)).toEqual(["blog"]);
+  expect(bound.has(unused.id)).toBe(false);          // never bound -> absent, so a list shows "—"
+  expect(bound.has(other.id)).toBe(false);           // another owner's binding never leaks in
+});
