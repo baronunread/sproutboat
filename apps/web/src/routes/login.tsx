@@ -1,6 +1,6 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
-import { SproutboatMark } from "../components";
+import { Button, SproutboatMark, TextField } from "../components";
 
 export const Route = createFileRoute("/login")({ component: Login, head: () => ({ meta: [{ title: "Sign in · Sproutboat" }] }) });
 
@@ -41,14 +41,17 @@ function Login() {
     if (!email || !password || busy) return;
     setBusy(true);
     setError(undefined);
-    const response = await fetch("/api/auth/sign-in/email", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ email, password, callbackURL: callbackTarget() }),
-    }).catch(() => undefined);
-    setBusy(false);
-    if (response?.ok) { location.assign(callbackTarget()); return; }
-    setError("That email and password did not match.");
+    try {
+      const response = await fetch("/api/auth/sign-in/email", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ email, password, callbackURL: callbackTarget() }),
+      }).catch(() => undefined);
+      if (response?.ok) { location.assign(callbackTarget()); return; }
+      setError("That email and password did not match.");
+    } finally {
+      setBusy(false);
+    }
   }
 
   const adminHint = config?.adminEmail && email === config.adminEmail;
@@ -61,18 +64,38 @@ function Login() {
         <p>Accounts are created by the admin — there is no self-service sign-up.</p>
         {config?.githubSignIn && (
           <>
-            <button className="button primary" type="button" onClick={() => void signInWithGithub()}>Continue with GitHub</button>
+            <Button variant="primary" onClick={() => void signInWithGithub()}>Continue with GitHub</Button>
             <p className="or-divider"><span>or</span></p>
           </>
         )}
-        <form className="password-signin" onSubmit={signInWithPassword}>
-          <label htmlFor="signin-email">Email</label>
-          <input id="signin-email" name="email" type="email" autoComplete="username" required value={email} onChange={(event) => setEmail(event.target.value)} />
-          <label htmlFor="signin-password">Password</label>
-          <input id="signin-password" name="password" type="password" autoComplete="current-password" required value={password} onChange={(event) => setPassword(event.target.value)} />
-          {adminHint && <p className="hint">Admin: your password is the token from <code>/root/sproutboat-admin.env</code>.</p>}
-          <button className={config?.githubSignIn ? "button" : "button primary"} type="submit" disabled={busy || !email || !password}>Sign in</button>
-          {error && <p className="form-error" role="alert">{error}</p>}
+        <form className="form-grid password-signin" onSubmit={signInWithPassword}>
+          <TextField
+            label="Email"
+            id="signin-email"
+            name="email"
+            type="email"
+            autoComplete="username"
+            required
+            value={email}
+            onChange={(event) => { setEmail(event.target.value); setError(undefined); }}
+          />
+          <TextField
+            label="Password"
+            id="signin-password"
+            name="password"
+            type="password"
+            autoComplete="current-password"
+            required
+            value={password}
+            onChange={(event) => { setPassword(event.target.value); setError(undefined); }}
+            hint={adminHint ? <>Admin: your password is the token from <code>/root/sproutboat-admin.env</code>.</> : undefined}
+            error={error ?? null}
+          />
+          <div className="form-actions">
+            <Button type="submit" variant={config?.githubSignIn ? "quiet" : "primary"} busy={busy} busyLabel="Signing in…" disabled={!email || !password}>
+              Sign in
+            </Button>
+          </div>
         </form>
       </section>
     </main>

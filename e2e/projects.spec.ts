@@ -9,13 +9,16 @@ test("projects list links into the control room", async ({ page }) => {
   await expect(page.getByRole("link", { name: "api", exact: true })).toBeVisible();
 });
 
-test("control room: navigate all four sections, back/forward, and deep links", async ({ page }) => {
+test("control room: navigate every section, back/forward, and deep links", async ({ page }) => {
   await openProject(page, "blog");
 
   const sections = page.getByRole("navigation", { name: "Project sections" });
   for (const [label, path] of [
+    ["Metrics", "/projects/blog/metrics"],
+    ["Logs", "/projects/blog/logs"],
     ["Deployments", "/projects/blog/deployments"],
-    ["Observability", "/projects/blog/observability"],
+    ["Bindings", "/projects/blog/bindings"],
+    ["Triggers", "/projects/blog/triggers"],
     ["Settings", "/projects/blog/settings"],
     ["Overview", "/projects/blog"],
   ] as const) {
@@ -28,7 +31,7 @@ test("control room: navigate all four sections, back/forward, and deep links", a
   await expect(page).toHaveURL(/\/projects\/blog\/settings$/);
 
   // deep link + reload
-  await page.goto("/projects/blog/observability");
+  await page.goto("/projects/blog/logs");
   await expect(page.getByRole("heading", { name: /request logs/i })).toBeVisible();
 });
 

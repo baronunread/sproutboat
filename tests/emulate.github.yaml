@@ -15,3 +15,5 @@ github:
       name: Sproutboat local dashboard
       redirect_uris:
         - https://dashboard.sproutboat.localhost/api/auth/callback/github
+        # portless falls back to :1355 when it cannot bind 443 (no sudo).
+        - https://dashboard.sproutboat.localhost:1355/api/auth/callback/github

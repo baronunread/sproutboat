@@ -119,18 +119,27 @@ async function tailLines(): Promise<{ lines: string[]; windowTruncated: boolean 
 /** Newest-first page of matching records, scanning only the last SCAN_CAP bytes. */
 export async function readLogHistory(
   hostname: string,
-  options: { before?: string; limit?: number; statusClass?: string; q?: string },
+  options: {
+    before?: string; limit?: number; statusClass?: string; q?: string;
+    // #3 query builder: the dashboard's field filters, applied in the same
+    // single pass as the text match so a filtered page costs one scan.
+    method?: string; minDurationMs?: number; coldStart?: boolean;
+  },
 ): Promise<LogPage> {
   const limit = Math.min(Math.max(1, options.limit ?? 100), MAX_LIMIT);
   const { lines, windowTruncated } = await tailLines();
 
   const q = options.q?.toLowerCase().trim();
   const wantClass = options.statusClass && options.statusClass !== "all" ? options.statusClass : undefined;
+  const wantMethod = options.method && options.method !== "all" ? options.method.toUpperCase() : undefined;
   const matched: LogRecord[] = [];
   for (const line of lines) {
     const record = parseLine(line, hostname);
     if (!record) continue;
     if (wantClass && record.statusClass !== wantClass) continue;
+    if (wantMethod && record.method?.toUpperCase() !== wantMethod) continue;
+    if (options.minDurationMs !== undefined && record.durationMs < options.minDurationMs) continue;
+    if (options.coldStart === true && !record.coldStart) continue;
     if (options.before && record.at >= options.before) continue;
     if (q && !line.toLowerCase().includes(q)) continue;
     matched.push(record);
@@ -306,9 +315,18 @@ export async function aggregateLogs(hostname: string, range: string): Promise<Me
 /**
  * #dashboard: request + success (2xx/3xx) counts across a set of routes, bounded
  * to the tail window. Backs the owner overview's success-rate metric.
+ *
+ * #76 — also returns the same window split into BUCKET_COUNT buckets, so the
+ * account overview can draw a traffic trend without a second scan of the log.
  */
-export async function routeTraffic(hostnames: Set<string>, rangeMs = RANGE_MS["24h"]): Promise<{ requests: number; successes: number }> {
-  const from = Date.now() - rangeMs;
+export async function routeTraffic(hostnames: Set<string>, rangeMs = RANGE_MS["24h"]): Promise<{
+  requests: number; successes: number; buckets: Array<{ start: string; count: number; errors: number }>;
+}> {
+  const to = Date.now();
+  const from = to - rangeMs;
+  const bucketMs = Math.floor(rangeMs / BUCKET_COUNT);
+  const counts: number[] = Array.from({ length: BUCKET_COUNT }, () => 0);
+  const errors: number[] = Array.from({ length: BUCKET_COUNT }, () => 0);
   const { lines } = await tailLines();
   let requests = 0;
   let successes = 0;
@@ -319,11 +337,25 @@ export async function routeTraffic(hostnames: Set<string>, rangeMs = RANGE_MS["2
       value = JSON.parse(line) as LogJson;
     } catch { continue; }
     if (!isRecord(value) || !isText(value.hostname) || !hostnames.has(value.hostname)) continue;
-    if (!isText(value.at) || !isFiniteNumber(value.status) || Date.parse(value.at) < from) continue;
+    if (!isText(value.at) || !isFiniteNumber(value.status)) continue;
+    const at = Date.parse(value.at);
+    if (at < from) continue;
     requests += 1;
     if (value.status >= 200 && value.status < 400) successes += 1;
+    // The final bucket is still filling; clamp so a just-now record lands in it.
+    const index = Math.min(BUCKET_COUNT - 1, Math.max(0, Math.floor((at - from) / bucketMs)));
+    counts[index] += 1;
+    if (value.status >= 500) errors[index] += 1;
   }
-  return { requests, successes };
+  return {
+    requests,
+    successes,
+    buckets: counts.map((count, index) => ({
+      start: new Date(from + index * bucketMs).toISOString(),
+      count,
+      errors: errors[index],
+    })),
+  };
 }
 
 /** #admin: request/error totals across every route, bounded to the tail window. */

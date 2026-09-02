@@ -26,6 +26,9 @@ test("roll back a superseded version, then it becomes active", async ({ page }) 
   const status = page.locator(".settings-panel").filter({ hasText: /^Version / }).locator(".status");
   await expect(status).toHaveText("Superseded");
   await page.getByRole("button", { name: /roll back to this version/i }).click();
+  const dialog = page.locator("dialog.confirm-dialog[open]");
+  await expect(dialog).toBeVisible();
+  await dialog.getByRole("button", { name: /^roll back$/i }).click();
   await expect(status).toHaveText("Active");
   await expect(page.getByRole("button", { name: /roll back to this version/i })).toHaveCount(0);
 });

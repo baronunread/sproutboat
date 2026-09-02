@@ -1,29 +1,25 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link, Outlet } from "@tanstack/react-router";
 import { Shell } from "../components";
-import { CliCredentials, DeleteAccount } from "../account";
-import { useAccount } from "../dashboard-data";
 
-export const Route = createFileRoute("/settings")({ component: Settings, head: () => ({ meta: [{ title: "Settings · Sproutboat" }] }) });
+export const Route = createFileRoute("/settings")({
+  component: SettingsLayout,
+  head: () => ({ meta: [{ title: "Settings · Sproutboat" }] }),
+});
 
-function setTheme(theme: "light" | "dark") { document.documentElement.dataset.theme = theme; localStorage.setItem("sproutboat-theme", theme); }
+const activeProps = { "aria-current": "page" as const };
 
-function Settings() {
-  const { account } = useAccount();
+function SettingsLayout() {
   return (
     <Shell>
       <section className="page-heading">
-        <div><h1>Settings</h1><p>Appearance preferences stay on this browser.</p></div>
+        <div><h1>Settings</h1><p>Your account, the credentials that reach it, and what this box allows.</p></div>
       </section>
-      <section className="data-panel settings-panel">
-        <h2>Theme</h2>
-        <p>Choose the workspace appearance that works best for your environment.</p>
-        <div className="theme-actions">
-          <button className="button quiet" type="button" onClick={() => setTheme("dark")}>Dark</button>
-          <button className="button quiet" type="button" onClick={() => setTheme("light")}>Light</button>
-        </div>
-      </section>
-      <CliCredentials />
-      <DeleteAccount username={account?.profile?.username} />
+      <nav className="section-nav" aria-label="Settings sections">
+        <Link to="/settings" activeOptions={{ exact: true }} activeProps={activeProps} className="section-tab">General</Link>
+        <Link to="/settings/tokens" activeProps={activeProps} className="section-tab">API tokens</Link>
+        <Link to="/settings/usage" activeProps={activeProps} className="section-tab">Usage &amp; limits</Link>
+      </nav>
+      <Outlet />
     </Shell>
   );
 }

@@ -49,6 +49,33 @@ test("filters by hostname, status class, and free text; drops malformed lines", 
   expect(missing.events[0].failure).toBe("no route");
 });
 
+test("#3 — filters by method, minimum duration, and cold start", async () => {
+  await writeFile(logFile, [
+    line({ at: "2026-01-01T00:00:01.000Z", method: "GET", durationMs: 5 }),
+    line({ at: "2026-01-01T00:00:02.000Z", method: "POST", durationMs: 250 }),
+    line({ at: "2026-01-01T00:00:03.000Z", method: "get", durationMs: 900, coldStart: true }),
+  ].join(""));
+
+  const posts = await logs.readLogHistory(HOST, { method: "POST" });
+  expect(posts.events.map((event) => event.at)).toEqual(["2026-01-01T00:00:02.000Z"]);
+
+  const gets = await logs.readLogHistory(HOST, { method: "get" }); // case-insensitive both ways
+  expect(gets.events).toHaveLength(2);
+
+  const slow = await logs.readLogHistory(HOST, { minDurationMs: 250 });
+  expect(slow.events.map((event) => event.durationMs)).toEqual([900, 250]);
+
+  const cold = await logs.readLogHistory(HOST, { coldStart: true });
+  expect(cold.events.map((event) => event.at)).toEqual(["2026-01-01T00:00:03.000Z"]);
+
+  const combined = await logs.readLogHistory(HOST, { method: "GET", minDurationMs: 250, coldStart: true });
+  expect(combined.events).toHaveLength(1);
+
+  // An omitted filter must not narrow anything.
+  expect((await logs.readLogHistory(HOST, { method: "all" })).events).toHaveLength(3);
+  expect((await logs.readLogHistory(HOST, { coldStart: undefined })).events).toHaveLength(3);
+});
+
 test("paginates with nextBefore and caps the limit", async () => {
   const many = Array.from({ length: 10 }, (_, index) =>
     line({ at: `2026-01-01T00:00:${String(index).padStart(2, "0")}.000Z`, status: 200 + index }));
@@ -221,4 +248,25 @@ test("tailLogs emits a ready frame, streams new lines, and closes on abort", asy
   controller.abort();
   const tail = await reader.read();
   expect(tail.done).toBe(true);
+});
+
+test("#76 — routeTraffic buckets the window and counts only the given routes", async () => {
+  const now = Date.now();
+  const at = (minutesAgo: number) => new Date(now - minutesAgo * 60_000).toISOString();
+  await writeFile(logFile, [
+    line({ at: at(10), status: 200 }),
+    line({ at: at(10), status: 503 }),
+    line({ at: at(600), status: 200 }),          // ~10h ago: a different bucket
+    line({ at: at(2000), status: 200 }),         // outside the 24h window
+    line({ at: at(5), hostname: "other.bob.test", status: 200 }), // another tenant
+  ].join(""));
+
+  const traffic = await logs.routeTraffic(new Set([HOST]));
+  expect(traffic.requests).toBe(3);
+  expect(traffic.successes).toBe(2);
+  expect(traffic.buckets).toHaveLength(24);
+  expect(traffic.buckets.reduce((sum, bucket) => sum + bucket.count, 0)).toBe(3);
+  expect(traffic.buckets.reduce((sum, bucket) => sum + bucket.errors, 0)).toBe(1); // only the 503
+  expect(traffic.buckets.filter((bucket) => bucket.count > 0)).toHaveLength(2);    // two distinct hours
+  expect(traffic.buckets.at(-1)?.count).toBe(2);                                   // newest bucket holds the recent pair
 });

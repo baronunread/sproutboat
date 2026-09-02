@@ -26,7 +26,7 @@ test("ban an account, verify it, then unban", async ({ page }) => {
 
   await sofiaRow.getByRole("button", { name: /^ban…$/i }).click();
   await sofiaRow.getByLabel("Ban reason").fill("e2e abuse");
-  await sofiaRow.getByLabel("Ban duration").selectOption({ label: "7 days" });
+  await sofiaRow.getByLabel("Duration").selectOption({ label: "7 days" });
   await sofiaRow.getByRole("button", { name: /ban account/i }).click();
 
   await expect(sofiaRow.locator(".status", { hasText: "Banned" })).toBeVisible();

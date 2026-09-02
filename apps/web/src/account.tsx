@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useState, type FormEvent } from "react";
-import { relativeTime } from "./dashboard-data";
+import { useState, type FormEvent } from "react";
+import { Button, ConfirmButton, PanelHeading, StatusMessage, TextField } from "./components";
+import { mutate, relativeTime, useJson } from "./dashboard-data";
 
 type Credential = {
   id: string; name: string | null; prefix: string | null; start: string | null;
@@ -12,64 +13,48 @@ type Credential = {
  * separate credential and is never listed or revoked here.
  */
 export function CliCredentials() {
-  const [items, setItems] = useState<Credential[]>([]);
-  const [state, setState] = useState<"loading" | "ready" | "error">("loading");
-  const [busy, setBusy] = useState("");
-  const [note, setNote] = useState("");
-
-  const load = useCallback(async () => {
-    setState("loading");
-    try {
-      const response = await fetch("/api/account/credentials", { credentials: "include" });
-      if (!response.ok) { setState("error"); return; }
-      // SAFETY: a 2xx here is the { credentials: Credential[] } contract.
-      const body = await response.json() as { credentials: Credential[] };
-      setItems(body.credentials); setState("ready");
-    } catch { setState("error"); }
-  }, []);
-  useEffect(() => { void load(); }, [load]);
+  const { data, state, refresh } = useJson<{ credentials: Credential[] }>("/api/account/credentials");
+  const [note, setNote] = useState<{ text: string; tone: "success" | "error" } | null>(null);
+  const items = data?.credentials ?? [];
 
   const revoke = async (id: string, label: string) => {
-    if (!confirm(`Revoke "${label}"? Any machine using it must run sproutboat login again.`)) return;
-    setNote(""); setBusy(id);
-    try {
-      const response = await fetch(`/api/account/credentials/${encodeURIComponent(id)}`, { method: "DELETE", credentials: "include" });
-      setBusy("");
-      if (!response.ok) { setNote("Could not revoke that credential. Try again."); return; }
-      setNote(`Revoked "${label}".`);
-      await load();
-    } catch { setBusy(""); setNote("Could not reach the control plane. Try again."); }
+    const failure = await mutate(`/api/account/credentials/${encodeURIComponent(id)}`, { method: "DELETE" });
+    setNote({ text: failure ?? `Revoked “${label}”.`, tone: failure ? "error" : "success" });
+    await refresh();
   };
 
   const revokeAll = async () => {
-    if (!confirm("Revoke every CLI credential? Every machine must run sproutboat login again.")) return;
-    setNote(""); setBusy("all");
-    try {
-      const response = await fetch("/api/account/credentials", { method: "DELETE", credentials: "include" });
-      setBusy("");
-      if (!response.ok) { setNote("Could not revoke the credentials. Try again."); return; }
-      // SAFETY: a 2xx from the revoke-all endpoint is { revoked: number }.
-      const body = await response.json() as { revoked: number };
-      setNote(`Revoked ${body.revoked} credential${body.revoked === 1 ? "" : "s"}.`);
-      await load();
-    } catch { setBusy(""); setNote("Could not reach the control plane. Try again."); }
+    const response = await fetch("/api/account/credentials", { method: "DELETE", credentials: "include" }).catch(() => null);
+    if (!response?.ok) { setNote({ text: "Could not revoke the credentials. Try again.", tone: "error" }); return; }
+    // SAFETY: a 2xx from the revoke-all endpoint is { revoked: number }.
+    const body = await response.json() as { revoked: number };
+    setNote({ text: `Revoked ${body.revoked} credential${body.revoked === 1 ? "" : "s"}.`, tone: "success" });
+    await refresh();
   };
 
   return (
     <section className="data-panel settings-panel">
-      <div className="panel-heading">
-        <div><h2>CLI credentials</h2><p>API keys created by <code>sproutboat login</code>. Your browser session is separate and stays signed in.</p></div>
-        {state === "ready" && items.length > 0 && (
-          <button type="button" className="button quiet" disabled={busy !== ""} onClick={() => void revokeAll()}>Revoke all</button>
-        )}
-      </div>
-      {note && <p className="form-status" role="status">{note}</p>}
+      <PanelHeading
+        title="API tokens"
+        description={<>Keys created by <code>sproutboat login</code>. Your browser session is separate and stays signed in.</>}
+        action={state === "ready" && items.length > 0 ? (
+          <ConfirmButton
+            label="Revoke all"
+            busyLabel="Revoking…"
+            title="Revoke every API token?"
+            description={<>Every machine using one must run <code>sproutboat login</code> again. Your browser session is unaffected.</>}
+            confirmLabel="Revoke all tokens"
+            onConfirm={revokeAll}
+          />
+        ) : undefined}
+      />
+      {note && <StatusMessage tone={note.tone}>{note.text}</StatusMessage>}
       {state === "loading" ? (
-        <p className="loading-state" aria-live="polite">Loading credentials…</p>
+        <p className="loading-state" aria-live="polite">Loading tokens…</p>
       ) : state === "error" ? (
-        <p className="form-error" role="alert">Could not load credentials. Refresh and try again.</p>
+        <p className="form-error" role="alert">Could not load tokens. Refresh and try again.</p>
       ) : items.length === 0 ? (
-        <p className="empty-state">No CLI credentials yet. Run <code>sproutboat login</code> on a machine to create one.</p>
+        <p className="empty-state">No API tokens yet. Run <code>sproutboat login</code> on a machine to create one.</p>
       ) : (
         <ul className="credential-list">
           {items.map((credential) => {
@@ -82,9 +67,15 @@ export function CliCredentials() {
                 </div>
                 <span>{credential.lastUsedAt ? `Last used ${relativeTime(credential.lastUsedAt)}` : "Never used"}</span>
                 <span>{credential.expiresAt ? `Expires ${credential.expiresAt.slice(0, 10)}` : "No expiry"}</span>
-                <button type="button" className="text-button danger" disabled={busy !== ""} onClick={() => void revoke(credential.id, label)}>
-                  {busy === credential.id ? "Revoking…" : "Revoke"}
-                </button>
+                <ConfirmButton
+                  label="Revoke"
+                  busyLabel="Revoking…"
+                  triggerVariant="quiet"
+                  title={`Revoke “${label}”?`}
+                  description={<>Any machine using this token must run <code>sproutboat login</code> again. This takes effect immediately.</>}
+                  confirmLabel="Revoke token"
+                  onConfirm={() => revoke(credential.id, label)}
+                />
               </li>
             );
           })}
@@ -105,6 +96,7 @@ export function DeleteAccount({ username }: { username?: string }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const expected = username ?? "";
+  const mismatch = confirm !== "" && confirm !== expected;
 
   const submit = async (event: FormEvent) => {
     event.preventDefault();
@@ -123,22 +115,27 @@ export function DeleteAccount({ username }: { username?: string }) {
   };
 
   return (
-    <section className="data-panel settings-panel">
-      <h2>Delete account</h2>
-      <p>
-        This permanently removes your namespace, every project and deployment, all routed hostnames, and every issued CLI
-        credential. Active routes stop serving immediately and you are signed out. This cannot be undone.
-      </p>
-      <form className="danger-confirm" onSubmit={submit}>
-        <label htmlFor="delete-account-confirm">Type <strong>{expected || "your username"}</strong> to confirm.</label>
-        <div className="danger-confirm-row">
-          <input id="delete-account-confirm" value={confirm} autoComplete="off" spellCheck={false} placeholder={expected}
-            aria-invalid={error ? true : undefined} onChange={(event) => setConfirm(event.target.value)} />
-          <button type="submit" className="button danger" disabled={busy || !expected || confirm !== expected}>
-            {busy ? "Deleting…" : "Delete account"}
-          </button>
+    <section className="data-panel settings-panel danger-panel">
+      <PanelHeading
+        title="Delete account"
+        description="This permanently removes your namespace, every project and deployment, all routed hostnames, and every issued API token. Active routes stop serving immediately and you are signed out. This cannot be undone."
+      />
+      <form className="form-grid" onSubmit={submit}>
+        <TextField
+          label={`Type ${expected || "your username"} to confirm`}
+          value={confirm}
+          onChange={(event) => { setConfirm(event.target.value); setError(""); }}
+          autoComplete="off"
+          spellCheck={false}
+          placeholder={expected}
+          disabled={!expected}
+          error={mismatch ? "That does not match your username." : error || null}
+        />
+        <div className="form-actions">
+          <Button type="submit" variant="danger" busy={busy} busyLabel="Deleting…" disabled={!expected || confirm !== expected}>
+            Delete account
+          </Button>
         </div>
-        {error && <p className="form-error" role="alert">{error}</p>}
       </form>
     </section>
   );

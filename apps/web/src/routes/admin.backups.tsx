@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
-import { relativeTime } from "../dashboard-data";
+import { Button, ConfirmButton, PanelHeading, StatusMessage } from "../components";
+import { mutate, relativeTime } from "../dashboard-data";
 
 export const Route = createFileRoute("/admin/backups")({ component: AdminBackups });
 
@@ -51,26 +52,20 @@ function AdminBackups() {
 
   const remove = async (name: string) => {
     setNote("");
-    try {
-      const response = await fetch(`/api/admin/backups/${encodeURIComponent(name)}`, { method: "DELETE", credentials: "include" });
-      if (!response.ok) { setNote("Delete failed."); return; }
-      await load();
-    } catch { setNote("Could not reach the control plane."); }
+    const failure = await mutate(`/api/admin/backups/${encodeURIComponent(name)}`, { method: "DELETE" });
+    if (failure) { setNote(failure); return; }
+    await load();
   };
 
   return (
     <section className="data-panel settings-panel">
-      <div className="panel-heading">
-        <div>
-          <h2>Backups</h2>
-          <p>The SQLite metadata store plus the artifact directory and route snapshot, one gzipped archive each. A timer takes one daily; the last seven are kept.</p>
-        </div>
-        <button type="button" className="button" disabled={busy} onClick={() => void backUpNow()}>
-          {busy ? "Backing up…" : "Back up now"}
-        </button>
-      </div>
+      <PanelHeading
+        title="Backups"
+        description="The SQLite metadata store plus the artifact directory and route snapshot, one gzipped archive each. A timer takes one daily; the last seven are kept."
+        action={<Button busy={busy} busyLabel="Backing up…" onClick={() => void backUpNow()}>Back up now</Button>}
+      />
 
-      {note && <p className="form-error" role="alert">{note}</p>}
+      {note && <StatusMessage tone="error">{note}</StatusMessage>}
 
       {state === "loading" && <p className="loading-state" aria-live="polite">Loading backups…</p>}
       {state === "error" && <p className="form-error" role="alert">Could not load backups. Refresh and try again.</p>}
@@ -78,9 +73,11 @@ function AdminBackups() {
         <p className="empty-state">No backups yet. Take one now, or wait for the daily timer.</p>
       )}
       {state === "ready" && backups && backups.length > 0 && (
-        <table className="data-table">
+        <div className="log-scroll">
+        <table className="log-table">
+          <caption className="visually-hidden">Stored backup archives</caption>
           <thead>
-            <tr><th scope="col">Archive</th><th scope="col">Size</th><th scope="col">Taken</th><th scope="col">Off-box</th><th scope="col"><span className="sr-only">Actions</span></th></tr>
+            <tr><th scope="col">Archive</th><th scope="col">Size</th><th scope="col">Taken</th><th scope="col">Off-box</th><th scope="col"><span className="visually-hidden">Actions</span></th></tr>
           </thead>
           <tbody>
             {backups.map((backup) => (
@@ -91,12 +88,21 @@ function AdminBackups() {
                 <td>{backup.offsite ? "Uploaded" : "—"}</td>
                 <td className="row-actions">
                   <a className="button quiet" href={`/api/admin/backups/${encodeURIComponent(backup.name)}`} download>Download</a>
-                  <button type="button" className="text-button danger" onClick={() => void remove(backup.name)}>Delete</button>
+                  <ConfirmButton
+                    label="Delete"
+                    busyLabel="Deleting…"
+                    triggerVariant="quiet"
+                    title={`Delete ${backup.name}?`}
+                    description={<>This removes the archive from this box{backup.offsite ? " and from off-box storage" : ""}. Restoring from it will no longer be possible. This cannot be undone.</>}
+                    confirmLabel="Delete backup"
+                    onConfirm={() => remove(backup.name)}
+                  />
                 </td>
               </tr>
             ))}
           </tbody>
         </table>
+        </div>
       )}
 
       <p className="hint">Off-box upload runs when <code>SPROUTBOAT_BACKUP_S3_*</code> is set in <code>/etc/sproutboat/control.env</code> (any S3-compatible store). Restore on the box: stop the services, replace <code>/var/lib/sproutboat/sproutboat.sqlite</code> and <code>artifacts/</code> from the archive, then start again. See <code>infra/README.md</code>.</p>

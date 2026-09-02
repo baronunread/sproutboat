@@ -174,3 +174,24 @@ test("globalStats and ownerRollups aggregate across owners", () => {
   store.deleteOwner("acct-b");
   store.unbanOwner("acct-b");
 });
+
+test("#76 — deploymentResources returns the version's bound resources, owner-scoped", async () => {
+  const digest = "9".repeat(64);
+  await makeArtifact(digest);
+  const kv = store.createResource("res-owner", "kv", "sessions");
+  const r2 = store.createResource("res-owner", "r2", "uploads");
+  const other = store.createResource("other-owner", "kv", "theirs");
+  store.recordDeployment({
+    ...D({ id: "dr1", ownerId: "res-owner", project: "bound", hostname: "bound.res.test", artifact: digest }),
+    resourceIds: [kv.id, r2.id, other.id, kv.id], // duplicate + a resource this owner does not hold
+  });
+
+  expect(store.deploymentResources("res-owner", "dr1").map((resource) => resource.name)).toEqual(["sessions", "uploads"]);
+  expect(store.deploymentResources("other-owner", "dr1")).toEqual([]); // another owner sees nothing
+  expect(store.deploymentResources("res-owner", "missing")).toEqual([]);
+
+  store.deleteOwner("res-owner");
+  store.deleteResource("res-owner", kv.id);
+  store.deleteResource("res-owner", r2.id);
+  store.deleteResource("other-owner", other.id);
+});

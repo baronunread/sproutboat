@@ -26,13 +26,13 @@ test("account deletion signs out and redirects to /login", async ({ browser }) =
   const context = await browser.newContext({ storageState: authFile("deletable") });
   const page = await context.newPage();
   await page.goto("/settings");
-  // The delete form is server-rendered, so wait for the client to hydrate before
-  // typing — the CliCredentials fetch only fires once React has mounted.
-  await page.waitForResponse((response) => response.url().includes("/api/account/credentials"));
 
   const del = page.getByRole("button", { name: /^delete account$/i });
   await expect(del).toBeDisabled();
-  await page.locator("#delete-account-confirm").fill("deletable");
+  // The field is disabled until the account (and so the expected username) loads.
+  const confirmField = page.getByLabel(/type deletable to confirm/i);
+  await expect(confirmField).toBeEnabled();
+  await confirmField.fill("deletable");
   await expect(del).toBeEnabled();
 
   await del.click();

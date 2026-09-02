@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { SelectField } from "./components";
 
 type StatusClass = "2xx" | "3xx" | "4xx" | "5xx" | "other";
 type Bucket = { start: string; count: number; errors: number; coldStarts: number };
@@ -104,9 +105,9 @@ export function TrafficCharts({ name }: { name: string }) {
     <section className="data-panel settings-panel">
       <div className="panel-heading">
         <div><h2>Traffic</h2><p>Aggregated from edge request logs. Coarse buckets over a bounded scan — not a metrics platform.</p></div>
-        <select aria-label="Chart time range" value={range} onChange={(event) => setRange(event.target.value)}>
-          {RANGES.map(([value, label]) => <option key={value} value={value}>Last {label}</option>)}
-        </select>
+        <SelectField label="Time range" hideLabel value={range}
+          options={RANGES.map(([value, label]) => [value, `Last ${label}`] as const)}
+          onChange={(event) => setRange(event.target.value)} />
       </div>
 
       {state === "loading" ? (

@@ -1,7 +1,7 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { Copy, DeleteProject } from "../components";
-import { useProject } from "../dashboard-data";
+import { Button, ConfirmButton, Copy, DeleteProject, PanelHeading, StatusMessage, TextField } from "../components";
+import { mutate, useJson, useProject } from "../dashboard-data";
 
 export const Route = createFileRoute("/projects_/$name/settings")({ component: ProjectSettings });
 
@@ -21,160 +21,138 @@ function Value({ label, value, copy }: { label: string; value: string; copy?: bo
   );
 }
 
-type DomainRecord = {
-  hostname: string; verified: boolean;
-  verification: { type: string; name: string; value: string } | null;
-};
+/**
+ * #2/#76 — project secrets. The API never returns a value, only the name, so
+ * this panel lists names, sets or replaces a value, and deletes. A running
+ * worker keeps the secrets it started with; a change lands on the next deploy
+ * or sprout restart, which the panel says out loud.
+ */
+const SECRET_NAME_RULE = /^[A-Z][A-Z0-9_]*$/;
+const MAX_SECRET_BYTES = 8 * 1024;
 
-function CustomDomains({ name, hasActive }: { name: string; hasActive: boolean }) {
-  const [list, setList] = useState<DomainRecord[]>([]);
-  const [state, setState] = useState<"loading" | "ready" | "error">("loading");
-  const [hostname, setHostname] = useState("");
+function Secrets({ name, hasVersions }: { name: string; hasVersions: boolean }) {
+  const base = `/api/projects/${encodeURIComponent(name)}/secrets`;
+  const { data, state, refresh } = useJson<{ names: string[] }>(base);
+  const [secretName, setSecretName] = useState("");
+  const [value, setValue] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [note, setNote] = useState<{ text: string; tone: "success" | "error" } | null>(null);
 
-  const base = `/api/projects/${encodeURIComponent(name)}/domains`;
+  const names = data?.names ?? [];
+  const trimmedName = secretName.trim().toUpperCase();
+  const invalidName = secretName.trim() !== "" && !SECRET_NAME_RULE.test(trimmedName);
+  const tooLong = new TextEncoder().encode(value).length > MAX_SECRET_BYTES;
+  const replacing = names.includes(trimmedName);
 
-  const fetchList = async (): Promise<DomainRecord[] | null> => {
-    try {
-      const response = await fetch(base, { credentials: "include" });
-      if (!response.ok) return null;
-      // SAFETY: a 2xx from the domains endpoint is DomainRecord[].
-      return await response.json() as DomainRecord[];
-    } catch { return null; }
+  const submit = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!SECRET_NAME_RULE.test(trimmedName)) { setError("Use UPPER_SNAKE_CASE: letters, digits and underscores, starting with a letter."); return; }
+    if (!value) { setError("A value is required."); return; }
+    setBusy(true); setError(null); setNote(null);
+    const failure = await mutate(`${base}/${encodeURIComponent(trimmedName)}`, {
+      method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify({ value }),
+    });
+    setBusy(false);
+    if (failure) { setError(failure); return; }
+    setSecretName(""); setValue("");
+    setNote({ text: `${trimmedName} saved. It applies on the next deploy or sprout restart.`, tone: "success" });
+    await refresh();
   };
 
-  useEffect(() => {
-    let ignore = false;
-    setState("loading");
-    void fetchList().then((rows) => {
-      if (ignore) return;
-      if (rows) { setList(rows); setState("ready"); } else { setState("error"); }
-    });
-    return () => { ignore = true; };
-  }, [name]);
-
-  const call = async (url: string, init: RequestInit, onOk: () => void) => {
-    setBusy(true);
-    setError(null);
-    try {
-      const response = await fetch(url, { credentials: "include", ...init });
-      if (!response.ok) {
-        // SAFETY: an error body from this API is { error: string }.
-        const body = await response.json().catch(() => ({})) as { error?: string };
-        setError(body.error ?? `request failed (${response.status})`);
-      } else {
-        onOk();
-        const rows = await fetchList();
-        if (rows) setList(rows);
-      }
-    } catch {
-      setError("network error");
-    } finally {
-      setBusy(false);
-    }
+  const remove = async (secret: string) => {
+    const failure = await mutate(`${base}/${encodeURIComponent(secret)}`, { method: "DELETE" });
+    setNote({ text: failure ?? `Deleted ${secret}. It applies on the next deploy or sprout restart.`, tone: failure ? "error" : "success" });
+    await refresh();
   };
 
   return (
     <section className="data-panel settings-panel">
-      <h2>Custom domains</h2>
-      <p>Point your own hostname at this project. It serves whichever version is active, alongside the generated hostname.</p>
+      <PanelHeading
+        title="Secrets"
+        description="Encrypted at rest and handed to the deployment's binding broker. Values are never shown again after you save them."
+      />
 
-      {state === "loading" ? <p className="loading-state" aria-live="polite">Loading domains…</p>
-        : state === "error" ? <p className="form-error" role="alert">Could not load custom domains.</p>
-        : list.length === 0 ? <p className="empty-state">No custom domains attached.</p>
-        : (
-          <dl className="detail-grid">
-            {list.map((domain) => (
-              <div key={domain.hostname}>
-                <dt><code>{domain.hostname}</code> — {domain.verified ? "verified" : "pending verification"}</dt>
-                <dd>
-                  {domain.verification && (
-                    <p className="hint">
-                      Add DNS <code>{domain.verification.type}</code> <code>{domain.verification.name}</code> ={" "}
-                      <code>{domain.verification.value}</code>, then verify.
-                    </p>
-                  )}
-                  {!domain.verified && (
-                    <button type="button" disabled={busy} onClick={() => void call(`${base}/${domain.hostname}/verify`, { method: "POST" }, () => {})}>
-                      Verify
-                    </button>
-                  )}
-                  <button type="button" disabled={busy} onClick={() => void call(`${base}/${domain.hostname}`, { method: "DELETE" }, () => {})}>
-                    Remove
-                  </button>
-                </dd>
-              </div>
-            ))}
-          </dl>
-        )}
+      {note && <StatusMessage tone={note.tone}>{note.text}</StatusMessage>}
 
-      <form
-        onSubmit={(event) => {
-          event.preventDefault();
-          if (!hostname.trim()) return;
-          void call(base, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ hostname: hostname.trim() }) }, () => setHostname(""));
-        }}
-      >
-        <label>
-          Add a hostname
-          <input type="text" inputMode="url" placeholder="www.example.com" value={hostname} onChange={(event) => setHostname(event.target.value)} disabled={busy || !hasActive} />
-        </label>
-        <button type="submit" disabled={busy || !hasActive || !hostname.trim()}>Add</button>
-        {!hasActive && <p className="hint">Deploy a version first.</p>}
-        {error && <p className="form-error" role="alert">{error}</p>}
+      {state === "loading" ? (
+        <p className="loading-state" aria-live="polite">Loading secrets…</p>
+      ) : state === "error" ? (
+        <p className="form-error" role="alert">Could not load secrets. Refresh and try again.</p>
+      ) : names.length === 0 ? (
+        <p className="empty-state">No secrets set. Your handler reads them from <code>env</code> once one is bound.</p>
+      ) : (
+        <ul className="record-list secret-list">
+          {names.map((secret) => (
+            <li key={secret}>
+              <div><strong><code>{secret}</code></strong><small>Value hidden</small></div>
+              <ConfirmButton
+                label="Delete"
+                busyLabel="Deleting…"
+                triggerVariant="quiet"
+                title={`Delete ${secret}?`}
+                description={<>The running version keeps its current value until the next deploy or sprout restart. This cannot be undone.</>}
+                confirmLabel="Delete secret"
+                onConfirm={() => remove(secret)}
+              />
+            </li>
+          ))}
+        </ul>
+      )}
+
+      <form className="form-grid" onSubmit={(event) => void submit(event)}>
+        <TextField
+          label="Name"
+          value={secretName}
+          onChange={(event) => { setSecretName(event.target.value); setError(null); }}
+          placeholder="API_KEY"
+          autoComplete="off"
+          spellCheck={false}
+          disabled={!hasVersions}
+          hint="UPPER_SNAKE_CASE. Setting an existing name replaces its value."
+          error={invalidName ? "Use UPPER_SNAKE_CASE, starting with a letter." : null}
+          footer={replacing ? `${trimmedName} already exists — saving replaces its value.` : undefined}
+        />
+        <TextField
+          label="Value"
+          type="password"
+          value={value}
+          onChange={(event) => { setValue(event.target.value); setError(null); }}
+          autoComplete="new-password"
+          spellCheck={false}
+          disabled={!hasVersions}
+          hint={hasVersions ? "Stored encrypted; up to 8 KB." : "Deploy the project once before setting secrets."}
+          error={tooLong ? "Value exceeds the 8 KB limit." : error}
+        />
+        <div className="form-actions">
+          <Button type="submit" variant="primary" busy={busy} busyLabel="Saving…"
+            disabled={!hasVersions || !secretName.trim() || !value || invalidName || tooLong}>
+            {replacing ? "Replace secret" : "Add secret"}
+          </Button>
+        </div>
       </form>
     </section>
   );
 }
 
 function ProjectSettings() {
-  const { name, active } = useProject();
+  const { name, active, deployments } = useProject();
   const navigate = useNavigate();
-  const [detail, setDetail] = useState<Detail>();
-  const [state, setState] = useState<"idle" | "loading" | "ready" | "error">("idle");
-
-  useEffect(() => {
-    if (!active) { setState("idle"); return; }
-    setState("loading");
-    let ignore = false;
-    const load = async () => {
-      try {
-        const response = await fetch(`/api/projects/${encodeURIComponent(name)}/deployments/${encodeURIComponent(active.activeDeploymentId)}`, { credentials: "include" });
-        if (ignore) return;
-        if (!response.ok) { setState("error"); return; }
-        // SAFETY: a 2xx from the deployment-detail endpoint is the Detail contract.
-        const body = await response.json() as Detail;
-        if (ignore) return;
-        setDetail(body);
-        setState("ready");
-      } catch {
-        if (!ignore) setState("error");
-      }
-    };
-    void load();
-    return () => { ignore = true; };
-  }, [name, active]);
-
+  const { data: detail, state } = useJson<Detail>(
+    active ? `/api/projects/${encodeURIComponent(name)}/deployments/${encodeURIComponent(active.activeDeploymentId)}` : null,
+  );
   const manifest = detail?.manifest;
 
   return (
     <>
       <section className="data-panel settings-panel">
-        <h2>Route</h2>
-        <p>Managed per project. The hostname is generated from the project and namespace.</p>
-        <dl className="detail-grid">
-          <Value label="Generated hostname" value={active ? active.hostname : `${name}.<namespace>.sproutboat.com`} copy={Boolean(active)} />
-          <div><dt>State</dt><dd>{active ? "Serving the active version" : "Not serving — deploy a version or roll one back"}</dd></div>
-        </dl>
-      </section>
-
-      <section className="data-panel settings-panel">
-        <h2>Active artifact</h2>
-        <p>Immutable. These are baked into the deployed artifact — change your local config and run <code>sproutboat deploy</code> to produce a new version.</p>
+        <PanelHeading
+          title="Active artifact"
+          description={<>Immutable. These are baked into the deployed artifact — change your local config and run <code>sproutboat deploy</code> to produce a new version.</>}
+        />
         {!active ? (
           <p className="empty-state">No active deployment. Run <code>sproutboat deploy {name}</code> from the project directory to publish one.</p>
-        ) : state === "loading" || state === "idle" ? (
+        ) : state === "loading" ? (
           <p className="loading-state" aria-live="polite">Loading artifact details…</p>
         ) : state === "error" ? (
           <p className="form-error" role="alert">Could not load the active artifact. Refresh and try again.</p>
@@ -190,20 +168,18 @@ function ProjectSettings() {
             <Value label="Build image" value={manifest.buildImage} copy />
             <Value label="Source hash" value={manifest.sourceHash} copy />
             <Value label="Binary hash" value={manifest.binaryHash} copy />
-            <div><dt>Binary size</dt><dd>{manifest.binarySize} bytes <span className="hint">(16 MiB limit)</span></dd></div>
+            <div><dt>Binary size</dt><dd>{manifest.binarySize.toLocaleString()} bytes <span className="hint">(16 MiB limit)</span></dd></div>
             <Value label="Built" value={manifest.builtAt} />
           </dl>
         ) : (
           <p className="form-status">Artifact metadata is unavailable{detail?.manifestError ? `: ${detail.manifestError}` : "."}</p>
         )}
-        <p className="hint">The <code>http-sync-v0</code> profile has no runtime variables, secrets, storage bindings, or triggers.</p>
       </section>
 
-      <CustomDomains name={name} hasActive={Boolean(active)} />
+      <Secrets name={name} hasVersions={deployments.length > 0} />
 
       <section className="data-panel settings-panel danger-panel">
-        <h2>Danger zone</h2>
-        <p>Delete this project, every deployed version, and its route. This cannot be undone.</p>
+        <PanelHeading title="Danger zone" description="Delete this project, every deployed version, and its route. This cannot be undone." />
         <DeleteProject name={name} onDeleted={() => void navigate({ to: "/projects" })} />
       </section>
     </>

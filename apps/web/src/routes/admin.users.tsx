@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
+import { Button, Copy, PanelHeading, SelectField, StatusMessage, TextField } from "../components";
 import { relativeTime } from "../dashboard-data";
 
 export const Route = createFileRoute("/admin/users")({ component: AdminUsers });
@@ -57,17 +58,18 @@ function AdminUsers() {
 
   return (
     <section className="data-panel settings-panel">
-      <div className="panel-heading">
-        <div><h2>Users</h2><p>Accounts are created here — there is no self-service sign-up. Banning an account stops its routes immediately.</p></div>
-      </div>
+      <PanelHeading
+        title="Users"
+        description="Accounts are created here — there is no self-service sign-up. Banning an account stops its routes immediately."
+      />
 
       <CreateUserForm onCreated={() => void load()} />
 
       <div className="log-filters">
-        <input aria-label="Search users by email" placeholder="Search email" value={query}
-          onChange={(event) => { setOffset(0); setQuery(event.target.value); }} />
+        <TextField label="Search users" type="search" fieldClassName="grow" placeholder="Search by email"
+          value={query} onChange={(event) => { setOffset(0); setQuery(event.target.value); }} />
       </div>
-      {note && <p className="form-status" role="status">{note}</p>}
+      {note && <StatusMessage tone="error">{note}</StatusMessage>}
 
       {state === "loading" ? (
         <p className="loading-state" aria-live="polite">Loading users…</p>
@@ -83,9 +85,9 @@ function AdminUsers() {
             ))}
           </ul>
           <div className="pager">
-            <button type="button" className="button quiet" disabled={offset === 0} onClick={() => setOffset(Math.max(0, offset - PAGE))}>Previous</button>
+            <Button disabled={offset === 0} onClick={() => setOffset(Math.max(0, offset - PAGE))}>Previous</Button>
             <span>{offset + 1}–{Math.min(offset + page.users.length, page.total)} of {page.total}</span>
-            <button type="button" className="button quiet" disabled={offset + PAGE >= page.total} onClick={() => setOffset(offset + PAGE)}>Next</button>
+            <Button disabled={offset + PAGE >= page.total} onClick={() => setOffset(offset + PAGE)}>Next</Button>
           </div>
         </>
       )}
@@ -132,11 +134,12 @@ function CreateUserForm({ onCreated }: { onCreated: () => void }) {
   if (!open) {
     return (
       <div className="create-user">
-        <button type="button" className="button" onClick={() => { setOpen(true); setDone(null); }}>Create user</button>
+        <Button variant="primary" onClick={() => { setOpen(true); setDone(null); }}>Create user</Button>
         {done && (
-          <p className="form-status" role="status">
-            Created <code>{done.username}</code> ({done.email}). Starting password: <code>{done.password}</code> — copy it now, it isn't shown again.
-          </p>
+          <StatusMessage tone="success">
+            Created <code>{done.username}</code> ({done.email}). Starting password: <code>{done.password}</code>
+            <Copy value={done.password} /> — copy it now, it isn&apos;t shown again.
+          </StatusMessage>
         )}
       </div>
     );
@@ -144,20 +147,44 @@ function CreateUserForm({ onCreated }: { onCreated: () => void }) {
 
   return (
     <form className="create-user create-user-form" onSubmit={submit}>
-      <div className="create-user-fields">
-        <label>Email<input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} /></label>
-        <label>Namespace<input required pattern="[a-z0-9](?:[a-z0-9-]{1,30}[a-z0-9])?" title="3–32 lowercase letters, digits, hyphens" value={username} onChange={(e) => setUsername(e.target.value.toLowerCase())} /></label>
-        <label>Password
-          <span className="input-with-button">
-            <input type="text" required minLength={10} value={password} onChange={(e) => setPassword(e.target.value)} />
-            <button type="button" className="button quiet" onClick={() => setPassword(randomPassword())}>Generate</button>
-          </span>
-        </label>
+      <div className="form-grid two-up">
+        <TextField
+          label="Email"
+          type="email"
+          autoComplete="off"
+          required
+          value={email}
+          onChange={(event) => { setEmail(event.target.value); setError(""); }}
+          hint="The address they sign in with, or link GitHub to."
+        />
+        <TextField
+          label="Namespace"
+          required
+          autoComplete="off"
+          spellCheck={false}
+          value={username}
+          onChange={(event) => { setUsername(event.target.value.toLowerCase()); setError(""); }}
+          hint="3–32 lowercase letters, digits and hyphens. It appears in every route they deploy."
+          error={username !== "" && !/^[a-z0-9](?:[a-z0-9-]{1,30}[a-z0-9])?$/.test(username)
+            ? "Use 3–32 lowercase letters, digits or hyphens." : null}
+        />
+        <TextField
+          label="Starting password"
+          type="text"
+          autoComplete="off"
+          spellCheck={false}
+          required
+          minLength={10}
+          value={password}
+          onChange={(event) => { setPassword(event.target.value); setError(""); }}
+          hint="At least 10 characters. Shown once, here, so hand it over before you close this form."
+          error={password !== "" && password.length < 10 ? "Use at least 10 characters." : error || null}
+          footer={<Button variant="quiet" onClick={() => setPassword(randomPassword())}>Generate a password</Button>}
+        />
       </div>
-      {error && <p className="form-error" role="alert">{error}</p>}
-      <div className="create-user-actions">
-        <button type="button" className="button quiet" onClick={() => setOpen(false)}>Cancel</button>
-        <button type="submit" className="button primary" disabled={busy || !email || !username || password.length < 10}>Create account</button>
+      <div className="form-actions">
+        <Button variant="quiet" onClick={() => setOpen(false)}>Cancel</Button>
+        <Button type="submit" variant="primary" busy={busy} busyLabel="Creating…" disabled={!email || !username || password.length < 10}>Create account</Button>
       </div>
     </form>
   );
@@ -166,6 +193,7 @@ function CreateUserForm({ onCreated }: { onCreated: () => void }) {
 function UserItem({ user, onAct }: { user: UserRow; onAct: (id: string, path: string, body?: ActionBody) => Promise<void> }) {
   const [open, setOpen] = useState(false);
   const [banning, setBanning] = useState(false);
+  const [banBusy, setBanBusy] = useState(false);
   const [reason, setReason] = useState("");
   const [duration, setDuration] = useState(0);
   const [detail, setDetail] = useState<Detail>();
@@ -191,32 +219,38 @@ function UserItem({ user, onAct }: { user: UserRow; onAct: (id: string, path: st
   }, [open, detailState, user.id]);
 
   const submitBan = async () => {
-    await onAct(user.id, "ban", { reason: reason.trim() || undefined, expiresIn: duration || undefined });
+    setBanBusy(true);
+    try {
+      await onAct(user.id, "ban", { reason: reason.trim() || undefined, expiresIn: duration || undefined });
+    } finally {
+      setBanBusy(false);
+    }
     setBanning(false); setReason("");
   };
 
   return (
     <li className="user-item">
       <div className="user-row">
-        <button type="button" className="record-title" onClick={() => setOpen((value) => !value)}>{user.email}</button>
+        <button type="button" className="record-title" aria-expanded={open} onClick={() => setOpen((value) => !value)}>{user.email}</button>
         <small>{user.name ?? "—"} · {user.role} · joined {relativeTime(user.createdAt)}</small>
         <span>{user.projects} proj · {user.deployments} dep</span>
         <b className={user.banned ? "status" : "status live"}>{user.banned ? "Banned" : "Active"}</b>
         {user.banned
-          ? <button type="button" className="button quiet" onClick={() => void onAct(user.id, "unban")}>Unban</button>
-          : <button type="button" className="text-button danger" onClick={() => setBanning((value) => !value)}>Ban…</button>}
+          ? <Button onClick={() => void onAct(user.id, "unban")}>Unban</Button>
+          : <Button variant="danger" aria-expanded={banning} onClick={() => setBanning((value) => !value)}>Ban…</Button>}
       </div>
 
       {user.banned && user.banReason && <p className="hint">Reason: {user.banReason}{user.banExpires ? ` · lifts ${relativeTime(user.banExpires)}` : " · permanent"}</p>}
 
       {banning && (
         <div className="ban-form">
-          <input aria-label="Ban reason" placeholder="Reason (optional)" value={reason} onChange={(event) => setReason(event.target.value)} />
-          <select aria-label="Ban duration" value={duration} onChange={(event) => setDuration(Number(event.target.value))}>
-            {DURATIONS.map(([label, seconds]) => <option key={label} value={seconds}>{label}</option>)}
-          </select>
-          <button type="button" className="button quiet" onClick={() => setBanning(false)}>Cancel</button>
-          <button type="button" className="button danger" onClick={() => void submitBan()}>Ban account</button>
+          <TextField label="Ban reason" fieldClassName="grow" placeholder="Optional — shown in the users list"
+            value={reason} onChange={(event) => setReason(event.target.value)} />
+          <SelectField label="Duration" value={String(duration)}
+            options={DURATIONS.map(([label, seconds]) => [String(seconds), label] as const)}
+            onChange={(event) => setDuration(Number(event.target.value))} />
+          <Button onClick={() => setBanning(false)}>Cancel</Button>
+          <Button variant="danger" busy={banBusy} busyLabel="Banning…" onClick={() => void submitBan()}>Ban account</Button>
         </div>
       )}
 
@@ -248,7 +282,9 @@ function UserItem({ user, onAct }: { user: UserRow; onAct: (id: string, path: st
                   ))}
                 </ul>
               )}
-              <button type="button" className="button quiet" onClick={() => void onAct(user.id, "sessions/revoke")}>Revoke all sessions</button>
+              <div className="form-actions start">
+                <Button onClick={() => void onAct(user.id, "sessions/revoke")}>Revoke all sessions</Button>
+              </div>
             </>
           )}
         </div>

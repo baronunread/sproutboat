@@ -16,14 +16,21 @@ import { Route as LoginRouteImport } from './routes/login'
 import { Route as ProfileRouteImport } from './routes/profile'
 import { Route as ProjectsRouteImport } from './routes/projects'
 import { Route as SettingsRouteImport } from './routes/settings'
+import { Route as StorageRouteImport } from './routes/storage'
 import { Route as AdminIndexRouteImport } from './routes/admin.index'
 import { Route as AdminBackupsRouteImport } from './routes/admin.backups'
 import { Route as AdminUsersRouteImport } from './routes/admin.users'
 import { Route as ProjectsNameRouteImport } from './routes/projects_.$name'
+import { Route as SettingsIndexRouteImport } from './routes/settings.index'
+import { Route as SettingsTokensRouteImport } from './routes/settings.tokens'
+import { Route as SettingsUsageRouteImport } from './routes/settings.usage'
 import { Route as ProjectsNameIndexRouteImport } from './routes/projects_.$name.index'
+import { Route as ProjectsNameBindingsRouteImport } from './routes/projects_.$name.bindings'
 import { Route as ProjectsNameDeploymentsRouteImport } from './routes/projects_.$name.deployments'
-import { Route as ProjectsNameObservabilityRouteImport } from './routes/projects_.$name.observability'
+import { Route as ProjectsNameLogsRouteImport } from './routes/projects_.$name.logs'
+import { Route as ProjectsNameMetricsRouteImport } from './routes/projects_.$name.metrics'
 import { Route as ProjectsNameSettingsRouteImport } from './routes/projects_.$name.settings'
+import { Route as ProjectsNameTriggersRouteImport } from './routes/projects_.$name.triggers'
 import { Route as ProjectsNameDeploymentsIdRouteImport } from './routes/projects_.$name.deployments_.$id'
 
 const IndexRoute = IndexRouteImport.update({
@@ -61,6 +68,11 @@ const SettingsRoute = SettingsRouteImport.update({
   path: '/settings',
   getParentRoute: () => rootRouteImport,
 } as any)
+const StorageRoute = StorageRouteImport.update({
+  id: '/storage',
+  path: '/storage',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const AdminIndexRoute = AdminIndexRouteImport.update({
   id: '/',
   path: '/',
@@ -81,9 +93,29 @@ const ProjectsNameRoute = ProjectsNameRouteImport.update({
   path: '/projects/$name',
   getParentRoute: () => rootRouteImport,
 } as any)
+const SettingsIndexRoute = SettingsIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => SettingsRoute,
+} as any)
+const SettingsTokensRoute = SettingsTokensRouteImport.update({
+  id: '/tokens',
+  path: '/tokens',
+  getParentRoute: () => SettingsRoute,
+} as any)
+const SettingsUsageRoute = SettingsUsageRouteImport.update({
+  id: '/usage',
+  path: '/usage',
+  getParentRoute: () => SettingsRoute,
+} as any)
 const ProjectsNameIndexRoute = ProjectsNameIndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => ProjectsNameRoute,
+} as any)
+const ProjectsNameBindingsRoute = ProjectsNameBindingsRouteImport.update({
+  id: '/bindings',
+  path: '/bindings',
   getParentRoute: () => ProjectsNameRoute,
 } as any)
 const ProjectsNameDeploymentsRoute = ProjectsNameDeploymentsRouteImport.update({
@@ -91,15 +123,24 @@ const ProjectsNameDeploymentsRoute = ProjectsNameDeploymentsRouteImport.update({
   path: '/deployments',
   getParentRoute: () => ProjectsNameRoute,
 } as any)
-const ProjectsNameObservabilityRoute =
-  ProjectsNameObservabilityRouteImport.update({
-    id: '/observability',
-    path: '/observability',
-    getParentRoute: () => ProjectsNameRoute,
-  } as any)
+const ProjectsNameLogsRoute = ProjectsNameLogsRouteImport.update({
+  id: '/logs',
+  path: '/logs',
+  getParentRoute: () => ProjectsNameRoute,
+} as any)
+const ProjectsNameMetricsRoute = ProjectsNameMetricsRouteImport.update({
+  id: '/metrics',
+  path: '/metrics',
+  getParentRoute: () => ProjectsNameRoute,
+} as any)
 const ProjectsNameSettingsRoute = ProjectsNameSettingsRouteImport.update({
   id: '/settings',
   path: '/settings',
+  getParentRoute: () => ProjectsNameRoute,
+} as any)
+const ProjectsNameTriggersRoute = ProjectsNameTriggersRouteImport.update({
+  id: '/triggers',
+  path: '/triggers',
   getParentRoute: () => ProjectsNameRoute,
 } as any)
 const ProjectsNameDeploymentsIdRoute =
@@ -116,14 +157,21 @@ export interface FileRoutesByFullPath {
   '/login': typeof LoginRoute
   '/profile': typeof ProfileRoute
   '/projects': typeof ProjectsRoute
-  '/settings': typeof SettingsRoute
+  '/settings': typeof SettingsRouteWithChildren
+  '/storage': typeof StorageRoute
   '/admin/backups': typeof AdminBackupsRoute
   '/admin/users': typeof AdminUsersRoute
   '/projects/$name': typeof ProjectsNameRouteWithChildren
+  '/settings/tokens': typeof SettingsTokensRoute
+  '/settings/usage': typeof SettingsUsageRoute
   '/admin/': typeof AdminIndexRoute
+  '/settings/': typeof SettingsIndexRoute
+  '/projects/$name/bindings': typeof ProjectsNameBindingsRoute
   '/projects/$name/deployments': typeof ProjectsNameDeploymentsRoute
-  '/projects/$name/observability': typeof ProjectsNameObservabilityRoute
+  '/projects/$name/logs': typeof ProjectsNameLogsRoute
+  '/projects/$name/metrics': typeof ProjectsNameMetricsRoute
   '/projects/$name/settings': typeof ProjectsNameSettingsRoute
+  '/projects/$name/triggers': typeof ProjectsNameTriggersRoute
   '/projects/$name/': typeof ProjectsNameIndexRoute
   '/projects/$name/deployments/$id': typeof ProjectsNameDeploymentsIdRoute
 }
@@ -133,13 +181,19 @@ export interface FileRoutesByTo {
   '/login': typeof LoginRoute
   '/profile': typeof ProfileRoute
   '/projects': typeof ProjectsRoute
-  '/settings': typeof SettingsRoute
+  '/storage': typeof StorageRoute
   '/admin/backups': typeof AdminBackupsRoute
   '/admin/users': typeof AdminUsersRoute
+  '/settings/tokens': typeof SettingsTokensRoute
+  '/settings/usage': typeof SettingsUsageRoute
   '/admin': typeof AdminIndexRoute
+  '/settings': typeof SettingsIndexRoute
+  '/projects/$name/bindings': typeof ProjectsNameBindingsRoute
   '/projects/$name/deployments': typeof ProjectsNameDeploymentsRoute
-  '/projects/$name/observability': typeof ProjectsNameObservabilityRoute
+  '/projects/$name/logs': typeof ProjectsNameLogsRoute
+  '/projects/$name/metrics': typeof ProjectsNameMetricsRoute
   '/projects/$name/settings': typeof ProjectsNameSettingsRoute
+  '/projects/$name/triggers': typeof ProjectsNameTriggersRoute
   '/projects/$name': typeof ProjectsNameIndexRoute
   '/projects/$name/deployments/$id': typeof ProjectsNameDeploymentsIdRoute
 }
@@ -151,14 +205,21 @@ export interface FileRoutesById {
   '/login': typeof LoginRoute
   '/profile': typeof ProfileRoute
   '/projects': typeof ProjectsRoute
-  '/settings': typeof SettingsRoute
+  '/settings': typeof SettingsRouteWithChildren
+  '/storage': typeof StorageRoute
   '/admin/backups': typeof AdminBackupsRoute
   '/admin/users': typeof AdminUsersRoute
   '/projects_/$name': typeof ProjectsNameRouteWithChildren
+  '/settings/tokens': typeof SettingsTokensRoute
+  '/settings/usage': typeof SettingsUsageRoute
   '/admin/': typeof AdminIndexRoute
+  '/settings/': typeof SettingsIndexRoute
+  '/projects_/$name/bindings': typeof ProjectsNameBindingsRoute
   '/projects_/$name/deployments': typeof ProjectsNameDeploymentsRoute
-  '/projects_/$name/observability': typeof ProjectsNameObservabilityRoute
+  '/projects_/$name/logs': typeof ProjectsNameLogsRoute
+  '/projects_/$name/metrics': typeof ProjectsNameMetricsRoute
   '/projects_/$name/settings': typeof ProjectsNameSettingsRoute
+  '/projects_/$name/triggers': typeof ProjectsNameTriggersRoute
   '/projects_/$name/': typeof ProjectsNameIndexRoute
   '/projects_/$name/deployments_/$id': typeof ProjectsNameDeploymentsIdRoute
 }
@@ -172,13 +233,20 @@ export interface FileRouteTypes {
     | '/profile'
     | '/projects'
     | '/settings'
+    | '/storage'
     | '/admin/backups'
     | '/admin/users'
     | '/projects/$name'
+    | '/settings/tokens'
+    | '/settings/usage'
     | '/admin/'
+    | '/settings/'
+    | '/projects/$name/bindings'
     | '/projects/$name/deployments'
-    | '/projects/$name/observability'
+    | '/projects/$name/logs'
+    | '/projects/$name/metrics'
     | '/projects/$name/settings'
+    | '/projects/$name/triggers'
     | '/projects/$name/'
     | '/projects/$name/deployments/$id'
   fileRoutesByTo: FileRoutesByTo
@@ -188,13 +256,19 @@ export interface FileRouteTypes {
     | '/login'
     | '/profile'
     | '/projects'
-    | '/settings'
+    | '/storage'
     | '/admin/backups'
     | '/admin/users'
+    | '/settings/tokens'
+    | '/settings/usage'
     | '/admin'
+    | '/settings'
+    | '/projects/$name/bindings'
     | '/projects/$name/deployments'
-    | '/projects/$name/observability'
+    | '/projects/$name/logs'
+    | '/projects/$name/metrics'
     | '/projects/$name/settings'
+    | '/projects/$name/triggers'
     | '/projects/$name'
     | '/projects/$name/deployments/$id'
   id:
@@ -206,13 +280,20 @@ export interface FileRouteTypes {
     | '/profile'
     | '/projects'
     | '/settings'
+    | '/storage'
     | '/admin/backups'
     | '/admin/users'
     | '/projects_/$name'
+    | '/settings/tokens'
+    | '/settings/usage'
     | '/admin/'
+    | '/settings/'
+    | '/projects_/$name/bindings'
     | '/projects_/$name/deployments'
-    | '/projects_/$name/observability'
+    | '/projects_/$name/logs'
+    | '/projects_/$name/metrics'
     | '/projects_/$name/settings'
+    | '/projects_/$name/triggers'
     | '/projects_/$name/'
     | '/projects_/$name/deployments_/$id'
   fileRoutesById: FileRoutesById
@@ -224,7 +305,8 @@ export interface RootRouteChildren {
   LoginRoute: typeof LoginRoute
   ProfileRoute: typeof ProfileRoute
   ProjectsRoute: typeof ProjectsRoute
-  SettingsRoute: typeof SettingsRoute
+  SettingsRoute: typeof SettingsRouteWithChildren
+  StorageRoute: typeof StorageRoute
   ProjectsNameRoute: typeof ProjectsNameRouteWithChildren
 }
 
@@ -279,6 +361,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof SettingsRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/storage': {
+      id: '/storage'
+      path: '/storage'
+      fullPath: '/storage'
+      preLoaderRoute: typeof StorageRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/admin/': {
       id: '/admin/'
       path: '/'
@@ -307,11 +396,39 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ProjectsNameRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/settings/': {
+      id: '/settings/'
+      path: '/'
+      fullPath: '/settings/'
+      preLoaderRoute: typeof SettingsIndexRouteImport
+      parentRoute: typeof SettingsRoute
+    }
+    '/settings/tokens': {
+      id: '/settings/tokens'
+      path: '/tokens'
+      fullPath: '/settings/tokens'
+      preLoaderRoute: typeof SettingsTokensRouteImport
+      parentRoute: typeof SettingsRoute
+    }
+    '/settings/usage': {
+      id: '/settings/usage'
+      path: '/usage'
+      fullPath: '/settings/usage'
+      preLoaderRoute: typeof SettingsUsageRouteImport
+      parentRoute: typeof SettingsRoute
+    }
     '/projects_/$name/': {
       id: '/projects_/$name/'
       path: '/'
       fullPath: '/projects/$name/'
       preLoaderRoute: typeof ProjectsNameIndexRouteImport
+      parentRoute: typeof ProjectsNameRoute
+    }
+    '/projects_/$name/bindings': {
+      id: '/projects_/$name/bindings'
+      path: '/bindings'
+      fullPath: '/projects/$name/bindings'
+      preLoaderRoute: typeof ProjectsNameBindingsRouteImport
       parentRoute: typeof ProjectsNameRoute
     }
     '/projects_/$name/deployments': {
@@ -321,11 +438,18 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ProjectsNameDeploymentsRouteImport
       parentRoute: typeof ProjectsNameRoute
     }
-    '/projects_/$name/observability': {
-      id: '/projects_/$name/observability'
-      path: '/observability'
-      fullPath: '/projects/$name/observability'
-      preLoaderRoute: typeof ProjectsNameObservabilityRouteImport
+    '/projects_/$name/logs': {
+      id: '/projects_/$name/logs'
+      path: '/logs'
+      fullPath: '/projects/$name/logs'
+      preLoaderRoute: typeof ProjectsNameLogsRouteImport
+      parentRoute: typeof ProjectsNameRoute
+    }
+    '/projects_/$name/metrics': {
+      id: '/projects_/$name/metrics'
+      path: '/metrics'
+      fullPath: '/projects/$name/metrics'
+      preLoaderRoute: typeof ProjectsNameMetricsRouteImport
       parentRoute: typeof ProjectsNameRoute
     }
     '/projects_/$name/settings': {
@@ -333,6 +457,13 @@ declare module '@tanstack/react-router' {
       path: '/settings'
       fullPath: '/projects/$name/settings'
       preLoaderRoute: typeof ProjectsNameSettingsRouteImport
+      parentRoute: typeof ProjectsNameRoute
+    }
+    '/projects_/$name/triggers': {
+      id: '/projects_/$name/triggers'
+      path: '/triggers'
+      fullPath: '/projects/$name/triggers'
+      preLoaderRoute: typeof ProjectsNameTriggersRouteImport
       parentRoute: typeof ProjectsNameRoute
     }
     '/projects_/$name/deployments_/$id': {
@@ -359,18 +490,40 @@ const AdminRouteChildren: AdminRouteChildren = {
 
 const AdminRouteWithChildren = AdminRoute._addFileChildren(AdminRouteChildren)
 
+interface SettingsRouteChildren {
+  SettingsTokensRoute: typeof SettingsTokensRoute
+  SettingsUsageRoute: typeof SettingsUsageRoute
+  SettingsIndexRoute: typeof SettingsIndexRoute
+}
+
+const SettingsRouteChildren: SettingsRouteChildren = {
+  SettingsTokensRoute: SettingsTokensRoute,
+  SettingsUsageRoute: SettingsUsageRoute,
+  SettingsIndexRoute: SettingsIndexRoute,
+}
+
+const SettingsRouteWithChildren = SettingsRoute._addFileChildren(
+  SettingsRouteChildren,
+)
+
 interface ProjectsNameRouteChildren {
+  ProjectsNameBindingsRoute: typeof ProjectsNameBindingsRoute
   ProjectsNameDeploymentsRoute: typeof ProjectsNameDeploymentsRoute
-  ProjectsNameObservabilityRoute: typeof ProjectsNameObservabilityRoute
+  ProjectsNameLogsRoute: typeof ProjectsNameLogsRoute
+  ProjectsNameMetricsRoute: typeof ProjectsNameMetricsRoute
   ProjectsNameSettingsRoute: typeof ProjectsNameSettingsRoute
+  ProjectsNameTriggersRoute: typeof ProjectsNameTriggersRoute
   ProjectsNameIndexRoute: typeof ProjectsNameIndexRoute
   ProjectsNameDeploymentsIdRoute: typeof ProjectsNameDeploymentsIdRoute
 }
 
 const ProjectsNameRouteChildren: ProjectsNameRouteChildren = {
+  ProjectsNameBindingsRoute: ProjectsNameBindingsRoute,
   ProjectsNameDeploymentsRoute: ProjectsNameDeploymentsRoute,
-  ProjectsNameObservabilityRoute: ProjectsNameObservabilityRoute,
+  ProjectsNameLogsRoute: ProjectsNameLogsRoute,
+  ProjectsNameMetricsRoute: ProjectsNameMetricsRoute,
   ProjectsNameSettingsRoute: ProjectsNameSettingsRoute,
+  ProjectsNameTriggersRoute: ProjectsNameTriggersRoute,
   ProjectsNameIndexRoute: ProjectsNameIndexRoute,
   ProjectsNameDeploymentsIdRoute: ProjectsNameDeploymentsIdRoute,
 }
@@ -386,7 +539,8 @@ const rootRouteChildren: RootRouteChildren = {
   LoginRoute: LoginRoute,
   ProfileRoute: ProfileRoute,
   ProjectsRoute: ProjectsRoute,
-  SettingsRoute: SettingsRoute,
+  SettingsRoute: SettingsRouteWithChildren,
+  StorageRoute: StorageRoute,
   ProjectsNameRoute: ProjectsNameRouteWithChildren,
 }
 export const routeTree = rootRouteImport
