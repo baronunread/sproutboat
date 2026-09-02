@@ -6,7 +6,7 @@ import { parseConfig } from "sproutboat/runtime/config";
 import { validateHttpSyncSource } from "sproutboat/runtime/source";
 import { validateManifest } from "sproutboat/runtime/manifest";
 import { validateArtifactDirectory } from "../apps/control/src/artifact";
-import { deploymentHostname } from "../apps/control/src/deployments";
+import { artifactDigest, deploymentHostname } from "../apps/control/src/deployments";
 import { profileForUser, reserveUsername, validUsername } from "../apps/control/src/identity";
 import { createCliAuthorization, exchangeCliAuthorization } from "../apps/control/src/cli-authorization";
 import { readVarsFromEnv, wrapNativeFetchHandler } from "../tools/compile";
@@ -83,6 +83,26 @@ describe("Phase A contracts", () => {
     const result = await validateArtifactDirectory(path);
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.errors).toEqual(expect.arrayContaining(["sprout is missing or unreadable"]));
+  });
+
+  test("#80 — artifact digest covers the sidecars, not just the sprout hash", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "sb-digest-"));
+    const binaryHash = `sha256:${"a".repeat(64)}`;
+
+    const bare = await artifactDigest(dir, binaryHash);
+    expect(bare).toMatch(/^[a-f0-9]{64}$/);
+    expect(bare).not.toBe(binaryHash.slice("sha256:".length)); // not the raw sprout hash
+
+    await Bun.write(join(dir, "assets.json"), `{"files":{"/a":{"hash":"x","size":1}}}`);
+    const withAssets = await artifactDigest(dir, binaryHash);
+    expect(withAssets).not.toBe(bare);
+
+    await Bun.write(join(dir, "assets.json"), `{"files":{"/a":{"hash":"CHANGED","size":1}}}`);
+    const changedAssets = await artifactDigest(dir, binaryHash);
+    expect(changedAssets).not.toBe(withAssets); // a changed asset tree = a new artifact
+
+    await Bun.write(join(dir, "bindings.json"), `{"kv":["X"]}`);
+    expect(await artifactDigest(dir, binaryHash)).not.toBe(changedAssets);
   });
 
   test("uses a reserved user namespace in nested deployment hostnames", async () => {

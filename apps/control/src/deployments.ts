@@ -1,6 +1,6 @@
-import { chmod, mkdir, rename, rm, writeFile } from "node:fs/promises";
+import { chmod, mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { basename, dirname, resolve } from "node:path";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { validateArtifactDirectory, type ResourceBindingRef } from "./artifact";
 import { actorFor, purgeUser, type Actor } from "./identity";
 import { guardDeploy, guardNewProject, LIMITS } from "./limits";
@@ -246,6 +246,24 @@ function resolveResourceBindings(refs: ResourceBindingRef[], ownerId: string): s
   return [...new Set(ids)];
 }
 
+/**
+ * #80 — an artifact's identity is its sprout binary plus the sidecars that ride
+ * with it. `assets.json` already carries a hash per asset file, so hashing it
+ * covers the whole tree. Without this, a changed asset tree on an unchanged
+ * handler produced the same digest, hit EEXIST on rename, and the new assets
+ * were discarded.
+ */
+export async function artifactDigest(dir: string, binaryHash: string): Promise<string> {
+  const hash = createHash("sha256");
+  hash.update(binaryHash);
+  for (const sidecar of ["bindings.json", "assets.json"]) {
+    hash.update(`\n${sidecar}\n`);
+    try { hash.update(await readFile(resolve(dir, sidecar))); }
+    catch { /* sidecar absent for this project */ }
+  }
+  return hash.digest("hex");
+}
+
 export async function deployArtifact(request: Request, project: string): Promise<Response> {
   const actor = await authorized(request);
   if (actor instanceof Response) return actor;
@@ -298,13 +316,27 @@ export async function deployArtifact(request: Request, project: string): Promise
     const validation = await validateArtifactDirectory(temporary);
     if (!validation.ok) return Response.json({ error: "invalid artifact", details: validation.errors }, { status: 400 });
     if (validation.value.manifest.project !== project) return Response.json({ error: "manifest project does not match request path" }, { status: 400 });
+    const digest = await artifactDigest(temporary, validation.value.manifest.binaryHash);
+
+    // Nothing changed — same sprout, same sidecars — and it is already live.
+    // Drop the upload and report the no-op instead of stacking a duplicate version.
+    const unchanged = projectDeployments(actor.id, project).find((deployment) => deployment.active && deployment.artifact === digest);
+    if (unchanged) {
+      await rm(temporary, { recursive: true, force: true });
+      return Response.json(
+        { id: unchanged.id, hostname: unchanged.hostname, url: `https://${unchanged.hostname}`, artifact: digest, activated: false, unchanged: true },
+        { status: 200 },
+      );
+    }
+
     // #55: capture the outgoing version's Porffor pin before it is replaced.
     const previousPorffor = await activePorfforVersion(actor.id, project);
-    const digest = validation.value.manifest.binaryHash.slice("sha256:".length);
     const destination = resolve(artifactRoot, digest);
     try { await rename(temporary, destination); }
     catch (error) {
       if (!(error instanceof Error) || !("code" in error) || (error.code !== "EEXIST" && error.code !== "ENOTEMPTY")) throw error;
+      // Same digest dir already on disk (a prior version of another project, or a
+      // race). Its contents match this digest by construction, so reuse it.
       await rm(temporary, { recursive: true, force: true });
     }
     // #74 — every `{ binding, id }` the artifact declares must name a storage
