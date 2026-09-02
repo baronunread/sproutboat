@@ -317,20 +317,21 @@ export function Shell({
   const { account } = useAccount();
   const computeOpen = ["/projects", "/queues"].some((path) => pathname.startsWith(path));
   const storageOpen = ["/kv", "/d1", "/r2"].some((path) => pathname.startsWith(path));
+  // The rail's state is stamped on <html> by the boot script before first paint,
+  // so it never flashes expanded on reload. React mirrors it for aria-expanded;
+  // the attribute, not a class on this element, is what CSS keys off.
   const [collapsed, setCollapsed] = useState(false);
-  // Read the stored preference after mount: the shell is prerendered, so doing
-  // it during render would bake one viewer's choice into the static file.
-  useEffect(() => { setCollapsed(localStorage.getItem("sproutboat-nav") === "collapsed"); }, []);
+  useEffect(() => { setCollapsed(document.documentElement.dataset.nav === "collapsed"); }, []);
   const toggleNav = () => {
-    setCollapsed((current) => {
-      localStorage.setItem("sproutboat-nav", current ? "expanded" : "collapsed");
-      return !current;
-    });
+    const next = document.documentElement.dataset.nav !== "collapsed";
+    document.documentElement.dataset.nav = next ? "collapsed" : "expanded";
+    localStorage.setItem("sproutboat-nav", next ? "collapsed" : "expanded");
+    setCollapsed(next);
   };
   const username = account?.profile?.username;
   const displayName = username || account?.user?.name || "account";
   return (
-    <div className={collapsed ? "app-shell nav-collapsed" : "app-shell"}>
+    <div className="app-shell">
       <aside className="sidebar">
         <div className="sidebar-top">
           <Link className="brand" to="/">

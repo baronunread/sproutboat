@@ -1,5 +1,5 @@
 import { createFileRoute, Link, Outlet } from "@tanstack/react-router";
-import { Shell } from "../components";
+
 
 export const Route = createFileRoute("/settings")({
   component: SettingsLayout,
@@ -10,7 +10,7 @@ const activeProps = { "aria-current": "page" as const };
 
 function SettingsLayout() {
   return (
-    <Shell>
+    <>
       <section className="page-heading">
         <div><h1>Settings</h1><p>Your account, the credentials that reach it, and what this box allows.</p></div>
       </section>
@@ -20,6 +20,6 @@ function SettingsLayout() {
         <Link to="/settings/usage" activeProps={activeProps} className="section-tab">Usage &amp; limits</Link>
       </nav>
       <Outlet />
-    </Shell>
+    </>
   );
 }

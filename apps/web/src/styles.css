@@ -1370,25 +1370,25 @@ body { letter-spacing: -0.006em; }
 
 /* Collapsed: an icon rail. Labels leave the flow but stay in the a11y tree via
    the link's own text, which `title` also surfaces as a tooltip. */
-.nav-collapsed { grid-template-columns: 4rem minmax(0, 1fr); }
-.nav-collapsed .brand span,
-.nav-collapsed .nav-section-label,
-.nav-collapsed .nav-chevron,
-.nav-collapsed .sidebar-bottom { display: none; }
-.nav-collapsed .sidebar { padding-inline: 0.5rem; }
-.nav-collapsed .sidebar-top { justify-content: center; padding-inline: 0; }
-.nav-collapsed .nav-link { justify-content: center; padding-inline: 0; }
-.nav-collapsed .nav-link span:not(.visually-hidden) { display: none; }
+html[data-nav="collapsed"] .app-shell { grid-template-columns: 4rem minmax(0, 1fr); }
+html[data-nav="collapsed"] .brand span,
+html[data-nav="collapsed"] .nav-section-label,
+html[data-nav="collapsed"] .nav-chevron,
+html[data-nav="collapsed"] .sidebar-bottom { display: none; }
+html[data-nav="collapsed"] .sidebar { padding-inline: 0.5rem; }
+html[data-nav="collapsed"] .sidebar-top { justify-content: center; padding-inline: 0; }
+html[data-nav="collapsed"] .nav-link { justify-content: center; padding-inline: 0; }
+html[data-nav="collapsed"] .nav-link span:not(.visually-hidden) { display: none; }
 /* A group's children would be unreadable as bare indents with no label, so the
    group collapses to its icon and expanding the rail brings them back. */
-.nav-collapsed .nav-group-items { display: none; }
+html[data-nav="collapsed"] .nav-group-items { display: none; }
 @media (max-width: 800px) {
-  .nav-collapsed { grid-template-columns: 1fr; }
-  .nav-collapsed .nav-group-items { display: grid; }
-  .nav-collapsed .nav-link span:not(.visually-hidden) { display: inline; }
+  html[data-nav="collapsed"] .app-shell { grid-template-columns: 1fr; }
+  html[data-nav="collapsed"] .nav-group-items { display: grid; }
+  html[data-nav="collapsed"] .nav-link span:not(.visually-hidden) { display: inline; }
 }
 /* Collapsed rail: the group icon shows where you are, since its children are hidden. */
-.nav-collapsed .nav-group-current > .nav-group-summary { background: var(--panel-2); color: var(--text); }
+html[data-nav="collapsed"] .nav-group-current > .nav-group-summary { background: var(--panel-2); color: var(--text); }
 
 
 /* #79 Sprout cards. The whole card opens the sprout: the name link stretches an
