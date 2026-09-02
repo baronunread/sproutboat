@@ -1,5 +1,5 @@
 import { Buffer } from "node:buffer";
-import { resolve } from "node:path";
+import { dirname, resolve } from "node:path";
 
 /**
  * #3: bounded, filterable edge-log history + a live tail for one project's
@@ -348,6 +348,23 @@ export async function globalLogTotals(rangeMs = RANGE_MS["24h"]): Promise<{ requ
 export async function readLogTailText(hostname: string, limit = 100): Promise<string> {
   const page = await readLogHistory(hostname, { limit });
   return page.events.length ? `${page.events.map((event) => JSON.stringify(event)).reverse().join("\n")}\n` : "";
+}
+
+/**
+ * Tail of a deployment's sprout+broker stdout/stderr — the plain-text file the
+ * supervisor tees each running instance to (`sprouts/<artifact digest>.log`
+ * beside the request log). Empty string when the deployment has never started
+ * or produced no output. `digest` is the artifact-dir name, i.e.
+ * `basename(dirname(sproutPath))`.
+ */
+export async function readSproutLogText(digest: string, maxBytes = 64 * 1024): Promise<string> {
+  try {
+    const file = Bun.file(resolve(dirname(logPath()), "sprouts", `${digest}.log`));
+    const size = file.size;
+    return await file.slice(Math.max(0, size - maxBytes), size).text();
+  } catch {
+    return "";
+  }
 }
 
 /** Server-Sent Events stream of new matching records; stops on disconnect or the time cap. */

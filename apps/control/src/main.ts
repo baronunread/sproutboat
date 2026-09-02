@@ -1,7 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { adminEmail, ensureAdminSeeded, getAuth, githubSignInConfigured } from "./auth";
-import { activateDeployment, dashboardOverview, deleteAccount, deleteDeployment, deleteProject, deploymentDetail, deployArtifact, listDeployments, listProjects, projectLogHistory, projectLogs, projectLogTail, projectMetrics } from "./deployments";
+import { activateDeployment, dashboardOverview, deleteAccount, deleteDeployment, deleteProject, deploymentDetail, deployArtifact, listDeployments, listProjects, projectLogHistory, projectLogs, projectLogTail, projectMetrics, projectSproutLog } from "./deployments";
 import { addDomain, deleteDomain, listDomains, verifyDomain } from "./domains";
 import { listSecrets, putSecret, removeSecret } from "./secrets";
 import { actorFor, profileForUser, reserveUsername, sessionUser } from "./identity";
@@ -168,6 +168,8 @@ const server = Bun.serve({
     if (request.method === "GET" && logsTail) return projectLogTail(request, logsTail[1]);
     const logsRecent = /^\/api\/projects\/([a-z0-9-]+)\/logs\/recent$/.exec(url.pathname);
     if (request.method === "GET" && logsRecent) return projectLogs(request, logsRecent[1]);
+    const logsSprout = /^\/api\/projects\/([a-z0-9-]+)\/logs\/sprout$/.exec(url.pathname);
+    if (request.method === "GET" && logsSprout) return projectSproutLog(request, logsSprout[1]);
     const domains = /^\/api\/projects\/([a-z0-9-]+)\/domains$/.exec(url.pathname);
     if (request.method === "GET" && domains) return listDomains(request, domains[1]);
     if (request.method === "POST" && domains) return addDomain(request, domains[1]);

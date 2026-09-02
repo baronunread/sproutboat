@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readFileSync, rmSync } from "node:fs";
+import { closeSync, existsSync, mkdirSync, openSync, readFileSync, rmSync } from "node:fs";
 import { randomBytes } from "node:crypto";
 import { basename, dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -84,6 +84,22 @@ function spawnWithBroker(sproutPath: string, port: number, secretsPath?: string 
   let broker: Bun.Subprocess | null = null;
   const brokerEnv: Record<string, string> = {};
 
+  // Tee sprout + broker stdout/stderr to one plain-text file per deployment,
+  // truncated on each fresh spawn so it always shows the current instance
+  // (handler console.log, crashes, "broker rc -N"). Control reads it for
+  // `sproutboat tail --sprout`. `"ignore"` when there's no log dir (dev/tests)
+  // or the open fails.
+  const sproutLogPath = process.env.SPROUTBOAT_LOG_PATH
+    ? resolve(dirname(process.env.SPROUTBOAT_LOG_PATH), "sprouts", `${basename(workerDir)}.log`)
+    : null;
+  const openLog = (mode: "w" | "a"): number | "ignore" => {
+    if (!sproutLogPath) return "ignore";
+    try { mkdirSync(dirname(sproutLogPath), { recursive: true }); return openSync(sproutLogPath, mode); }
+    catch { return "ignore"; }
+  };
+  const withLog = (fd: number | "ignore") => ({ stdout: fd, stderr: fd } as const);
+  const closeLog = (fd: number | "ignore") => { if (fd !== "ignore") closeSync(fd); };
+
   if (existsSync(bindingsPath)) {
     const brokerPort = port + 10_000;
     const token = randomBytes(24).toString("hex");
@@ -116,7 +132,9 @@ function spawnWithBroker(sproutPath: string, port: number, secretsPath?: string 
     if (secretsPath && existsSync(secretsPath)) args.push("--secrets", secretsPath);
     // Static assets published beside the artifact back `env.<ASSETS>.fetch()`.
     if (existsSync(resolve(workerDir, "assets.json"))) args.push("--assets-dir", resolve(workerDir, "assets"));
-    broker = Bun.spawn(args, { stdout: "ignore", stderr: "ignore", env: process.env });
+    const brokerFd = openLog("w");
+    broker = Bun.spawn(args, { ...withLog(brokerFd), env: process.env });
+    closeLog(brokerFd);
     brokerEnv.SB_BROKER_PORT = String(brokerPort);
     brokerEnv.SB_BROKER_TOKEN = token;
   }
@@ -142,11 +160,12 @@ function spawnWithBroker(sproutPath: string, port: number, secretsPath?: string 
       // first binding call. Resolve as a failed exit; the pool retries next hit.
       if (!up) { capturedBroker.kill(9); return 1; }
     }
+    const sproutFd = openLog(capturedBroker ? "a" : "w");
     sprout = Bun.spawn(sproutCommand(sproutPath), {
-      stdout: "ignore",
-      stderr: "ignore",
+      ...withLog(sproutFd),
       env: { ...process.env, PORT: String(port), SB_STARTUP_FILE: startupFile, ...brokerEnv },
     });
+    closeLog(sproutFd);
     // #4 — bind the two lifecycles: a sprout with bindings is useless without
     // its broker, so either exiting tears down the other and the pool respawns
     // the pair on the next request.

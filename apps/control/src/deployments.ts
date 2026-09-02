@@ -1,10 +1,10 @@
 import { chmod, mkdir, rename, rm, writeFile } from "node:fs/promises";
-import { dirname, resolve } from "node:path";
+import { basename, dirname, resolve } from "node:path";
 import { randomUUID } from "node:crypto";
 import { validateArtifactDirectory } from "./artifact";
 import { actorFor, purgeUser, type Actor } from "./identity";
 import { guardDeploy, guardNewProject, LIMITS } from "./limits";
-import { aggregateLogs, readLogHistory, readLogTailText, routeTraffic, tailLogs } from "./logs";
+import { aggregateLogs, readLogHistory, readLogTailText, readSproutLogText, routeTraffic, tailLogs } from "./logs";
 import {
   activateDeployment as storeActivate,
   activeProjects,
@@ -184,6 +184,17 @@ export async function projectLogTail(request: Request, project: string): Promise
   if (actor instanceof Response) return actor;
   const hostname = deploymentHostname(project, actor.username);
   return tailLogs(hostname, request.signal);
+}
+
+/** stdout/stderr of the active deployment's running sprout + broker (plain text). */
+export async function projectSproutLog(request: Request, project: string): Promise<Response> {
+  const actor = await authorized(request);
+  if (actor instanceof Response) return actor;
+  const active = projectDeployments(actor.id, project).find((deployment) => deployment.active);
+  if (!active) return Response.json({ error: "no active deployment" }, { status: 404 });
+  const text = await readSproutLogText(basename(dirname(active.sproutPath)));
+  return new Response(text || "(no sprout output — the deployment has not started, or its handler logs nothing)\n",
+    { headers: { "content-type": "text/plain; charset=utf-8" } });
 }
 
 /** #10: coarse, bounded traffic aggregation for the project's charts. */
