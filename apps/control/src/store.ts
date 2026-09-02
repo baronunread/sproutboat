@@ -427,13 +427,16 @@ function projectSecretValues(ownerId: string, project: string) {
 
 // --- account-level storage resources (#74) ------------------------------
 //
-// KV namespaces, D1 databases, R2 buckets, queues and analytics datasets as
-// first-class owned objects with a stable id, independent of any deployment.
-// A later chunk resolves `{ binding, id }` config entries against this table at
-// deploy time and keys the broker's backing store by `id` instead of digest.
+// KV namespaces, D1 databases, R2 buckets and queues as first-class owned
+// objects with a stable id, independent of any deployment. A later chunk
+// resolves `{ binding, id }` config entries against this table at deploy time
+// and keys the broker's backing store by `id` instead of digest.
+//
+// Analytics Engine datasets are deliberately absent — they aren't provisioned
+// (a dataset appears on first writeDataPoint) so there's no resource to own.
 
-export type ResourceKind = "kv" | "d1" | "r2" | "queue" | "analytics";
-export const RESOURCE_KINDS: readonly ResourceKind[] = ["kv", "d1", "r2", "queue", "analytics"];
+export type ResourceKind = "kv" | "d1" | "r2" | "queue";
+export const RESOURCE_KINDS: readonly ResourceKind[] = ["kv", "d1", "r2", "queue"];
 
 export type StorageResource = { id: string; ownerId: string; kind: ResourceKind; name: string; createdAt: string };
 type ResourceRow = { id: string; owner_id: string; kind: string; name: string; created_at: string };

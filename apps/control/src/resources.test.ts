@@ -66,7 +66,7 @@ test("delete removes exactly one resource and reports miss on a second call", ()
 
 test("deleteOwner purges the owner's resources", () => {
   store.createResource("user-1", "kv", "a");
-  store.createResource("user-1", "analytics", "b");
+  store.createResource("user-1", "queue", "b");
   store.createResource("user-2", "kv", "keep");
   store.deleteOwner("user-1");
   expect(store.ownerResources("user-1")).toEqual([]);
