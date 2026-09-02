@@ -1041,3 +1041,75 @@ body { letter-spacing: -0.006em; }
 .session-list li { border-top: 1px solid var(--line); display: flex; gap: 0.75rem; justify-content: space-between; padding: 0.4rem 0; }
 .session-list small { color: var(--muted); }
 .pager { align-items: center; color: var(--muted); display: flex; font-size: 0.78rem; gap: 1rem; justify-content: center; margin-top: 1rem; }
+
+/* ── dashboard layout pass ─────────────────────────────────────────────────
+   Footer pinned to the viewport bottom, content panels that use the full
+   column width, a metrics grid that never leaves a hole, and styled form
+   controls. All overrides so the diff stays reviewable in one place. */
+
+/* Footer at the bottom of the window, not wherever the content ends.
+   .main-column is a grid cell; make it a flex column so <main> can grow and
+   .app-footer's `margin-top:auto` actually reaches the bottom edge. */
+.main-column { display: flex; flex-direction: column; min-height: 100dvh; }
+.main-column > main { flex: 1 0 auto; margin: 0 auto; width: 100%; }
+.app-footer { margin-top: auto; }
+
+/* Content panels: 46rem is a form width. Keep it for panels that are only a
+   form, but let data-heavy panels (detail grids, log tables, lists, charts)
+   use the whole 1220px column instead of leaving a ~380px gutter. */
+.settings-panel:has(.detail-grid),
+.settings-panel:has(.log-scroll),
+.settings-panel:has(.log-filters),
+.settings-panel:has(.chart-block),
+.settings-panel:has(.credential-list),
+.settings-panel:has(.user-list),
+.settings-panel:has(.session-list) { max-width: none; }
+
+/* Metrics: fixed `repeat(4, 1fr)` left an empty cell whenever the count wasn't
+   a multiple of 4 (admin has 7 and 6). Auto-fit fills every row; the 1px gap
+   over a --line background gives clean hairline separators through any wrap. */
+.metrics {
+  grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr));
+  gap: 0.75rem;
+  background: none;
+  border: 0;
+  border-radius: 0;
+  overflow: visible;
+}
+.metric-card {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  min-height: 7rem;
+}
+.metric-card:not(:last-child) { border-right: 1px solid var(--line); }
+
+/* Record rows: `1.2fr .9fr` blew a short name/host block across half the row.
+   Cap the identity column, let the artifact column take the slack, and hug
+   time / status / action to the right. */
+.record-list li {
+  grid-template-columns: minmax(0, 22rem) minmax(0, 1fr) auto auto auto;
+  gap: 1.25rem;
+  align-items: center;
+}
+.record-list li > div { min-width: 0; }
+.record-list small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.record-list li > span:nth-of-type(1) { justify-self: end; white-space: nowrap; }
+.record-list .status { justify-self: end; }
+
+/* Native <select> in the dashboard body: match the dark field styling the
+   .log-filters select already gets, so the traffic range picker stops
+   rendering as light OS chrome. */
+main select {
+  appearance: none;
+  background: var(--ink) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' fill='none' stroke='%23a1a1a1' stroke-width='1.6'%3E%3Cpath d='M2 4l4 4 4-4'/%3E%3C/svg%3E") no-repeat right 0.6rem center;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  color: var(--text);
+  min-height: 2.35rem;
+  padding: 0 2rem 0 0.7rem;
+}
+main select:hover { border-color: var(--line-strong); }
+
+/* Topbar path chip: no title-casing of slugs, and don't wrap. */
+.topbar p { text-transform: none; white-space: nowrap; }

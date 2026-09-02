@@ -43,6 +43,14 @@ async function logout() {
   location.assign("/login");
 }
 
+/** Last path segment as the topbar location: section names get a capital, a
+ *  project slug is left as-is (it's a name, not a word). */
+function topbarLabel(pathname: string): string {
+  if (pathname === "/") return "Overview";
+  const segment = pathname.split("/").filter(Boolean).pop() ?? "Overview";
+  return /^[a-z]+$/.test(segment) ? segment[0].toUpperCase() + segment.slice(1) : segment;
+}
+
 function toggleTheme() {
   const theme = document.documentElement.dataset.theme === "light" ? "dark" : "light";
   document.documentElement.dataset.theme = theme;
@@ -94,7 +102,7 @@ export function Shell({
       </aside>
       <div className="main-column">
         <header className="topbar">
-          <p><span>Personal account</span><b>/</b>{pathname === "/" ? "Overview" : pathname.slice(1)}</p>
+          <p><span>Personal account</span><b>/</b>{topbarLabel(pathname)}</p>
           <div className="topbar-actions">
             {account?.isAdmin && <span className="badge neutral">Admin</span>}
             <details className="account-menu">
