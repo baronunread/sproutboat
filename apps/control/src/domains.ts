@@ -10,7 +10,7 @@
  * and Caddy's `on_demand_tls` ask endpoint (`/internal/tls/allow`) will issue a
  * cert for it because it now appears in the snapshot.
  */
-import { resolveTxt } from "node:dns/promises";
+import { resolve4, resolve6, resolveTxt } from "node:dns/promises";
 import { randomUUID } from "node:crypto";
 import { actorFor, type Actor } from "./identity";
 import { LIMITS } from "./limits";
@@ -52,6 +52,45 @@ async function authorized(request: Request): Promise<Actor | Response> {
   } catch (error) {
     return Response.json({ error: error instanceof Error ? error.message : "authentication is unavailable" }, { status: 503 });
   }
+}
+
+async function addressesOf(hostname: string): Promise<string[]> {
+  const out: string[] = [];
+  for (const query of [resolve4, resolve6]) {
+    try { out.push(...(await query(hostname))); } catch { /* that record type is absent */ }
+  }
+  return out;
+}
+
+/**
+ * The IPs this box answers on, learned from the platform's own hostnames. Used
+ * to tell an owner whether their custom domain actually points here — a verified
+ * TXT proves ownership but says nothing about an A record, and an apex domain
+ * often has none.
+ */
+async function serverAddresses(base: string): Promise<string[]> {
+  const seen = new Set<string>();
+  for (const host of [`dashboard.${base}`, `control.${base}`, `www.${base}`]) {
+    for (const addr of await addressesOf(host)) seen.add(addr);
+  }
+  return [...seen];
+}
+
+/**
+ * Attach a `warning` + `serverAddresses` to a verified-domain view when the
+ * hostname resolves to none of this box's addresses. A verified TXT proves
+ * ownership but says nothing about an A record, and an apex often has none.
+ */
+async function withReachability<T extends object>(view: T, hostname: string): Promise<T | (T & { warning: string; serverAddresses: string[] })> {
+  const servers = await serverAddresses(deploymentDomain());
+  if (servers.length === 0) return view;
+  const hits = (await addressesOf(hostname)).some((addr) => servers.includes(addr));
+  if (hits) return view;
+  return {
+    ...view,
+    warning: `${hostname} has no A or AAAA record pointing at this server (${servers[0]}). Add one as DNS-only (not proxied), or the domain will not load once its certificate is issued.`,
+    serverAddresses: servers,
+  };
 }
 
 const publicView = (domain: { hostname: string; verifiedAt: string | null; token: string; createdAt: string }) => ({
@@ -96,7 +135,7 @@ export async function addDomain(request: Request, project: string): Promise<Resp
   const token = randomUUID().replace(/-/g, "");
   const created = addCustomDomain({ hostname, ownerId: actor.id, project, token });
   if (!created) return Response.json({ error: "that hostname is already claimed" }, { status: 409 });
-  return Response.json(publicView(created), { status: 201 });
+  return Response.json({ ...publicView(created), serverAddresses: await serverAddresses(base) }, { status: 201 });
 }
 
 export async function verifyDomain(request: Request, project: string, hostname: string): Promise<Response> {
@@ -105,7 +144,7 @@ export async function verifyDomain(request: Request, project: string, hostname: 
 
   const domain = projectCustomDomains(actor.id, project).find((entry) => entry.hostname === hostname.toLowerCase());
   if (!domain) return Response.json({ error: "domain not found" }, { status: 404 });
-  if (domain.verifiedAt !== null) return Response.json(publicView(domain));
+  if (domain.verifiedAt !== null) return Response.json(await withReachability(publicView(domain), domain.hostname));
 
   const want = `${TXT_PREFIX}${domain.token}`;
   let records: string[][];
@@ -122,7 +161,11 @@ export async function verifyDomain(request: Request, project: string, hostname: 
 
   markCustomDomainVerified(actor.id, project, domain.hostname);
   await syncRoutes();
-  return Response.json({ ...publicView(domain), verified: true, verifiedAt: new Date().toISOString(), verification: null });
+
+  // TXT proved ownership; the reachability note tells the owner whether an A
+  // record still needs adding before the domain will actually load.
+  const verified = { ...publicView(domain), verified: true, verifiedAt: new Date().toISOString(), verification: null };
+  return Response.json(await withReachability(verified, domain.hostname));
 }
 
 export async function deleteDomain(request: Request, project: string, hostname: string): Promise<Response> {
