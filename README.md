@@ -5,7 +5,7 @@
 **Compile a JavaScript function to a native binary on your laptop.
 Ship the binary. The server never sees your code.**
 
-Workers-style HTTP handlers, hosted on **one Linux VPS you control** — stable
+Workers-style HTTP handlers, hosted on **one Linux VPS you control**. Stable
 HTTPS, immutable versions, instant rollback, live logs. No Docker, no build
 servers, no vendor.
 
@@ -19,14 +19,15 @@ servers, no vendor.
 
 ## The idea
 
-Your handler is compiled **locally** with [Porffor](https://porffor.dev/) (+ Zig
+You compile your handler **locally** with [Porffor](https://porffor.dev/) (+ Zig
 cross-compile) into a single `linux-x86_64` executable. What you upload is an
-**artifact** — `manifest.json` plus one `worker` binary — and nothing else. No
-source, no `node_modules`, no bundler config leaves your machine.
+**artifact**: `manifest.json`, one `sprout` binary, and any binding or asset
+sidecars. Nothing else. No source, no `node_modules`, and no bundler config
+leaves your machine.
 
 ```mermaid
 flowchart LR
-    A["src/index.js<br/>export default { fetch }"] -->|"sproutboat deploy<br/>(Porffor + Zig, on your laptop)"| B["artifact-v1<br/>manifest.json + worker"]
+    A["src/index.js<br/>export default { fetch }"] -->|"sproutboat deploy<br/>(Porffor + Zig, on your laptop)"| B["artifact (schema v2)<br/>manifest.json + sprout"]
     B -->|"HTTPS upload"| C["control API<br/>verify · store · route"]
     C --> D["supervisor<br/>one process per deploy<br/>under bubblewrap"]
     D --> E["edge<br/>reverse proxy"]
@@ -42,15 +43,20 @@ The **single-machine, single-admin** deployment:
 
 | Piece | Path | Role |
 |---|---|---|
-| **Control API** | `apps/control` | Auth, projects, artifact intake + verification, routes, backups. Artifact-only — no source ever. |
-| **Edge** | `services/edge` | Public request path. Reverse-proxies each route to its running worker; records metrics + logs. |
-| **Supervisor** | `services/supervisor` | One long-lived native worker process per deployment, under `bubblewrap`. Restarts on exit. No per-request spawn. |
+| **Control API** | `apps/control` | Auth, projects, artifact intake + verification, routes, backups. Artifact-only; no source ever. |
+| **Edge** | `services/edge` | Public request path. Reverse-proxies each route to its running sprout; serves matched static assets directly; records metrics + logs. |
+| **Supervisor** | `services/supervisor` | One long-lived native sprout process per deployment, under `bubblewrap`. Spawns a binding broker sidecar alongside it when the artifact ships `bindings.json`. Restarts on exit. No per-request spawn. |
 | **Dashboard** | `apps/web` | React SPA Caddy serves from disk. Metrics, versions, users, backups. |
 | **Installer** | `install.sh` | The whole runbook: user namespaces, Caddy + bubblewrap, default-deny firewall, systemd units, one admin identity. |
 
-The **CLI is its own MIT repo** —
+The **CLI is its own MIT repo**,
 [`baronunread/sproutboat-cli`](https://github.com/baronunread/sproutboat-cli).
 It does the Porffor build and targets any control plane.
+
+**Docs:** [sproutboat.com/docs](https://sproutboat.com/docs) is the full
+reference: handler rules, every `sproutboat.jsonc` field, every binding, the
+CLI, custom domains, limits. A plain-text copy for agents is at
+[sproutboat.com/llms.txt](https://sproutboat.com/llms.txt).
 
 > ⚠️ **Experimental proof of concept.** Not production-ready, not generally
 > Workers-compatible. Managed cloud hosting is coming; the CLI already works
@@ -58,7 +64,7 @@ It does the Porffor build and targets any control plane.
 
 ## Deploy to a VPS
 
-SSH into a fresh Linux box — Debian/Ubuntu or RHEL-family, x86-64 — and:
+SSH into a fresh Linux box (Debian/Ubuntu or RHEL-family, x86-64) and:
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/baronunread/sproutboat/main/install.sh | sudo bash
@@ -78,7 +84,7 @@ Value: <your box's public IPv4>       Proxy: OFF / DNS only
 
 That one record covers `control.`, `dashboard.`, and every
 `<project>.<admin>.example.com` deployment. Per-hostname certs via
-HTTP-01 / TLS-ALPN-01 — **no DNS API token, no wildcard cert**. Full runbook:
+HTTP-01 / TLS-ALPN-01, with **no DNS API token and no wildcard cert**. Full runbook:
 [`infra/README.md`](infra/README.md).
 
 Non-interactive: set `SB_DOMAIN`, `SB_ACME_EMAIL`, `SB_ADMIN`. GitHub sign-in is
@@ -114,28 +120,38 @@ export default {
 }
 ```
 
-`env.*` carries your `vars` (baked into the artifact) and any project
-**secrets**, which are encrypted at rest with AES-256-GCM and never sit in the
-uploaded binary. Also on the CLI: `build`, `deploy --dry-run`,
-`deploy --artifact`, `tail`, `versions list`, `rollback`, `delete --yes`.
+`env.*` carries your `vars` (baked into the artifact), project **secrets**
+(AES-256-GCM at rest, never in the binary), and storage bindings: **KV, D1, R2,
+queues, Durable Objects, cron, analytics, static assets**. A KV / D1 / R2 /
+queue store is an account-level resource with a stable id; `deploy` provisions
+one for any bare-name binding and pins the id into `sproutboat.jsonc`, so the
+data survives redeploys, and another project can bind the same id.
+
+Also on the CLI: `build`, `check`, `deploy --dry-run | --artifact | --no-provision`,
+`tail [--sprout]`, `versions list`, `rollback`, `secrets`, `resource`,
+`domains` (attach your own hostname, apex included), `delete --yes`. See
+[sproutboat.com/docs](https://sproutboat.com/docs).
 
 **Immutable by construction.** Every deploy is a new content-addressed version.
-Rollback re-points the route — it never rebuilds. A compile error uploads
+Rollback re-points the route; it never rebuilds. A compile error uploads
 **zero bytes** and leaves the live version untouched.
 
 ## The runtime
 
 Porffor `alpha-4` compiles `export default { fetch }` into a
 [µWebSockets](https://github.com/uNetworking/uWebSockets) server binary
-(~0.42 MB). The supervisor gives it a loopback port, starts it, waits for
-`listen`, and restarts it if it exits — flat RSS verified over 500k requests, so
-no recycle. On Linux every worker runs under `bubblewrap` (`sprout-sandbox.sh`):
-loopback only, no outbound network, read-only filesystem, own UID, and a
-per-sprout cgroup scope for memory / CPU / pids caps.
+(~0.42 MB for a bare handler; ~1.5 MB RSS idle; a cold start is a process exec
+plus a socket bind, tens of milliseconds, then warm). The supervisor gives it a
+loopback port, starts it, waits for `listen`, and restarts it if it exits. RSS stays
+flat over 500k requests, so no recycle. On Linux every sprout runs under
+`bubblewrap` (`sprout-sandbox.sh`): read-only filesystem, own UID, no network
+except loopback to its broker; a handler's `fetch()` reaches the outside only
+through that broker and only for hosts in the config's `outbound` allowlist.
+A per-sprout cgroup scope caps memory / CPU / pids.
 
 ## Dashboard & accounts
 
-`https://dashboard.<domain>` — a static SPA, no service, no port.
+`https://dashboard.<domain>`: a static SPA, no service, no port.
 
 - **Sign in** with email + password, or GitHub (if configured). The admin's
   email is the ACME email; the admin's password is the token in
@@ -146,8 +162,8 @@ per-sprout cgroup scope for memory / CPU / pids caps.
 
 ## Local end-to-end
 
-Runs the whole stack — Portless, a GitHub emulator, Control, Edge, and the
-dashboard — on `*.sproutboat.localhost`.
+Runs the whole stack (Portless, a GitHub emulator, Control, Edge, and the
+dashboard) on `*.sproutboat.localhost`.
 
 ```sh
 bun install
@@ -173,8 +189,8 @@ restart. Portless certs survive.
 
 One question: **does the installed Porffor run enough real webhook-style
 handlers to justify the supported capability profile?** The kill threshold is
-40% of capability handlers matching Bun on all three probes — compilation alone
-doesn't count, behavior must match.
+40% of capability handlers matching Bun on all three probes. Compilation alone
+doesn't count; behavior must match.
 
 ```sh
 bun add --dev porffor@latest && bun run retest   # rebuilds report.json + COMPAT.md
@@ -188,7 +204,7 @@ binary size, and a **GO / NO-GO** decision, then groups failures into
 PORFFOR_BIN=/path/to/porf PORFFOR_VERSION='alpha 2 (…)' PORFFOR_MODE=native-fetch bun run retest
 ```
 
-Current: **Porffor alpha-4 — 31/31 compile, 29/31 match** (the two misses are
+Current: **Porffor alpha-4: 31/31 compile, 29/31 match** (the two misses are
 `Date` parsing). See [`COMPAT.md`](COMPAT.md).
 
 ## Repository map
@@ -197,11 +213,11 @@ Current: **Porffor alpha-4 — 31/31 compile, 29/31 match** (the two misses are
 apps/control       control API — auth, projects, artifacts, routes, backups
 apps/web           React dashboard (Vite + TanStack Router)
 services/edge      public request path, metrics, logs
-services/supervisor  sandboxed per-deploy worker processes
+services/supervisor  sandboxed per-deploy sprout + binding-broker processes
 install.sh         single-VPS provisioner  ·  infra/  systemd units + runbook
 tools/             compat harness (refserve, compile, diff, report) + dev-local
 tests/porffor/capabilities/   the 31-handler Porffor capability suite
-docs/              artifact-v1, bindings-v1, self-hosted-v1, runtime, metrics
+docs/              artifact + bindings + runtime + capability-profile + self-hosted design notes
 ```
 
 ## Handy scripts
@@ -211,6 +227,7 @@ bun run dev:local     # full local stack
 bun test              # apps/ services/ tests/
 bun run typecheck     # tsc --noEmit
 bun run lint          # oxlint (+ anti-slop plugin)
+bun run style         # style-doctor (prose lint)
 bun run check         # validate tools + capability-suite shape + Bun probes
 bun run retest        # typecheck + test + check + diff + report
 ```
@@ -219,14 +236,20 @@ Use **Bun**, not npm, in this repo.
 
 ## Roadmap
 
-Bindings v1 landed: an artifact that ships a `bindings.json` gets a **broker
-sidecar** (from `sproutboat/runtime/broker`) on a token-gated port, giving
-handlers a host-implemented `env` surface plus cron/queue triggers.
+Bindings work end to end: an artifact that ships `bindings.json` gets a **broker
+sidecar** (from `sproutboat/runtime/broker`) on a token-gated loopback port, and
+handlers see a synchronous `env` surface for **KV, D1, R2, queues, Durable
+Objects, cron, analytics, secrets, outbound `fetch()`, and static assets**.
+Storage bindings are account-level resources with a stable id, auto-provisioned
+on first deploy ([#74](https://github.com/baronunread/sproutboat/issues/74)).
+Custom domains attach with a TXT + A record, the platform apex included.
 [`docs/bindings-v1.md`](docs/bindings-v1.md) is the original design sketch.
-More Workers-parity bindings — D1, R2 multipart, Cache API, Durable Objects,
-Service bindings, `ctx.waitUntil`, WebSockets, push-to-deploy — are tracked in
-[issues](https://github.com/baronunread/sproutboat/issues). Scale beyond one
-box is deliberately deferred until traffic data asks for it.
+
+Still open: large-object / multipart R2, the Cache API, service bindings,
+`ctx.waitUntil`, WebSockets (a streaming capability profile), a static-only
+"pages" deploy mode, and push-to-deploy, all tracked in
+[issues](https://github.com/baronunread/sproutboat/issues). Scaling past one box
+waits until traffic data asks for it.
 
 ## License
 
