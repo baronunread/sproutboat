@@ -1,7 +1,8 @@
 /**
  * #74 — account-level storage resources: KV namespaces, D1 databases, R2
- * buckets, queues and analytics datasets as first-class owned objects with a
- * stable `<kind>_<id>` handle, created and deleted independently of any deploy.
+ * buckets and queues as first-class owned objects with a stable `<kind>_<id>`
+ * handle, created and deleted independently of any deploy. (Analytics Engine
+ * datasets aren't here — they aren't provisioned, they appear on first write.)
  *
  * This chunk is the registry + CRUD only. A later chunk resolves `{ binding,
  * id }` entries in `sproutboat.jsonc` against it at deploy time, keys the
