@@ -125,12 +125,12 @@ function ProjectLogs() {
 
   return (
     <>
-      <section className="data-panel settings-panel">
+      <section className="data-panel wide-panel">
         <PanelHeading
           title="Request logs"
           description="Edge events for this project's route, newest first."
           action={
-            <div className="form-actions start">
+            <div className="form-actions">
               <span className={tailing ? "tail-state live" : "tail-state"}>{tailing ? "Live" : "Paused"}</span>
               <Button variant={tailing ? "danger" : "quiet"} onClick={() => setTailing((on) => !on)}>
                 {tailing ? "Stop live tail" : "Start live tail"}
@@ -171,8 +171,8 @@ function ProjectLogs() {
                 <caption className="visually-hidden">Request log, newest first</caption>
                 <thead>
                   <tr>
-                    <th scope="col">Time</th><th scope="col">Method</th><th scope="col">Status</th>
-                    <th scope="col">Duration</th><th scope="col">Start</th><th scope="col">Failure</th>
+                    <th scope="col">Time</th><th scope="col">Method</th><th scope="col" className="num">Status</th>
+                    <th scope="col" className="num">Duration</th><th scope="col">Start</th><th scope="col">Failure</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -180,8 +180,8 @@ function ProjectLogs() {
                     <tr key={key}>
                       <td title={title}>{relativeTime(record.at)}</td>
                       <td>{record.method ?? "—"}</td>
-                      <td className={`log-status log-${record.statusClass}`}>{record.status}</td>
-                      <td>{record.durationMs} ms</td>
+                      <td className={`num log-status log-${record.statusClass}`}>{record.status}</td>
+                      <td className="num">{record.durationMs} ms</td>
                       <td>{record.coldStart ? <span className="badge neutral">Cold</span> : "Warm"}</td>
                       <td>{record.failure ?? "—"}</td>
                     </tr>
@@ -190,7 +190,7 @@ function ProjectLogs() {
               </table>
             </div>
             {nextBefore && !tailing && (
-              <div className="form-actions start">
+              <div className="form-actions">
                 <Button variant="quiet" onClick={() => void loadOlder()}>Load older</Button>
               </div>
             )}
@@ -225,7 +225,7 @@ function SproutOutput({ name }: { name: string }) {
   useEffect(() => { void load(); }, [load]);
 
   return (
-    <section className="data-panel settings-panel">
+    <section className="data-panel wide-panel">
       <PanelHeading
         title="Sprout output"
         description="stdout and stderr from the active version's process and its binding broker."

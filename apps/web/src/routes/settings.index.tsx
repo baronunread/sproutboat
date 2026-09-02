@@ -16,7 +16,7 @@ function General() {
     <>
       <section className="data-panel settings-panel">
         <PanelHeading title="Theme" description="Choose the workspace appearance that works best for your environment. This preference stays on this browser." />
-        <div className="form-actions start">
+        <div className="form-actions">
           <Button onClick={() => setTheme("dark")}>Dark</Button>
           <Button onClick={() => setTheme("light")}>Light</Button>
         </div>

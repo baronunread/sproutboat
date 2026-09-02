@@ -45,6 +45,36 @@ const DAY = new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric" 
 
 const group = (value: number) => value.toLocaleString();
 
+/**
+ * One distribution row: label, a track that always spans the same free space,
+ * and a right-aligned tabular count. Sharing the component keeps status codes,
+ * invocation status and methods on identical column edges.
+ */
+function DistributionRow({ label, value, total, tone }: { label: string; value: number; total: number; tone?: string }) {
+  const percent = total ? Math.round((value / total) * 100) : 0;
+  return (
+    <div>
+      <dt>{label}</dt>
+      <dd>
+        <div className="status-track">
+          <span className={tone ? `status-bar status-bar-${tone}` : "status-bar"} style={{ width: `${percent}%` }} />
+        </div>
+        <span className="status-count">{group(value)}<small>{percent}%</small></span>
+      </dd>
+    </div>
+  );
+}
+
+/**
+ * A change past ~3x reads as noise as a percentage ("4800.0%"), so report the
+ * multiple instead and keep one decimal only where it carries information.
+ */
+function formatDelta(delta: number): string {
+  const magnitude = Math.abs(delta);
+  if (magnitude >= 300) return `${(magnitude / 100 + 1).toFixed(1)}x`;
+  return `${magnitude.toFixed(magnitude < 10 ? 1 : 0)}%`;
+}
+
 /** Signed percentage change, or null when there is no prior baseline. */
 function deltaPct(current: number, previous: number): number | null {
   if (previous === 0) return current === 0 ? 0 : null;
@@ -73,7 +103,7 @@ function MetricCard({ title, value, delta, goodWhen = "up", spark }: {
       <span className="metric-title">{title}</span>
       <span className="metric-value">{value}</span>
       <span className={`metric-delta ${tone}`}>
-        {delta === null ? "— no prior data" : `${delta > 0 ? "↑" : delta < 0 ? "↓" : ""} ${Math.abs(delta).toFixed(1)}% vs prev`}
+        {delta === null ? "— no prior data" : `${delta > 0 ? "↑" : delta < 0 ? "↓" : ""} ${formatDelta(delta)} vs prev`}
       </span>
       {spark && spark.length > 1 && <Sparkline values={spark} />}
     </div>
@@ -102,7 +132,7 @@ export function TrafficCharts({ name }: { name: string }) {
   const tickLabel = (iso: string) => (wide ? DAY : CLOCK).format(new Date(iso));
 
   return (
-    <section className="data-panel settings-panel">
+    <section className="data-panel chart-panel">
       <div className="panel-heading">
         <div><h2>Traffic</h2><p>Aggregated from edge request logs. Coarse buckets over a bounded scan — not a metrics platform.</p></div>
         <SelectField label="Time range" hideLabel value={range}
@@ -141,16 +171,9 @@ export function TrafficCharts({ name }: { name: string }) {
           <div className="chart-block">
             <h3>Status codes</h3>
             <dl className="status-bars">
-              {STATUS_ROWS.map((cls) => {
-                const value = metrics.statusDistribution[cls];
-                const width = metrics.sampleCount ? Math.round((value / metrics.sampleCount) * 100) : 0;
-                return (
-                  <div key={cls}>
-                    <dt>{cls}</dt>
-                    <dd><span className={`status-bar status-bar-${cls}`} style={{ width: `${width}%` }} aria-hidden="true" />{group(value)} <small>({width}%)</small></dd>
-                  </div>
-                );
-              })}
+              {STATUS_ROWS.map((cls) => (
+                <DistributionRow key={cls} label={cls} value={metrics.statusDistribution[cls]} total={metrics.sampleCount} tone={cls} />
+              ))}
             </dl>
           </div>
 
@@ -161,7 +184,6 @@ export function TrafficCharts({ name }: { name: string }) {
                 <li><strong>{group(metrics.latencyMs.p50)} ms</strong><span>p50</span></li>
                 <li><strong>{group(metrics.latencyMs.p90)} ms</strong><span>p90</span></li>
                 <li><strong>{group(metrics.latencyMs.p99)} ms</strong><span>p99</span></li>
-                <li><strong>{group(metrics.sampleCount)}</strong><span>requests</span></li>
               </ul>
             ) : <p className="empty-state">Not enough requests to compute latency percentiles.</p>}
             <p className="hint">Nearest-rank percentiles over {group(metrics.sampleCount)} request{metrics.sampleCount === 1 ? "" : "s"}. The final bucket is still filling.</p>
@@ -197,10 +219,10 @@ export function TrafficCharts({ name }: { name: string }) {
               <li><strong>{metrics.sampleCount ? `${Math.round((metrics.coldStarts / metrics.sampleCount) * 100)}%` : "—"}</strong><span>of requests</span></li>
               <li><strong>{metrics.startupMs ? `${group(metrics.startupMs.p50)} ms` : "—"}</strong><span>startup p50</span></li>
               <li><strong>{metrics.startupMs ? `${group(metrics.startupMs.p90)} ms` : "—"}</strong><span>startup p90</span></li>
-              <li><strong>{metrics.bootMs ? `${group(metrics.bootMs.p50)} ms` : "—"}</strong><span>boot p50 · process + runtime</span></li>
+              <li><strong>{metrics.bootMs ? `${group(metrics.bootMs.p50)} ms` : "—"}</strong><span>boot p50</span></li>
               <li>
                 <strong>{metrics.startupMs && metrics.bootMs ? `${group(Math.max(0, metrics.startupMs.p50 - metrics.bootMs.p50))} ms` : "—"}</strong>
-                <span>eval p50 · module + bind</span>
+                <span>eval p50</span>
               </li>
             </ul>
             <p className="hint">A cold start is a request that had to launch the sprout process (first hit after a deploy, crash, or idle eviction). <strong>boot</strong> is process create + <code>ld.so</code> + runtime init (static linking cuts this); <strong>eval</strong> is JS module evaluation + binding the listen socket (an inherited fd would cut this).</p>
@@ -219,16 +241,10 @@ export function TrafficCharts({ name }: { name: string }) {
             <div className="chart-block">
               <h3>Invocation status</h3>
               <dl className="status-bars">
-                {Object.entries(metrics.invocationStatus).sort((a, b) => b[1] - a[1]).map(([status, value]) => {
-                  const width = metrics.sampleCount ? Math.round((value / metrics.sampleCount) * 100) : 0;
-                  const cls = status === "ok" ? "2xx" : "5xx";
-                  return (
-                    <div key={status}>
-                      <dt>{status}</dt>
-                      <dd><span className={`status-bar status-bar-${cls}`} style={{ width: `${width}%` }} aria-hidden="true" />{group(value)} <small>({width}%)</small></dd>
-                    </div>
-                  );
-                })}
+                {Object.entries(metrics.invocationStatus).sort((a, b) => b[1] - a[1]).map(([status, value]) => (
+                  <DistributionRow key={status} label={status} value={value} total={metrics.sampleCount}
+                    tone={status === "ok" ? "2xx" : "5xx"} />
+                ))}
               </dl>
               <p className="hint">`timed-out` and `response-too-large` are platform caps (#27); `sprout-unavailable` / `proxy` are runtime failures.</p>
             </div>
@@ -238,15 +254,9 @@ export function TrafficCharts({ name }: { name: string }) {
             <div className="chart-block">
               <h3>Methods</h3>
               <dl className="status-bars">
-                {Object.entries(metrics.methodDistribution).sort((a, b) => b[1] - a[1]).map(([method, value]) => {
-                  const width = metrics.sampleCount ? Math.round((value / metrics.sampleCount) * 100) : 0;
-                  return (
-                    <div key={method}>
-                      <dt>{method}</dt>
-                      <dd><span className="status-bar status-bar-2xx" style={{ width: `${width}%` }} aria-hidden="true" />{group(value)} <small>({width}%)</small></dd>
-                    </div>
-                  );
-                })}
+                {Object.entries(metrics.methodDistribution).sort((a, b) => b[1] - a[1]).map(([method, value]) => (
+                  <DistributionRow key={method} label={method} value={value} total={metrics.sampleCount} />
+                ))}
               </dl>
             </div>
           )}
@@ -268,12 +278,6 @@ function RequestBars({ buckets, tickLabel }: { buckets: Bucket[]; tickLabel: (is
       <div className="bars-scroll">
         <svg className="bars" viewBox={`0 0 ${width} ${height + 16}`} preserveAspectRatio="none" role="img"
           aria-label={`Requests per time bucket, peak ${max}`}>
-          <defs>
-            <pattern id="errhatch" width="4" height="4" patternTransform="rotate(45)" patternUnits="userSpaceOnUse">
-              <rect width="4" height="4" fill="var(--panel-2)" />
-              <line x1="0" y1="0" x2="0" y2="4" stroke="var(--coral)" strokeWidth="2.5" />
-            </pattern>
-          </defs>
           {buckets.map((bucket, index) => {
             const barHeight = Math.round((bucket.count / max) * height);
             const errHeight = Math.round((bucket.errors / max) * height);
@@ -281,11 +285,14 @@ function RequestBars({ buckets, tickLabel }: { buckets: Bucket[]; tickLabel: (is
             return (
               <g key={bucket.start}>
                 <title>{`${tickLabel(bucket.start)} — ${bucket.count} request${bucket.count === 1 ? "" : "s"}, ${bucket.errors} error${bucket.errors === 1 ? "" : "s"}`}</title>
-                <rect x={x} y={height - barHeight} width={step - gap} height={barHeight} fill="var(--muted)" />
-                {errHeight > 0 && <rect x={x} y={height - errHeight} width={step - gap} height={errHeight} fill="url(#errhatch)" />}
+                {/* Successes above, errors stacked solid at the base: the split is
+                    read by height, which a hatch fill over the same bar is not. */}
+                <rect x={x} y={height - barHeight} width={step - gap} height={Math.max(0, barHeight - errHeight)} fill="var(--muted)" />
+                {errHeight > 0 && <rect x={x} y={height - errHeight} width={step - gap} height={errHeight} fill="var(--coral)" />}
               </g>
             );
           })}
+          <line x1="0" y1={height} x2={width} y2={height} stroke="var(--line)" strokeWidth="1" vectorEffect="non-scaling-stroke" />
         </svg>
       </div>
       <div className="bars-axis"><span>{tickLabel(buckets[0].start)}</span><span>{tickLabel(buckets[buckets.length - 1].start)}</span></div>

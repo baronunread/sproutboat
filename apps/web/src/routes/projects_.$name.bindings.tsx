@@ -83,7 +83,7 @@ function ProjectBindings() {
 
   return (
     <>
-      <section className="data-panel settings-panel">
+      <section className="data-panel wide-panel">
         <PanelHeading
           title="Bindings"
           description={<>Declared by the active version&apos;s artifact. Change <code>sproutboat.jsonc</code> and redeploy to alter them.</>}

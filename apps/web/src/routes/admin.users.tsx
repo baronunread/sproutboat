@@ -28,6 +28,7 @@ function AdminUsers() {
   const [query, setQuery] = useState("");
   const [offset, setOffset] = useState(0);
   const [note, setNote] = useState("");
+  const [creating, setCreating] = useState(false);
 
   const load = useCallback(async () => {
     setState("loading");
@@ -57,13 +58,14 @@ function AdminUsers() {
   };
 
   return (
-    <section className="data-panel settings-panel">
+    <section className="data-panel wide-panel">
       <PanelHeading
         title="Users"
         description="Accounts are created here — there is no self-service sign-up. Banning an account stops its routes immediately."
+        action={!creating && <Button variant="primary" onClick={() => setCreating(true)}>Create user</Button>}
       />
 
-      <CreateUserForm onCreated={() => void load()} />
+      {creating && <CreateUserForm onCreated={() => void load()} onClose={() => setCreating(false)} />}
 
       <div className="log-filters">
         <TextField label="Search users" type="search" fieldClassName="grow" placeholder="Search by email"
@@ -100,8 +102,7 @@ function randomPassword(): string {
   return btoa(String.fromCharCode(...bytes)).replace(/[+/=]/g, "").slice(0, 20);
 }
 
-function CreateUserForm({ onCreated }: { onCreated: () => void }) {
-  const [open, setOpen] = useState(false);
+function CreateUserForm({ onCreated, onClose }: { onCreated: () => void; onClose: () => void }) {
   const [email, setEmail] = useState("");
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
@@ -131,17 +132,12 @@ function CreateUserForm({ onCreated }: { onCreated: () => void }) {
     finally { setBusy(false); }
   };
 
-  if (!open) {
+  if (done) {
     return (
-      <div className="create-user">
-        <Button variant="primary" onClick={() => { setOpen(true); setDone(null); }}>Create user</Button>
-        {done && (
-          <StatusMessage tone="success">
-            Created <code>{done.username}</code> ({done.email}). Starting password: <code>{done.password}</code>
-            <Copy value={done.password} /> — copy it now, it isn&apos;t shown again.
-          </StatusMessage>
-        )}
-      </div>
+      <StatusMessage tone="success">
+        Created <code>{done.username}</code> ({done.email}). Starting password: <code>{done.password}</code>
+        <Copy value={done.password} /> — copy it now, it isn&apos;t shown again.
+      </StatusMessage>
     );
   }
 
@@ -183,7 +179,7 @@ function CreateUserForm({ onCreated }: { onCreated: () => void }) {
         />
       </div>
       <div className="form-actions">
-        <Button variant="quiet" onClick={() => setOpen(false)}>Cancel</Button>
+        <Button variant="quiet" onClick={onClose}>Cancel</Button>
         <Button type="submit" variant="primary" busy={busy} busyLabel="Creating…" disabled={!email || !username || password.length < 10}>Create account</Button>
       </div>
     </form>
@@ -237,7 +233,7 @@ function UserItem({ user, onAct }: { user: UserRow; onAct: (id: string, path: st
         <b className={user.banned ? "status" : "status live"}>{user.banned ? "Banned" : "Active"}</b>
         {user.banned
           ? <Button onClick={() => void onAct(user.id, "unban")}>Unban</Button>
-          : <Button variant="danger" aria-expanded={banning} onClick={() => setBanning((value) => !value)}>Ban…</Button>}
+          : <Button aria-expanded={banning} onClick={() => setBanning((value) => !value)}>Ban</Button>}
       </div>
 
       {user.banned && user.banReason && <p className="hint">Reason: {user.banReason}{user.banExpires ? ` · lifts ${relativeTime(user.banExpires)}` : " · permanent"}</p>}
@@ -282,7 +278,7 @@ function UserItem({ user, onAct }: { user: UserRow; onAct: (id: string, path: st
                   ))}
                 </ul>
               )}
-              <div className="form-actions start">
+              <div className="form-actions">
                 <Button onClick={() => void onAct(user.id, "sessions/revoke")}>Revoke all sessions</Button>
               </div>
             </>

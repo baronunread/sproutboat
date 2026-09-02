@@ -46,9 +46,9 @@ function ProjectTriggers() {
 
       <section className="data-panel settings-panel">
         <PanelHeading title="Scheduled triggers" description="Cron-triggered invocations are not implemented yet." />
-        <p className="empty-state">
-          Every invocation is request-driven today. Scheduled execution is tracked in issue #81; a schedule declared in
-          <code> sproutboat.jsonc</code> is carried in the artifact but never fires.
+        <p className="hint">
+          Every invocation is request-driven today. Scheduled execution is tracked in issue #81; a schedule declared
+          in <code>sproutboat.jsonc</code> is carried in the artifact but never fires.
         </p>
       </section>
     </>
@@ -134,20 +134,7 @@ function CustomDomains({ name, hasActive }: { name: string; hasActive: boolean }
             const detail = reachability[domain.hostname];
             return (
               <li key={domain.hostname}>
-                <div>
-                  <strong>{domain.hostname}</strong>
-                  {domain.verification && (
-                    <small>
-                      Add DNS <code>{domain.verification.type}</code> <code>{domain.verification.name}</code> ={" "}
-                      <code>{domain.verification.value}</code>
-                      <Copy value={domain.verification.value} />
-                    </small>
-                  )}
-                  {detail?.warning && <small className="domain-warning">{detail.warning}</small>}
-                  {detail?.serverAddresses?.length ? (
-                    <small>Point an A/AAAA record at <code>{detail.serverAddresses.join(", ")}</code>, DNS-only.</small>
-                  ) : null}
-                </div>
+                <div><strong>{domain.hostname}</strong></div>
                 <b className={domain.verified ? "status live" : "status"}>{domain.verified ? "Verified" : "Pending"}</b>
                 {!domain.verified && <Button variant="quiet" onClick={() => void verify(domain.hostname)}>Verify</Button>}
                 <ConfirmButton
@@ -159,6 +146,17 @@ function CustomDomains({ name, hasActive }: { name: string; hasActive: boolean }
                   confirmLabel="Remove domain"
                   onConfirm={() => remove(domain.hostname)}
                 />
+                {domain.verification && (
+                  <p className="record-note">
+                    Add DNS <code>{domain.verification.type}</code> <code>{domain.verification.name}</code> ={" "}
+                    <code>{domain.verification.value}</code>
+                    <Copy value={domain.verification.value} />
+                  </p>
+                )}
+                {detail?.warning && <p className="record-note warning">{detail.warning}</p>}
+                {detail?.serverAddresses?.length ? (
+                  <p className="record-note">Point an A/AAAA record at <code>{detail.serverAddresses.join(", ")}</code>, DNS-only.</p>
+                ) : null}
               </li>
             );
           })}
