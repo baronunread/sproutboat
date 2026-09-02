@@ -59,6 +59,22 @@ test("a malformed bindings.json is rejected", async () => {
   if (!result.ok) expect(result.errors.join(" ")).toContain("bindings.json.kv");
 });
 
+test("#74 — bindings.json.resources is validated and surfaced as resourceBindings", async () => {
+  await seed({ bindings: { kv: ["LINKS"], resources: { LINKS: { kind: "kv", id: "kv_0123456789abcdef01234567" } } } });
+  const result = await validateArtifactDirectory(dir);
+  expect(result.ok).toBe(true);
+  if (result.ok) {
+    expect(result.value.resourceBindings).toEqual([{ binding: "LINKS", kind: "kv", id: "kv_0123456789abcdef01234567" }]);
+  }
+});
+
+test("#74 — a resources entry with an unknown kind is rejected", async () => {
+  await seed({ bindings: { resources: { X: { kind: "vectorize", id: "x_1" } } } });
+  const result = await validateArtifactDirectory(dir);
+  expect(result.ok).toBe(false);
+  if (!result.ok) expect(result.errors.join(" ")).toContain("bindings.json.resources");
+});
+
 test("an assets tree with matching hashes is accepted", async () => {
   const body = "<!doctype html>hi";
   await seed({ assets: {

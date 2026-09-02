@@ -111,6 +111,16 @@ function spawnWithBroker(sproutPath: string, port: number, secretsPath?: string 
       || (process.env.SPROUTBOAT_LOG_PATH ? resolve(dirname(process.env.SPROUTBOAT_LOG_PATH), "brokers") : workerDir);
     const stateDir = resolve(stateBase, basename(workerDir));
     mkdirSync(resolve(stateDir, "d1"), { recursive: true });
+    // #74 — account-level KV/R2/queue/D1 resources live in one shared dir keyed
+    // by their globally-unique `<kind>_<24hex>` id (not per-deployment, not
+    // per-owner): the control plane already refuses a deploy that references an
+    // id the caller doesn't own, and the id is unguessable. This is what lets a
+    // resource's data outlive a redeploy and be shared between projects.
+    const resourceDir = process.env.SPROUTBOAT_RESOURCE_DIR
+      || (process.env.SPROUTBOAT_LOG_PATH
+        ? resolve(dirname(process.env.SPROUTBOAT_LOG_PATH), "resources")
+        : resolve(stateBase, "..", "resources"));
+    mkdirSync(resourceDir, { recursive: true });
     const args = [
       // `process.execPath`, not "bun": sproutboat-edge.service runs with a
       // hardened PATH that doesn't include the pinned /opt/sproutboat/bun, so a
@@ -122,6 +132,7 @@ function spawnWithBroker(sproutPath: string, port: number, secretsPath?: string 
       "--token", token,
       "--db", resolve(stateDir, "state.sqlite"),
       "--data-dir", resolve(stateDir, "d1"),
+      "--resource-dir", resourceDir,
       "--bindings", bindingsPath,
       // The broker's flag is `--sprout-url` (worker->sprout rename); passing the
       // old `--worker-url` makes its parseArgs throw and the broker never starts.
