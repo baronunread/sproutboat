@@ -1,7 +1,7 @@
 import { chmod, mkdir, rename, rm, writeFile } from "node:fs/promises";
 import { basename, dirname, resolve } from "node:path";
 import { randomUUID } from "node:crypto";
-import { validateArtifactDirectory } from "./artifact";
+import { validateArtifactDirectory, type ResourceBindingRef } from "./artifact";
 import { actorFor, purgeUser, type Actor } from "./identity";
 import { guardDeploy, guardNewProject, LIMITS } from "./limits";
 import { aggregateLogs, readLogHistory, readLogTailText, readSproutLogText, routeTraffic, tailLogs } from "./logs";
@@ -20,6 +20,7 @@ import {
   projectDeployments,
   pruneProjectDeployments,
   recordDeployment,
+  resourceById,
   syncRoutes,
 } from "./store";
 
@@ -225,6 +226,26 @@ export async function deleteProject(request: Request, project: string): Promise<
   return Response.json(body, { status: cleanup.failed.length ? 207 : 200 });
 }
 
+/**
+ * #74 — confirm every `{ binding, id }` the artifact declares names a storage
+ * resource `ownerId` holds, of the declared kind. Returns the deduped id list
+ * to record, or a 400 Response naming the first bad reference.
+ */
+function resolveResourceBindings(refs: ResourceBindingRef[], ownerId: string): string[] | Response {
+  const ids: string[] = [];
+  for (const ref of refs) {
+    const resource = resourceById(ownerId, ref.id);
+    if (!resource) {
+      return Response.json({ error: `binding ${ref.binding}: no resource ${ref.id} — create it with \`sproutboat resource create\`` }, { status: 400 });
+    }
+    if (resource.kind !== ref.kind) {
+      return Response.json({ error: `binding ${ref.binding}: ${ref.id} is a ${resource.kind}, not a ${ref.kind}` }, { status: 400 });
+    }
+    ids.push(ref.id);
+  }
+  return [...new Set(ids)];
+}
+
 export async function deployArtifact(request: Request, project: string): Promise<Response> {
   const actor = await authorized(request);
   if (actor instanceof Response) return actor;
@@ -286,10 +307,17 @@ export async function deployArtifact(request: Request, project: string): Promise
       if (!(error instanceof Error) || !("code" in error) || (error.code !== "EEXIST" && error.code !== "ENOTEMPTY")) throw error;
       await rm(temporary, { recursive: true, force: true });
     }
+    // #74 — every `{ binding, id }` the artifact declares must name a storage
+    // resource this account owns, of the matching kind. Reject the deploy
+    // rather than silently spin up an empty store.
+    const resolvedResources = resolveResourceBindings(validation.value.resourceBindings, actor.id);
+    if (resolvedResources instanceof Response) return resolvedResources;
+
     const hostname = deploymentHostname(project, actor.username);
     const deployment = recordDeployment({
       id: randomUUID(), project, ownerId: actor.id, username: actor.username,
       hostname, artifact: digest, sproutPath: resolve(destination, "sprout"), deployedAt: new Date().toISOString(),
+      resourceIds: resolvedResources,
     });
     await syncRoutes();
     // #25 — keep the retained-versions cap; GC any artifact it orphans.

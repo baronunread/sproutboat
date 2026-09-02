@@ -19,6 +19,7 @@ import {
   renameResource,
   resourceById,
   resourceCount,
+  resourceReferencingProjects,
   RESOURCE_KINDS,
   type ResourceKind,
 } from "./store";
@@ -99,8 +100,14 @@ export async function updateResourceHandler(request: Request, id: string): Promi
 export async function deleteResourceHandler(request: Request, id: string): Promise<Response> {
   const actor = await authorized(request);
   if (actor instanceof Response) return actor;
-  // ponytail: no reference check yet — nothing binds a resource id until the
-  // deploy-resolution chunk lands. Add "refuse while referenced" there.
-  if (!deleteResource(actor.id, id)) return Response.json({ error: "resource not found" }, { status: 404 });
+  if (!resourceById(actor.id, id)) return Response.json({ error: "resource not found" }, { status: 404 });
+  const referencing = resourceReferencingProjects(actor.id, id);
+  if (referencing.length > 0) {
+    return Response.json(
+      { error: `still bound by ${referencing.join(", ")} — redeploy those without it first`, projects: referencing },
+      { status: 409 },
+    );
+  }
+  deleteResource(actor.id, id);
   return Response.json({ deleted: id });
 }

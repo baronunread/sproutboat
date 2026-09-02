@@ -126,6 +126,12 @@ function connection(): Database {
     );
     CREATE INDEX IF NOT EXISTS resources_by_owner ON resources(owner_id);
     CREATE UNIQUE INDEX IF NOT EXISTS resource_name_per_owner_kind ON resources(owner_id, kind, name);
+    CREATE TABLE IF NOT EXISTS deployment_resources (
+      deployment_id TEXT NOT NULL REFERENCES deployments(id) ON DELETE CASCADE,
+      resource_id TEXT NOT NULL,
+      PRIMARY KEY (deployment_id, resource_id)
+    );
+    CREATE INDEX IF NOT EXISTS deployment_resources_by_resource ON deployment_resources(resource_id);
   `);
   // worker -> sprout rename: bring a pre-rename DB's column name forward.
   // SAFETY: PRAGMA table_info rows always expose a string `name` column.
@@ -262,16 +268,34 @@ export function ownerRollups(): OwnerRollup[] {
 
 // --- mutations (each its own transaction) ---------------------------------
 
-export function recordDeployment(input: Omit<Deployment, "active">): Deployment {
+export function recordDeployment(input: Omit<Deployment, "active"> & { resourceIds?: string[] }): Deployment {
+  const { resourceIds = [], ...deployment } = input;
   return connection().transaction(() => {
-    run("INSERT OR IGNORE INTO projects (owner_id, name, username, created_at) VALUES (?, ?, ?, ?)", input.ownerId, input.project, input.username, input.deployedAt);
-    run("INSERT OR IGNORE INTO artifacts (digest, created_at) VALUES (?, ?)", input.artifact, input.deployedAt);
-    run("UPDATE deployments SET active = 0 WHERE owner_id = ? AND project = ?", input.ownerId, input.project);
+    run("INSERT OR IGNORE INTO projects (owner_id, name, username, created_at) VALUES (?, ?, ?, ?)", deployment.ownerId, deployment.project, deployment.username, deployment.deployedAt);
+    run("INSERT OR IGNORE INTO artifacts (digest, created_at) VALUES (?, ?)", deployment.artifact, deployment.deployedAt);
+    run("UPDATE deployments SET active = 0 WHERE owner_id = ? AND project = ?", deployment.ownerId, deployment.project);
     run(`INSERT INTO deployments (id, owner_id, project, username, hostname, artifact_digest, sprout_path, deployed_at, active)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1)`,
-      input.id, input.ownerId, input.project, input.username, input.hostname, input.artifact, input.sproutPath, input.deployedAt);
-    return { ...input, active: true };
+      deployment.id, deployment.ownerId, deployment.project, deployment.username, deployment.hostname, deployment.artifact, deployment.sproutPath, deployment.deployedAt);
+    for (const resourceId of new Set(resourceIds)) {
+      run("INSERT OR IGNORE INTO deployment_resources (deployment_id, resource_id) VALUES (?, ?)", deployment.id, resourceId);
+    }
+    return { ...deployment, active: true };
   })();
+}
+
+/**
+ * #74 — distinct project names that still have a deployment (any version) bound
+ * to `resourceId`. Empty means the resource can be deleted.
+ */
+export function resourceReferencingProjects(ownerId: string, resourceId: string): string[] {
+  return q<{ project: string }>(
+    `SELECT DISTINCT d.project FROM deployment_resources dr
+       JOIN deployments d ON d.id = dr.deployment_id
+     WHERE dr.resource_id = ? AND d.owner_id = ?
+     ORDER BY d.project`,
+    resourceId, ownerId,
+  ).map((row) => row.project);
 }
 
 /** Returns the now-active deployment, or undefined if `id` is not a version of this project. */

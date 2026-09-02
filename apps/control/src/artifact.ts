@@ -3,8 +3,13 @@ import { readFile, readdir, stat } from "node:fs/promises";
 import { resolve } from "node:path";
 import { validateManifest, type ArtifactManifest } from "sproutboat/runtime/manifest";
 
-export type ValidatedArtifact = { manifest: ArtifactManifest; sproutPath: string };
+/** #74 — one `{ binding, id }` storage-binding entry from bindings.json.resources. */
+export type ResourceBindingRef = { binding: string; kind: "kv" | "d1" | "r2" | "queue"; id: string };
+export type ValidatedArtifact = { manifest: ArtifactManifest; sproutPath: string; resourceBindings: ResourceBindingRef[] };
 export type ArtifactValidation = { ok: true; value: ValidatedArtifact } | { ok: false; errors: string[] };
+
+const RESOURCE_KINDS = new Set(["kv", "d1", "r2", "queue"]);
+const isResourceKind = (value: string): value is ResourceBindingRef["kind"] => RESOURCE_KINDS.has(value);
 
 // The sprout is always present; these may sit beside it (#1 — deploy carries
 // them so the supervisor can start the binding broker and serve static assets).
@@ -45,7 +50,25 @@ function bindingsErrors(value: Json | undefined): string[] {
     const ok = Array.isArray(dos) && dos.every((entry) => isObj(entry) && isStr(entry.binding) && isStr(entry.className));
     if (!ok) errors.push("bindings.json.do must be an array of { binding, className }");
   }
+  if ("resources" in value) {
+    const resources = value.resources;
+    const ok = isObj(resources) && Object.values(resources).every((entry) =>
+      isObj(entry) && isStr(entry.id) && isStr(entry.kind) && isResourceKind(entry.kind));
+    if (!ok) errors.push("bindings.json.resources must map binding names to { kind, id }");
+  }
   return errors;
+}
+
+/** The `resources` map from a bindings.json already known to pass `bindingsErrors`. */
+function resourceBindingsOf(value: Json | undefined): ResourceBindingRef[] {
+  if (!isObj(value) || !isObj(value.resources)) return [];
+  const refs: ResourceBindingRef[] = [];
+  for (const [binding, entry] of Object.entries(value.resources)) {
+    if (isObj(entry) && isStr(entry.id) && isStr(entry.kind) && isResourceKind(entry.kind)) {
+      refs.push({ binding, kind: entry.kind, id: entry.id });
+    }
+  }
+  return refs;
 }
 
 /** Validate a sidecar `assets.json` and that every file it lists is present under `assets/`. */
@@ -112,14 +135,17 @@ export async function validateArtifactDirectory(directory: string): Promise<Arti
   }
   if (manifest && sprout && digest(sprout) !== manifest.binaryHash) errors.push("sprout digest does not match manifest binaryHash");
 
+  let resourceBindings: ResourceBindingRef[] = [];
   if (entries.includes("bindings.json")) {
     const parsed = parseJson(await readFile(resolve(directory, "bindings.json"), "utf8").catch(() => ""));
-    errors.push(...(parsed === undefined ? ["bindings.json is not valid JSON"] : bindingsErrors(parsed)));
+    const bindingsIssues = parsed === undefined ? ["bindings.json is not valid JSON"] : bindingsErrors(parsed);
+    errors.push(...bindingsIssues);
+    if (bindingsIssues.length === 0) resourceBindings = resourceBindingsOf(parsed);
   }
   const hasAssetsJson = entries.includes("assets.json");
   const hasAssetsDir = entries.includes("assets");
   if (hasAssetsJson !== hasAssetsDir) errors.push("assets.json and the assets/ directory must be present together");
   else if (hasAssetsJson) errors.push(...await assetsErrors(directory));
 
-  return errors.length || !manifest ? { ok: false, errors } : { ok: true, value: { manifest, sproutPath } };
+  return errors.length || !manifest ? { ok: false, errors } : { ok: true, value: { manifest, sproutPath, resourceBindings } };
 }

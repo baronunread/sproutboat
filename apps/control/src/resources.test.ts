@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, beforeEach, expect, test } from "bun:test";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -71,4 +71,33 @@ test("deleteOwner purges the owner's resources", () => {
   store.deleteOwner("user-1");
   expect(store.ownerResources("user-1")).toEqual([]);
   expect(store.ownerResources("user-2")).toHaveLength(1);
+});
+
+// #74 chunk 3c/3e — a deployment records which resource ids it binds, and a
+// resource can't be deleted while a deployment still references it.
+async function deploy(project: string, id: string, resourceIds: string[]): Promise<void> {
+  const artifactDir = join(dir, "artifacts", id);
+  await mkdir(artifactDir, { recursive: true });
+  await writeFile(join(artifactDir, "sprout"), "binary");
+  store.recordDeployment({
+    id, ownerId: "user-1", project, username: "alice",
+    hostname: `${project}.alice.test`, artifact: id, sproutPath: join(artifactDir, "sprout"),
+    deployedAt: new Date().toISOString(), resourceIds,
+  });
+}
+
+test("recordDeployment links resource ids; resourceReferencingProjects lists the projects", async () => {
+  const kv = store.createResource("user-1", "kv", "links");
+  await deploy("app", "dep-1", [kv.id]);
+  await deploy("blog", "dep-2", [kv.id]);
+  expect(store.resourceReferencingProjects("user-1", kv.id)).toEqual(["app", "blog"]);
+  expect(store.resourceReferencingProjects("user-2", kv.id)).toEqual([]);
+});
+
+test("deleting the deployment (project) frees the resource reference (FK cascade)", async () => {
+  const r2 = store.createResource("user-1", "r2", "media");
+  await deploy("app", "dep-1", [r2.id]);
+  expect(store.resourceReferencingProjects("user-1", r2.id)).toEqual(["app"]);
+  store.deleteProject("user-1", "app");
+  expect(store.resourceReferencingProjects("user-1", r2.id)).toEqual([]);
 });
