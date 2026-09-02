@@ -12,7 +12,6 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AdminRouteImport } from './routes/admin'
 import { Route as D1RouteImport } from './routes/d1'
-import { Route as DeploymentsRouteImport } from './routes/deployments'
 import { Route as KvRouteImport } from './routes/kv'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as ProfileRouteImport } from './routes/profile'
@@ -53,11 +52,6 @@ const AdminRoute = AdminRouteImport.update({
 const D1Route = D1RouteImport.update({
   id: '/d1',
   path: '/d1',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const DeploymentsRoute = DeploymentsRouteImport.update({
-  id: '/deployments',
-  path: '/deployments',
   getParentRoute: () => rootRouteImport,
 } as any)
 const KvRoute = KvRouteImport.update({
@@ -196,7 +190,6 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/admin': typeof AdminRouteWithChildren
   '/d1': typeof D1Route
-  '/deployments': typeof DeploymentsRoute
   '/kv': typeof KvRoute
   '/login': typeof LoginRoute
   '/profile': typeof ProfileRoute
@@ -227,7 +220,6 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/d1': typeof D1Route
-  '/deployments': typeof DeploymentsRoute
   '/kv': typeof KvRoute
   '/login': typeof LoginRoute
   '/profile': typeof ProfileRoute
@@ -258,7 +250,6 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/admin': typeof AdminRouteWithChildren
   '/d1': typeof D1Route
-  '/deployments': typeof DeploymentsRoute
   '/kv': typeof KvRoute
   '/login': typeof LoginRoute
   '/profile': typeof ProfileRoute
@@ -292,7 +283,6 @@ export interface FileRouteTypes {
     | '/'
     | '/admin'
     | '/d1'
-    | '/deployments'
     | '/kv'
     | '/login'
     | '/profile'
@@ -323,7 +313,6 @@ export interface FileRouteTypes {
   to:
     | '/'
     | '/d1'
-    | '/deployments'
     | '/kv'
     | '/login'
     | '/profile'
@@ -353,7 +342,6 @@ export interface FileRouteTypes {
     | '/'
     | '/admin'
     | '/d1'
-    | '/deployments'
     | '/kv'
     | '/login'
     | '/profile'
@@ -386,7 +374,6 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AdminRoute: typeof AdminRouteWithChildren
   D1Route: typeof D1Route
-  DeploymentsRoute: typeof DeploymentsRoute
   KvRoute: typeof KvRoute
   LoginRoute: typeof LoginRoute
   ProfileRoute: typeof ProfileRoute
@@ -422,13 +409,6 @@ declare module '@tanstack/react-router' {
       path: '/d1'
       fullPath: '/d1'
       preLoaderRoute: typeof D1RouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/deployments': {
-      id: '/deployments'
-      path: '/deployments'
-      fullPath: '/deployments'
-      preLoaderRoute: typeof DeploymentsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/kv': {
@@ -676,7 +656,6 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AdminRoute: AdminRouteWithChildren,
   D1Route: D1Route,
-  DeploymentsRoute: DeploymentsRoute,
   KvRoute: KvRoute,
   LoginRoute: LoginRoute,
   ProfileRoute: ProfileRoute,

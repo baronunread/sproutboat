@@ -284,6 +284,15 @@ export function recordDeployment(input: Omit<Deployment, "active"> & { resourceI
   })();
 }
 
+/** #78 — verified + pending custom domain counts per project, in one query. */
+export function ownerDomainCounts(ownerId: string): Map<string, number> {
+  const rows = q<{ project: string; n: number }>(
+    "SELECT project, COUNT(*) AS n FROM custom_domains WHERE owner_id = ? GROUP BY project",
+    ownerId,
+  );
+  return new Map(rows.map((row) => [row.project, row.n]));
+}
+
 /**
  * #77 — every owned resource's bound projects in one query, so a list view can
  * show "bound to" without running resourceReferencingProjects per row.

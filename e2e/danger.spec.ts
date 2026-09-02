@@ -6,7 +6,7 @@ test("project deletion requires the exact typed name", async ({ browser }) => {
   const page = await context.newPage();
   await page.goto("/projects");
 
-  const row = page.locator(".record-list li", { hasText: "scratch" });
+  const row = page.locator(".sprout-list li", { hasText: "scratch" });
   await row.getByRole("button", { name: /^delete$/i }).click();
 
   const confirmButton = row.getByRole("button", { name: /delete permanently/i });

@@ -199,6 +199,8 @@ export type Metrics = {
   windowTruncated: boolean;
 };
 
+const bySize = (left: number, right: number) => left - right;
+
 function percentilesOf(sorted: number[]): Percentiles | null {
   if (!sorted.length) return null;
   const at = (p: number) => sorted[Math.min(sorted.length - 1, Math.floor((p / 100) * sorted.length))];
@@ -281,7 +283,6 @@ export async function aggregateLogs(hostname: string, range: string): Promise<Me
     else if (record.cacheStatus === "miss") cacheMisses += 1;
   }
 
-  const bySize = (left: number, right: number) => left - right;
 
   return {
     range: resolved,
@@ -320,13 +321,18 @@ export async function aggregateLogs(hostname: string, range: string): Promise<Me
  * account overview can draw a traffic trend without a second scan of the log.
  */
 export async function routeTraffic(hostnames: Set<string>, rangeMs = RANGE_MS["24h"]): Promise<{
-  requests: number; successes: number; buckets: Array<{ start: string; count: number; errors: number }>;
+  requests: number;
+  successes: number;
+  buckets: Array<{ start: string; count: number; errors: number }>;
+  /** #78 — the same scan, kept per route so a list can show each one's traffic. */
+  byHostname: Record<string, { requests: number; errors: number; latencyP50: number | null }>;
 }> {
   const to = Date.now();
   const from = to - rangeMs;
   const bucketMs = Math.floor(rangeMs / BUCKET_COUNT);
   const counts: number[] = Array.from({ length: BUCKET_COUNT }, () => 0);
   const errors: number[] = Array.from({ length: BUCKET_COUNT }, () => 0);
+  const perRoute = new Map<string, { requests: number; errors: number; durations: number[] }>();
   const { lines } = await tailLines();
   let requests = 0;
   let successes = 0;
@@ -346,6 +352,20 @@ export async function routeTraffic(hostnames: Set<string>, rangeMs = RANGE_MS["2
     const index = Math.min(BUCKET_COUNT - 1, Math.max(0, Math.floor((at - from) / bucketMs)));
     counts[index] += 1;
     if (value.status >= 500) errors[index] += 1;
+
+    const route = perRoute.get(value.hostname) ?? { requests: 0, errors: 0, durations: [] };
+    route.requests += 1;
+    if (value.status >= 500) route.errors += 1;
+    if (isFiniteNumber(value.durationMs)) route.durations.push(value.durationMs);
+    perRoute.set(value.hostname, route);
+  }
+  const byHostname: Record<string, { requests: number; errors: number; latencyP50: number | null }> = {};
+  for (const [hostname, route] of perRoute) {
+    byHostname[hostname] = {
+      requests: route.requests,
+      errors: route.errors,
+      latencyP50: percentilesOf(route.durations.sort(bySize))?.p50 ?? null,
+    };
   }
   return {
     requests,
@@ -355,6 +375,7 @@ export async function routeTraffic(hostnames: Set<string>, rangeMs = RANGE_MS["2
       count,
       errors: errors[index],
     })),
+    byHostname,
   };
 }
 

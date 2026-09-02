@@ -107,7 +107,12 @@ export type Overview = {
     activeProjects: number; deployments: number; requestsLast24Hours: number; successRate: number | null;
     trend?: Array<{ start: string; count: number; errors: number }>;
   };
-  projects: Array<{ name: string; hostname: string; activeDeploymentId: string; deployedAt: string }>;
+  projects: Array<{
+    name: string; hostname: string; activeDeploymentId: string; deployedAt: string;
+    // #78 — served by a current control plane; optional so an older one degrades
+    // to dashes instead of throwing in the middle of the list.
+    versions?: number; domains?: number; requests24h?: number; errors24h?: number; latencyP50?: number | null;
+  }>;
   deployments: Array<{ id: string; project: string; hostname: string; artifact: string; deployedAt: string; active: boolean }>;
 };
 

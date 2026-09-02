@@ -1,44 +1,90 @@
 import { useState } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { DeleteProject, Shell } from "../components";
+import { DeleteProject, Shell, StatusMessage, TextField } from "../components";
 import { relativeTime, useOverview } from "../dashboard-data";
-import { EmptyDeployment } from "./index";
 
-export const Route = createFileRoute("/projects")({ component: Projects, head: () => ({ meta: [{ title: "Projects · Sproutboat" }] }) });
+/**
+ * #78 — the Sprouts list, the way Cloudflare's Workers & Pages lists
+ * applications: one row per sprout carrying its route, its traffic and a way
+ * into its own deployments. The account-wide deployments page is gone; a
+ * version list only makes sense inside the sprout it belongs to.
+ */
+export const Route = createFileRoute("/projects")({
+  component: Projects,
+  head: () => ({ meta: [{ title: "Sprouts · Sproutboat" }] }),
+});
 
 function Projects() {
   const { data, error, refresh } = useOverview();
   const [removed, setRemoved] = useState("");
+  const [query, setQuery] = useState("");
+
+  const needle = query.trim().toLowerCase();
+  const projects = (data?.projects ?? [])
+    .filter((project) => !needle || `${project.name} ${project.hostname}`.toLowerCase().includes(needle));
 
   return (
     <Shell>
-      <section className="page-heading">
-        <div><h1>Projects</h1><p>Each active deployment owns one routed project.</p></div>
+      <section className="product-heading">
+        <div>
+          <h1>Sprouts</h1>
+          <p>Every project serving a route from this box. Deploy one with <code>sproutboat deploy</code>.</p>
+        </div>
       </section>
-      {removed && <p className="form-status" role="status">Deleted {removed} and every deployed version.</p>}
+
+      {removed && <StatusMessage tone="success">Deleted {removed} and every deployed version.</StatusMessage>}
+
       {error ? (
-        <p className="form-error" role="alert">Could not load projects. Refresh and try again.</p>
+        <p className="form-error" role="alert">Could not load sprouts. Refresh and try again.</p>
       ) : data?.projects.length ? (
         <section className="data-panel">
-          <ul className="record-list">
-            {data.projects.map((project) => (
-              <li key={project.name}>
-                <div>
-                  <Link className="record-title" to="/projects/$name" params={{ name: project.name }}>{project.name}</Link>
-                  <small>{project.hostname}</small>
-                </div>
-                <span>Deployed {relativeTime(project.deployedAt)}</span>
-                <Link className="text-link" to="/projects/$name" params={{ name: project.name }}>Open project</Link>
-                <DeleteProject name={project.name} triggerLabel="Delete" triggerVariant="quiet"
-                  onDeleted={() => { setRemoved(project.name); void refresh(); }} />
-              </li>
-            ))}
-          </ul>
+          <div className="product-search">
+            <TextField label="Search sprouts" hideLabel type="search" fieldClassName="grow"
+              placeholder="Search sprouts…" value={query} onChange={(event) => setQuery(event.target.value)} />
+          </div>
+
+          {projects.length === 0 ? (
+            <p className="empty-state">Nothing matches “{query.trim()}”.</p>
+          ) : (
+            <ul className="sprout-list">
+              {projects.map((project) => (
+                <li key={project.name}>
+                  <div className="sprout-main">
+                    <Link className="record-title" to="/projects/$name" params={{ name: project.name }}>{project.name}</Link>
+                    <small>
+                      <a href={`https://${project.hostname}`}>{project.hostname}</a>
+                      {(project.domains ?? 0) > 0 && ` + ${project.domains} custom domain${project.domains === 1 ? "" : "s"}`}
+                    </small>
+                  </div>
+                  <span className="sprout-deployed">{relativeTime(project.deployedAt)}</span>
+                  <DeleteProject name={project.name} triggerLabel="Delete" triggerVariant="quiet"
+                    onDeleted={() => { setRemoved(project.name); void refresh(); }} />
+                  <div className="sprout-stats">
+                    <Link className="text-link" to="/projects/$name/deployments" params={{ name: project.name }}>
+                      View deployments →
+                    </Link>
+                    <span>{project.versions ?? 0} version{project.versions === 1 ? "" : "s"}</span>
+                    <span>{(project.requests24h ?? 0).toLocaleString()} requests</span>
+                    <span>{project.latencyP50 ? `${project.latencyP50} ms` : "—"} p50</span>
+                    {(project.errors24h ?? 0) > 0 && <span className="sprout-errors">{project.errors24h} errors</span>}
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
         </section>
       ) : (
         <section className="data-panel">
-          <EmptyDeployment />
-          <Link className="button primary" to="/deployments">Deployment guide</Link>
+          <div className="empty-state">
+            <h2>Deploy your first sprout</h2>
+            <p>Deploy from a project directory and its route, version history and traffic appear here.</p>
+            <code>sproutboat deploy hello</code>
+          </div>
+          <ol className="deploy-steps">
+            <li><code>sproutboat init hello</code></li>
+            <li><code>sproutboat login</code></li>
+            <li><code>sproutboat deploy hello</code></li>
+          </ol>
         </section>
       )}
     </Shell>

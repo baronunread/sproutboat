@@ -250,7 +250,9 @@ function toggleTheme() {
 const NAV_ACTIVE = { "aria-current": "page" as const };
 
 /** Segments whose display name is not just their capitalised path. */
-const SEGMENT_LABELS = new Map([["kv", "KV"], ["d1", "D1"], ["r2", "R2"], ["api", "API"]]);
+const SEGMENT_LABELS = new Map([
+  ["kv", "KV"], ["d1", "D1"], ["r2", "R2"], ["projects", "Sprouts"],
+]);
 
 function breadcrumb(pathname: string): string {
   if (pathname === "/") return "Overview";
@@ -296,7 +298,7 @@ export function Shell({
     select: (state) => state.location.pathname,
   });
   const { account } = useAccount();
-  const computeOpen = ["/projects", "/deployments", "/queues"].some((path) => pathname.startsWith(path));
+  const computeOpen = ["/projects", "/queues"].some((path) => pathname.startsWith(path));
   const storageOpen = ["/kv", "/d1", "/r2"].some((path) => pathname.startsWith(path));
   const [collapsed, setCollapsed] = useState(false);
   // Read the stored preference after mount: the shell is prerendered, so doing
@@ -333,7 +335,6 @@ export function Shell({
           <span className="nav-section-label">Build</span>
           <NavGroup label="Compute" icon="compute" open={computeOpen}>
             <Link className="nav-link" to="/projects" activeProps={NAV_ACTIVE}>Sprouts</Link>
-            <Link className="nav-link" to="/deployments" activeOptions={EXACT} activeProps={NAV_ACTIVE}>Deployments</Link>
             <Link className="nav-link" to="/queues" activeProps={NAV_ACTIVE}>Queues</Link>
           </NavGroup>
           <NavGroup label="Storage &amp; databases" icon="storage" open={storageOpen}>
