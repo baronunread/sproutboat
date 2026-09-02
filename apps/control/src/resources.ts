@@ -65,11 +65,15 @@ export async function createResourceHandler(request: Request): Promise<Response>
   if (!NAME.test(name)) {
     return Response.json({ error: "name must be a 2–63 character lowercase slug (a–z, 0–9, hyphen)" }, { status: 400 });
   }
+  // `ifExists: "return"` makes this find-or-create — the deploy-time
+  // auto-provisioner (#74) calls it that way so a re-deploy isn't a 409.
+  const existing = ownerResources(actor.id).find((resource) => resource.kind === kind && resource.name === name);
+  if (existing) {
+    if (asText(body.ifExists) === "return") return Response.json({ resource: existing }, { status: 200 });
+    return Response.json({ error: `a ${kind} named "${name}" already exists` }, { status: 409 });
+  }
   if (resourceCount(actor.id) >= LIMITS.resourcesPerAccount()) {
     return Response.json({ error: `an account may hold at most ${LIMITS.resourcesPerAccount()} resources` }, { status: 429 });
-  }
-  if (ownerResources(actor.id).some((resource) => resource.kind === kind && resource.name === name)) {
-    return Response.json({ error: `a ${kind} named "${name}" already exists` }, { status: 409 });
   }
 
   const resource = createResource(actor.id, kind, name);
