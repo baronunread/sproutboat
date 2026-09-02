@@ -228,6 +228,12 @@ if [ -n "${SB_CF_TOKEN:-}" ]; then
 fi
 
 say "Installing application dependencies"
+# The runtime CLI is a moving git ref (sproutboat-cli#main); a frozen lockfile
+# would keep an `sbctl update` pinned to whatever commit bun.lock last recorded.
+# On a pull, re-resolve it first so `update` actually pulls the new broker/CLI.
+if [ "${SB_PULL:-0}" = "1" ]; then
+  ( cd "$ROOT" && "$BUN" update --silent sproutboat ) && ok "runtime CLI re-resolved"
+fi
 ( cd "$ROOT" && "$BUN" install --frozen-lockfile --silent ) && ok "dependencies ready"
 
 say "Building the dashboard"

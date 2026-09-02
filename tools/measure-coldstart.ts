@@ -19,7 +19,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { connect } from "node:net";
 import { EMPTY_BINDINGS, preludePath, wrapNativeFetchHandler, type Bindings } from "./compile";
-import { parseConfig } from "sproutboat/runtime/config";
+import { parseConfig, resourceRefs } from "sproutboat/runtime/config";
 import { startupFilePath } from "../services/supervisor/src/run";
 
 const ROOT = join(import.meta.dir, "..");
@@ -49,12 +49,12 @@ if (prebuilt) {
   const c = cfg.value;
   const bindings: Bindings = {
     ...EMPTY_BINDINGS,
-    kv: c.kv_namespaces ?? [],
+    kv: resourceRefs(c.kv_namespaces).map((ref) => ref.binding),
     secrets: c.secrets ?? [],
     outbound: (c.outbound ?? []).map(String),
-    d1: c.d1_databases ?? [],
-    r2: c.r2_buckets ?? [],
-    queues: c.queues ?? [],
+    d1: resourceRefs(c.d1_databases).map((ref) => ref.binding),
+    r2: resourceRefs(c.r2_buckets).map((ref) => ref.binding),
+    queues: resourceRefs(c.queues).map((ref) => ref.binding),
     analytics: c.analytics_engine_datasets ?? [],
     do: Object.entries(c.durable_objects ?? {}).map(([binding, className]) => ({ binding, className })),
     crons: c.triggers?.crons ?? [],
