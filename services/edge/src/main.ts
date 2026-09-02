@@ -103,7 +103,7 @@ function cappedBody(
     flush() { finish(true); },
   }));
 }
-// The bare deployment domain hosts no content on this box — send it to the dashboard.
+// The bare deployment domain has no content of its own; unrouted, it goes to the dashboard.
 const deploymentDomain = (process.env.SPROUTBOAT_DEPLOYMENT_DOMAIN || "sproutboat.local").toLowerCase();
 const dashboardUrl = (process.env.SPROUTBOAT_DASHBOARD_URL || `https://dashboard.${deploymentDomain}`).replace(/\/$/, "");
 async function snapshotMtime(path: string): Promise<number> {
@@ -212,9 +212,12 @@ const server = Bun.serve({
     // #30 — runtime-lifecycle gauges, loopback only (edge binds 127.0.0.1).
     if (new URL(request.url).pathname === "/__sb/pool") return Response.json(pool.stats());
     const host = request.headers.get("host")?.split(":")[0]?.toLowerCase();
-    if (host === deploymentDomain) return Response.redirect(dashboardUrl, 302);
     const route = host ? routes.get(host) : undefined;
     if (!route || !host) {
+      // The bare deployment domain has no content of its own unless an owner has
+      // attached it to a project (allowed for the apex + www). Otherwise, send it
+      // to the dashboard rather than a bare 404.
+      if (host === deploymentDomain) return Response.redirect(dashboardUrl, 302);
       log({ hostname: host || null, method: request.method, status: 404, durationMs: elapsed(), reqBytes, errorKind: "no-route" });
       return new Response("unknown deployment", { status: 404 });
     }
