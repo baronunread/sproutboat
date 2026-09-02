@@ -121,24 +121,39 @@ function spawnWithBroker(sproutPath: string, port: number, secretsPath?: string 
 
   const startupFile = startupFilePath(sproutPath, port);
   try { rmSync(startupFile, { force: true }); } catch { /* fresh spawn */ }
-  const sprout = Bun.spawn(sproutCommand(sproutPath), {
-    stdout: "ignore",
-    stderr: "ignore",
-    env: { ...process.env, PORT: String(port), SB_STARTUP_FILE: startupFile, ...brokerEnv },
-  });
 
-  // #4 — bind the two lifecycles. A worker with a `bindings.json` is useless
-  // without its broker, so if either process exits the other is torn down and
-  // the pool respawns the pair on the next request:
-  //  - worker exits (crash / evict / dispose) -> stop the orphaned broker
-  //  - broker exits (crash) -> kill the sprout so `exited` fires and the route
-  //    doesn't keep serving binding calls into a closed socket
+  let sprout: Bun.Subprocess | null = null;
   let stopped = false;
-  const stop = () => { if (stopped) return; stopped = true; sprout.kill(9); broker?.kill(9); };
-  void sprout.exited.then(stop);
-  if (broker) void broker.exited.then(stop);
+  const capturedBroker = broker;
+  const stop = () => { if (stopped) return; stopped = true; sprout?.kill(9); capturedBroker?.kill(9); };
 
-  return { exited: sprout.exited, kill: stop };
+  // The broker is a Bun process; a freshly compiled native sprout is ready in
+  // ~1ms and would fire its first env.KV / env.ASSETS call into a broker that
+  // isn't listening yet ("broker rc -2" -> uncaught -> sprout dies -> lifecycle
+  // bind kills the broker -> respawn -> same race forever). Gate the sprout on
+  // the broker's port. No broker (no bindings) -> start immediately.
+  const exited = (async () => {
+    if (capturedBroker) {
+      const up = await awaitPort(port + 10_000, 5_000);
+      if (stopped) return 0;
+      // Broker never listened — don't start a sprout that will only crash on its
+      // first binding call. Resolve as a failed exit; the pool retries next hit.
+      if (!up) { capturedBroker.kill(9); return 1; }
+    }
+    sprout = Bun.spawn(sproutCommand(sproutPath), {
+      stdout: "ignore",
+      stderr: "ignore",
+      env: { ...process.env, PORT: String(port), SB_STARTUP_FILE: startupFile, ...brokerEnv },
+    });
+    // #4 — bind the two lifecycles: a sprout with bindings is useless without
+    // its broker, so either exiting tears down the other and the pool respawns
+    // the pair on the next request.
+    void sprout.exited.then(stop);
+    if (capturedBroker) void capturedBroker.exited.then(stop);
+    return sprout.exited;
+  })();
+
+  return { exited, kill: stop };
 }
 
 function spawnSprout(sproutPath: string, port: number, secretsPath?: string | null): SproutChild {
@@ -150,6 +165,18 @@ async function listens(port: number): Promise<boolean> {
     const socket = connect({ host: "127.0.0.1", port }, () => { socket.destroy(); done(true); });
     socket.on("error", () => done(false));
   });
+}
+
+/** Poll a loopback port until something accepts, or the deadline passes. */
+async function awaitPort(port: number, timeoutMs: number): Promise<boolean> {
+  const deadline = Date.now() + timeoutMs;
+  let wait = 2;
+  while (Date.now() < deadline) {
+    if (await listens(port)) return true;
+    await Bun.sleep(wait);
+    if (wait < 25) wait = Math.min(25, wait * 2);
+  }
+  return false;
 }
 
 class SproutServer {
