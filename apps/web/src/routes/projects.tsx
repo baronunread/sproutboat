@@ -37,8 +37,8 @@ function Projects() {
       {error ? (
         <p className="form-error" role="alert">Could not load sprouts. Refresh and try again.</p>
       ) : data?.projects.length ? (
-        <section className="data-panel">
-          <div className="product-search">
+        <section>
+          <div className="sprout-search">
             <TextField label="Search sprouts" hideLabel type="search" fieldClassName="grow"
               placeholder="Search sprouts…" value={query} onChange={(event) => setQuery(event.target.value)} />
           </div>
@@ -46,27 +46,39 @@ function Projects() {
           {projects.length === 0 ? (
             <p className="empty-state">Nothing matches “{query.trim()}”.</p>
           ) : (
-            <ul className="sprout-list">
+            <ul className="sprout-cards">
               {projects.map((project) => (
-                <li key={project.name}>
-                  <div className="sprout-main">
-                    <Link className="record-title" to="/projects/$name" params={{ name: project.name }}>{project.name}</Link>
-                    <small>
-                      <a href={`https://${project.hostname}`}>{project.hostname}</a>
-                      {(project.domains ?? 0) > 0 && ` + ${project.domains} custom domain${project.domains === 1 ? "" : "s"}`}
-                    </small>
+                <li key={project.name} className="sprout-card">
+                  {/* The name's ::after covers the card, so the whole surface
+                      opens the sprout while the a11y tree keeps one link. Every
+                      other control sits above it on its own stacking context. */}
+                  <div className="sprout-card-head">
+                    <div className="sprout-main">
+                      <Link className="sprout-name" to="/projects/$name" params={{ name: project.name }}>
+                        {project.name}
+                      </Link>
+                      <small>
+                        <a className="sprout-route" href={`https://${project.hostname}`}>{project.hostname}</a>
+                        {(project.domains ?? 0) > 0 && ` + ${project.domains} custom domain${project.domains === 1 ? "" : "s"}`}
+                      </small>
+                    </div>
+                    <span className="sprout-deployed">{relativeTime(project.deployedAt)}</span>
+                    <div className="sprout-card-actions">
+                      <DeleteProject name={project.name} triggerLabel="Delete" triggerVariant="quiet"
+                        onDeleted={() => { setRemoved(project.name); void refresh(); }} />
+                    </div>
                   </div>
-                  <span className="sprout-deployed">{relativeTime(project.deployedAt)}</span>
-                  <DeleteProject name={project.name} triggerLabel="Delete" triggerVariant="quiet"
-                    onDeleted={() => { setRemoved(project.name); void refresh(); }} />
-                  <div className="sprout-stats">
-                    <Link className="text-link" to="/projects/$name/deployments" params={{ name: project.name }}>
+
+                  <div className="sprout-card-foot">
+                    <Link className="text-link sprout-deployments" to="/projects/$name/deployments" params={{ name: project.name }}>
                       View deployments →
                     </Link>
-                    <span>{project.versions ?? 0} version{project.versions === 1 ? "" : "s"}</span>
-                    <span>{(project.requests24h ?? 0).toLocaleString()} requests</span>
-                    <span>{project.latencyP50 ? `${project.latencyP50} ms` : "—"} p50</span>
-                    {(project.errors24h ?? 0) > 0 && <span className="sprout-errors">{project.errors24h} errors</span>}
+                    <div className="sprout-stats">
+                      <span>{project.versions ?? 0} version{project.versions === 1 ? "" : "s"}</span>
+                      <span>{(project.requests24h ?? 0).toLocaleString()} requests</span>
+                      <span>{project.latencyP50 ? `${project.latencyP50} ms` : "—"} p50</span>
+                      {(project.errors24h ?? 0) > 0 && <span className="sprout-errors">{project.errors24h} errors</span>}
+                    </div>
                   </div>
                 </li>
               ))}

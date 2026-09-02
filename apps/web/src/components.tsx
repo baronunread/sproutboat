@@ -267,16 +267,33 @@ const EXACT = { exact: true } as const;
  * keyboard operable and expandable without script — and `open` starts the group
  * expanded whenever the current route lives inside it.
  */
-function NavGroup({ label, icon, open, children }: {
+function NavGroup({ label, icon, routeOpen, children }: {
   label: string;
   icon: keyof typeof NAV_ICON_PATHS;
-  /** True when the current route lives in this group: opens it, and marks the
-   *  icon while the rail is collapsed and the children are hidden. */
-  open: boolean;
+  /** True when the current route lives in this group. */
+  routeOpen: boolean;
   children: ReactNode;
 }) {
+  // Open state is the reader's, not the router's. Two things were closing groups
+  // the reader had opened: deriving `open` from the route, and the Shell
+  // remounting on every navigation (each route renders its own). So the choice
+  // lives in storage, the route may only ever open a group, and never close one.
+  const storageKey = `sproutboat-nav-group:${label}`;
+  const [open, setOpen] = useState(routeOpen);
+  useEffect(() => {
+    const stored = localStorage.getItem(storageKey);
+    if (stored !== null) setOpen(stored === "open" || routeOpen);
+  }, [storageKey, routeOpen]);
+  useEffect(() => { if (routeOpen) setOpen(true); }, [routeOpen]);
+
+  const toggle = (next: boolean) => {
+    setOpen(next);
+    localStorage.setItem(storageKey, next ? "open" : "closed");
+  };
+
   return (
-    <details className={open ? "nav-group nav-group-current" : "nav-group"} open={open}>
+    <details className={routeOpen ? "nav-group nav-group-current" : "nav-group"} open={open}
+      onToggle={(event) => toggle(event.currentTarget.open)}>
       <summary className="nav-link nav-group-summary">
         <NavIcon name={icon} />
         <span>{label}</span>
@@ -333,11 +350,11 @@ export function Shell({
           </Link>
 
           <span className="nav-section-label">Build</span>
-          <NavGroup label="Compute" icon="compute" open={computeOpen}>
+          <NavGroup label="Compute" icon="compute" routeOpen={computeOpen}>
             <Link className="nav-link" to="/projects" activeProps={NAV_ACTIVE}>Sprouts</Link>
             <Link className="nav-link" to="/queues" activeProps={NAV_ACTIVE}>Queues</Link>
           </NavGroup>
-          <NavGroup label="Storage &amp; databases" icon="storage" open={storageOpen}>
+          <NavGroup label="Storage &amp; databases" icon="storage" routeOpen={storageOpen}>
             <Link className="nav-link" to="/kv" activeProps={NAV_ACTIVE}>KV</Link>
             <Link className="nav-link" to="/d1" activeProps={NAV_ACTIVE}>D1</Link>
             <Link className="nav-link" to="/r2" activeProps={NAV_ACTIVE}>R2</Link>

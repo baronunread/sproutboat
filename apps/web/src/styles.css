@@ -811,7 +811,6 @@ body { letter-spacing: -0.006em; }
 .nav-icon { flex: 0 0 auto; height: 1rem; width: 1rem; }
 .nav-link:hover { background: var(--panel-2); }
 .nav-link[aria-current="page"] { background: var(--panel-2); box-shadow: none; color: var(--text); font-weight: 550; }
-.nav-link[aria-current="page"] .nav-icon { color: var(--lime); }
 .sidebar-bottom { border-top: 1px solid var(--line); margin: auto 0.5rem 0; padding-top: 1rem; }
 .status-dot { background: #22c55e; box-shadow: 0 0 0 3px color-mix(in srgb, #22c55e 15%, transparent); }
 .topbar { background: color-mix(in srgb, var(--ink) 90%, transparent); height: 3.5rem; padding: 0 2rem; position: sticky; top: 0; z-index: 5; }
@@ -1301,7 +1300,7 @@ body { letter-spacing: -0.006em; }
 .nav-group-items { display: grid; gap: 0.15rem; margin: 0.15rem 0 0.35rem; }
 /* Children align to the group label's text, not its icon. */
 .nav-group-items .nav-link { padding-inline-start: 2.3rem; }
-.nav-group-items .nav-link[aria-current="page"] { box-shadow: inset 2px 0 var(--lime); }
+
 @media (prefers-reduced-motion: reduce) { .nav-chevron { transition: none; } }
 
 /* Segmented control: a set of mutually exclusive options where the current one
@@ -1390,27 +1389,50 @@ body { letter-spacing: -0.006em; }
 }
 /* Collapsed rail: the group icon shows where you are, since its children are hidden. */
 .nav-collapsed .nav-group-current > .nav-group-summary { background: var(--panel-2); color: var(--text); }
-.nav-collapsed .nav-group-current > .nav-group-summary .nav-icon { color: var(--lime); }
 
-/* #78 Sprouts list: identity and route on the first line, traffic on the second,
-   so the row scans as "what is it / where is it" then "how is it doing". */
-.sprout-list { list-style: none; margin: 0; padding: 0; }
-.sprout-list li {
-  align-items: center;
-  border-bottom: 1px solid var(--line);
-  column-gap: 1rem;
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto auto;
-  padding: 1rem 1.25rem;
-  row-gap: 0.6rem;
+
+/* #79 Sprout cards. The whole card opens the sprout: the name link stretches an
+   invisible ::after over the card, which keeps one link in the accessibility
+   tree and one focus stop, instead of nesting the route link and the delete
+   button inside a wrapping anchor. Everything else is raised above it. */
+.sprout-search { margin-bottom: 1rem; max-width: 30rem; }
+.sprout-cards { display: grid; gap: 0.75rem; list-style: none; margin: 0; padding: 0; }
+.sprout-card {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  position: relative;
+  transition: border-color 120ms ease, background 120ms ease;
 }
-.sprout-list li:last-child { border-bottom: 0; }
-.sprout-list li:hover { background: var(--panel-2); }
-.sprout-main { min-width: 0; }
-.sprout-main small { color: var(--muted); display: block; font-size: 0.75rem; margin-top: 0.25rem; }
-.sprout-main small a { text-underline-offset: 0.2em; }
-.sprout-main small a:hover { text-decoration: underline; }
+.sprout-card:hover { background: var(--panel-2); border-color: var(--line-strong); }
+.sprout-card:focus-within { border-color: var(--sky); }
+.sprout-card-head {
+  align-items: start;
+  display: grid;
+  column-gap: 1rem;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  padding: 1.1rem 1.25rem;
+}
+.sprout-name { font-size: 0.95rem; font-weight: 600; letter-spacing: -0.01em; }
+.sprout-name::after { content: ""; inset: 0; position: absolute; }
+.sprout-name:focus-visible { outline: none; }
+.sprout-card:focus-within .sprout-name { text-decoration: underline; text-underline-offset: 0.2em; }
+.sprout-main small { color: var(--muted); display: block; font-size: 0.75rem; margin-top: 0.3rem; }
+/* Controls that must stay clickable through the stretched link. */
+.sprout-route, .sprout-card-actions, .sprout-deployments { position: relative; z-index: 1; }
+.sprout-route:hover { text-decoration: underline; text-underline-offset: 0.2em; }
 .sprout-deployed { color: var(--muted); font-size: 0.75rem; font-variant-numeric: tabular-nums; white-space: nowrap; }
+/* The foot is the data band: the deployments link, then the numbers. */
+.sprout-card-foot {
+  align-items: center;
+  border-top: 1px solid var(--line);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1.5rem;
+  justify-content: space-between;
+  padding: 0.7rem 1.25rem;
+}
+.sprout-deployments { font-size: 0.78rem; }
 .sprout-stats {
   align-items: center;
   color: var(--muted);
@@ -1418,11 +1440,10 @@ body { letter-spacing: -0.006em; }
   flex-wrap: wrap;
   font-size: 0.75rem;
   font-variant-numeric: tabular-nums;
-  gap: 0.4rem 1.25rem;
-  grid-column: 1 / -1;
+  gap: 0.3rem 1.25rem;
 }
 .sprout-errors { color: var(--coral); }
 @media (max-width: 640px) {
-  .sprout-list li { grid-template-columns: minmax(0, 1fr) auto; }
+  .sprout-card-head { grid-template-columns: minmax(0, 1fr) auto; }
   .sprout-deployed { grid-column: 1; }
 }
