@@ -1,4 +1,5 @@
 import { afterAll, beforeAll, beforeEach, expect, test } from "bun:test";
+import * as domains from "./domains";
 import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -94,4 +95,14 @@ test("a banned owner's custom domain leaves the snapshot", async () => {
   store.banOwner("user-1");
   await store.syncRoutes();
   expect(await routeHosts()).toEqual({});
+});
+
+test("isPlatformManagedHost: apex + www attachable, generated subdomains not", () => {
+  const base = "sproutboat.com";
+  expect(domains.isPlatformManagedHost("sproutboat.com", base)).toBe(false);       // apex
+  expect(domains.isPlatformManagedHost("www.sproutboat.com", base)).toBe(false);   // www
+  expect(domains.isPlatformManagedHost("hello.alice.sproutboat.com", base)).toBe(true);
+  expect(domains.isPlatformManagedHost("api.sproutboat.com", base)).toBe(true);
+  expect(domains.isPlatformManagedHost("example.com", base)).toBe(false);          // external
+  expect(domains.isPlatformManagedHost("notsproutboat.com", base)).toBe(false);    // suffix but not subdomain
 });

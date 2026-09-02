@@ -32,6 +32,16 @@ const asText = (value: JsonInput): string =>
 const TXT_PREFIX = "sproutboat-verify=";
 const txtName = (hostname: string) => `_sproutboat.${hostname}`;
 
+/**
+ * True when `hostname` lives in the generated `<project>.<user>.<base>` space and
+ * so can't be attached as a custom domain. The bare apex and `www.<base>` are
+ * the exceptions — they collide with no deployment route and are the normal way
+ * to put a project on the domain's front door.
+ */
+export function isPlatformManagedHost(hostname: string, base: string): boolean {
+  return hostname !== base && hostname !== `www.${base}` && hostname.endsWith(`.${base}`);
+}
+
 // Lowercase FQDN, 2+ labels, each label 1-63 chars, TLD starts with a letter.
 const HOSTNAME = /^(?=.{1,253}$)([a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z][a-z0-9-]{0,61}[a-z0-9]$/;
 
@@ -70,8 +80,9 @@ export async function addDomain(request: Request, project: string): Promise<Resp
   const hostname = asText(body.hostname).toLowerCase();
 
   if (!HOSTNAME.test(hostname)) return Response.json({ error: "hostname must be a valid lowercase FQDN" }, { status: 400 });
-  if (hostname === deploymentDomain() || hostname.endsWith(`.${deploymentDomain()}`)) {
-    return Response.json({ error: `${deploymentDomain()} hostnames are managed by the platform` }, { status: 400 });
+  const base = deploymentDomain();
+  if (isPlatformManagedHost(hostname, base)) {
+    return Response.json({ error: `${hostname} is inside the platform-managed ${base} space; only ${base} and www.${base} can be attached here` }, { status: 400 });
   }
   const existing = customDomainByHostname(hostname);
   if (existing) {
