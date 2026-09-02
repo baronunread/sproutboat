@@ -4,6 +4,7 @@ import { adminEmail, ensureAdminSeeded, getAuth, githubSignInConfigured } from "
 import { activateDeployment, dashboardOverview, deleteAccount, deleteDeployment, deleteProject, deploymentDetail, deployArtifact, listDeployments, listProjects, projectLogHistory, projectLogs, projectLogTail, projectMetrics, projectSproutLog } from "./deployments";
 import { addDomain, deleteDomain, listDomains, verifyDomain } from "./domains";
 import { listSecrets, putSecret, removeSecret } from "./secrets";
+import { createResourceHandler, deleteResourceHandler, listResources, updateResourceHandler } from "./resources";
 import { actorFor, profileForUser, reserveUsername, sessionUser } from "./identity";
 import { clientIp, logLimitEvent, rateHit, tlsIssuanceAllowed } from "./limits";
 import { approveCliAuthorization, createCliAuthorization, exchangeCliAuthorization, listCliCredentials, revokeAllCliCredentials, revokeCliCredential } from "./cli-authorization";
@@ -182,6 +183,11 @@ const server = Bun.serve({
     const secretRecord = /^\/api\/projects\/([a-z0-9-]+)\/secrets\/([A-Za-z0-9_]+)$/.exec(url.pathname);
     if (request.method === "PUT" && secretRecord) return putSecret(request, secretRecord[1], secretRecord[2]);
     if (request.method === "DELETE" && secretRecord) return removeSecret(request, secretRecord[1], secretRecord[2]);
+    if (request.method === "GET" && url.pathname === "/api/resources") return listResources(request);
+    if (request.method === "POST" && url.pathname === "/api/resources") return createResourceHandler(request);
+    const resourceRecord = /^\/api\/resources\/([a-z]+_[0-9a-f]{24})$/.exec(url.pathname);
+    if (request.method === "PATCH" && resourceRecord) return updateResourceHandler(request, resourceRecord[1]);
+    if (request.method === "DELETE" && resourceRecord) return deleteResourceHandler(request, resourceRecord[1]);
     if (url.pathname === "/internal/health") return Response.json({ ok: true, service: "control" });
     if (url.pathname === "/internal/tls/allow") {
       const domain = url.searchParams.get("domain")?.toLowerCase() || "";

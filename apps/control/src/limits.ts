@@ -28,6 +28,8 @@ export const LIMITS = {
   domainsPerProject: () => num("SPROUTBOAT_MAX_DOMAINS_PER_PROJECT", 5),
   /** secrets one project may hold (#2) */
   secretsPerProject: () => num("SPROUTBOAT_MAX_SECRETS_PER_PROJECT", 64),
+  /** account-level storage resources one account may hold (#74) */
+  resourcesPerAccount: () => num("SPROUTBOAT_MAX_RESOURCES_PER_ACCOUNT", 100),
 };
 
 const WINDOW_MS = 60_000;
