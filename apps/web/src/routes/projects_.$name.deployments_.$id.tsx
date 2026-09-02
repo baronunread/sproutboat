@@ -159,19 +159,20 @@ function DeploymentDetail() {
 
 type BindingRow = { binding: string; kind: string };
 
+const bindingRow = (binding: string, kind: string): BindingRow => ({ binding, kind });
+
 /** #76 — what this version was built to reach, alongside its manifest. */
 function BindingsSummary({ bindings, resources }: { bindings: Bindings | null; resources: Resource[] }) {
   if (!bindings) return null;
-  const row = (binding: string, kind: string): BindingRow => ({ binding, kind });
   const rows: BindingRow[] = [
-    ...bindings.kv.map((binding) => row(binding, "KV namespace")),
-    ...bindings.d1.map((binding) => row(binding, "D1 database")),
-    ...bindings.r2.map((binding) => row(binding, "R2 bucket")),
-    ...bindings.queues.map((binding) => row(binding, "Queue")),
-    ...bindings.secrets.map((binding) => row(binding, "Secret")),
-    ...bindings.analytics.map((binding) => row(binding, "Analytics dataset")),
-    ...bindings.durableObjects.map((entry) => row(entry.binding, `Durable Object · ${entry.className}`)),
-    ...(bindings.assets ? [row(bindings.assets, "Static assets")] : []),
+    ...bindings.kv.map((binding) => bindingRow(binding, "KV namespace")),
+    ...bindings.d1.map((binding) => bindingRow(binding, "D1 database")),
+    ...bindings.r2.map((binding) => bindingRow(binding, "R2 bucket")),
+    ...bindings.queues.map((binding) => bindingRow(binding, "Queue")),
+    ...bindings.secrets.map((binding) => bindingRow(binding, "Secret")),
+    ...bindings.analytics.map((binding) => bindingRow(binding, "Analytics dataset")),
+    ...bindings.durableObjects.map((entry) => bindingRow(entry.binding, `Durable Object · ${entry.className}`)),
+    ...(bindings.assets ? [bindingRow(bindings.assets, "Static assets")] : []),
   ];
   if (rows.length === 0 && bindings.outbound.length === 0) return null;
 
