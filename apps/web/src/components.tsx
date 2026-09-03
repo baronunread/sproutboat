@@ -247,12 +247,17 @@ function toggleTheme() {
   localStorage.setItem("sproutboat-theme", theme);
 }
 
-/* Cloudflare files Queues under Compute (it is a consumer, not a store) and the
-   rest under Storage & databases; ours are all resource kinds under the hood,
-   so both groups link into the same /storage/:kind pages. */
-const STORAGE_KINDS = [["kv", "KV"], ["d1", "D1"], ["r2", "R2"]] as const;
-
 const NAV_ACTIVE = { "aria-current": "page" as const };
+
+/** Segments whose display name is not just their capitalised path. */
+const SEGMENT_LABELS = new Map([["kv", "KV"], ["d1", "D1"], ["r2", "R2"], ["api", "API"]]);
+
+function breadcrumb(pathname: string): string {
+  if (pathname === "/") return "Overview";
+  return pathname.slice(1).split("/")
+    .map((segment) => SEGMENT_LABELS.get(segment) ?? segment)
+    .join("/");
+}
 const EXACT = { exact: true } as const;
 
 /**
@@ -263,11 +268,13 @@ const EXACT = { exact: true } as const;
 function NavGroup({ label, icon, open, children }: {
   label: string;
   icon: keyof typeof NAV_ICON_PATHS;
+  /** True when the current route lives in this group: opens it, and marks the
+   *  icon while the rail is collapsed and the children are hidden. */
   open: boolean;
   children: ReactNode;
 }) {
   return (
-    <details className="nav-group" open={open}>
+    <details className={open ? "nav-group nav-group-current" : "nav-group"} open={open}>
       <summary className="nav-link nav-group-summary">
         <NavIcon name={icon} />
         <span>{label}</span>
@@ -289,40 +296,56 @@ export function Shell({
     select: (state) => state.location.pathname,
   });
   const { account } = useAccount();
-  const computeOpen = pathname.startsWith("/projects") || pathname.startsWith("/deployments")
-    || pathname === "/storage/queue";
-  const storageOpen = pathname.startsWith("/storage") && pathname !== "/storage/queue";
+  const computeOpen = ["/projects", "/deployments", "/queues"].some((path) => pathname.startsWith(path));
+  const storageOpen = ["/kv", "/d1", "/r2"].some((path) => pathname.startsWith(path));
+  const [collapsed, setCollapsed] = useState(false);
+  // Read the stored preference after mount: the shell is prerendered, so doing
+  // it during render would bake one viewer's choice into the static file.
+  useEffect(() => { setCollapsed(localStorage.getItem("sproutboat-nav") === "collapsed"); }, []);
+  const toggleNav = () => {
+    setCollapsed((current) => {
+      localStorage.setItem("sproutboat-nav", current ? "expanded" : "collapsed");
+      return !current;
+    });
+  };
   const username = account?.profile?.username;
   const displayName = username || account?.user?.name || "account";
   return (
-    <div className="app-shell">
+    <div className={collapsed ? "app-shell nav-collapsed" : "app-shell"}>
       <aside className="sidebar">
-        <Link className="brand" to="/">
-          <SproutboatMark />
-          <span>Sproutboat</span>
-        </Link>
+        <div className="sidebar-top">
+          <Link className="brand" to="/">
+            <SproutboatMark />
+            <span>Sproutboat</span>
+          </Link>
+          <button type="button" className="nav-toggle" onClick={toggleNav}
+            aria-expanded={!collapsed} aria-label={collapsed ? "Expand navigation" : "Collapse navigation"}>
+            <svg viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="1.25" strokeLinecap="round" strokeLinejoin="round">
+              <rect x="2" y="3" width="12" height="10" rx="1.5" /><path d="M6.5 3v10" />
+            </svg>
+          </button>
+        </div>
         <nav aria-label="Primary navigation">
           <Link className="nav-link" to="/" activeOptions={EXACT} activeProps={NAV_ACTIVE}>
-            <NavIcon name="overview" />Overview
+            <NavIcon name="overview" /><span>Overview</span>
           </Link>
 
           <span className="nav-section-label">Build</span>
           <NavGroup label="Compute" icon="compute" open={computeOpen}>
             <Link className="nav-link" to="/projects" activeProps={NAV_ACTIVE}>Sprouts</Link>
             <Link className="nav-link" to="/deployments" activeOptions={EXACT} activeProps={NAV_ACTIVE}>Deployments</Link>
-            <Link className="nav-link" to="/storage/$kind" params={{ kind: "queue" }} activeProps={NAV_ACTIVE}>Queues</Link>
+            <Link className="nav-link" to="/queues" activeProps={NAV_ACTIVE}>Queues</Link>
           </NavGroup>
           <NavGroup label="Storage &amp; databases" icon="storage" open={storageOpen}>
-            <Link className="nav-link" to="/storage" activeOptions={EXACT} activeProps={NAV_ACTIVE}>All resources</Link>
-            {STORAGE_KINDS.map(([kind, label]) => (
-              <Link key={kind} className="nav-link" to="/storage/$kind" params={{ kind }} activeProps={NAV_ACTIVE}>{label}</Link>
-            ))}
+            <Link className="nav-link" to="/kv" activeProps={NAV_ACTIVE}>KV</Link>
+            <Link className="nav-link" to="/d1" activeProps={NAV_ACTIVE}>D1</Link>
+            <Link className="nav-link" to="/r2" activeProps={NAV_ACTIVE}>R2</Link>
           </NavGroup>
 
           <span className="nav-section-label nav-section-secondary">Account</span>
-          <Link className="nav-link" to="/settings" activeProps={NAV_ACTIVE}><NavIcon name="settings" />Settings</Link>
+          <Link className="nav-link" to="/settings" activeProps={NAV_ACTIVE}><NavIcon name="settings" /><span>Settings</span></Link>
           {account?.isAdmin && (
-            <Link className="nav-link" to="/admin" activeProps={NAV_ACTIVE}><NavIcon name="admin" />Admin</Link>
+            <Link className="nav-link" to="/admin" activeProps={NAV_ACTIVE}><NavIcon name="admin" /><span>Admin</span></Link>
           )}
         </nav>
         <div className="sidebar-bottom">
@@ -332,7 +355,7 @@ export function Shell({
       </aside>
       <div className="main-column">
         <header className="topbar">
-          <p><span>Personal account</span><b>/</b>{pathname === "/" ? "Overview" : pathname.slice(1)}</p>
+          <p><span>Personal account</span><b>/</b>{breadcrumb(pathname)}</p>
           <div className="topbar-actions">
             {account?.isAdmin && <span className="badge neutral">Admin</span>}
             <details className="account-menu">

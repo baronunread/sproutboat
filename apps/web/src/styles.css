@@ -1319,3 +1319,75 @@ body { letter-spacing: -0.006em; }
 }
 .segment:hover { color: var(--text); }
 .segment[aria-pressed="true"] { background: var(--panel-2); color: var(--text); font-weight: 550; }
+
+/* ---------------------------------------------------------------------------
+   #77 product surfaces (KV, D1, R2, Queues) and the collapsible rail.
+   -------------------------------------------------------------------------- */
+.product-heading {
+  align-items: start;
+  border-bottom: 1px solid var(--line);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem 2rem;
+  justify-content: space-between;
+  margin-bottom: 2rem;
+  padding-bottom: 1.75rem;
+}
+.product-heading h1 { align-items: center; display: flex; font-size: 1.85rem; gap: 0.7rem; letter-spacing: -0.035em; margin: 0; }
+.product-heading p { color: var(--muted); font-size: 0.875rem; line-height: 1.55; margin: 0.45rem 0 0; max-width: 44rem; }
+.product-icon { color: var(--lime); flex: 0 0 auto; height: 1.6rem; width: 1.6rem; }
+.product-actions { display: flex; flex-wrap: wrap; gap: 0.6rem; }
+/* List and usage rail sit side by side until the content stops fitting. */
+.product-body { align-items: start; display: grid; gap: 1.5rem; grid-template-columns: minmax(0, 1fr) 18rem; }
+.usage-rail { display: grid; gap: 1.5rem; }
+.usage-rail .settings-panel { max-width: none; }
+.usage-figure { font-size: 2.1rem; font-variant-numeric: tabular-nums; letter-spacing: -0.04em; margin: 1rem 0 0; }
+.usage-rail .usage-meter-head { margin-top: 1.25rem; }
+.usage-rail .console-output { font-size: 0.7rem; margin-top: 0.75rem; }
+.resource-id { white-space: nowrap; }
+.resource-id .copy-button { margin-inline-start: 0.4rem; }
+/* The list is the page's content; it should not need horizontal scrolling for
+   its own action column. */
+.product-body .log-table { min-width: 0; }
+.product-search { align-items: end; display: flex; gap: 0.6rem; padding: 1.1rem 1.25rem; }
+.product-search .field { flex: 1 1 auto; }
+@media (max-width: 1100px) {
+  .product-body { grid-template-columns: minmax(0, 1fr); }
+}
+
+.sidebar-top { align-items: center; display: flex; gap: 0.5rem; justify-content: space-between; padding-inline: 0.5rem; }
+.nav-toggle {
+  background: transparent;
+  border: 0;
+  border-radius: 6px;
+  color: var(--muted);
+  display: grid;
+  height: 2rem;
+  place-items: center;
+  width: 2rem;
+}
+.nav-toggle svg { height: 1rem; width: 1rem; }
+.nav-toggle:hover { background: var(--panel-2); color: var(--text); }
+
+/* Collapsed: an icon rail. Labels leave the flow but stay in the a11y tree via
+   the link's own text, which `title` also surfaces as a tooltip. */
+.nav-collapsed { grid-template-columns: 4rem minmax(0, 1fr); }
+.nav-collapsed .brand span,
+.nav-collapsed .nav-section-label,
+.nav-collapsed .nav-chevron,
+.nav-collapsed .sidebar-bottom { display: none; }
+.nav-collapsed .sidebar { padding-inline: 0.5rem; }
+.nav-collapsed .sidebar-top { justify-content: center; padding-inline: 0; }
+.nav-collapsed .nav-link { justify-content: center; padding-inline: 0; }
+.nav-collapsed .nav-link span:not(.visually-hidden) { display: none; }
+/* A group's children would be unreadable as bare indents with no label, so the
+   group collapses to its icon and expanding the rail brings them back. */
+.nav-collapsed .nav-group-items { display: none; }
+@media (max-width: 800px) {
+  .nav-collapsed { grid-template-columns: 1fr; }
+  .nav-collapsed .nav-group-items { display: grid; }
+  .nav-collapsed .nav-link span:not(.visually-hidden) { display: inline; }
+}
+/* Collapsed rail: the group icon shows where you are, since its children are hidden. */
+.nav-collapsed .nav-group-current > .nav-group-summary { background: var(--panel-2); color: var(--text); }
+.nav-collapsed .nav-group-current > .nav-group-summary .nav-icon { color: var(--lime); }

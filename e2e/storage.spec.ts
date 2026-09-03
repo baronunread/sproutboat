@@ -7,36 +7,49 @@ import { authFile } from "./helpers";
  */
 test.use({ storageState: authFile("andrea") });
 
-test("storage: create, rename and delete a resource", async ({ page }) => {
-  await page.goto("/storage");
-  await expect(page.getByRole("heading", { name: "Create a resource" })).toBeVisible();
+test("#77 — KV has its own page: create, rename and delete a namespace", async ({ page }) => {
+  await page.goto("/kv");
+  await expect(page.getByRole("heading", { name: "KV namespaces" })).toBeVisible();
 
-  await page.getByLabel("Type").selectOption("kv");
-  await page.getByLabel("Name").fill("e2e-sessions");
-  await page.getByRole("button", { name: /create resource/i }).click();
+  await page.getByRole("link", { name: /create namespace/i }).click();
+  await expect(page).toHaveURL(/\/kv\/new$/);
+  await page.getByLabel(/namespace name/i).fill("e2e-sessions");
+  await page.getByRole("button", { name: /create namespace/i }).click();
+  await expect(page).toHaveURL(/\/kv$/);
 
-  const row = page.locator(".resource-list li", { hasText: "e2e-sessions" });
+  const row = page.locator(".log-table tbody tr", { hasText: "e2e-sessions" });
   await expect(row).toBeVisible();
   await expect(row).toContainText(/kv_[0-9a-f]{24}/);
 
   await row.getByRole("button", { name: /^rename$/i }).click();
-  await row.getByLabel(/new name for e2e-sessions/i).fill("e2e-renamed");
-  await row.getByRole("button", { name: /^save$/i }).click();
-  await expect(page.locator(".resource-list li", { hasText: "e2e-renamed" })).toBeVisible();
+  await page.getByLabel(/new name for e2e-sessions/i).fill("e2e-renamed");
+  await page.getByRole("button", { name: /^save$/i }).click();
+  const renamed = page.locator(".log-table tbody tr", { hasText: "e2e-renamed" });
+  await expect(renamed).toBeVisible();
 
-  const renamed = page.locator(".resource-list li", { hasText: "e2e-renamed" });
   await renamed.getByRole("button", { name: /^delete$/i }).click();
   const dialog = page.locator("dialog.confirm-dialog[open]");
   await expect(dialog).toBeVisible();
-  await dialog.getByRole("button", { name: /delete resource/i }).click();
-  await expect(page.locator(".resource-list li", { hasText: "e2e-renamed" })).toHaveCount(0);
+  await dialog.getByRole("button", { name: /delete namespace/i }).click();
+  await expect(page.locator(".log-table tbody tr", { hasText: "e2e-renamed" })).toHaveCount(0);
 });
 
-test("a resource name that is already taken is rejected before submitting", async ({ page }) => {
-  await page.goto("/storage");
-  await page.getByLabel("Name").fill("Not A Slug");
+test("#77 — each kind is its own page and only lists its own resources", async ({ page }) => {
+  await page.goto("/r2");
+  await expect(page.getByRole("heading", { name: "R2 buckets" })).toBeVisible();
+  await expect(page.locator(".log-table tbody tr", { hasText: "uploads" })).toBeVisible();
+  await expect(page.locator(".log-table tbody tr", { hasText: "sessions" })).toHaveCount(0); // the KV one
+
+  await page.goto("/queues");
+  await expect(page.getByRole("heading", { name: "Queues" })).toBeVisible();
+  await expect(page.locator(".log-table tbody tr", { hasText: "jobs" })).toBeVisible();
+});
+
+test("a malformed name is rejected before submitting", async ({ page }) => {
+  await page.goto("/d1/new");
+  await page.getByLabel(/database name/i).fill("Not A Slug");
   await expect(page.getByText(/lowercase letters, digits and hyphens only/i)).toBeVisible();
-  await expect(page.getByRole("button", { name: /create resource/i })).toBeDisabled();
+  await expect(page.getByRole("button", { name: /create database/i })).toBeDisabled();
 });
 
 test("secrets: add and delete a project secret", async ({ page }) => {

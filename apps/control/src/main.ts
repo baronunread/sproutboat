@@ -4,7 +4,10 @@ import { adminEmail, ensureAdminSeeded, getAuth, githubSignInConfigured } from "
 import { activateDeployment, dashboardOverview, deleteAccount, deleteDeployment, deleteProject, deploymentDetail, deployArtifact, listDeployments, listProjects, projectLogHistory, projectLogs, projectLogTail, projectMetrics, projectSproutLog } from "./deployments";
 import { addDomain, deleteDomain, listDomains, verifyDomain } from "./domains";
 import { listSecrets, putSecret, removeSecret } from "./secrets";
-import { createResourceHandler, deleteResourceHandler, listResources, updateResourceHandler } from "./resources";
+import {
+  createResourceHandler, createResourceOfKind, deleteResourceHandler, listResources, listResourcesOfKind,
+  resourceKindForSegment, resourceOfKind, updateResourceHandler,
+} from "./resources";
 import { actorFor, profileForUser, reserveUsername, sessionUser } from "./identity";
 import { accountLimits, clientIp, logLimitEvent, rateHit, tlsIssuanceAllowed } from "./limits";
 import { approveCliAuthorization, createCliAuthorization, exchangeCliAuthorization, listCliCredentials, revokeAllCliCredentials, revokeCliCredential } from "./cli-authorization";
@@ -186,6 +189,27 @@ const server = Bun.serve({
     const secretRecord = /^\/api\/projects\/([a-z0-9-]+)\/secrets\/([A-Za-z0-9_]+)$/.exec(url.pathname);
     if (request.method === "PUT" && secretRecord) return putSecret(request, secretRecord[1], secretRecord[2]);
     if (request.method === "DELETE" && secretRecord) return removeSecret(request, secretRecord[1], secretRecord[2]);
+    // #77 — per-kind collections (/api/kv, /api/d1, /api/r2, /api/queues), with
+    // /api/resources kept as the aggregate the CLI and deploy resolver use.
+    const kindCollection = /^\/api\/(kv|d1|r2|queues)$/.exec(url.pathname);
+    if (kindCollection) {
+      const kind = resourceKindForSegment(kindCollection[1]);
+      if (kind) {
+        if (request.method === "GET") return listResourcesOfKind(request, kind);
+        if (request.method === "POST") return createResourceOfKind(request, kind);
+      }
+    }
+    const kindRecord = /^\/api\/(kv|d1|r2|queues)\/([a-z]+_[0-9a-f]{24})$/.exec(url.pathname);
+    if (kindRecord && (request.method === "PATCH" || request.method === "DELETE")) {
+      const kind = resourceKindForSegment(kindRecord[1]);
+      if (kind) {
+        const mismatch = await resourceOfKind(request, kind, kindRecord[2]);
+        if (mismatch) return mismatch;
+        return request.method === "PATCH"
+          ? updateResourceHandler(request, kindRecord[2])
+          : deleteResourceHandler(request, kindRecord[2]);
+      }
+    }
     if (request.method === "GET" && url.pathname === "/api/resources") return listResources(request);
     if (request.method === "POST" && url.pathname === "/api/resources") return createResourceHandler(request);
     const resourceRecord = /^\/api\/resources\/([a-z]+_[0-9a-f]{24})$/.exec(url.pathname);
