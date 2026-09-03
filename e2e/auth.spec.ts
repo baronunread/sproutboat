@@ -10,10 +10,10 @@ test("an unauthenticated visitor is redirected to /login", async ({ page }) => {
 test("sign in through GitHub, land on the dashboard, then sign out", async ({ page }) => {
   await loginViaEmulator(page, "andrea");
   // avatar image (not the initial fallback) + admin badge for andrea
-  await expect(page.locator(".avatar img")).toBeVisible();
-  await expect(page.locator(".topbar-actions .badge", { hasText: "Admin" })).toBeVisible();
+  await expect(page.getByRole("img", { name: /avatar$/i })).toBeVisible();
+  await expect(page.getByRole("banner").getByText("Admin", { exact: true })).toBeVisible();
 
-  await page.locator("summary.avatar").click();
+  await page.getByLabel("Open account menu").click();
   await page.getByRole("button", { name: /log out/i }).click();
   await expect(page).toHaveURL(/\/login$/);
 });

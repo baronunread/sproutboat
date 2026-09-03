@@ -93,10 +93,12 @@ export function useJson<T>(url: string | null) {
 export async function mutate(url: string, init: RequestInit = {}): Promise<string | null> {
   try {
     const response = await fetch(url, { credentials: "include", ...init });
-    if (response.ok) return null;
-    // SAFETY: an error body from the control API is { error?: string }.
-    const body = await response.json().catch(() => ({})) as { error?: string };
-    return body.error ?? `Request failed (${response.status}).`;
+    if (!response.ok) {
+      // SAFETY: an error body from the control API is { error?: string }.
+      const body = await response.json().catch(() => ({})) as { error?: string };
+      return body.error ?? `Request failed (${response.status}).`;
+    }
+    return null;
   } catch {
     return "Could not reach the control plane. Try again.";
   }

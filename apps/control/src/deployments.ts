@@ -279,7 +279,9 @@ function resolveResourceBindings(refs: ResourceBindingRef[], ownerId: string): s
   for (const ref of refs) {
     const resource = resourceById(ownerId, ref.id);
     if (!resource) {
-      return Response.json({ error: `binding ${ref.binding}: no resource ${ref.id} — create it with \`sproutboat resource create\`` }, { status: 400 });
+      // #79 — each kind is its own CLI command now; name the one they need.
+      const command = ref.kind === "queue" ? "queues" : ref.kind;
+      return Response.json({ error: `binding ${ref.binding}: no resource ${ref.id} — create it with \`sproutboat ${command} create <name>\`` }, { status: 400 });
     }
     if (resource.kind !== ref.kind) {
       return Response.json({ error: `binding ${ref.binding}: ${ref.id} is a ${resource.kind}, not a ${ref.kind}` }, { status: 400 });

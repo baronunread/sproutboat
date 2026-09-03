@@ -82,7 +82,7 @@ function Secrets({ name, hasVersions }: { name: string; hasVersions: boolean }) 
       ) : names.length === 0 ? (
         <p className="empty-state">No secrets set. Your handler reads them from <code>env</code> once one is bound.</p>
       ) : (
-        <ul className="record-list secret-list">
+        <ul className="record-list secret-list" aria-label="Secrets">
           {names.map((secret) => (
             <li key={secret}>
               <div><strong><code>{secret}</code></strong><small>Value hidden</small></div>

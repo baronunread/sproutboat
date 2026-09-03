@@ -45,10 +45,11 @@ function ProjectTriggers() {
       <CustomDomains name={name} hasActive={Boolean(active)} />
 
       <section className="data-panel settings-panel">
-        <PanelHeading title="Scheduled triggers" description="Cron-triggered invocations are not implemented yet." />
+        <PanelHeading title="Scheduled triggers" description="Cron schedules declared in the artifact fire against the active version." />
         <p className="hint">
-          Every invocation is request-driven today. Scheduled execution is tracked in issue #81; a schedule declared
-          in <code>sproutboat.jsonc</code> is carried in the artifact but never fires.
+          A <code>triggers.crons</code> entry in <code>sproutboat.jsonc</code> is frozen into the artifact and invokes
+          your <code>scheduled()</code> handler on the active version. The declared schedules for this project are on
+          the Bindings tab; per-run history is tracked in issue #81.
         </p>
       </section>
     </>
@@ -98,9 +99,14 @@ function CustomDomains({ name, hasActive }: { name: string; hasActive: boolean }
     setNote(null);
     try {
       const response = await fetch(`${base}/${domain}/verify`, { method: "POST", credentials: "include" });
-      // SAFETY: both branches return JSON — a DomainRecord on success, { error } otherwise.
-      const body = await response.json().catch(() => ({})) as DomainRecord & { error?: string };
-      if (!response.ok) { setNote({ text: body.error ?? "Verification failed. Check the TXT record and try again.", tone: "error" }); return; }
+      if (!response.ok) {
+        // SAFETY: an error body from the domains endpoint is { error?: string }.
+        const failure = await response.json().catch(() => ({})) as { error?: string };
+        setNote({ text: failure.error ?? "Verification failed. Check the TXT record and try again.", tone: "error" });
+        return;
+      }
+      // SAFETY: a 2xx from verify is a DomainRecord, with reachability attached.
+      const body = await response.json() as DomainRecord;
       setReachability((current) => ({ ...current, [domain]: body }));
       setNote({ text: `${domain} is verified.`, tone: "success" });
       await refresh();

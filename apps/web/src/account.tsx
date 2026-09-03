@@ -56,7 +56,7 @@ export function CliCredentials() {
       ) : items.length === 0 ? (
         <p className="empty-state">No API tokens yet. Run <code>sproutboat login</code> on a machine to create one.</p>
       ) : (
-        <ul className="credential-list">
+        <ul className="credential-list" aria-label="API tokens">
           {items.map((credential) => {
             const label = credential.name || credential.start || credential.id.slice(0, 8);
             return (

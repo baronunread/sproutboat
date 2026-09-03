@@ -21,7 +21,7 @@ export async function loginViaEmulator(page: Page, login: string): Promise<void>
     await page.getByRole("button", { name: /continue with github/i }).click();
     await page.waitForURL(/localhost:4000/, { timeout: 2_000 });
   }).toPass({ timeout: 15_000 });
-  await page.locator(".user-btn", { hasText: new RegExp(`\\b${login}\\b`) }).click();
+  await page.getByRole("button", { name: new RegExp(`\\b${login}\\b`) }).click();
   await page.waitForURL((url) => !url.pathname.startsWith("/login") && url.host.includes("dashboard"));
 }
 

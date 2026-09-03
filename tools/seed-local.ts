@@ -184,10 +184,14 @@ async function main(): Promise<void> {
     for (const table of ["deployments", "projects", "artifacts", "banned_owners", "resources", "deployment_resources", "secrets", "custom_domains"]) {
       try { db.run(`DELETE FROM ${table}`); } catch { /* table absent on a fresh DB */ }
     }
+    // Also the issued API keys: the seeder inserts one per demo user below, and
+    // a key left over from a real `sproutboat login` against this box makes the
+    // credentials list longer than the tests (and the demo) expect.
+    try { db.run("DELETE FROM apikey"); } catch { /* absent before the api-key migration */ }
     db.close();
     await rm(process.env.SPROUTBOAT_ARTIFACTS_DIR!, { recursive: true, force: true });
     await writeFile(process.env.SPROUTBOAT_LOG_PATH!, "");
-    console.log("reset: cleared projects, deployments, artifacts, edge log");
+    console.log("reset: cleared projects, deployments, artifacts, resources, secrets, domains, API keys, edge log");
   }
 
   const store = await import("../apps/control/src/store");

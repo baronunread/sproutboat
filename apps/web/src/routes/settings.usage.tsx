@@ -25,7 +25,7 @@ function Meter({ label, used, cap, detail }: { label: string; used: number; cap:
   const percent = cap > 0 ? Math.min(100, Math.round((used / cap) * 100)) : 0;
   const tone = percent >= 90 ? "danger" : percent >= 70 ? "warn" : "ok";
   return (
-    <div className="usage-meter">
+    <div className="usage-meter" role="group" aria-label={label}>
       <div className="usage-meter-head">
         <span>{label}</span>
         <strong>{used.toLocaleString()} / {cap.toLocaleString()} <span className="visually-hidden">used ({percent}%)</span></strong>

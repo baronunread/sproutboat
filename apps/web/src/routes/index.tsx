@@ -2,6 +2,9 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { Arrow, Metric } from "../components";
 import { relativeTime, useOverview } from "../dashboard-data";
 
+/** Built once: an Intl formatter is expensive and this one never varies. */
+const HOUR = new Intl.DateTimeFormat(undefined, { hour: "2-digit", minute: "2-digit" });
+
 // __root.tsx's AuthGate redirects anon visitors to /login once the session
 // check resolves; useOverview also has its own sign-in state as a fallback.
 export const Route = createFileRoute("/")({
@@ -57,7 +60,6 @@ function AccountTrend({ trend, requests }: { trend: Array<{ start: string; count
   if (trend.length === 0 || requests === 0) return null;
   const max = Math.max(1, ...trend.map((bucket) => bucket.count));
   const step = 100 / trend.length;
-  const hour = new Intl.DateTimeFormat(undefined, { hour: "2-digit", minute: "2-digit" });
   return (
     <section className="data-panel settings-panel account-trend">
       <div className="panel-heading">
@@ -70,7 +72,7 @@ function AccountTrend({ trend, requests }: { trend: Array<{ start: string; count
           const errorHeight = (bucket.errors / max) * 26;
           return (
             <g key={bucket.start}>
-              <title>{`${hour.format(new Date(bucket.start))} — ${bucket.count} request${bucket.count === 1 ? "" : "s"}, ${bucket.errors} error${bucket.errors === 1 ? "" : "s"}`}</title>
+              <title>{`${HOUR.format(new Date(bucket.start))} — ${bucket.count} request${bucket.count === 1 ? "" : "s"}, ${bucket.errors} error${bucket.errors === 1 ? "" : "s"}`}</title>
               <rect x={index * step} y={26 - height} width={step - 0.6} height={height} fill="var(--muted)" />
               {errorHeight > 0 && <rect x={index * step} y={26 - errorHeight} width={step - 0.6} height={errorHeight} fill="var(--coral)" />}
             </g>
@@ -78,7 +80,7 @@ function AccountTrend({ trend, requests }: { trend: Array<{ start: string; count
         })}
       </svg>
       <div className="bars-axis">
-        <span>{hour.format(new Date(trend[0].start))}</span>
+        <span>{HOUR.format(new Date(trend[0].start))}</span>
         <span>now</span>
       </div>
     </section>

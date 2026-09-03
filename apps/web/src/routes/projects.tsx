@@ -46,7 +46,7 @@ function Projects() {
           {projects.length === 0 ? (
             <p className="empty-state">Nothing matches “{query.trim()}”.</p>
           ) : (
-            <ul className="sprout-cards">
+            <ul className="sprout-cards" aria-label="Sprouts">
               {projects.map((project) => (
                 <li key={project.name} className="sprout-card">
                   {/* The name's ::after covers the card, so the whole surface

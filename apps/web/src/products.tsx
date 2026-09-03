@@ -30,7 +30,7 @@ export const PRODUCTS = {
     segment: "queues",
     title: "Queues",
     noun: "queue",
-    description: "Message queues a sprout can produce to. Consumers are not implemented yet (#82).",
+    description: "Message queues a sprout can produce to and consume from, with retries and a dead-letter path.",
     bindingExample: '"bindings": { "queues": { "JOBS": { "id": "queue_…" } } }',
     icon: "queues",
   },
