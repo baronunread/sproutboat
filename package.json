@@ -4,6 +4,9 @@
   "type": "module",
   "scripts": {
     "postinstall": "bun run tools/patch-porffor.ts",
+    "prepare": "lefthook install || true",
+    "fmt": "oxfmt .",
+    "fmt:check": "oxfmt --check .",
     "edge": "bun run services/edge/src/main.ts",
     "control": "bun run apps/control/src/main.ts",
     "web": "bun run --cwd apps/web dev",
@@ -26,6 +29,15 @@
     "validate": "bun run typecheck && bun run test && bun run tools/check.ts && bun run tools/diff.ts && bun run tools/report.ts",
     "retest": "bun run validate"
   },
+  "dependencies": {
+    "@better-auth/api-key": "^1.7.1",
+    "@tanstack/react-router": "^1.170.32",
+    "@tanstack/react-start": "^1.168.49",
+    "better-auth": "^1.7.1",
+    "react": "19",
+    "react-dom": "19",
+    "sproutboat": "github:baronunread/sproutboat-cli#main"
+  },
   "devDependencies": {
     "@oxlint/plugins": "1.80.0",
     "@playwright/test": "^1.62.1",
@@ -34,21 +46,14 @@
     "@types/react-dom": "^19.2.5",
     "@vitejs/plugin-react": "^6.1.0",
     "esbuild": "^0.28.2",
+    "lefthook": "2.1.12",
     "nitro": "^3.0.260610-beta",
+    "oxfmt": "0.66.0",
     "oxlint": "1.80.0",
     "porffor": "github:CanadaHonk/porffor#alpha-4",
     "portless": "0.15.5",
     "react-doctor": "0.9.12",
     "typescript": "^5.9.2",
     "vite": "^8.2.2"
-  },
-  "dependencies": {
-    "@better-auth/api-key": "^1.7.1",
-    "sproutboat": "github:baronunread/sproutboat-cli#main",
-    "@tanstack/react-router": "^1.170.32",
-    "@tanstack/react-start": "^1.168.49",
-    "better-auth": "^1.7.1",
-    "react": "19",
-    "react-dom": "19"
   }
 }
