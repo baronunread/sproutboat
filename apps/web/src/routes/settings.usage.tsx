@@ -64,7 +64,7 @@ function Usage() {
       <section className="data-panel wide-panel">
         <PanelHeading title="Per project" description="Versions retained, secrets set, and custom domains attached." />
         {usage.byProject.length === 0 ? (
-          <p className="empty-state">No projects yet. <Link className="text-link" to="/deployments">Deploy one</Link> to see its usage here.</p>
+          <p className="empty-state">No projects yet. <Link className="text-link" to="/projects">Deploy one</Link> to see its usage here.</p>
         ) : (
           <div className="log-scroll">
             <table className="log-table">

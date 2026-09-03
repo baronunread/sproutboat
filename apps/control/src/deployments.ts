@@ -15,6 +15,7 @@ import {
   type Deployment,
   deploymentResources,
   ownerDeployments,
+  ownerDomainCounts,
   ownerProjectCount,
   type ProjectSummary,
   projectDeployment,
@@ -29,13 +30,22 @@ export type { Deployment, ProjectSummary } from "./store";
 
 const artifactRoot = resolve(process.env.SPROUTBOAT_ARTIFACTS_DIR || "/var/lib/sproutboat/artifacts");
 
+/** #78 — what one row of the Sprouts list needs, beyond the route itself. */
+export type ProjectRow = ProjectSummary & {
+  versions: number;
+  domains: number;
+  requests24h: number;
+  errors24h: number;
+  latencyP50: number | null;
+};
+
 export type DashboardOverview = {
   metrics: {
     activeProjects: number; deployments: number; requestsLast24Hours: number; successRate: number | null;
     /** #76 — 24 buckets over the last 24h across every route this account owns. */
     trend: Array<{ start: string; count: number; errors: number }>;
   };
-  projects: ProjectSummary[];
+  projects: ProjectRow[];
   deployments: Array<Pick<Deployment, "id" | "project" | "hostname" | "artifact" | "deployedAt" | "active">>;
 };
 
@@ -97,7 +107,26 @@ export async function dashboardOverview(request: Request): Promise<Response> {
   const deployments = ownerDeployments(actor.id);
   const projects = activeProjects(actor.id);
   const hostnames = new Set(projects.map((project) => project.hostname));
-  const { requests, successes, buckets } = await routeTraffic(hostnames);
+  const { requests, successes, buckets, byHostname } = await routeTraffic(hostnames);
+
+  // #78 — the Sprouts list is one row per project, so each carries its own
+  // version count, attached domains and traffic rather than a second fetch each.
+  const versionCounts = new Map<string, number>();
+  for (const deployment of deployments) {
+    versionCounts.set(deployment.project, (versionCounts.get(deployment.project) ?? 0) + 1);
+  }
+  const domainCounts = ownerDomainCounts(actor.id);
+  const rows: ProjectRow[] = projects.map((project) => {
+    const traffic = byHostname[project.hostname];
+    return {
+      ...project,
+      versions: versionCounts.get(project.name) ?? 0,
+      domains: domainCounts.get(project.name) ?? 0,
+      requests24h: traffic?.requests ?? 0,
+      errors24h: traffic?.errors ?? 0,
+      latencyP50: traffic?.latencyP50 ?? null,
+    };
+  });
 
   const overview: DashboardOverview = {
     metrics: {
@@ -107,7 +136,7 @@ export async function dashboardOverview(request: Request): Promise<Response> {
       successRate: requests ? Math.round((successes / requests) * 1000) / 10 : null,
       trend: buckets,
     },
-    projects,
+    projects: rows,
     deployments: deployments
       .slice(0, 20)
       .map(({ id, project, hostname, artifact, deployedAt, active }) => ({ id, project, hostname, artifact, deployedAt, active })),

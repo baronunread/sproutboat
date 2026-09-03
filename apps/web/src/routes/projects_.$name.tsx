@@ -39,7 +39,7 @@ function ProjectLayout() {
     <Shell>
       <section className="page-heading">
         <div>
-          <p className="crumb"><Link to="/projects">Projects</Link> <span>/</span> {name}</p>
+          <p className="crumb"><Link to="/projects">Sprouts</Link> <span>/</span> {name}</p>
           <h1>{name}</h1>
           {!loading && (active
             ? <p>{active.hostname}</p>
