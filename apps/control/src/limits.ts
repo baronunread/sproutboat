@@ -9,6 +9,8 @@
  */
 import { appendFile, mkdir } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
+import { actorFor, type Actor } from "./identity";
+import { activeProjects, ownerProjectCount, projectCustomDomains, projectDeployments, resourceCount, secretCount } from "./store";
 
 const num = (name: string, fallback: number): number => {
   const value = Number(process.env[name]);
@@ -136,6 +138,47 @@ export function tlsIssuanceAllowed(hostname: string, now = Date.now()): boolean 
   // keep the seen-map from growing forever
   if (tlsSeen.size > 8192) for (const [key, ms] of tlsSeen) if (now - ms > 48 * HOUR_MS) tlsSeen.delete(key);
   return true;
+}
+
+// --- #76 usage against the caps ----------------------------------------
+
+/**
+ * The caps this box enforces plus the caller's current usage, so the dashboard
+ * can show "3 of 50 projects" instead of only meeting a limit as a 429. Reads
+ * the same LIMITS getters the guards use, so the page can never drift from
+ * what is actually enforced.
+ */
+export async function accountLimits(request: Request): Promise<Response> {
+  let actor: Actor | undefined;
+  try {
+    actor = await actorFor(request);
+  } catch (error) {
+    return Response.json({ error: error instanceof Error ? error.message : "authentication is unavailable" }, { status: 503 });
+  }
+  if (!actor) return Response.json({ error: "sign in and reserve a username before using this endpoint" }, { status: 401 });
+
+  const projects = activeProjects(actor.id).map((project) => ({
+    name: project.name,
+    versions: projectDeployments(actor.id, project.name).length,
+    secrets: secretCount(actor.id, project.name),
+    domains: projectCustomDomains(actor.id, project.name).length,
+  }));
+  return Response.json({
+    limits: {
+      projectsPerAccount: LIMITS.projectsPerAccount(),
+      versionsPerProject: LIMITS.versionsPerProject(),
+      domainsPerProject: LIMITS.domainsPerProject(),
+      secretsPerProject: LIMITS.secretsPerProject(),
+      resourcesPerAccount: LIMITS.resourcesPerAccount(),
+      deployPerAccountPerMinute: LIMITS.deployPerAccount(),
+      deployPerIpPerMinute: LIMITS.deployPerIp(),
+    },
+    usage: {
+      projects: ownerProjectCount(actor.id),
+      resources: resourceCount(actor.id),
+      byProject: projects,
+    },
+  });
 }
 
 /** Test hook. */

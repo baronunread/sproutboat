@@ -41,8 +41,72 @@ export function useAccount(): AccountState {
   return value;
 }
 
+export type LoadState = "loading" | "ready" | "error";
+
+/**
+ * #76 — one GET, its loading state, and a refresh, for the panels that read a
+ * single JSON endpoint. Every new dashboard view fetches through this instead
+ * of repeating the same useEffect/try/catch/setState block.
+ *
+ * SAFETY: the caller names the contract its 2xx body satisfies; a non-2xx or a
+ * transport failure resolves to `state: "error"` and leaves `data` undefined.
+ */
+export function useJson<T>(url: string | null) {
+  const [data, setData] = useState<T>();
+  const [state, setState] = useState<LoadState>("loading");
+
+  const refresh = useCallback(async () => {
+    if (url === null) return;
+    setState("loading");
+    try {
+      const response = await fetch(url, { credentials: "include" });
+      if (!response.ok) { setState("error"); return; }
+      // SAFETY: only a 2xx body is read, and the caller names the contract that
+      // endpoint satisfies; every other outcome sets state to "error" instead.
+      setData(await response.json() as T);
+      setState("ready");
+    } catch { setState("error"); }
+  }, [url]);
+
+  useEffect(() => {
+    let ignore = false;
+    if (url === null) { setState("ready"); return; }
+    setState("loading");
+    void fetch(url, { credentials: "include" })
+      .then(async (response) => {
+        if (ignore) return;
+        if (!response.ok) { setState("error"); return; }
+        // SAFETY: as above — a 2xx body only, typed by the calling view.
+        const body = await response.json() as T;
+        if (ignore) return;
+        setData(body);
+        setState("ready");
+      })
+      .catch(() => { if (!ignore) setState("error"); });
+    return () => { ignore = true; };
+  }, [url]);
+
+  return { data, state, refresh };
+}
+
+/** A mutating call: reports the server's `{ error }` message rather than a generic failure. */
+export async function mutate(url: string, init: RequestInit = {}): Promise<string | null> {
+  try {
+    const response = await fetch(url, { credentials: "include", ...init });
+    if (response.ok) return null;
+    // SAFETY: an error body from the control API is { error?: string }.
+    const body = await response.json().catch(() => ({})) as { error?: string };
+    return body.error ?? `Request failed (${response.status}).`;
+  } catch {
+    return "Could not reach the control plane. Try again.";
+  }
+}
+
 export type Overview = {
-  metrics: { activeProjects: number; deployments: number; requestsLast24Hours: number; successRate: number | null };
+  metrics: {
+    activeProjects: number; deployments: number; requestsLast24Hours: number; successRate: number | null;
+    trend?: Array<{ start: string; count: number; errors: number }>;
+  };
   projects: Array<{ name: string; hostname: string; activeDeploymentId: string; deployedAt: string }>;
   deployments: Array<{ id: string; project: string; hostname: string; artifact: string; deployedAt: string; active: boolean }>;
 };
@@ -71,13 +135,20 @@ export function useOverview() {
 }
 
 /**
- * One overview fetch shared across the `/projects/:name` control-room sections
- * (#5). The layout route filters it to one project and provides this; each
- * section reads it instead of fetching again.
+ * State shared across the `/projects/:name` control-room sections (#5). The
+ * layout route provides it; each section reads it instead of fetching again.
+ *
+ * #76 — `deployments` is the project's *complete* version list from
+ * `/api/projects/:name/deployments`, not the 20-newest-across-all-projects
+ * slice `/api/overview` carries, which silently truncated this view.
  */
+export type ProjectDeployment = {
+  id: string; project: string; hostname: string; artifact: string; deployedAt: string; active: boolean;
+};
+
 export type ProjectView = {
   name: string;
-  deployments: Overview["deployments"];
+  deployments: ProjectDeployment[];
   active: Overview["projects"][number] | undefined;
   refresh: () => Promise<void>;
 };

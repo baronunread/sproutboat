@@ -13,6 +13,7 @@ import {
   deleteOwner,
   deleteProject as storeDeleteProject,
   type Deployment,
+  deploymentResources,
   ownerDeployments,
   ownerProjectCount,
   type ProjectSummary,
@@ -29,7 +30,11 @@ export type { Deployment, ProjectSummary } from "./store";
 const artifactRoot = resolve(process.env.SPROUTBOAT_ARTIFACTS_DIR || "/var/lib/sproutboat/artifacts");
 
 export type DashboardOverview = {
-  metrics: { activeProjects: number; deployments: number; requestsLast24Hours: number; successRate: number | null };
+  metrics: {
+    activeProjects: number; deployments: number; requestsLast24Hours: number; successRate: number | null;
+    /** #76 — 24 buckets over the last 24h across every route this account owns. */
+    trend: Array<{ start: string; count: number; errors: number }>;
+  };
   projects: ProjectSummary[];
   deployments: Array<Pick<Deployment, "id" | "project" | "hostname" | "artifact" | "deployedAt" | "active">>;
 };
@@ -92,7 +97,7 @@ export async function dashboardOverview(request: Request): Promise<Response> {
   const deployments = ownerDeployments(actor.id);
   const projects = activeProjects(actor.id);
   const hostnames = new Set(projects.map((project) => project.hostname));
-  const { requests, successes } = await routeTraffic(hostnames);
+  const { requests, successes, buckets } = await routeTraffic(hostnames);
 
   const overview: DashboardOverview = {
     metrics: {
@@ -100,6 +105,7 @@ export async function dashboardOverview(request: Request): Promise<Response> {
       deployments: deployments.length,
       requestsLast24Hours: requests,
       successRate: requests ? Math.round((successes / requests) * 1000) / 10 : null,
+      trend: buckets,
     },
     projects,
     deployments: deployments
@@ -124,6 +130,11 @@ export async function deploymentDetail(request: Request, project: string, id: st
   return Response.json({
     id: found.id, project: found.project, hostname: found.hostname, artifact: found.artifact,
     sproutPath: found.sproutPath, deployedAt: found.deployedAt, active: found.active,
+    // #76 — the dashboard's version + bindings views: who shipped it, what the
+    // artifact declares, and which owned resources it was recorded against.
+    deployedBy: found.username,
+    bindings: validation.ok ? validation.value.bindings : null,
+    resources: deploymentResources(actor.id, found.id),
     manifest: validation.ok ? validation.value.manifest : null,
     manifestError: validation.ok ? null : validation.errors.join("; "),
   });
@@ -175,6 +186,9 @@ export async function projectLogHistory(request: Request, project: string): Prom
     limit: Number(params.get("limit")) || undefined,
     statusClass: params.get("status") || undefined,
     q: params.get("q") || undefined,
+    method: params.get("method") || undefined,
+    minDurationMs: Number(params.get("minDuration")) || undefined,
+    coldStart: params.get("coldStart") === "true" ? true : undefined,
   });
   return Response.json(page);
 }

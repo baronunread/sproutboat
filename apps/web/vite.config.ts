@@ -22,7 +22,14 @@ export default defineConfig({
   server: {
     port: Number(process.env.PORT) || 5173,
     proxy: {
-      "/api": { target: "https://control.sproutboat.localhost", changeOrigin: true, secure: false },
+      // SPROUTBOAT_CONTROL_URL lets the dev server reach a control plane that
+      // isn't on :443 — which is what you get when the portless proxy could not
+      // take the privileged port (no sudo) and fell back to :1355.
+      "/api": {
+        target: process.env.SPROUTBOAT_CONTROL_URL || "https://control.sproutboat.localhost",
+        changeOrigin: true,
+        secure: false,
+      },
     },
   },
 });

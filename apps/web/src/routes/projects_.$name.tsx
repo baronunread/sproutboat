@@ -1,6 +1,7 @@
+import { useCallback } from "react";
 import { createFileRoute, Link, Outlet } from "@tanstack/react-router";
 import { Shell } from "../components";
-import { ProjectProvider, useOverview } from "../dashboard-data";
+import { ProjectProvider, useJson, useOverview, type ProjectDeployment } from "../dashboard-data";
 
 export const Route = createFileRoute("/projects_/$name")({
   component: ProjectLayout,
@@ -9,12 +10,30 @@ export const Route = createFileRoute("/projects_/$name")({
 
 const activeProps = { "aria-current": "page" as const };
 
+const TABS = [
+  ["/projects/$name", "Overview", true],
+  ["/projects/$name/metrics", "Metrics", false],
+  ["/projects/$name/logs", "Logs", false],
+  ["/projects/$name/deployments", "Deployments", false],
+  ["/projects/$name/bindings", "Bindings", false],
+  ["/projects/$name/triggers", "Triggers", false],
+  ["/projects/$name/settings", "Settings", false],
+] as const;
+
 function ProjectLayout() {
   const { name } = Route.useParams();
-  const { data, state, refresh } = useOverview();
-  const deployments = data?.deployments.filter((deployment) => deployment.project === name) ?? [];
-  const active = data?.projects.find((project) => project.name === name);
+  const { data: overview, state, refresh: refreshOverview } = useOverview();
+  // #76 — the project's own version list, so Deployments is complete and paged
+  // here rather than cut to whatever fit in the account-wide overview.
+  const versions = useJson<ProjectDeployment[]>(`/api/projects/${encodeURIComponent(name)}/deployments`);
+  const deployments = versions.data ?? [];
+  const active = overview?.projects.find((project) => project.name === name);
   const exists = deployments.length > 0;
+  const loading = state === "loading" || versions.state === "loading";
+
+  const refresh = useCallback(async () => {
+    await Promise.all([refreshOverview(), versions.refresh()]);
+  }, [refreshOverview, versions]);
 
   return (
     <Shell>
@@ -22,16 +41,16 @@ function ProjectLayout() {
         <div>
           <p className="crumb"><Link to="/projects">Projects</Link> <span>/</span> {name}</p>
           <h1>{name}</h1>
-          {state === "ready" && (active
+          {!loading && (active
             ? <p>{active.hostname}</p>
             : <p>No active route — every version is superseded.</p>)}
         </div>
         {active && <a className="button quiet" href={`https://${active.hostname}`}>Open route</a>}
       </section>
 
-      {state === "loading" ? (
+      {loading ? (
         <section className="data-panel loading-state" aria-live="polite">Loading project…</section>
-      ) : state === "error" ? (
+      ) : state === "error" || versions.state === "error" ? (
         <p className="form-error" role="alert">Could not load this project. Refresh and try again.</p>
       ) : !exists ? (
         <section className="data-panel empty-state">
@@ -42,10 +61,10 @@ function ProjectLayout() {
       ) : (
         <>
           <nav className="section-nav" aria-label="Project sections">
-            <Link to="/projects/$name" params={{ name }} activeOptions={{ exact: true }} activeProps={activeProps} className="section-tab">Overview</Link>
-            <Link to="/projects/$name/deployments" params={{ name }} activeProps={activeProps} className="section-tab">Deployments</Link>
-            <Link to="/projects/$name/observability" params={{ name }} activeProps={activeProps} className="section-tab">Observability</Link>
-            <Link to="/projects/$name/settings" params={{ name }} activeProps={activeProps} className="section-tab">Settings</Link>
+            {TABS.map(([to, label, exact]) => (
+              <Link key={to} to={to} params={{ name }} activeOptions={exact ? { exact: true } : undefined}
+                activeProps={activeProps} className="section-tab">{label}</Link>
+            ))}
           </nav>
           <ProjectProvider value={{ name, deployments, active, refresh }}>
             <Outlet />

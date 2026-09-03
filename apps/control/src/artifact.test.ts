@@ -68,6 +68,32 @@ test("#74 — bindings.json.resources is validated and surfaced as resourceBindi
   }
 });
 
+test("#76 — every declared binding is surfaced for the dashboard's Bindings view", async () => {
+  await seed({ bindings: {
+    kv: ["LINKS"], secrets: ["API_KEY"], outbound: ["https://api.example.com"], queues: ["JOBS"],
+    assets: "ASSETS", do: [{ binding: "COUNTER", className: "Counter" }],
+    resources: { LINKS: { kind: "kv", id: "kv_0123456789abcdef01234567" } },
+  } });
+  const result = await validateArtifactDirectory(dir);
+  expect(result.ok).toBe(true);
+  if (!result.ok) return;
+  const bindings = result.value.bindings;
+  expect(bindings?.kv).toEqual(["LINKS"]);
+  expect(bindings?.secrets).toEqual(["API_KEY"]);
+  expect(bindings?.outbound).toEqual(["https://api.example.com"]);
+  expect(bindings?.assets).toBe("ASSETS");
+  expect(bindings?.durableObjects).toEqual([{ binding: "COUNTER", className: "Counter" }]);
+  expect(bindings?.resources).toEqual(result.value.resourceBindings);
+  expect(bindings?.d1).toEqual([]); // absent keys read as empty, not undefined
+});
+
+test("#76 — an artifact with no bindings.json reports null bindings", async () => {
+  await seed();
+  const result = await validateArtifactDirectory(dir);
+  expect(result.ok).toBe(true);
+  if (result.ok) expect(result.value.bindings).toBeNull();
+});
+
 test("#74 — a resources entry with an unknown kind is rejected", async () => {
   await seed({ bindings: { resources: { X: { kind: "vectorize", id: "x_1" } } } });
   const result = await validateArtifactDirectory(dir);

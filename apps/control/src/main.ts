@@ -6,7 +6,7 @@ import { addDomain, deleteDomain, listDomains, verifyDomain } from "./domains";
 import { listSecrets, putSecret, removeSecret } from "./secrets";
 import { createResourceHandler, deleteResourceHandler, listResources, updateResourceHandler } from "./resources";
 import { actorFor, profileForUser, reserveUsername, sessionUser } from "./identity";
-import { clientIp, logLimitEvent, rateHit, tlsIssuanceAllowed } from "./limits";
+import { accountLimits, clientIp, logLimitEvent, rateHit, tlsIssuanceAllowed } from "./limits";
 import { approveCliAuthorization, createCliAuthorization, exchangeCliAuthorization, listCliCredentials, revokeAllCliCredentials, revokeCliCredential } from "./cli-authorization";
 import { adminBackups, adminCreateBackup, adminCreateUser, adminDeleteBackup, adminDownloadBackup, adminOverview, adminUserDetail, adminUsers, banUser, revokeUserSessions, unbanUser } from "./admin";
 
@@ -149,6 +149,9 @@ const server = Bun.serve({
         return Response.json({ error: error instanceof Error ? error.message : "admin request failed" }, { status: 500 });
       }
     }
+    // #76 — the caps this box enforces, so the dashboard can show usage against
+    // them instead of only surfacing a limit as a 429 after the fact.
+    if (request.method === "GET" && url.pathname === "/api/limits") return accountLimits(request);
     const deployment = /^\/api\/projects\/([a-z0-9-]+)\/deployments$/.exec(url.pathname);
     if (request.method === "GET" && url.pathname === "/api/projects") return listProjects(request);
     if (request.method === "GET" && url.pathname === "/api/overview") return dashboardOverview(request);
