@@ -25,7 +25,10 @@ function fakeSpawn() {
 }
 
 const pools: SproutPool[] = [];
-afterEach(() => { for (const p of pools) p.disposeAll(); pools.length = 0; });
+afterEach(() => {
+  for (const p of pools) p.disposeAll();
+  pools.length = 0;
+});
 function makePool(spawn: SproutFactory, opts = {}) {
   const pool = new SproutPool({ spawn, portRange: [45_000, 45_999], ...opts });
   pools.push(pool);
@@ -39,7 +42,7 @@ test("endpoint starts one server per deployment and reuses it", async () => {
   const b = await pool.endpoint("/tmp/app/sprout");
   expect(a.url).toBe(b.url);
   expect(servers.size).toBe(1);
-  expect((await (await fetch(a.url)).text())).toContain("/tmp/app/sprout");
+  expect(await (await fetch(a.url)).text()).toContain("/tmp/app/sprout");
 });
 
 test("endpoint reports the cold start and its startup time, then warm hits", async () => {
@@ -99,7 +102,7 @@ test("stats() tracks live count, spawns, restarts, evictions and the port pool",
   const first = await pool.endpoint("/tmp/a/sprout"); // warm, no new spawn
   crash(Number(new URL(first.url).port));
   await Bun.sleep(10);
-  await pool.endpoint("/tmp/a/sprout");               // restart
+  await pool.endpoint("/tmp/a/sprout"); // restart
   s = pool.stats();
   expect(s.spawns).toBe(3);
   expect(s.restarts).toBe(1);
@@ -146,8 +149,8 @@ test("evictIdle reaps any idle sprout; a still-hot one survives", async () => {
   await pool.endpoint("/tmp/cold/worker");
   now = 90;
   const hot = await pool.endpoint("/tmp/hot/worker"); // used at t=90
-  now = 150;                                          // cold idle 150, hot idle 60
-  expect(pool.evictIdle()).toBe(1);                   // only the cold one
+  now = 150; // cold idle 150, hot idle 60
+  expect(pool.evictIdle()).toBe(1); // only the cold one
   expect((await fetch(hot.url)).ok).toBe(true);
 });
 
@@ -162,7 +165,10 @@ test("sproutCommand wraps the sprout in the bwrap launcher on Linux, runs it dir
     // The sandboxed path never adds a cgroup wrapper — sprout-sandbox.sh owns
     // the scope. Even with SPROUTBOAT_SPROUT_CGROUP=1 it's just [launcher, path].
     process.env.SPROUTBOAT_SPROUT_CGROUP = "1";
-    expect(sproutCommand("/var/lib/sproutboat/artifacts/a/sprout")).toEqual(["/opt/sproutboat/infra/sandbox/sprout-sandbox.sh", "/var/lib/sproutboat/artifacts/a/sprout"]);
+    expect(sproutCommand("/var/lib/sproutboat/artifacts/a/sprout")).toEqual([
+      "/opt/sproutboat/infra/sandbox/sprout-sandbox.sh",
+      "/var/lib/sproutboat/artifacts/a/sprout",
+    ]);
     delete process.env.SPROUTBOAT_SPROUT_SANDBOX_CMD;
     process.env.SPROUTBOAT_SPROUT_SANDBOX = "none";
     delete process.env.SPROUTBOAT_SPROUT_CGROUP;
@@ -174,8 +180,20 @@ test("sproutCommand wraps the sprout in the bwrap launcher on Linux, runs it dir
     process.env.SPROUTBOAT_SPROUT_CGROUP = "1";
     process.env.SPROUTBOAT_SPROUT_MEMORY_MAX = "96M";
     expect(sproutCommand("/x/sprout")).toEqual([
-      "systemd-run", "--scope", "--quiet", "--collect",
-      "-p", "MemoryMax=96M", "-p", "MemorySwapMax=0", "-p", "CPUQuota=50%", "-p", "TasksMax=24", "--", "/x/sprout",
+      "systemd-run",
+      "--scope",
+      "--quiet",
+      "--collect",
+      "-p",
+      "MemoryMax=96M",
+      "-p",
+      "MemorySwapMax=0",
+      "-p",
+      "CPUQuota=50%",
+      "-p",
+      "TasksMax=24",
+      "--",
+      "/x/sprout",
     ]);
     delete process.env.SPROUTBOAT_SPROUT_CGROUP;
     delete process.env.SPROUTBOAT_SPROUT_MEMORY_MAX;
@@ -189,7 +207,10 @@ test("sproutCommand wraps the sprout in the bwrap launcher on Linux, runs it dir
 test("endpoint forwards the secrets path to the spawn factory (#2)", async () => {
   const seen: Array<string | null | undefined> = [];
   const { spawn } = fakeSpawn();
-  const spy: SproutFactory = (path, port, secretsPath) => { seen.push(secretsPath); return spawn(path, port); };
+  const spy: SproutFactory = (path, port, secretsPath) => {
+    seen.push(secretsPath);
+    return spawn(path, port);
+  };
   const pool = makePool(spy);
   await pool.endpoint("/tmp/withsecrets/worker", "/var/lib/sproutboat/secrets/u__app.json");
   await pool.endpoint("/tmp/nosecrets/worker");
@@ -201,6 +222,15 @@ test("endpoint forwards the secrets path to the spawn factory (#2)", async () =>
  * architecture, a seeded placeholder — used to make `Bun.spawn` throw
  * synchronously out of `spawnSprout`. Nothing caught it, so one request to one
  * bad deployment killed the edge process and took every other tenant with it.
+ *
+ * The failure mode itself is platform-dependent: macOS's posix_spawn throws
+ * ENOEXEC synchronously out of Bun.spawn (what spawnSprout's try/catch
+ * resolves to exit 1); Linux's posix_spawn instead forks unconditionally and
+ * lets the failed exec inside the child report itself via a 127 exit, the
+ * traditional shell "exec failed" convention — Bun.spawn never throws there
+ * at all. Assert the invariant that holds on both: it does not throw out of
+ * spawnSprout, and it resolves to *some* non-zero exit — not the specific
+ * number either platform's own error-reporting convention happens to pick.
  */
 test("an unexecutable artifact fails its own request, it does not throw", async () => {
   const dir = mkdtempSync(join(tmpdir(), "sb-noexec-"));
@@ -209,7 +239,7 @@ test("an unexecutable artifact fails its own request, it does not throw", async 
   writeFileSync(sproutPath, "\x7fELF this is not a real binary", { mode: 0o755 });
   try {
     const child = spawnSprout(sproutPath, 45_998);
-    expect(await child.exited).toBe(1);
+    expect(await child.exited).not.toBe(0);
     child.kill();
   } finally {
     rmSync(dir, { recursive: true, force: true });
