@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { Avatar, Button, PanelHeading, Shell, TextField } from "../components";
+import { Avatar, Button, PanelHeading, TextField } from "../components";
 import { useAccount } from "../dashboard-data";
 
 export const Route = createFileRoute("/profile")({ component: Profile, head: () => ({ meta: [{ title: "Profile · Sproutboat" }] }) });
@@ -45,7 +45,7 @@ function Profile() {
   const identityLabel = currentProfile?.username || account?.user?.name || "account";
 
   return (
-    <Shell>
+    <>
       <section className="page-heading">
         <div><h1>Profile</h1><p>Your deployment namespace is used in every project route.</p></div>
       </section>
@@ -87,6 +87,6 @@ function Profile() {
         )}
         <p><Link className="text-link" to="/settings">Appearance settings</Link></p>
       </section>
-    </Shell>
+    </>
   );
 }

@@ -1,5 +1,5 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { Arrow, Metric, Shell } from "../components";
+import { Arrow, Metric } from "../components";
 import { relativeTime, useOverview } from "../dashboard-data";
 
 // __root.tsx's AuthGate redirects anon visitors to /login once the session
@@ -18,7 +18,7 @@ function Overview() {
     const response = await fetch(`/api/cli/authorizations/${encodeURIComponent(cliCode)}/approve`, { method: "POST", credentials: "include" });
     if (response.ok) history.replaceState({}, "", "/");
   };
-  return <Shell><section className="page-heading"><div><h1>Your deployments, at a glance.</h1><p>Live information from your active routes and deployment history.</p></div><Link className="button primary" to="/projects">View sprouts</Link></section>
+  return <><section className="page-heading"><div><h1>Your deployments, at a glance.</h1><p>Live information from your active routes and deployment history.</p></div><Link className="button primary" to="/projects">View sprouts</Link></section>
     {cliCode && <section className="connection-banner"><div><h2>Connect this machine to Sproutboat.</h2><p>{data ? "Approve this browser login to store a local CLI credential." : "Sign in and claim a namespace before approving this browser login."}</p></div>{data ? <button className="button primary" type="button" onClick={approve}>Approve login <Arrow /></button> : <Link className="button primary" to={state === "sign-in" ? "/login" : "/profile"}>Continue <Arrow /></Link>}</section>}
     {state === "loading" ? <section className="data-panel loading-state" aria-live="polite">Loading workspace data…</section> : state === "sign-in" ? <section className="data-panel empty-state"><h2>Sign in to view your workspace</h2><p>Sign in to deploy and inspect your services.</p><Link className="button primary" to="/login">Sign in</Link></section> : state === "setup" ? <section className="data-panel empty-state"><h2>Claim your deployment namespace</h2><p>Set up the namespace that will be used in your project routes.</p><Link className="button primary" to="/profile">Set up profile</Link></section> : state === "error" ? <p className="form-error" role="alert">Could not load workspace data. Refresh and try again.</p> : <>
       <AccountTrend trend={metrics?.trend ?? []} requests={metrics?.requestsLast24Hours ?? 0} />
@@ -45,7 +45,7 @@ function Overview() {
         ) : <EmptyDeployment />}
       </section>
     </>}
-  </Shell>;
+  </>;
 }
 
 /**

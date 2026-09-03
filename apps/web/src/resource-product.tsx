@@ -1,6 +1,6 @@
 import { useState, type ReactNode } from "react";
 import { Link, useNavigate } from "@tanstack/react-router";
-import { Button, ConfirmButton, Copy, PanelHeading, Shell, StatusMessage, TextField } from "./components";
+import { Button, ConfirmButton, Copy, PanelHeading, StatusMessage, TextField } from "./components";
 import { mutate, relativeTime, useJson } from "./dashboard-data";
 
 /**
@@ -55,7 +55,7 @@ export function ResourceList({ product }: { product: Product }) {
     : resources;
 
   return (
-    <Shell>
+    <>
       <section className="product-heading">
         <div>
           <h1><ProductIcon icon={product.icon} />{product.title}</h1>
@@ -117,7 +117,7 @@ export function ResourceList({ product }: { product: Product }) {
 
         <UsageRail product={product} count={resources.length} />
       </div>
-    </Shell>
+    </>
   );
 }
 
@@ -250,7 +250,7 @@ export function CreateResource({ product }: { product: Product }) {
   };
 
   return (
-    <Shell>
+    <>
       <section className="page-heading">
         <div>
           <p className="crumb"><Link to={`/${product.segment}`}>{product.title}</Link> <span>/</span> Create</p>
@@ -281,6 +281,6 @@ export function CreateResource({ product }: { product: Product }) {
           </div>
         </form>
       </section>
-    </Shell>
+    </>
   );
 }

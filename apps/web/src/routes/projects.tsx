@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { DeleteProject, Shell, StatusMessage, TextField } from "../components";
+import { DeleteProject, StatusMessage, TextField } from "../components";
 import { relativeTime, useOverview } from "../dashboard-data";
 
 /**
@@ -24,7 +24,7 @@ function Projects() {
     .filter((project) => !needle || `${project.name} ${project.hostname}`.toLowerCase().includes(needle));
 
   return (
-    <Shell>
+    <>
       <section className="product-heading">
         <div>
           <h1>Sprouts</h1>
@@ -99,6 +99,6 @@ function Projects() {
           </ol>
         </section>
       )}
-    </Shell>
+    </>
   );
 }

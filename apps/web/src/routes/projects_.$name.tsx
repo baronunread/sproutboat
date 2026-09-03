@@ -1,6 +1,6 @@
 import { useCallback } from "react";
 import { createFileRoute, Link, Outlet } from "@tanstack/react-router";
-import { Shell } from "../components";
+
 import { ProjectProvider, useJson, useOverview, type ProjectDeployment } from "../dashboard-data";
 
 export const Route = createFileRoute("/projects_/$name")({
@@ -36,7 +36,7 @@ function ProjectLayout() {
   }, [refreshOverview, versions]);
 
   return (
-    <Shell>
+    <>
       <section className="page-heading">
         <div>
           <p className="crumb"><Link to="/projects">Sprouts</Link> <span>/</span> {name}</p>
@@ -71,6 +71,6 @@ function ProjectLayout() {
           </ProjectProvider>
         </>
       )}
-    </Shell>
+    </>
   );
 }
