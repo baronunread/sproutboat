@@ -41,7 +41,7 @@ function ProjectDeployments() {
         <p className="empty-state">No versions match these filters.</p>
       ) : (
         <>
-          <ul className="record-list deployment-list">
+          <ul className="record-list deployment-list" aria-label="Versions">
             {visible.map((deployment) => (
               <li key={deployment.id}>
                 <div>

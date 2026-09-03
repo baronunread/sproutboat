@@ -81,7 +81,7 @@ function AdminUsers() {
         <p className="empty-state">No accounts match.</p>
       ) : (
         <>
-          <ul className="user-list">
+          <ul className="user-list" aria-label="User accounts">
             {page.users.map((user) => (
               <UserItem key={user.id} user={user} onAct={act} />
             ))}

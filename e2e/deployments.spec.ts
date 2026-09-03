@@ -5,7 +5,7 @@ test.use({ storageState: authFile("andrea") });
 
 test("deployment detail shows the immutable record and manifest", async ({ page }) => {
   await page.goto("/projects/blog/deployments");
-  await page.locator(".record-list a.record-title").first().click();
+  await page.getByRole("list", { name: "Versions" }).getByRole("link").first().click();
   await expect(page).toHaveURL(/\/projects\/blog\/deployments\/[0-9a-f-]{36}$/);
 
   await expect(page.getByText("Deployment ID")).toBeVisible();
@@ -18,15 +18,15 @@ test("deployment detail shows the immutable record and manifest", async ({ page 
 test("roll back a superseded version, then it becomes active", async ({ page }) => {
   await page.goto("/projects/blog/deployments");
   // blog has 3 versions; the last row is the oldest / superseded
-  const rows = page.locator(".record-list li");
-  await rows.last().locator("a.record-title").click();
+  const rows = page.getByRole("list", { name: "Versions" }).getByRole("listitem");
+  await rows.last().getByRole("link").click();
   await expect(page).toHaveURL(/\/projects\/blog\/deployments\/[0-9a-f-]{36}$/);
 
-  // Scope to the detail view's version panel — the list also renders .status badges.
-  const status = page.locator(".settings-panel").filter({ hasText: /^Version / }).locator(".status");
+  // The detail view renders exactly one lifecycle badge, on the version panel.
+  const status = page.getByText(/^(Active|Superseded)$/);
   await expect(status).toHaveText("Superseded");
   await page.getByRole("button", { name: /roll back to this version/i }).click();
-  const dialog = page.locator("dialog.confirm-dialog[open]");
+  const dialog = page.getByRole("dialog");
   await expect(dialog).toBeVisible();
   await dialog.getByRole("button", { name: /^roll back$/i }).click();
   await expect(status).toHaveText("Active");
@@ -35,7 +35,7 @@ test("roll back a superseded version, then it becomes active", async ({ page }) 
 
 test("the active version cannot be deleted", async ({ page }) => {
   await page.goto("/projects/api/deployments");
-  await page.locator(".record-list a.record-title").first().click();
+  await page.getByRole("list", { name: "Versions" }).getByRole("link").first().click();
   await expect(page.getByText(/active version can't be rolled back or deleted/i)).toBeVisible();
   await expect(page.getByRole("button", { name: /delete version/i })).toHaveCount(0);
 });

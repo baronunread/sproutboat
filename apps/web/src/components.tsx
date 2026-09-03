@@ -508,7 +508,7 @@ export function Metric({
   tone?: "neutral" | "warning";
 }) {
   return (
-    <section className={`metric-card ${tone}`}>
+    <section className={`metric-card ${tone}`} aria-label={label}>
       <p>{label}</p>
       <strong>{value}</strong>
       <span>{detail}</span>
