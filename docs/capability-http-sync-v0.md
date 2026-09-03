@@ -2,8 +2,17 @@
 
 `http-sync-v0` is the accepted local handler profile. A handler must
 default-export an object with `fetch(request)` and return a `Response`. It has
-no imports, no dynamic bindings, no outbound network access, and no Node or Bun
+no dynamic bindings, no outbound network access by default, and no Node or Bun
 API contract. The accepted fixtures live in `tests/porffor/capabilities/`.
+
+**Imports (#89).** The entry point may import: relative modules across the
+project, and bare specifiers resolved from the project's own `node_modules`.
+The CLI bundles the handler into one module before Porffor sees it, so the
+compiler still only ever gets a single self-contained file. The capability
+rules below are enforced against that *bundled* output, which means a
+dependency reaching for `process` or `node:fs` fails exactly as hand-written
+code would — a package is not a way around the profile. Dynamic `import()` is
+not supported, since nothing can be resolved at build time.
 
 Unsupported syntax and API fixtures belong in `tests/porffor/rejected/`; they
 are validated by the CLI `check` command before a build can begin.
