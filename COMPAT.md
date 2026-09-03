@@ -8,6 +8,30 @@ Decision: **GO** (go threshold: at least 40% matching).
 
 Failure categories: 0 compile, 0 runtime, 2 output mismatch.
 
+## Known divergences
+
+**Date: timezone offsets are wrong (#90).** Porffor alpha-4 ignores a numeric
+offset, and with no fractional-seconds part it folds the offset digits into
+milliseconds instead. `32-date-offset.js` isolates this:
+
+| input | correct | Porffor alpha-4 |
+|---|---|---|
+| `2024-01-02T03:04:05+02:00` | `01:04:05.000Z` | `03:04:05.002Z` |
+| `2024-01-02T03:04:05-05:00` | `08:04:05.000Z` | `03:04:05.005Z` |
+| `2024-01-02T03:04:05.250+01:00` | `02:04:05.250Z` | `04:04:05.250Z` (sign inverted) |
+
+It fails silently — the result is a real Date, not `Invalid Date`, so a handler
+cannot detect it. Everything else about Date is correct: ISO-8601 with `Z`,
+`Date.now()`, `new Date(ms)`, `toISOString()`, and `Invalid Date` for garbage.
+Not shimmable from the prelude: reassigning `Date.parse` makes Porffor emit C
+that calls it with the wrong arity, so the build fails. Upstream fix needed.
+
+**`15-date-iso.js` / `16-date-parts.js` are not correctness failures.** Request 3
+sends `q=3,5,8`, and a non-ISO date string is *implementation-defined* per
+ECMA-262. V8 reads it US-style as March 5 2008; Porffor reads it as year 3,
+month 5, day 8. Both are legal. These two rows compare engine legacy heuristics,
+not spec conformance — read them as such rather than as data corruption.
+
 | Handler | Compiles | Matches | Bytes | Compile ms | Run ms | Error |
 |---|---:|---:|---:|---:|---:|---|
 | 01-hello.js | yes | yes | 418408 | 8660 | 195 |  |
