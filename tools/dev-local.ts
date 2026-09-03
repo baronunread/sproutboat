@@ -48,6 +48,30 @@ function start(label: string, command: string[], env = environment()) {
   });
 }
 
+/**
+ * `portless proxy start` is a no-op when any proxy already holds the port: it
+ * prints "Proxy is already running", exits 0, and silently drops the flags. A
+ * proxy started earlier without `--wildcard` therefore leaves
+ * `*.sproutboat.localhost` unroutable — the edge and every deployment URL —
+ * while this step still looks like it succeeded. Say so instead.
+ */
+async function startProxy() {
+  console.log("→ starting Portless HTTPS and wildcard routing");
+  const child = Bun.spawn(["portless", "proxy", "start", "--wildcard"], {
+    cwd: root, env: environment(), stdin: "inherit", stdout: "pipe", stderr: "inherit",
+  });
+  const output = await new Response(child.stdout).text();
+  process.stdout.write(output);
+  if (await child.exited !== 0) throw new Error("starting Portless HTTPS and wildcard routing failed");
+  if (/already running/i.test(output)) {
+    console.warn(
+      "\n!  A proxy was already listening, so --wildcard was NOT applied.\n" +
+      "   *.sproutboat.localhost will not route: no edge, no deployment URLs.\n" +
+      "   Fix: sudo ./node_modules/.bin/portless proxy stop -p 443 && bun run dev:local\n",
+    );
+  }
+}
+
 async function main() {
   requireCommand("portless");
   requireCommand("npx");
@@ -57,7 +81,7 @@ async function main() {
   // which cross-compiles with Porffor + Zig — no Docker). This harness only
   // brings up the platform: control, edge, dashboard.
 
-  await checked("starting Portless HTTPS and wildcard routing", ["portless", "proxy", "start", "--wildcard"]);
+  await startProxy();
   await checked("migrating local Control state", ["bunx", "--bun", "auth@1.7.1", "migrate", "--config", "apps/control/src/auth.migrate.ts", "--yes"]);
   if (await fetch("http://127.0.0.1:4000").then(() => true).catch(() => false)) console.log("→ reusing GitHub emulator at http://localhost:4000");
   else start("GitHub emulator", ["npx", "emulate", "--service", "github", "--seed", "tests/emulate.github.yaml"]);
@@ -70,9 +94,16 @@ async function main() {
 }
 
 for (const signal of ["SIGINT", "SIGTERM"] as const) process.on(signal, () => {
+  // Named, because this handler exits 0 — without it, "shut down on a signal"
+  // and "fell off the end of the script" are indistinguishable from the shell.
+  console.log(`\n→ ${signal} received, stopping ${processes.length} child processes`);
   for (const child of processes) child.kill(signal);
   process.exit();
 });
 
 await main();
-await new Promise<void>(() => {});
+// Hold the harness open for as long as the platform is up. Waiting on the
+// children keeps their handles referenced; a bare `new Promise(() => {})` is
+// not a handle, so the process could fall out from under the services it
+// started and leave them orphaned or killed.
+await Promise.all(processes.map((child) => child.exited));
