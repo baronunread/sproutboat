@@ -2,7 +2,7 @@ import { afterEach, expect, test } from "bun:test";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { SproutPool, startupFilePath } from "./run";
+import { SproutPool, spawnSprout, startupFilePath } from "./run";
 import { sproutCommand } from "./sandbox";
 import type { SproutChild, SproutFactory } from "./run";
 
@@ -194,4 +194,24 @@ test("endpoint forwards the secrets path to the spawn factory (#2)", async () =>
   await pool.endpoint("/tmp/withsecrets/worker", "/var/lib/sproutboat/secrets/u__app.json");
   await pool.endpoint("/tmp/nosecrets/worker");
   expect(seen).toEqual(["/var/lib/sproutboat/secrets/u__app.json", undefined]);
+});
+
+/**
+ * An artifact that cannot be executed — a truncated upload, a foreign
+ * architecture, a seeded placeholder — used to make `Bun.spawn` throw
+ * synchronously out of `spawnSprout`. Nothing caught it, so one request to one
+ * bad deployment killed the edge process and took every other tenant with it.
+ */
+test("an unexecutable artifact fails its own request, it does not throw", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "sb-noexec-"));
+  const sproutPath = join(dir, "sprout");
+  // Executable bit set, but not a runnable image: posix_spawn gives ENOEXEC.
+  writeFileSync(sproutPath, "\x7fELF this is not a real binary", { mode: 0o755 });
+  try {
+    const child = spawnSprout(sproutPath, 45_998);
+    expect(await child.exited).toBe(1);
+    child.kill();
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });

@@ -172,10 +172,22 @@ function spawnWithBroker(sproutPath: string, port: number, secretsPath?: string 
       if (!up) { capturedBroker.kill(9); return 1; }
     }
     const sproutFd = openLog(capturedBroker ? "a" : "w");
-    sprout = Bun.spawn(sproutCommand(sproutPath), {
-      ...withLog(sproutFd),
-      env: { ...process.env, PORT: String(port), SB_STARTUP_FILE: startupFile, ...brokerEnv },
-    });
+    try {
+      sprout = Bun.spawn(sproutCommand(sproutPath), {
+        ...withLog(sproutFd),
+        env: { ...process.env, PORT: String(port), SB_STARTUP_FILE: startupFile, ...brokerEnv },
+      });
+    } catch (cause) {
+      // The artifact is not executable on this box — a truncated upload, a
+      // foreign architecture, a seeded placeholder. `Bun.spawn` throws
+      // synchronously (ENOEXEC), and an uncaught throw here would take the
+      // whole edge down with it: one bad artifact, every tenant offline.
+      // Fail this deployment only; the pool retries on the next request.
+      console.error(`sprout ${sproutPath} could not be executed:`, cause instanceof Error ? cause.message : cause);
+      capturedBroker?.kill(9);
+      closeLog(sproutFd);
+      return 1;
+    }
     closeLog(sproutFd);
     // #4 — bind the two lifecycles: a sprout with bindings is useless without
     // its broker, so either exiting tears down the other and the pool respawns
@@ -188,7 +200,9 @@ function spawnWithBroker(sproutPath: string, port: number, secretsPath?: string 
   return { exited, kill: stop };
 }
 
-function spawnSprout(sproutPath: string, port: number, secretsPath?: string | null): SproutChild {
+/** The real spawn behind the default pool. Exported so the unexecutable-artifact
+ *  path can be covered — it used to throw and take the whole edge down. */
+export function spawnSprout(sproutPath: string, port: number, secretsPath?: string | null): SproutChild {
   return spawnWithBroker(sproutPath, port, secretsPath);
 }
 
