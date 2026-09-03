@@ -61,7 +61,7 @@ function Usage() {
         </dl>
       </section>
 
-      <section className="data-panel settings-panel">
+      <section className="data-panel wide-panel">
         <PanelHeading title="Per project" description="Versions retained, secrets set, and custom domains attached." />
         {usage.byProject.length === 0 ? (
           <p className="empty-state">No projects yet. <Link className="text-link" to="/deployments">Deploy one</Link> to see its usage here.</p>
@@ -72,9 +72,9 @@ function Usage() {
               <thead>
                 <tr>
                   <th scope="col">Project</th>
-                  <th scope="col">Versions</th>
-                  <th scope="col">Secrets</th>
-                  <th scope="col">Domains</th>
+                  <th scope="col" className="num">Versions</th>
+                  <th scope="col" className="num">Secrets</th>
+                  <th scope="col" className="num">Domains</th>
                 </tr>
               </thead>
               <tbody>
@@ -83,9 +83,9 @@ function Usage() {
                     <td>
                       <Link className="text-link" to="/projects/$name" params={{ name: project.name }}>{project.name}</Link>
                     </td>
-                    <td>{project.versions} / {limits.versionsPerProject}</td>
-                    <td>{project.secrets} / {limits.secretsPerProject}</td>
-                    <td>{project.domains} / {limits.domainsPerProject}</td>
+                    <td className="num">{project.versions} / {limits.versionsPerProject}</td>
+                    <td className="num">{project.secrets} / {limits.secretsPerProject}</td>
+                    <td className="num">{project.domains} / {limits.domainsPerProject}</td>
                   </tr>
                 ))}
               </tbody>

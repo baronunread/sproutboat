@@ -58,7 +58,7 @@ function AdminBackups() {
   };
 
   return (
-    <section className="data-panel settings-panel">
+    <section className="data-panel wide-panel">
       <PanelHeading
         title="Backups"
         description="The SQLite metadata store plus the artifact directory and route snapshot, one gzipped archive each. A timer takes one daily; the last seven are kept."
@@ -77,16 +77,16 @@ function AdminBackups() {
         <table className="log-table">
           <caption className="visually-hidden">Stored backup archives</caption>
           <thead>
-            <tr><th scope="col">Archive</th><th scope="col">Size</th><th scope="col">Taken</th><th scope="col">Off-box</th><th scope="col"><span className="visually-hidden">Actions</span></th></tr>
+            <tr><th scope="col">Archive</th><th scope="col" className="num">Size</th><th scope="col">Taken</th><th scope="col">Off-box</th><th scope="col" className="actions"><span className="visually-hidden">Actions</span></th></tr>
           </thead>
           <tbody>
             {backups.map((backup) => (
               <tr key={backup.name}>
                 <td><code>{backup.name}</code></td>
-                <td>{humanSize(backup.sizeBytes)}</td>
+                <td className="num">{humanSize(backup.sizeBytes)}</td>
                 <td>{relativeTime(backup.createdAt)}</td>
                 <td>{backup.offsite ? "Uploaded" : "—"}</td>
-                <td className="row-actions">
+                <td className="actions row-actions">
                   <a className="button quiet" href={`/api/admin/backups/${encodeURIComponent(backup.name)}`} download>Download</a>
                   <ConfirmButton
                     label="Delete"

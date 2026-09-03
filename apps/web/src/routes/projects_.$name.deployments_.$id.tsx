@@ -127,7 +127,7 @@ function DeploymentDetail() {
                 The active version can&apos;t be rolled back or deleted. Roll back another version, or replace it with a new deploy.
               </StatusMessage>
             ) : (
-              <div className="form-actions start">
+              <div className="form-actions">
                 <ConfirmButton
                   label="Roll back to this version"
                   busyLabel="Rolling back…"
@@ -239,7 +239,7 @@ function Compare({ name, current, versions }: {
     : [];
 
   return (
-    <section className="data-panel settings-panel">
+    <section className="data-panel wide-panel">
       <PanelHeading title="Compare with another version" description="Which build inputs changed between two versions of this project." />
       <div className="log-filters">
         <SelectField label="Compare against" fieldClassName="grow" value={otherId} options={options}

@@ -24,6 +24,7 @@ import { Route as ProjectsNameRouteImport } from './routes/projects_.$name'
 import { Route as SettingsIndexRouteImport } from './routes/settings.index'
 import { Route as SettingsTokensRouteImport } from './routes/settings.tokens'
 import { Route as SettingsUsageRouteImport } from './routes/settings.usage'
+import { Route as StorageKindRouteImport } from './routes/storage_.$kind'
 import { Route as ProjectsNameIndexRouteImport } from './routes/projects_.$name.index'
 import { Route as ProjectsNameBindingsRouteImport } from './routes/projects_.$name.bindings'
 import { Route as ProjectsNameDeploymentsRouteImport } from './routes/projects_.$name.deployments'
@@ -108,6 +109,11 @@ const SettingsUsageRoute = SettingsUsageRouteImport.update({
   path: '/usage',
   getParentRoute: () => SettingsRoute,
 } as any)
+const StorageKindRoute = StorageKindRouteImport.update({
+  id: '/storage_/$kind',
+  path: '/storage/$kind',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ProjectsNameIndexRoute = ProjectsNameIndexRouteImport.update({
   id: '/',
   path: '/',
@@ -164,6 +170,7 @@ export interface FileRoutesByFullPath {
   '/projects/$name': typeof ProjectsNameRouteWithChildren
   '/settings/tokens': typeof SettingsTokensRoute
   '/settings/usage': typeof SettingsUsageRoute
+  '/storage/$kind': typeof StorageKindRoute
   '/admin/': typeof AdminIndexRoute
   '/settings/': typeof SettingsIndexRoute
   '/projects/$name/bindings': typeof ProjectsNameBindingsRoute
@@ -186,6 +193,7 @@ export interface FileRoutesByTo {
   '/admin/users': typeof AdminUsersRoute
   '/settings/tokens': typeof SettingsTokensRoute
   '/settings/usage': typeof SettingsUsageRoute
+  '/storage/$kind': typeof StorageKindRoute
   '/admin': typeof AdminIndexRoute
   '/settings': typeof SettingsIndexRoute
   '/projects/$name/bindings': typeof ProjectsNameBindingsRoute
@@ -212,6 +220,7 @@ export interface FileRoutesById {
   '/projects_/$name': typeof ProjectsNameRouteWithChildren
   '/settings/tokens': typeof SettingsTokensRoute
   '/settings/usage': typeof SettingsUsageRoute
+  '/storage_/$kind': typeof StorageKindRoute
   '/admin/': typeof AdminIndexRoute
   '/settings/': typeof SettingsIndexRoute
   '/projects_/$name/bindings': typeof ProjectsNameBindingsRoute
@@ -239,6 +248,7 @@ export interface FileRouteTypes {
     | '/projects/$name'
     | '/settings/tokens'
     | '/settings/usage'
+    | '/storage/$kind'
     | '/admin/'
     | '/settings/'
     | '/projects/$name/bindings'
@@ -261,6 +271,7 @@ export interface FileRouteTypes {
     | '/admin/users'
     | '/settings/tokens'
     | '/settings/usage'
+    | '/storage/$kind'
     | '/admin'
     | '/settings'
     | '/projects/$name/bindings'
@@ -286,6 +297,7 @@ export interface FileRouteTypes {
     | '/projects_/$name'
     | '/settings/tokens'
     | '/settings/usage'
+    | '/storage_/$kind'
     | '/admin/'
     | '/settings/'
     | '/projects_/$name/bindings'
@@ -308,6 +320,7 @@ export interface RootRouteChildren {
   SettingsRoute: typeof SettingsRouteWithChildren
   StorageRoute: typeof StorageRoute
   ProjectsNameRoute: typeof ProjectsNameRouteWithChildren
+  StorageKindRoute: typeof StorageKindRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -416,6 +429,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/settings/usage'
       preLoaderRoute: typeof SettingsUsageRouteImport
       parentRoute: typeof SettingsRoute
+    }
+    '/storage_/$kind': {
+      id: '/storage_/$kind'
+      path: '/storage/$kind'
+      fullPath: '/storage/$kind'
+      preLoaderRoute: typeof StorageKindRouteImport
+      parentRoute: typeof rootRouteImport
     }
     '/projects_/$name/': {
       id: '/projects_/$name/'
@@ -542,6 +562,7 @@ const rootRouteChildren: RootRouteChildren = {
   SettingsRoute: SettingsRouteWithChildren,
   StorageRoute: StorageRoute,
   ProjectsNameRoute: ProjectsNameRouteWithChildren,
+  StorageKindRoute: StorageKindRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
