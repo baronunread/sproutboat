@@ -45,10 +45,11 @@ function ProjectTriggers() {
       <CustomDomains name={name} hasActive={Boolean(active)} />
 
       <section className="data-panel settings-panel">
-        <PanelHeading title="Scheduled triggers" description="Cron-triggered invocations are not implemented yet." />
+        <PanelHeading title="Scheduled triggers" description="Cron schedules declared in the artifact fire against the active version." />
         <p className="hint">
-          Every invocation is request-driven today. Scheduled execution is tracked in issue #81; a schedule declared
-          in <code>sproutboat.jsonc</code> is carried in the artifact but never fires.
+          A <code>triggers.crons</code> entry in <code>sproutboat.jsonc</code> is frozen into the artifact and invokes
+          your <code>scheduled()</code> handler on the active version. The declared schedules for this project are on
+          the Bindings tab; per-run history is tracked in issue #81.
         </p>
       </section>
     </>

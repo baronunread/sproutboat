@@ -131,10 +131,10 @@ function ProjectBindings() {
 
       {bindings && bindings.crons.length > 0 && (
         <section className="data-panel settings-panel">
-          <PanelHeading title="Declared cron triggers" description="Present in the artifact; scheduled execution is not implemented yet (#81)." />
+          <PanelHeading title="Declared cron triggers" description="Frozen in the artifact, and fired against the active version. Run history is not surfaced yet (#81)." />
           <ul className="record-list">
             {bindings.crons.map((expression) => (
-              <li key={expression}><div><code>{expression}</code></div><span>Not scheduled</span></li>
+              <li key={expression}><div><code>{expression}</code></div><span>Scheduled</span></li>
             ))}
           </ul>
         </section>
