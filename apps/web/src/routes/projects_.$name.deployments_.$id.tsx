@@ -46,6 +46,7 @@ type Bindings = {
   assets: string | null;
   durableObjects: Array<{ binding: string; className: string }>;
   resources: Array<{ binding: string; kind: string; id: string }>;
+  vars?: Record<string, string>;
 };
 type Detail = {
   id: string;
@@ -285,6 +286,7 @@ function BindingsSummary({ bindings, resources }: { bindings: Bindings | null; r
     ...bindings.analytics.map((binding) => bindingRow(binding, "Analytics dataset")),
     ...bindings.durableObjects.map((entry) => bindingRow(entry.binding, `Durable Object · ${entry.className}`)),
     ...(bindings.assets ? [bindingRow(bindings.assets, "Static assets")] : []),
+    ...Object.keys(bindings.vars ?? {}).map((binding) => bindingRow(binding, "Variable")),
   ];
   if (rows.length === 0 && bindings.outbound.length === 0) return null;
 
