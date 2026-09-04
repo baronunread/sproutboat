@@ -4,6 +4,8 @@ import {
   Button,
   ConfirmButton,
   Copy,
+  FORM,
+  FORM_ACTIONS,
   Panel,
   PanelHeading,
   RECORD_NOTE,
@@ -213,10 +215,14 @@ function CustomDomains({ name, hasActive }: { name: string; hasActive: boolean }
         </RecordList>
       )}
 
-      <form
-        className="mt-5 grid max-w-[36rem] gap-5 [&>[data-slot=form-actions]]:col-span-full"
-        onSubmit={(event) => void add(event)}
-      >
+      {!hasActive && (
+        <StatusMessage>
+          Deploy a version before attaching a domain — there is nothing for it to serve yet.
+        </StatusMessage>
+      )}
+
+      <hr className="mt-6" />
+      <form className={FORM} onSubmit={(event) => void add(event)}>
         <TextField
           label="Add a hostname"
           type="text"
@@ -230,14 +236,10 @@ function CustomDomains({ name, hasActive }: { name: string; hasActive: boolean }
             setHostname(event.target.value);
             setError(null);
           }}
-          hint={
-            hasActive
-              ? "A TXT record proves ownership; an A or AAAA record sends traffic here."
-              : "Deploy a version before attaching a domain."
-          }
+          hint="A TXT record proves ownership; an A or AAAA record sends traffic here."
           error={invalid ? "Enter a full hostname, like www.example.com." : error}
         />
-        <div data-slot="form-actions" className="mt-1 flex flex-wrap items-center gap-2.5">
+        <div data-slot="form-actions" className={FORM_ACTIONS}>
           <Button
             type="submit"
             variant="primary"

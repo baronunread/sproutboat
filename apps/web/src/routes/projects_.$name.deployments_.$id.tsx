@@ -1,6 +1,17 @@
 import { useCallback, useEffect, useState } from "react";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
-import { ConfirmButton, Copy, DataTable, Panel, PanelHeading, SelectField, Status, StatusMessage } from "../components";
+import {
+  ConfirmButton,
+  Copy,
+  DataTable,
+  FILTER_BAR,
+  FORM_ACTIONS,
+  Panel,
+  PanelHeading,
+  SelectField,
+  Status,
+  StatusMessage,
+} from "../components";
 import { mutate, relativeTime, useProject } from "../dashboard-data";
 import { buttonVariants } from "@/components/ui/button";
 
@@ -221,7 +232,7 @@ function DeploymentDetail() {
                 new deploy.
               </StatusMessage>
             ) : (
-              <div data-slot="form-actions" className="mt-1 flex flex-wrap items-center gap-2.5">
+              <div data-slot="form-actions" className={FORM_ACTIONS}>
                 <ConfirmButton
                   label="Roll back to this version"
                   busyLabel="Rolling back…"
@@ -381,10 +392,12 @@ function Compare({
         title="Compare with another version"
         description="Which build inputs changed between two versions of this project."
       />
-      <div className="mt-5 mb-3 flex flex-wrap items-end gap-2.5">
+      <div className={FILTER_BAR}>
+        {/* A version id is short — the picker is sized to its content rather
+            than stretched across the panel like a search field. */}
         <SelectField
           label="Compare against"
-          fieldClassName="min-w-0 flex-[1_1_16rem]"
+          fieldClassName="w-[24rem] max-w-full"
           value={otherId}
           options={options}
           onValueChange={(value) => setOtherId(value)}

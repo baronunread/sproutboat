@@ -3,6 +3,10 @@ import { createFileRoute } from "@tanstack/react-router";
 import {
   Button,
   Copy,
+  FILTER_BAR,
+  FILTER_FIELD,
+  FILTER_SEARCH,
+  FORM_ACTIONS,
   Panel,
   PanelHeading,
   RECORD_TITLE,
@@ -14,6 +18,7 @@ import {
   TextField,
 } from "../components";
 import { USERNAME_RULE, relativeTime } from "../dashboard-data";
+import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/admin/users")({ component: AdminUsers });
 
@@ -117,11 +122,11 @@ function AdminUsers() {
 
       {creating && <CreateUserForm onCreated={() => void load()} onClose={() => setCreating(false)} />}
 
-      <div className="mt-5 mb-3 flex flex-wrap items-end gap-2.5">
+      <div className={FILTER_BAR}>
         <TextField
           label="Search users"
           type="search"
-          fieldClassName="min-w-0 flex-[1_1_16rem]"
+          fieldClassName={FILTER_SEARCH}
           placeholder="Search by email"
           value={query}
           onChange={(event) => {
@@ -221,8 +226,10 @@ function CreateUserForm({ onCreated, onClose }: { onCreated: () => void; onClose
   }
 
   return (
-    <form onSubmit={submit}>
-      <div className="mt-5 grid max-w-[46rem] grid-cols-[repeat(auto-fit,minmax(14rem,1fr))] gap-5 [&>[data-slot=form-actions]]:col-span-full">
+    // Its own bordered block: without one it runs straight into the search bar
+    // and the user list below, and reads as part of them.
+    <form className="mt-5 border-b border-border pb-6" onSubmit={submit}>
+      <div className="grid max-w-[46rem] grid-cols-[repeat(auto-fit,minmax(14rem,1fr))] gap-x-5 gap-y-6">
         <TextField
           label="Email"
           type="email"
@@ -271,7 +278,7 @@ function CreateUserForm({ onCreated, onClose }: { onCreated: () => void; onClose
           }
         />
       </div>
-      <div data-slot="form-actions" className="mt-1 flex flex-wrap items-center gap-2.5">
+      <div data-slot="form-actions" className={cn(FORM_ACTIONS, "mt-6")}>
         <Button variant="quiet" onClick={onClose}>
           Cancel
         </Button>
@@ -372,16 +379,17 @@ function UserItem({
       )}
 
       {banning && (
-        <div className="mt-3 flex flex-wrap items-end gap-2.5">
+        <div className="mt-4 flex flex-wrap items-end gap-x-2.5 gap-y-4">
           <TextField
             label="Ban reason"
-            fieldClassName="min-w-0 flex-[1_1_16rem]"
-            placeholder="Optional — shown in the users list"
+            fieldClassName={FILTER_SEARCH}
+            placeholder="Optional"
             value={reason}
             onChange={(event) => setReason(event.target.value)}
           />
           <SelectField
             label="Duration"
+            fieldClassName={FILTER_FIELD}
             value={String(duration)}
             options={DURATIONS.map(([label, seconds]) => [String(seconds), label] as const)}
             onValueChange={(value) => setDuration(Number(value))}
@@ -433,7 +441,7 @@ function UserItem({
                   ))}
                 </ul>
               )}
-              <div data-slot="form-actions" className="mt-1 flex flex-wrap items-center gap-2.5">
+              <div className="mt-4">
                 <Button onClick={() => void onAct(user.id, "sessions/revoke")}>Revoke all sessions</Button>
               </div>
             </>

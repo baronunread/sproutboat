@@ -5,6 +5,8 @@ import {
   ConfirmButton,
   Copy,
   DeleteProject,
+  FORM,
+  FORM_ACTIONS,
   Panel,
   PanelHeading,
   RecordList,
@@ -153,10 +155,18 @@ function Secrets({ name, hasVersions }: { name: string; hasVersions: boolean }) 
         </RecordList>
       )}
 
-      <form
-        className="mt-5 grid max-w-[36rem] gap-5 [&>[data-slot=form-actions]]:col-span-full"
-        onSubmit={(event) => void submit(event)}
-      >
+      {/* The reason the fields below are dead belongs above them, not buried in
+          one field's hint where it reads as guidance rather than a blocker. */}
+      {!hasVersions && (
+        <StatusMessage>
+          Deploy this project once before setting secrets — a secret is handed to a running version.
+        </StatusMessage>
+      )}
+
+      {/* A rule the full width of the list above it: "these are the secrets
+          you have" ends here, "add one" starts below. */}
+      <hr className="mt-6" />
+      <form className={FORM} onSubmit={(event) => void submit(event)}>
         <TextField
           label="Name"
           value={secretName}
@@ -183,10 +193,10 @@ function Secrets({ name, hasVersions }: { name: string; hasVersions: boolean }) 
           autoComplete="new-password"
           spellCheck={false}
           disabled={!hasVersions}
-          hint={hasVersions ? "Stored encrypted; up to 8 KB." : "Deploy the project once before setting secrets."}
+          hint="Stored encrypted; up to 8 KB."
           error={tooLong ? "Value exceeds the 8 KB limit." : error}
         />
-        <div data-slot="form-actions" className="mt-1 flex flex-wrap items-center gap-2.5">
+        <div data-slot="form-actions" className={FORM_ACTIONS}>
           <Button
             type="submit"
             variant="primary"

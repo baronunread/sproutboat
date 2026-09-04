@@ -1,6 +1,17 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
-import { Button, DataTable, Panel, PanelHeading, SelectField, StatusMessage, TextField } from "../components";
+import {
+  Button,
+  DataTable,
+  FILTER_BAR,
+  FILTER_FIELD,
+  FILTER_SEARCH,
+  Panel,
+  PanelHeading,
+  SelectField,
+  StatusMessage,
+  TextField,
+} from "../components";
 import { relativeTime, useProject } from "../dashboard-data";
 import { cn } from "@/lib/utils";
 
@@ -195,7 +206,7 @@ function ProjectLogs() {
           title="Request logs"
           description="Edge events for this project's route, newest first."
           action={
-            <div data-slot="form-actions" className="mt-1 flex flex-wrap items-center gap-2.5">
+            <div className="flex items-center gap-2.5">
               <span
                 className={cn(
                   "text-[0.75rem]",
@@ -217,27 +228,31 @@ function ProjectLogs() {
           <StatusMessage>This project has no active route right now — only past traffic is shown.</StatusMessage>
         )}
 
-        <search className="mt-5 mb-3 flex flex-wrap items-end gap-2.5">
+        <search className={FILTER_BAR}>
           <SelectField
             label="Status"
+            fieldClassName={FILTER_FIELD}
             value={filters.statusClass}
             options={STATUS_OPTIONS}
             onValueChange={(value) => set("statusClass", value)}
           />
           <SelectField
             label="Method"
+            fieldClassName={FILTER_FIELD}
             value={filters.method}
             options={METHOD_OPTIONS}
             onValueChange={(value) => set("method", value)}
           />
           <SelectField
             label="Duration"
+            fieldClassName={FILTER_FIELD}
             value={filters.minDuration}
             options={DURATION_OPTIONS}
             onValueChange={(value) => set("minDuration", value)}
           />
           <SelectField
             label="Cold start"
+            fieldClassName={FILTER_FIELD}
             value={filters.coldStart}
             options={COLD_OPTIONS}
             onValueChange={(value) => set("coldStart", value)}
@@ -245,7 +260,7 @@ function ProjectLogs() {
           <TextField
             label="Search"
             type="search"
-            fieldClassName="min-w-0 flex-[1_1_16rem]"
+            fieldClassName={FILTER_SEARCH}
             placeholder="Match status, method, or failure text"
             value={filters.query}
             onChange={(event) => set("query", event.target.value)}
@@ -303,7 +318,7 @@ function ProjectLogs() {
               ))}
             </DataTable>
             {nextBefore && !tailing && (
-              <div data-slot="form-actions" className="mt-1 flex flex-wrap items-center gap-2.5">
+              <div className="mt-4">
                 <Button variant="quiet" onClick={() => void loadOlder()}>
                   Load older
                 </Button>
