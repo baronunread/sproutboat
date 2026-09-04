@@ -22,7 +22,7 @@ function ProjectOverview() {
                 {active.hostname}
               </a>
             ) : (
-              "Not serving — every version is superseded"
+              "Not serving — every version is inactive"
             )}
           </dd>
         </div>

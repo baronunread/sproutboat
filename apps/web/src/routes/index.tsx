@@ -149,7 +149,7 @@ function Overview() {
                     </div>
                     <code title={`Artifact ${deployment.artifact}`}>Artifact {deployment.artifact.slice(0, 12)}</code>
                     <span>{relativeTime(deployment.deployedAt)}</span>
-                    <Status live={deployment.active}>{deployment.active ? "Active" : "Superseded"}</Status>
+                    <Status live={deployment.active}>{deployment.active ? "Active" : "Inactive"}</Status>
                   </RecordRow>
                 ))}
               </RecordList>

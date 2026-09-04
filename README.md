@@ -1,6 +1,6 @@
 <div align="center">
 
-# 🌱 Sproutboat
+<img src="docs/logo.svg" alt="Sproutboat" width="220" height="32">
 
 **Compile a JavaScript function to a native binary on your laptop.
 Ship the binary. The server never sees your code.**

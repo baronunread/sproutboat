@@ -165,7 +165,7 @@ function DeploymentDetail() {
           <Panel variant="wide">
             <PanelHeading title={`Version ${detail.id.slice(0, 8)}`} />
             <p>
-              <Status live={detail.active}>{detail.active ? "Active" : "Superseded"}</Status>
+              <Status live={detail.active}>{detail.active ? "Active" : "Inactive"}</Status>
             </p>
             <dl className="mt-5 grid grid-cols-[repeat(auto-fit,minmax(16rem,1fr))] gap-x-8 gap-y-4 [&_code]:text-[0.78rem] [&_dd]:mt-1 [&_dd]:text-[0.85rem] [&_dd]:[overflow-wrap:anywhere] [&_dt]:text-[0.72rem] [&_dt]:tracking-wide [&_dt]:text-muted-foreground [&_dt]:uppercase">
               <div>
@@ -243,7 +243,7 @@ function DeploymentDetail() {
                   description={
                     <>
                       This version starts serving <code>{detail.hostname}</code> immediately, and the current active
-                      version becomes superseded.
+                      version becomes inactive.
                     </>
                   }
                   confirmLabel="Roll back"

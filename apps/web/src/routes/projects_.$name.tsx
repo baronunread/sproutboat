@@ -45,7 +45,7 @@ function ProjectLayout() {
             <Link to="/projects">Sprouts</Link> <span>/</span> {name}
           </p>
           <h1>{name}</h1>
-          {!loading && (active ? <p>{active.hostname}</p> : <p>No active route — every version is superseded.</p>)}
+          {!loading && (active ? <p>{active.hostname}</p> : <p>No active route — every version is inactive.</p>)}
         </div>
         {active && (
           <a

@@ -15,9 +15,9 @@ test("deployment detail shows the immutable record and manifest", async ({ page 
   await expect(page.getByText("native-fetch")).toBeVisible();
 });
 
-test("roll back a superseded version, then it becomes active", async ({ page }) => {
+test("roll back an inactive version, then it becomes active", async ({ page }) => {
   await page.goto("/projects/blog/deployments");
-  // blog has 3 versions; the last row is the oldest / superseded
+  // blog has 3 versions; the last row is the oldest / inactive
   const rows = page.getByRole("list", { name: "Versions" }).getByRole("listitem");
   await rows.last().getByRole("link").click();
   await expect(page).toHaveURL(/\/projects\/blog\/deployments\/[0-9a-f-]{36}$/);
@@ -29,8 +29,8 @@ test("roll back a superseded version, then it becomes active", async ({ page }) 
   const status = page
     .locator("section")
     .filter({ has: page.getByRole("heading", { name: /^Version [0-9a-f]{8}$/ }) })
-    .getByText(/^(Active|Superseded)$/);
-  await expect(status).toHaveText("Superseded");
+    .getByText(/^(Active|Inactive)$/);
+  await expect(status).toHaveText("Inactive");
   await page.getByRole("button", { name: /roll back to this version/i }).click();
   const dialog = page.getByRole("alertdialog");
   await expect(dialog).toBeVisible();
