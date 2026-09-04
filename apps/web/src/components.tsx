@@ -902,10 +902,7 @@ export function Shell({ children }: { children: ReactNode }) {
             </svg>
           </button>
         </div>
-        <nav
-          className="mt-11 grid gap-0.5 max-[800px]:mt-4 max-[800px]:flex max-[800px]:overflow-auto"
-          aria-label="Primary navigation"
-        >
+        <nav className="mt-8 grid gap-0.5 max-[800px]:mt-4" aria-label="Primary navigation">
           <Link className={NAV_LINK} to="/" activeOptions={EXACT} activeProps={NAV_ACTIVE}>
             <NavIcon name="overview" />
             <span className={NAV_LABEL}>Overview</span>
