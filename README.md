@@ -41,13 +41,13 @@ artifacts in a sandbox. It never builds anything.
 
 The **single-machine, single-admin** deployment:
 
-| Piece | Path | Role |
-|---|---|---|
-| **Control API** | `apps/control` | Auth, projects, artifact intake + verification, routes, backups. Artifact-only; no source ever. |
-| **Edge** | `services/edge` | Public request path. Reverse-proxies each route to its running sprout; serves matched static assets directly; records metrics + logs. |
-| **Supervisor** | `services/supervisor` | One long-lived native sprout process per deployment, under `bubblewrap`. Spawns a binding broker sidecar alongside it when the artifact ships `bindings.json`. Restarts on exit. No per-request spawn. |
-| **Dashboard** | `apps/web` | React SPA Caddy serves from disk. Metrics, versions, users, backups. |
-| **Installer** | `install.sh` | The whole runbook: user namespaces, Caddy + bubblewrap, default-deny firewall, systemd units, one admin identity. |
+| Piece           | Path                  | Role                                                                                                                                                                                                   |
+| --------------- | --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **Control API** | `apps/control`        | Auth, projects, artifact intake + verification, routes, backups. Artifact-only; no source ever.                                                                                                        |
+| **Edge**        | `services/edge`       | Public request path. Reverse-proxies each route to its running sprout; serves matched static assets directly; records metrics + logs.                                                                  |
+| **Supervisor**  | `services/supervisor` | One long-lived native sprout process per deployment, under `bubblewrap`. Spawns a binding broker sidecar alongside it when the artifact ships `bindings.json`. Restarts on exit. No per-request spawn. |
+| **Dashboard**   | `apps/web`            | React SPA Caddy serves from disk. Metrics, versions, users, backups.                                                                                                                                   |
+| **Installer**   | `install.sh`          | The whole runbook: user namespaces, Caddy + bubblewrap, default-deny firewall, systemd units, one admin identity.                                                                                      |
 
 The **CLI is its own MIT repo**,
 [`baronunread/sproutboat-cli`](https://github.com/baronunread/sproutboat-cli).
@@ -106,7 +106,7 @@ export default {
   fetch(request) {
     const name = new URL(request.url).searchParams.get("name");
     return new Response(name ? `${env.GREETING}, ${name}` : env.GREETING);
-  }
+  },
 };
 ```
 
@@ -116,7 +116,7 @@ export default {
   "name": "hello",
   "main": "src/index.js",
   "compatibility_date": "2026-08-26",
-  "vars": { "GREETING": "hello from Sproutboat" }
+  "vars": { "GREETING": "hello from Sproutboat" },
 }
 ```
 
@@ -198,7 +198,7 @@ bun add --dev porffor@latest && bun run retest   # rebuilds report.json + COMPAT
 
 `COMPAT.md` starts with the compiler version, compile/match counts, median
 binary size, and a **GO / NO-GO** decision, then groups failures into
-*compile* / *runtime* / *output mismatch*. To test an unpublished compiler:
+_compile_ / _runtime_ / _output mismatch_. To test an unpublished compiler:
 
 ```sh
 PORFFOR_BIN=/path/to/porf PORFFOR_VERSION='alpha 2 (…)' PORFFOR_MODE=native-fetch bun run retest

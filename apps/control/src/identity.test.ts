@@ -28,7 +28,9 @@ beforeAll(async () => {
   seed.close();
   identity = await import("./identity");
 });
-afterAll(async () => { await rm(dir, { recursive: true, force: true }); });
+afterAll(async () => {
+  await rm(dir, { recursive: true, force: true });
+});
 
 test("purgeUser removes every identity row for one user and leaves others intact", () => {
   const touched = identity.purgeUser("u1").sort();
@@ -49,8 +51,14 @@ test("purgeUser is idempotent", () => {
 
 test("safeSessionUser exposes only id/name/email/image and drops OAuth tokens", () => {
   const raw = {
-    id: "u9", name: "Ada", email: "ada@x.test", image: "https://avatars.example/ada.png",
-    emailVerified: true, accessToken: "gho_secret", refreshToken: "ghr_secret", createdAt: "2026-01-01",
+    id: "u9",
+    name: "Ada",
+    email: "ada@x.test",
+    image: "https://avatars.example/ada.png",
+    emailVerified: true,
+    accessToken: "gho_secret",
+    refreshToken: "ghr_secret",
+    createdAt: "2026-01-01",
   };
   const safe = identity.safeSessionUser(raw);
   expect(safe).toEqual({ id: "u9", name: "Ada", email: "ada@x.test", image: "https://avatars.example/ada.png" });
@@ -58,8 +66,12 @@ test("safeSessionUser exposes only id/name/email/image and drops OAuth tokens", 
 });
 
 test("safeSessionUser normalises a missing avatar and name to null", () => {
-  expect(identity.safeSessionUser({ id: "u1", email: "a@x.test" }))
-    .toEqual({ id: "u1", name: null, email: "a@x.test", image: null });
+  expect(identity.safeSessionUser({ id: "u1", email: "a@x.test" })).toEqual({
+    id: "u1",
+    name: null,
+    email: "a@x.test",
+    image: null,
+  });
 });
 
 test("reserveUsername rejects a reserved name unless allowReserved (the seeded admin)", () => {

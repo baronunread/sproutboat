@@ -43,9 +43,14 @@ function isResourceKind(value: string): value is ResourceKind {
 async function authorized(request: Request): Promise<Actor | Response> {
   try {
     const actor = await actorFor(request);
-    return actor || Response.json({ error: "sign in and reserve a username before using this endpoint" }, { status: 401 });
+    return (
+      actor || Response.json({ error: "sign in and reserve a username before using this endpoint" }, { status: 401 })
+    );
   } catch (error) {
-    return Response.json({ error: error instanceof Error ? error.message : "authentication is unavailable" }, { status: 503 });
+    return Response.json(
+      { error: error instanceof Error ? error.message : "authentication is unavailable" },
+      { status: 503 },
+    );
   }
 }
 
@@ -69,7 +74,10 @@ export async function listResources(request: Request): Promise<Response> {
  * ------------------------------------------------------------------------- */
 
 export const KIND_SEGMENTS = {
-  kv: "kv", d1: "d1", r2: "r2", queues: "queue",
+  kv: "kv",
+  d1: "d1",
+  r2: "r2",
+  queues: "queue",
 } as const satisfies Readonly<Record<string, ResourceKind>>;
 
 export function resourceKindForSegment(segment: string): ResourceKind | undefined {
@@ -106,7 +114,10 @@ export async function createResourceOfKind(request: Request, kind: ResourceKind)
     return Response.json({ error: `a ${kind} named "${name}" already exists` }, { status: 409 });
   }
   if (resourceCount(actor.id) >= LIMITS.resourcesPerAccount()) {
-    return Response.json({ error: `an account may hold at most ${LIMITS.resourcesPerAccount()} resources` }, { status: 429 });
+    return Response.json(
+      { error: `an account may hold at most ${LIMITS.resourcesPerAccount()} resources` },
+      { status: 429 },
+    );
   }
   return Response.json({ resource: createResource(actor.id, kind, name) }, { status: 201 });
 }
@@ -144,7 +155,10 @@ export async function createResourceHandler(request: Request): Promise<Response>
     return Response.json({ error: `a ${kind} named "${name}" already exists` }, { status: 409 });
   }
   if (resourceCount(actor.id) >= LIMITS.resourcesPerAccount()) {
-    return Response.json({ error: `an account may hold at most ${LIMITS.resourcesPerAccount()} resources` }, { status: 429 });
+    return Response.json(
+      { error: `an account may hold at most ${LIMITS.resourcesPerAccount()} resources` },
+      { status: 429 },
+    );
   }
 
   const resource = createResource(actor.id, kind, name);
@@ -163,8 +177,10 @@ export async function updateResourceHandler(request: Request, id: string): Promi
   if (!NAME.test(name)) {
     return Response.json({ error: "name must be a 2–63 character lowercase slug (a–z, 0–9, hyphen)" }, { status: 400 });
   }
-  if (name !== existing.name
-    && ownerResources(actor.id).some((resource) => resource.kind === existing.kind && resource.name === name)) {
+  if (
+    name !== existing.name &&
+    ownerResources(actor.id).some((resource) => resource.kind === existing.kind && resource.name === name)
+  ) {
     return Response.json({ error: `a ${existing.kind} named "${name}" already exists` }, { status: 409 });
   }
 

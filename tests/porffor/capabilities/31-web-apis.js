@@ -8,5 +8,5 @@ export default {
     params.sort();
     const echo = structuredClone({ protocol: url.protocol, path: url.pathname, hash: url.hash });
     return Response.json({ query: params.toString(), size: params.size, echo });
-  }
+  },
 };

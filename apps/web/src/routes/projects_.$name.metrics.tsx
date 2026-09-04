@@ -11,7 +11,9 @@ function ProjectMetrics() {
   return (
     <>
       {!active && (
-        <StatusMessage>This project has no active route right now — these charts cover past traffic only.</StatusMessage>
+        <StatusMessage>
+          This project has no active route right now — these charts cover past traffic only.
+        </StatusMessage>
       )}
       <TrafficCharts name={name} />
     </>

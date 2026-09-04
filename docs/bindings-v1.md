@@ -16,8 +16,8 @@ completeness: Sproutboat implements KV, not Porffor.
   at build time** as a frozen-in-spirit `const env = {…}` (issue #8, shipped).
   Read-only, static, part of the immutable artifact.
 - The worker is an HTTP **server** the edge proxies to. It has no outbound
-  channel: `node_modules/porffor/runtime/native-fetch.js` binds "fetch" to *your
-  handler*; there is no client `fetch`, no `getenv`, no FFI escape hatch.
+  channel: `node_modules/porffor/runtime/native-fetch.js` binds "fetch" to _your
+  handler_; there is no client `fetch`, no `getenv`, no FFI escape hatch.
 
 So anything dynamic (KV reads/writes, secrets that must not sit in the artifact,
 outbound HTTP) needs the sprout to call out, which it currently cannot.
@@ -46,7 +46,7 @@ handler ──env.KV.get("k")──▶ binding shim (in the bundle, prepended li
   (matches `http-sync-v0`); an async variant waits on Porffor async support.
 - **Broker**: one host process per node, listening on a per-deployment unix
   socket the supervisor creates and bind-mounts into the sandbox. The socket
-  path *is* the capability — no token needed if the socket is only visible
+  path _is_ the capability — no token needed if the socket is only visible
   inside that deployment's mount namespace. Broker enforces per-deployment
   scoping, quotas, and the egress allowlist.
 - **Sandbox change**: `sprout-sandbox.sh` bind-mounts the one socket

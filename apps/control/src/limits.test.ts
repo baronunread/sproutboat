@@ -4,14 +4,18 @@ import { clientIp, guardDeploy, guardNewProject, LIMITS, rateHit, resetLimiter, 
 beforeEach(() => {
   resetLimiter();
   for (const key of [
-    "SPROUTBOAT_DEPLOY_RATE_PER_MIN", "SPROUTBOAT_DEPLOY_RATE_PER_IP_PER_MIN",
-    "SPROUTBOAT_MAX_PROJECTS_PER_ACCOUNT", "SPROUTBOAT_MAX_VERSIONS_PER_PROJECT",
-  ]) delete process.env[key];
+    "SPROUTBOAT_DEPLOY_RATE_PER_MIN",
+    "SPROUTBOAT_DEPLOY_RATE_PER_IP_PER_MIN",
+    "SPROUTBOAT_MAX_PROJECTS_PER_ACCOUNT",
+    "SPROUTBOAT_MAX_VERSIONS_PER_PROJECT",
+  ])
+    delete process.env[key];
   delete process.env.SPROUTBOAT_TLS_NEW_CERTS_PER_HOUR;
 });
 afterEach(() => resetLimiter());
 
-const req = (ip = "1.2.3.4") => new Request("https://control.test/api/projects/x/deployments", { headers: { "x-forwarded-for": ip } });
+const req = (ip = "1.2.3.4") =>
+  new Request("https://control.test/api/projects/x/deployments", { headers: { "x-forwarded-for": ip } });
 
 test("rateHit: allows `limit` in a window, then returns a positive retry-after", () => {
   for (let i = 0; i < 3; i++) expect(rateHit("k", 3, 1000)).toBe(0);
@@ -27,7 +31,9 @@ test("rateHit: window resets after 60s", () => {
 });
 
 test("clientIp: first X-Forwarded-For hop, then X-Real-IP, then 'unknown'", () => {
-  expect(clientIp(new Request("https://c.test", { headers: { "x-forwarded-for": "9.9.9.9, 10.0.0.1" } }))).toBe("9.9.9.9");
+  expect(clientIp(new Request("https://c.test", { headers: { "x-forwarded-for": "9.9.9.9, 10.0.0.1" } }))).toBe(
+    "9.9.9.9",
+  );
   expect(clientIp(new Request("https://c.test", { headers: { "x-real-ip": "8.8.8.8" } }))).toBe("8.8.8.8");
   expect(clientIp(new Request("https://c.test"))).toBe("unknown");
 });
@@ -66,8 +72,8 @@ test("tlsIssuanceAllowed: caps NEW hostnames per hour, repeats don't count", () 
   expect(tlsIssuanceAllowed("a.x.test", t)).toBe(true);
   expect(tlsIssuanceAllowed("b.x.test", t)).toBe(true);
   expect(tlsIssuanceAllowed("c.x.test", t)).toBe(true);
-  expect(tlsIssuanceAllowed("d.x.test", t)).toBe(false);        // 4th new host in the window
-  expect(tlsIssuanceAllowed("a.x.test", t + 1000)).toBe(true);  // a repeat is a renewal, always allowed
+  expect(tlsIssuanceAllowed("d.x.test", t)).toBe(false); // 4th new host in the window
+  expect(tlsIssuanceAllowed("a.x.test", t + 1000)).toBe(true); // a repeat is a renewal, always allowed
   expect(tlsIssuanceAllowed("d.x.test", t + 3_600_001)).toBe(true); // window rolled over
 });
 

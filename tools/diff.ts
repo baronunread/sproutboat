@@ -29,7 +29,10 @@ async function normalize(response: Response): Promise<ResponseSnapshot> {
 
 async function listens(port: number): Promise<boolean> {
   return new Promise((done) => {
-    const socket = connect({ host: "127.0.0.1", port }, () => { socket.destroy(); done(true); });
+    const socket = connect({ host: "127.0.0.1", port }, () => {
+      socket.destroy();
+      done(true);
+    });
     socket.on("error", () => done(false));
   });
 }
@@ -49,7 +52,9 @@ async function probe(binary: string): Promise<ResponseSnapshot[]> {
     const out: ResponseSnapshot[] = [];
     for (const fixture of fixtures) {
       const target = new URL(fixture.url);
-      target.protocol = "http:"; target.hostname = "127.0.0.1"; target.port = String(port);
+      target.protocol = "http:";
+      target.hostname = "127.0.0.1";
+      target.port = String(port);
       const init: RequestInit = { method: fixture.method, headers: fixture.headers };
       if (fixture.method !== "GET" && fixture.method !== "HEAD") init.body = fixture.body;
       out.push(await normalize(await fetch(target, init)));
@@ -74,10 +79,23 @@ async function testFile(file: string): Promise<FileResult> {
   const sourcePath = resolve(capabilitiesDir, file);
   const previous = previousReport?.files.find((item) => item.file === file);
   const reusedPath = resolve(root, ".phase0/bin", basename(file, ".js"));
-  const compiled = reuseBinaries && previous?.compiles
-    ? { ok: true, binaryPath: reusedPath, sizeBytes: (await stat(reusedPath)).size, compileMs: previous.compileMs, error: null }
-    : await compileHandler(sourcePath);
-  const base = { file, compiles: compiled.ok, sizeBytes: compiled.sizeBytes, compileMs: Math.round(compiled.compileMs), runMs: null };
+  const compiled =
+    reuseBinaries && previous?.compiles
+      ? {
+          ok: true,
+          binaryPath: reusedPath,
+          sizeBytes: (await stat(reusedPath)).size,
+          compileMs: previous.compileMs,
+          error: null,
+        }
+      : await compileHandler(sourcePath);
+  const base = {
+    file,
+    compiles: compiled.ok,
+    sizeBytes: compiled.sizeBytes,
+    compileMs: Math.round(compiled.compileMs),
+    runMs: null,
+  };
   if (!compiled.ok || !compiled.binaryPath) return { ...base, matches: false, error: concise(compiled.error) };
 
   const started = performance.now();
@@ -87,12 +105,22 @@ async function testFile(file: string): Promise<FileResult> {
     for (let index = 0; index < fixtures.length; index++) {
       const reference = await normalize(await invokeHandler(handler, requestFrom(fixtures[index])));
       if (!same(reference, native[index])) {
-        return { ...base, matches: false, runMs: Math.round(performance.now() - started), error: `request ${index + 1} mismatch: expected ${JSON.stringify(reference)}, got ${JSON.stringify(native[index])}` };
+        return {
+          ...base,
+          matches: false,
+          runMs: Math.round(performance.now() - started),
+          error: `request ${index + 1} mismatch: expected ${JSON.stringify(reference)}, got ${JSON.stringify(native[index])}`,
+        };
       }
     }
     return { ...base, matches: true, runMs: Math.round(performance.now() - started), error: null };
   } catch (error) {
-    return { ...base, matches: false, runMs: Math.round(performance.now() - started), error: concise(error instanceof Error ? error : String(error)) };
+    return {
+      ...base,
+      matches: false,
+      runMs: Math.round(performance.now() - started),
+      error: concise(error instanceof Error ? error : String(error)),
+    };
   }
 }
 

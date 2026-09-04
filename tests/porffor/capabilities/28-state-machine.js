@@ -5,5 +5,5 @@ export default {
     let state = request.headers.get("x-state") || "idle";
     state = transitions[state] && transitions[state][action] ? transitions[state][action] : state;
     return new Response(state);
-  }
+  },
 };

@@ -19,26 +19,63 @@ describe("Phase A contracts", () => {
   });
 
   test("accepts the documented sproutboat.jsonc shape", () => {
-    expect(parseConfig(`{ // comment\n "name": "hello", "main": "src/index.js", "compatibility_date": "2026-08-26", "vars": { "GREETING": "hello" }, }`).ok).toBe(true);
+    expect(
+      parseConfig(
+        `{ // comment\n "name": "hello", "main": "src/index.js", "compatibility_date": "2026-08-26", "vars": { "GREETING": "hello" }, }`,
+      ).ok,
+    ).toBe(true);
   });
 
   test("rejects unsupported configuration fields and secret-like vars", () => {
-    const result = parseConfig(`{"name":"Hello","main":"../index.js","compatibility_date":"today","bogus":{},"vars":{"token":3}}`);
+    const result = parseConfig(
+      `{"name":"Hello","main":"../index.js","compatibility_date":"today","bogus":{},"vars":{"token":3}}`,
+    );
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.errors).toEqual(expect.arrayContaining(["unsupported config field: bogus"]));
   });
 
   test("accepts an assets block and rejects a malformed one", () => {
-    const ok = parseConfig(`{"name":"hello","main":"src/index.js","compatibility_date":"2026-08-26","assets":{"directory":"public","binding":"ASSETS","not_found_handling":"single-page-application","run_sprout_first":["/api/*"]}}`);
+    const ok = parseConfig(
+      `{"name":"hello","main":"src/index.js","compatibility_date":"2026-08-26","assets":{"directory":"public","binding":"ASSETS","not_found_handling":"single-page-application","run_sprout_first":["/api/*"]}}`,
+    );
     expect(ok.ok).toBe(true);
-    if (ok.ok) expect(ok.value.assets).toEqual({ directory: "public", binding: "ASSETS", not_found_handling: "single-page-application", run_sprout_first: ["/api/*"] });
-    expect(parseConfig(`{"name":"hello","main":"src/index.js","compatibility_date":"2026-08-26","assets":{"binding":"ASSETS"}}`).ok).toBe(false);
-    expect(parseConfig(`{"name":"hello","main":"src/index.js","compatibility_date":"2026-08-26","assets":{"directory":"public","not_found_handling":"spa"}}`).ok).toBe(false);
+    if (ok.ok)
+      expect(ok.value.assets).toEqual({
+        directory: "public",
+        binding: "ASSETS",
+        not_found_handling: "single-page-application",
+        run_sprout_first: ["/api/*"],
+      });
+    expect(
+      parseConfig(
+        `{"name":"hello","main":"src/index.js","compatibility_date":"2026-08-26","assets":{"binding":"ASSETS"}}`,
+      ).ok,
+    ).toBe(false);
+    expect(
+      parseConfig(
+        `{"name":"hello","main":"src/index.js","compatibility_date":"2026-08-26","assets":{"directory":"public","not_found_handling":"spa"}}`,
+      ).ok,
+    ).toBe(false);
   });
 
   test("accepts a complete artifact-v2 manifest", () => {
     const digest = `sha256:${"a".repeat(64)}`;
-    expect(validateManifest({ schemaVersion: 2, project: "hello", target: "linux-x86_64", runtime: "native-fetch", capabilityProfile: "http-sync-v0", porfforVersion: "alpha-3", esbuildVersion: "0.28.2", buildImage: "sha256:image", sourceHash: digest, binaryHash: digest, binarySize: 42, builtAt: "2026-08-26T00:00:00.000Z" }).ok).toBe(true);
+    expect(
+      validateManifest({
+        schemaVersion: 2,
+        project: "hello",
+        target: "linux-x86_64",
+        runtime: "native-fetch",
+        capabilityProfile: "http-sync-v0",
+        porfforVersion: "alpha-3",
+        esbuildVersion: "0.28.2",
+        buildImage: "sha256:image",
+        sourceHash: digest,
+        binaryHash: digest,
+        binarySize: 42,
+        builtAt: "2026-08-26T00:00:00.000Z",
+      }).ok,
+    ).toBe(true);
   });
 
   test("accepts the frozen capability handlers and rejects unsupported source", async () => {
@@ -54,7 +91,9 @@ describe("Phase A contracts", () => {
   });
 
   test("allows console — native-fetch logs go to the sprout's stderr, not a protocol stream", () => {
-    expect(validateHttpSyncSource(`export default { fetch() { console.log("hello"); return new Response("ok"); } }`).ok).toBe(true);
+    expect(
+      validateHttpSyncSource(`export default { fetch() { console.log("hello"); return new Response("ok"); } }`).ok,
+    ).toBe(true);
   });
 
   test("bakes sproutboat.jsonc vars into the handler as a module-scoped env binding (#8)", () => {
@@ -106,10 +145,15 @@ describe("Phase A contracts", () => {
   });
 
   test("uses a reserved user namespace in nested deployment hostnames", async () => {
-    process.env.SPROUTBOAT_DATABASE_PATH = join(await mkdtemp(join(tmpdir(), "sproutboat-profiles-")), "sproutboat.sqlite");
+    process.env.SPROUTBOAT_DATABASE_PATH = join(
+      await mkdtemp(join(tmpdir(), "sproutboat-profiles-")),
+      "sproutboat.sqlite",
+    );
     expect(validUsername("andrea")).toBe(true);
     expect(validUsername("dashboard")).toBe(false);
-    expect(reserveUsername("user-a", "andrea")).toEqual(expect.objectContaining({ userId: "user-a", username: "andrea" }));
+    expect(reserveUsername("user-a", "andrea")).toEqual(
+      expect.objectContaining({ userId: "user-a", username: "andrea" }),
+    );
     expect(profileForUser("user-a")).toEqual(expect.objectContaining({ username: "andrea" }));
     expect(deploymentHostname("hello", "andrea")).toBe("hello.andrea.sproutboat.com");
     expect(() => reserveUsername("user-b", "andrea")).toThrow("username is already taken");
@@ -118,7 +162,7 @@ describe("Phase A contracts", () => {
   test("creates a short-lived CLI request that cannot be exchanged before approval", async () => {
     const created = await createCliAuthorization();
     // SAFETY: a 201 response from createCliAuthorization carries this documented contract.
-    const body = await created.json() as { deviceCode: string; userCode: string; verificationUri: string };
+    const body = (await created.json()) as { deviceCode: string; userCode: string; verificationUri: string };
     expect(created.status).toBe(201);
     expect(body.deviceCode.length).toBeGreaterThan(32);
     expect(body.userCode).toMatch(/^[A-F0-9]{4}-[A-F0-9]{4}$/);

@@ -8,6 +8,13 @@
     "noEmit": true,
     "types": ["bun"]
   },
-  "include": ["apps/**/*.ts", "services/**/*.ts", "tools/**/*.ts", "tests/**/*.ts", "e2e/**/*.ts", "playwright.config.ts"],
+  "include": [
+    "apps/**/*.ts",
+    "services/**/*.ts",
+    "tools/**/*.ts",
+    "tests/**/*.ts",
+    "e2e/**/*.ts",
+    "playwright.config.ts"
+  ],
   "exclude": ["tools/oxlint/anti-slop/**"]
 }

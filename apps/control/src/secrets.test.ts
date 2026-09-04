@@ -9,14 +9,25 @@ let store: typeof import("./store");
 let crypto: typeof import("./secrets-crypto");
 const roots: string[] = [];
 
-async function routes(): Promise<Array<{ hostname: string; sproutPath: string; secretsPath?: string; secretsHash?: string }>> {
+async function routes(): Promise<
+  Array<{ hostname: string; sproutPath: string; secretsPath?: string; secretsHash?: string }>
+> {
   return JSON.parse(await readFile(join(dir, "routes.json"), "utf8"));
 }
 async function deploy(project = "app", id = "d1"): Promise<void> {
   const artifactDir = join(dir, "artifacts", id);
   await mkdir(artifactDir, { recursive: true });
   await writeFile(join(artifactDir, "sprout"), "binary");
-  store.recordDeployment({ id, ownerId: "user-1", project, username: "alice", hostname: `${project}.alice.test`, artifact: id, sproutPath: join(artifactDir, "sprout"), deployedAt: new Date().toISOString() });
+  store.recordDeployment({
+    id,
+    ownerId: "user-1",
+    project,
+    username: "alice",
+    hostname: `${project}.alice.test`,
+    artifact: id,
+    sproutPath: join(artifactDir, "sprout"),
+    deployedAt: new Date().toISOString(),
+  });
   await store.syncRoutes();
 }
 
@@ -24,7 +35,10 @@ beforeAll(async () => {
   store = await import("./store");
   crypto = await import("./secrets-crypto");
 });
-afterAll(async () => { store.closeStore(); await Promise.all(roots.map((r) => rm(r, { recursive: true, force: true }))); });
+afterAll(async () => {
+  store.closeStore();
+  await Promise.all(roots.map((r) => rm(r, { recursive: true, force: true })));
+});
 beforeEach(async () => {
   store.closeStore();
   crypto.resetSecretsKeyForTest();

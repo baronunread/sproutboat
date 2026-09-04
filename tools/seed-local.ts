@@ -43,7 +43,9 @@ const fetchInsecure = (input: string | URL, init?: RequestInit): Promise<Respons
   fetch(input, { ...init, tls: { rejectUnauthorized: false } });
 
 type DemoDeployment = {
-  project: string; versions: number; active: boolean;
+  project: string;
+  versions: number;
+  active: boolean;
   /** #76 — storage resources to create and bind, so the Bindings and Storage views have content. */
   resources?: Array<{ kind: "kv" | "d1" | "r2" | "queue"; name: string; binding: string }>;
   secrets?: Record<string, string>;
@@ -54,39 +56,50 @@ type DemoDeployment = {
 type DemoUser = { login: string; namespace: string; admin?: boolean; projects: DemoDeployment[] };
 
 const DEMO: DemoUser[] = [
-  { login: "andrea", namespace: "andrea", admin: true, projects: [
-    {
-      project: "blog", versions: 3, active: true,
-      resources: [
-        { kind: "kv", name: "sessions", binding: "SESSIONS" },
-        { kind: "r2", name: "uploads", binding: "MEDIA" },
-      ],
-      secrets: { API_KEY: "seed-api-key", WEBHOOK_SECRET: "seed-webhook-secret" },
-      outbound: ["https://api.github.com"],
-      domain: "www.example.test",
-    },
-    {
-      project: "api", versions: 1, active: true,
-      resources: [
-        { kind: "d1", name: "records", binding: "DB" },
-        { kind: "queue", name: "jobs", binding: "JOBS" },
-      ],
-      secrets: { DATABASE_TOKEN: "seed-db-token" },
-    },
-    { project: "scratch", versions: 1, active: true },
-  ] },
-  { login: "sofia", namespace: "sofia", projects: [
-    { project: "shop", versions: 2, active: true, resources: [{ kind: "kv", name: "carts", binding: "CARTS" }] },
-  ] },
-  { login: "deletable", namespace: "deletable", projects: [
-    { project: "throwaway", versions: 1, active: true },
-  ] },
+  {
+    login: "andrea",
+    namespace: "andrea",
+    admin: true,
+    projects: [
+      {
+        project: "blog",
+        versions: 3,
+        active: true,
+        resources: [
+          { kind: "kv", name: "sessions", binding: "SESSIONS" },
+          { kind: "r2", name: "uploads", binding: "MEDIA" },
+        ],
+        secrets: { API_KEY: "seed-api-key", WEBHOOK_SECRET: "seed-webhook-secret" },
+        outbound: ["https://api.github.com"],
+        domain: "www.example.test",
+      },
+      {
+        project: "api",
+        versions: 1,
+        active: true,
+        resources: [
+          { kind: "d1", name: "records", binding: "DB" },
+          { kind: "queue", name: "jobs", binding: "JOBS" },
+        ],
+        secrets: { DATABASE_TOKEN: "seed-db-token" },
+      },
+      { project: "scratch", versions: 1, active: true },
+    ],
+  },
+  {
+    login: "sofia",
+    namespace: "sofia",
+    projects: [
+      { project: "shop", versions: 2, active: true, resources: [{ kind: "kv", name: "carts", binding: "CARTS" }] },
+    ],
+  },
+  { login: "deletable", namespace: "deletable", projects: [{ project: "throwaway", versions: 1, active: true }] },
 ];
 
 function elfStub(seed: string): Uint8Array {
   const bytes = new Uint8Array(256);
   bytes.set([0x7f, 0x45, 0x4c, 0x46, 2, 1, 1, 0], 0); // ELF64, little-endian
-  new DataView(bytes.buffer).setUint16(18, 62, true);  // e_machine = x86-64
+  new DataView(bytes.buffer).setUint16(18, 62, true); // e_machine = x86-64
   for (let i = 32; i < bytes.length; i++) bytes[i] = (seed.charCodeAt(i % seed.length) + i) & 0xff;
   return bytes;
 }
@@ -111,28 +124,42 @@ async function signIn(login: string): Promise<{ cookie: string; id: string }> {
   });
   stash(res);
   // SAFETY: Better Auth sign-in/social returns { url } on success.
-  const { url } = await res.json() as { url: string };
+  const { url } = (await res.json()) as { url: string };
   const state = new URL(url).searchParams.get("state") ?? "";
   const authorize = await fetch(`${emulatorUrl}/login/oauth/callback`, {
-    method: "POST", redirect: "manual",
+    method: "POST",
+    redirect: "manual",
     headers: { "content-type": "application/x-www-form-urlencoded" },
-    body: new URLSearchParams({ login, redirect_uri: `${dashboardUrl}/api/auth/callback/github`, scope: "user:email", state, client_id: "sproutboat-local" }),
+    body: new URLSearchParams({
+      login,
+      redirect_uri: `${dashboardUrl}/api/auth/callback/github`,
+      scope: "user:email",
+      state,
+      client_id: "sproutboat-local",
+    }),
   });
   const callback = new URL(authorize.headers.get("location") ?? "");
-  res = await fetchInsecure(`${controlUrl}/api/auth/callback/github${callback.search}`, { headers: { cookie: header() }, redirect: "manual" });
+  res = await fetchInsecure(`${controlUrl}/api/auth/callback/github${callback.search}`, {
+    headers: { cookie: header() },
+    redirect: "manual",
+  });
   stash(res);
   const location = res.headers.get("location") ?? "";
   if (location.includes("/api/auth/error")) throw new Error(`sign-in for ${login} failed: ${location}`);
 
   const cookie = header();
   // SAFETY: GET /api/account returns the account contract (with `id`) for a live session.
-  const me = await fetchInsecure(`${controlUrl}/api/account`, { headers: { cookie } }).then((r) => r.json()) as { id: string };
+  const me = (await fetchInsecure(`${controlUrl}/api/account`, { headers: { cookie } }).then((r) => r.json())) as {
+    id: string;
+  };
   return { cookie, id: me.id };
 }
 
 async function reserveNamespace(cookie: string, username: string): Promise<void> {
   const res = await fetchInsecure(`${controlUrl}/api/account/namespace`, {
-    method: "POST", headers: { cookie, "content-type": "application/json" }, body: JSON.stringify({ username }),
+    method: "POST",
+    headers: { cookie, "content-type": "application/json" },
+    body: JSON.stringify({ username }),
   });
   if (!res.ok && res.status !== 409) throw new Error(`namespace ${username}: ${res.status} ${await res.text()}`);
 }
@@ -156,7 +183,11 @@ function seedTraffic(hostname: string, lines: string[]): void {
     const durationMs = status >= 500 ? 350 + Math.floor(Math.random() * 600) : 3 + Math.floor(Math.random() * 55);
     const bootMs = 8 + Math.floor(Math.random() * 14);
     const record = {
-      at, hostname, status, durationMs, method,
+      at,
+      hostname,
+      status,
+      durationMs,
+      method,
       ttfbMs: Math.max(1, Math.round(durationMs * 0.6)),
       reqBytes: method === "GET" ? 0 : 40 + Math.floor(Math.random() * 400),
       resBytes: status === 200 ? 200 + Math.floor(Math.random() * 4000) : 0,
@@ -173,21 +204,43 @@ function seedTraffic(hostname: string, lines: string[]): void {
 async function main(): Promise<void> {
   await mkdir(stateDir, { recursive: true });
 
-  if (!await fetchInsecure(`${controlUrl}/internal/health`).then((r) => r.ok).catch(() => false)) {
-    console.error(`control API not reachable at ${controlUrl} — start \`bun run dev:local\` first.`); process.exit(1);
+  if (
+    !(await fetchInsecure(`${controlUrl}/internal/health`)
+      .then((r) => r.ok)
+      .catch(() => false))
+  ) {
+    console.error(`control API not reachable at ${controlUrl} — start \`bun run dev:local\` first.`);
+    process.exit(1);
   }
 
   if (reset) {
     // Row-level clear (control keeps the DB file open, so do not unlink it).
     const db = new Database(process.env.SPROUTBOAT_DATABASE_PATH!);
     db.exec("PRAGMA busy_timeout = 5000");
-    for (const table of ["deployments", "projects", "artifacts", "banned_owners", "resources", "deployment_resources", "secrets", "custom_domains"]) {
-      try { db.run(`DELETE FROM ${table}`); } catch { /* table absent on a fresh DB */ }
+    for (const table of [
+      "deployments",
+      "projects",
+      "artifacts",
+      "banned_owners",
+      "resources",
+      "deployment_resources",
+      "secrets",
+      "custom_domains",
+    ]) {
+      try {
+        db.run(`DELETE FROM ${table}`);
+      } catch {
+        /* table absent on a fresh DB */
+      }
     }
     // Also the issued API keys: the seeder inserts one per demo user below, and
     // a key left over from a real `sproutboat login` against this box makes the
     // credentials list longer than the tests (and the demo) expect.
-    try { db.run("DELETE FROM apikey"); } catch { /* absent before the api-key migration */ }
+    try {
+      db.run("DELETE FROM apikey");
+    } catch {
+      /* absent before the api-key migration */
+    }
     db.close();
     await rm(process.env.SPROUTBOAT_ARTIFACTS_DIR!, { recursive: true, force: true });
     await writeFile(process.env.SPROUTBOAT_LOG_PATH!, "");
@@ -212,17 +265,20 @@ async function main(): Promise<void> {
         kind: resource.kind,
         record: store.createResource(ownerId, resource.kind, resource.name),
       }));
-      const bindings = created.length || spec.secrets || spec.outbound
-        ? {
-          kv: created.filter((entry) => entry.kind === "kv").map((entry) => entry.binding),
-          d1: created.filter((entry) => entry.kind === "d1").map((entry) => entry.binding),
-          r2: created.filter((entry) => entry.kind === "r2").map((entry) => entry.binding),
-          queues: created.filter((entry) => entry.kind === "queue").map((entry) => entry.binding),
-          secrets: Object.keys(spec.secrets ?? {}),
-          outbound: spec.outbound ?? [],
-          resources: Object.fromEntries(created.map((entry) => [entry.binding, { kind: entry.kind, id: entry.record.id }])),
-        }
-        : undefined;
+      const bindings =
+        created.length || spec.secrets || spec.outbound
+          ? {
+              kv: created.filter((entry) => entry.kind === "kv").map((entry) => entry.binding),
+              d1: created.filter((entry) => entry.kind === "d1").map((entry) => entry.binding),
+              r2: created.filter((entry) => entry.kind === "r2").map((entry) => entry.binding),
+              queues: created.filter((entry) => entry.kind === "queue").map((entry) => entry.binding),
+              secrets: Object.keys(spec.secrets ?? {}),
+              outbound: spec.outbound ?? [],
+              resources: Object.fromEntries(
+                created.map((entry) => [entry.binding, { kind: entry.kind, id: entry.record.id }]),
+              ),
+            }
+          : undefined;
 
       let activeId = "";
       for (let v = 0; v < spec.versions; v++) {
@@ -233,19 +289,32 @@ async function main(): Promise<void> {
         await mkdir(dir, { recursive: true });
         const builtAt = new Date(Date.now() - (spec.versions - v) * 36 * 3_600_000).toISOString();
         const manifest = {
-          schemaVersion: 2, project: spec.project, target: "linux-x86_64", runtime: "native-fetch",
-          capabilityProfile: "http-sync-v0", porfforVersion: "alpha-3 (seed000)", esbuildVersion: "0.28.2",
+          schemaVersion: 2,
+          project: spec.project,
+          target: "linux-x86_64",
+          runtime: "native-fetch",
+          capabilityProfile: "http-sync-v0",
+          porfforVersion: "alpha-3 (seed000)",
+          esbuildVersion: "0.28.2",
           buildImage: "zig-musl/0.16.0+porffor/a415d19+uws/360c276d",
-          sourceHash: sha256(`src:${user.login}/${spec.project}/${v}`), binaryHash: sha256(sprout),
-          binarySize: sprout.length, builtAt,
+          sourceHash: sha256(`src:${user.login}/${spec.project}/${v}`),
+          binaryHash: sha256(sprout),
+          binarySize: sprout.length,
+          builtAt,
         };
         await writeFile(resolve(dir, "manifest.json"), JSON.stringify(manifest, null, 2));
         await writeFile(resolve(dir, "sprout"), sprout, { mode: 0o555 });
         if (bindings) await writeFile(resolve(dir, "bindings.json"), JSON.stringify(bindings, null, 2));
         const hostname = `${spec.project}.${user.namespace}.${domain}`;
         store.recordDeployment({
-          id, ownerId, project: spec.project, username: user.namespace, hostname, artifact: digest,
-          sproutPath: resolve(dir, "sprout"), deployedAt: builtAt,
+          id,
+          ownerId,
+          project: spec.project,
+          username: user.namespace,
+          hostname,
+          artifact: digest,
+          sproutPath: resolve(dir, "sprout"),
+          deployedAt: builtAt,
           resourceIds: created.map((entry) => entry.record.id),
         });
         activeId = id;
@@ -255,7 +324,12 @@ async function main(): Promise<void> {
       }
       if (spec.domain) {
         // Left unverified on purpose: the Triggers view then shows the TXT record step.
-        store.addCustomDomain({ hostname: spec.domain, ownerId, project: spec.project, token: randomUUID().replace(/-/g, "") });
+        store.addCustomDomain({
+          hostname: spec.domain,
+          ownerId,
+          project: spec.project,
+          token: randomUUID().replace(/-/g, ""),
+        });
       }
       if (spec.active) {
         const hostname = `${spec.project}.${user.namespace}.${domain}`;
@@ -263,10 +337,18 @@ async function main(): Promise<void> {
         seedTraffic(hostname, logLines);
       }
     }
-    console.log(`  seeded ${user.login} (${user.namespace})${user.admin ? " — admin" : ""}: ${user.projects.map((p) => p.project).join(", ")}`);
+    console.log(
+      `  seeded ${user.login} (${user.namespace})${user.admin ? " — admin" : ""}: ${user.projects.map((p) => p.project).join(", ")}`,
+    );
   }
 
-  await writeFile(process.env.SPROUTBOAT_LOG_PATH!, logLines.sort().map((l) => `${l}\n`).join(""));
+  await writeFile(
+    process.env.SPROUTBOAT_LOG_PATH!,
+    logLines
+      .sort()
+      .map((l) => `${l}\n`)
+      .join(""),
+  );
   await store.syncRoutes();
 
   // A CLI credential per user so the Settings > CLI credentials view has a row.
@@ -279,8 +361,18 @@ async function main(): Promise<void> {
   );
   for (const { login, ownerId } of owners) {
     try {
-      insertKey.run(`seed-key-${login}`, `${login}'s laptop`, ownerId, `seed-hash-${randomUUID()}`, nowIso, nowIso, new Date(Date.now() - 3_600_000).toISOString());
-    } catch { /* apikey table absent before the admin/api-key migration */ }
+      insertKey.run(
+        `seed-key-${login}`,
+        `${login}'s laptop`,
+        ownerId,
+        `seed-hash-${randomUUID()}`,
+        nowIso,
+        nowIso,
+        new Date(Date.now() - 3_600_000).toISOString(),
+      );
+    } catch {
+      /* apikey table absent before the admin/api-key migration */
+    }
   }
   db.close();
 
@@ -289,7 +381,16 @@ async function main(): Promise<void> {
     for (const { login, cookie } of authStates) {
       const cookies = cookie.split("; ").map((pair) => {
         const eq = pair.indexOf("=");
-        return { name: pair.slice(0, eq), value: pair.slice(eq + 1), domain: `dashboard.${domain}`, path: "/", expires: -1, httpOnly: true, secure: true, sameSite: "Lax" as const };
+        return {
+          name: pair.slice(0, eq),
+          value: pair.slice(eq + 1),
+          domain: `dashboard.${domain}`,
+          path: "/",
+          expires: -1,
+          httpOnly: true,
+          secure: true,
+          sameSite: "Lax" as const,
+        };
       });
       await writeFile(resolve(root, `e2e/.auth/${login}.json`), JSON.stringify({ cookies, origins: [] }, null, 2));
     }

@@ -12,8 +12,14 @@ export const Route = createFileRoute("/projects_/$name/bindings")({ component: P
 
 type ResourceRef = { binding: string; kind: string; id: string };
 type Bindings = {
-  kv: string[]; secrets: string[]; outbound: string[]; d1: string[]; r2: string[];
-  queues: string[]; analytics: string[]; crons: string[];
+  kv: string[];
+  secrets: string[];
+  outbound: string[];
+  d1: string[];
+  r2: string[];
+  queues: string[];
+  analytics: string[];
+  crons: string[];
   assets: string | null;
   durableObjects: Array<{ binding: string; className: string }>;
   resources: ResourceRef[];
@@ -22,15 +28,27 @@ type Resource = { id: string; kind: string; name: string };
 type Detail = { id: string; bindings: Bindings | null; resources: Resource[]; manifestError: string | null };
 
 const KIND_LABEL = new Map([
-  ["kv", "KV namespace"], ["d1", "D1 database"], ["r2", "R2 bucket"], ["queue", "Queue"],
-  ["secret", "Secret"], ["outbound", "Outbound fetch"], ["analytics", "Analytics dataset"],
-  ["assets", "Static assets"], ["do", "Durable Object"], ["cron", "Cron trigger"],
+  ["kv", "KV namespace"],
+  ["d1", "D1 database"],
+  ["r2", "R2 bucket"],
+  ["queue", "Queue"],
+  ["secret", "Secret"],
+  ["outbound", "Outbound fetch"],
+  ["analytics", "Analytics dataset"],
+  ["assets", "Static assets"],
+  ["do", "Durable Object"],
+  ["cron", "Cron trigger"],
 ]);
 
 type Row = { binding: string; kind: string; target: string; resourceId: string | null };
 
 /** #77 — each kind now has its own product page to link a bound resource to. */
-const KIND_PAGE = new Map([["kv", "/kv"], ["d1", "/d1"], ["r2", "/r2"], ["queue", "/queues"]]);
+const KIND_PAGE = new Map([
+  ["kv", "/kv"],
+  ["d1", "/d1"],
+  ["r2", "/r2"],
+  ["queue", "/queues"],
+]);
 
 /** Flattens the artifact's binding set into one table the way Cloudflare lists them. */
 function rowsFor(bindings: Bindings, resources: Resource[]): Row[] {
@@ -38,16 +56,17 @@ function rowsFor(bindings: Bindings, resources: Resource[]): Row[] {
   const resourceFor = (binding: string): ResourceRef | undefined =>
     bindings.resources.find((ref) => ref.binding === binding);
 
-  const fromNames = (names: string[], kind: string): Row[] => names.map((binding) => {
-    const ref = resourceFor(binding);
-    const resource = ref ? byId.get(ref.id) : undefined;
-    return {
-      binding,
-      kind,
-      target: resource ? resource.name : ref ? ref.id : "Provisioned with the deployment",
-      resourceId: ref?.id ?? null,
-    };
-  });
+  const fromNames = (names: string[], kind: string): Row[] =>
+    names.map((binding) => {
+      const ref = resourceFor(binding);
+      const resource = ref ? byId.get(ref.id) : undefined;
+      return {
+        binding,
+        kind,
+        target: resource ? resource.name : ref ? ref.id : "Provisioned with the deployment",
+        resourceId: ref?.id ?? null,
+      };
+    });
 
   return [
     ...fromNames(bindings.kv, "kv"),
@@ -55,9 +74,21 @@ function rowsFor(bindings: Bindings, resources: Resource[]): Row[] {
     ...fromNames(bindings.r2, "r2"),
     ...fromNames(bindings.queues, "queue"),
     ...bindings.secrets.map((binding) => ({ binding, kind: "secret", target: "Value hidden", resourceId: null })),
-    ...bindings.analytics.map((binding) => ({ binding, kind: "analytics", target: "Written on first use", resourceId: null })),
-    ...bindings.durableObjects.map((entry) => ({ binding: entry.binding, kind: "do", target: entry.className, resourceId: null })),
-    ...(bindings.assets ? [{ binding: bindings.assets, kind: "assets", target: "Files served from the artifact", resourceId: null }] : []),
+    ...bindings.analytics.map((binding) => ({
+      binding,
+      kind: "analytics",
+      target: "Written on first use",
+      resourceId: null,
+    })),
+    ...bindings.durableObjects.map((entry) => ({
+      binding: entry.binding,
+      kind: "do",
+      target: entry.className,
+      resourceId: null,
+    })),
+    ...(bindings.assets
+      ? [{ binding: bindings.assets, kind: "assets", target: "Files served from the artifact", resourceId: null }]
+      : []),
     ...bindings.outbound.map((host) => ({ binding: "fetch", kind: "outbound", target: host, resourceId: null })),
   ];
 }
@@ -66,7 +97,9 @@ function ProjectBindings() {
   const { name, deployments } = useProject();
   const activeVersion = deployments.find((deployment) => deployment.active);
   const { data, state } = useJson<Detail>(
-    activeVersion ? `/api/projects/${encodeURIComponent(name)}/deployments/${encodeURIComponent(activeVersion.id)}` : null,
+    activeVersion
+      ? `/api/projects/${encodeURIComponent(name)}/deployments/${encodeURIComponent(activeVersion.id)}`
+      : null,
   );
 
   if (!activeVersion) {
@@ -89,11 +122,18 @@ function ProjectBindings() {
       <Panel variant="wide">
         <PanelHeading
           title="Bindings"
-          description={<>Declared by the active version&apos;s artifact. Change <code>sproutboat.jsonc</code> and redeploy to alter them.</>}
+          description={
+            <>
+              Declared by the active version&apos;s artifact. Change <code>sproutboat.jsonc</code> and redeploy to alter
+              them.
+            </>
+          }
         />
 
         {state === "loading" ? (
-          <p className="min-h-56 px-5 pt-12 text-muted-foreground group-[.is-padded]/panel:px-0" aria-live="polite">Loading bindings…</p>
+          <p className="min-h-56 px-5 pt-12 text-muted-foreground group-[.is-padded]/panel:px-0" aria-live="polite">
+            Loading bindings…
+          </p>
         ) : state === "error" ? (
           <StatusMessage tone="error">Could not load bindings. Refresh and try again.</StatusMessage>
         ) : !bindings ? (
@@ -102,33 +142,64 @@ function ProjectBindings() {
             <code>bindings</code> in <code>sproutboat.jsonc</code> and redeploy.
           </p>
         ) : rows.length === 0 ? (
-          <p className="px-5 py-12 text-center text-[0.84rem] leading-relaxed text-muted-foreground group-[.is-padded]/panel:px-0 group-[.is-padded]/panel:py-5 group-[.is-padded]/panel:text-start [&_code]:text-foreground">This version declares no bindings.</p>
+          <p className="px-5 py-12 text-center text-[0.84rem] leading-relaxed text-muted-foreground group-[.is-padded]/panel:px-0 group-[.is-padded]/panel:py-5 group-[.is-padded]/panel:text-start [&_code]:text-foreground">
+            This version declares no bindings.
+          </p>
         ) : (
-          <DataTable caption="Bindings declared by the active version"
-              head={<tr><th scope="col">Binding</th><th scope="col">Type</th><th scope="col">Target</th></tr>}
-            >
-              {rows.map((row) => (
-                  <tr key={`${row.kind}:${row.binding}:${row.target}`}>
-                    <td><code>{row.binding}</code></td>
-                    <td>{KIND_LABEL.get(row.kind) ?? row.kind}</td>
-                    <td>
-                      {row.resourceId && KIND_PAGE.has(row.kind)
-                        ? <Link className="text-[0.8rem] text-sky underline-offset-2 hover:underline" to={KIND_PAGE.get(row.kind)!}>{row.target}</Link>
-                        : row.target}
-                      {row.resourceId && <small className="text-muted-foreground"> · <code>{row.resourceId}</code></small>}
-                    </td>
-                  </tr>
-                ))}
-            </DataTable>
+          <DataTable
+            caption="Bindings declared by the active version"
+            head={
+              <tr>
+                <th scope="col">Binding</th>
+                <th scope="col">Type</th>
+                <th scope="col">Target</th>
+              </tr>
+            }
+          >
+            {rows.map((row) => (
+              <tr key={`${row.kind}:${row.binding}:${row.target}`}>
+                <td>
+                  <code>{row.binding}</code>
+                </td>
+                <td>{KIND_LABEL.get(row.kind) ?? row.kind}</td>
+                <td>
+                  {row.resourceId && KIND_PAGE.has(row.kind) ? (
+                    <Link
+                      className="text-[0.8rem] text-sky underline-offset-2 hover:underline"
+                      to={KIND_PAGE.get(row.kind)!}
+                    >
+                      {row.target}
+                    </Link>
+                  ) : (
+                    row.target
+                  )}
+                  {row.resourceId && (
+                    <small className="text-muted-foreground">
+                      {" "}
+                      · <code>{row.resourceId}</code>
+                    </small>
+                  )}
+                </td>
+              </tr>
+            ))}
+          </DataTable>
         )}
       </Panel>
 
       {bindings && bindings.crons.length > 0 && (
         <Panel>
-          <PanelHeading title="Declared cron triggers" description="Frozen in the artifact, and fired against the active version. Run history is not surfaced yet (#81)." />
+          <PanelHeading
+            title="Declared cron triggers"
+            description="Frozen in the artifact, and fired against the active version. Run history is not surfaced yet (#81)."
+          />
           <RecordList>
             {bindings.crons.map((expression) => (
-              <RecordRow key={expression}><div><code>{expression}</code></div><span>Scheduled</span></RecordRow>
+              <RecordRow key={expression}>
+                <div>
+                  <code>{expression}</code>
+                </div>
+                <span>Scheduled</span>
+              </RecordRow>
             ))}
           </RecordList>
         </Panel>

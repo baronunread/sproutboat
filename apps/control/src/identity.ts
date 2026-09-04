@@ -25,7 +25,17 @@ export type CliCredential = {
 // 3–32, per the error message below. The middle run is not optional: making it
 // so also matches a single character, which is not a 3–32 character slug.
 const slug = /^[a-z0-9][a-z0-9-]{1,30}[a-z0-9]$/;
-const reservedUsernames = new Set(["www", "api", "admin", "status", "docs", "support", "cli", "dashboard", "sproutboat"]);
+const reservedUsernames = new Set([
+  "www",
+  "api",
+  "admin",
+  "status",
+  "docs",
+  "support",
+  "cli",
+  "dashboard",
+  "sproutboat",
+]);
 let database: Database | undefined;
 let databasePath: string | undefined;
 
@@ -37,7 +47,9 @@ function db(): Database {
   // Same file as store.ts; match its waiting/FK behaviour so a write here that
   // collides with a store transaction retries instead of failing SQLITE_BUSY.
   database.exec("PRAGMA busy_timeout = 5000; PRAGMA foreign_keys = ON;");
-  database.run("CREATE TABLE IF NOT EXISTS profiles (user_id TEXT PRIMARY KEY, username TEXT NOT NULL UNIQUE COLLATE NOCASE, created_at TEXT NOT NULL)");
+  database.run(
+    "CREATE TABLE IF NOT EXISTS profiles (user_id TEXT PRIMARY KEY, username TEXT NOT NULL UNIQUE COLLATE NOCASE, created_at TEXT NOT NULL)",
+  );
   databasePath = path;
   return database;
 }
@@ -48,7 +60,11 @@ export function validUsername(username: string): boolean {
 
 export function profileForUser(userId: string): Profile | undefined {
   // SAFETY: the query selects the Profile columns from the table created in db().
-  const row = db().query("SELECT user_id, username, created_at FROM profiles WHERE user_id = ?").get(userId) as { user_id: string; username: string; created_at: string } | null;
+  const row = db().query("SELECT user_id, username, created_at FROM profiles WHERE user_id = ?").get(userId) as {
+    user_id: string;
+    username: string;
+    created_at: string;
+  } | null;
   return row ? { userId: row.user_id, username: row.username, createdAt: row.created_at } : undefined;
 }
 
@@ -68,9 +84,12 @@ export function reserveUsername(userId: string, username: string, options: { all
   }
   const createdAt = new Date().toISOString();
   try {
-    db().query("INSERT INTO profiles (user_id, username, created_at) VALUES (?, ?, ?)").run(userId, username, createdAt);
+    db()
+      .query("INSERT INTO profiles (user_id, username, created_at) VALUES (?, ?, ?)")
+      .run(userId, username, createdAt);
   } catch (error) {
-    if (error instanceof Error && /UNIQUE constraint failed/.test(error.message)) throw new Error("username is already taken");
+    if (error instanceof Error && /UNIQUE constraint failed/.test(error.message))
+      throw new Error("username is already taken");
     throw error;
   }
   return { userId, username, createdAt };
@@ -79,9 +98,20 @@ export function reserveUsername(userId: string, username: string, options: { all
 export async function actorFor(request: Request): Promise<Actor | undefined> {
   const bootstrapToken = process.env.SPROUTBOAT_BOOTSTRAP_TOKEN;
   const bootstrapUsername = process.env.SPROUTBOAT_BOOTSTRAP_USERNAME;
-  const suppliedBootstrapToken = request.headers.get("x-api-key") || request.headers.get("authorization")?.replace(/^Bearer\s+/, "");
-  if (bootstrapToken && bootstrapUsername && suppliedBootstrapToken === bootstrapToken && validUsername(bootstrapUsername)) {
-    return { id: `bootstrap:${bootstrapUsername}`, username: bootstrapUsername, authentication: "bootstrap", isAdmin: false };
+  const suppliedBootstrapToken =
+    request.headers.get("x-api-key") || request.headers.get("authorization")?.replace(/^Bearer\s+/, "");
+  if (
+    bootstrapToken &&
+    bootstrapUsername &&
+    suppliedBootstrapToken === bootstrapToken &&
+    validUsername(bootstrapUsername)
+  ) {
+    return {
+      id: `bootstrap:${bootstrapUsername}`,
+      username: bootstrapUsername,
+      authentication: "bootstrap",
+      isAdmin: false,
+    };
   }
 
   const session = await getAuth().api.getSession({ headers: request.headers });
@@ -94,9 +124,18 @@ export async function actorFor(request: Request): Promise<Actor | undefined> {
   // the admin-plugin endpoints (which check the role) work for them too.
   let isAdmin = user.role === "admin";
   if (!isAdmin) {
-    const seeds = new Set((process.env.SPROUTBOAT_ADMIN_EMAILS || "").split(",").map((email) => email.trim().toLowerCase()).filter(Boolean));
+    const seeds = new Set(
+      (process.env.SPROUTBOAT_ADMIN_EMAILS || "")
+        .split(",")
+        .map((email) => email.trim().toLowerCase())
+        .filter(Boolean),
+    );
     if (seeds.has(user.email.toLowerCase())) {
-      try { db().query("UPDATE user SET role = 'admin' WHERE id = ?").run(user.id); } catch { /* user table may lag a migration */ }
+      try {
+        db().query("UPDATE user SET role = 'admin' WHERE id = ?").run(user.id);
+      } catch {
+        /* user table may lag a migration */
+      }
       isAdmin = true;
     }
   }
@@ -116,11 +155,19 @@ export function listCredentials(userId: string): CliCredential[] {
   try {
     // SAFETY: these columns are the Better Auth api-key schema; `key` (the hash)
     // is deliberately not selected.
-    const rows = db().query(
-      "SELECT id, name, prefix, start, enabled, createdAt, lastRequest, expiresAt FROM apikey WHERE referenceId = ? ORDER BY createdAt DESC",
-    ).all(userId) as Array<{
-      id: string; name: string | null; prefix: string | null; start: string | null;
-      enabled: number | null; createdAt: string | number | null; lastRequest: string | number | null; expiresAt: string | number | null;
+    const rows = db()
+      .query(
+        "SELECT id, name, prefix, start, enabled, createdAt, lastRequest, expiresAt FROM apikey WHERE referenceId = ? ORDER BY createdAt DESC",
+      )
+      .all(userId) as Array<{
+      id: string;
+      name: string | null;
+      prefix: string | null;
+      start: string | null;
+      enabled: number | null;
+      createdAt: string | number | null;
+      lastRequest: string | number | null;
+      expiresAt: string | number | null;
     }>;
     return rows.map((row) => ({
       id: row.id,
@@ -132,25 +179,38 @@ export function listCredentials(userId: string): CliCredential[] {
       expiresAt: row.expiresAt === null ? null : isoTime(row.expiresAt),
       enabled: row.enabled !== 0,
     }));
-  } catch { return []; }
+  } catch {
+    return [];
+  }
 }
 
 /** #21: revoke one credential; effective immediately (Better Auth verifies against this row). */
 export function revokeCredential(userId: string, id: string): boolean {
-  try { return db().query("DELETE FROM apikey WHERE id = ? AND referenceId = ?").run(id, userId).changes > 0; }
-  catch { return false; }
+  try {
+    return db().query("DELETE FROM apikey WHERE id = ? AND referenceId = ?").run(id, userId).changes > 0;
+  } catch {
+    return false;
+  }
 }
 
 /** #21: revoke every CLI credential the user holds. The browser session is unaffected. */
 export function revokeAllCredentials(userId: string): number {
-  try { return db().query("DELETE FROM apikey WHERE referenceId = ?").run(userId).changes; }
-  catch { return 0; }
+  try {
+    return db().query("DELETE FROM apikey WHERE referenceId = ?").run(userId).changes;
+  } catch {
+    return 0;
+  }
 }
 
 /** #18: the session-safe view of the signed-in user — never OAuth tokens (those live in `account`). */
 export type SessionUser = { id: string; name: string | null; email: string; image: string | null };
 
-export function safeSessionUser(user: { id: string; name?: string | null; email: string; image?: string | null }): SessionUser {
+export function safeSessionUser(user: {
+  id: string;
+  name?: string | null;
+  email: string;
+  image?: string | null;
+}): SessionUser {
   return { id: user.id, name: user.name ?? null, email: user.email, image: user.image ?? null };
 }
 
@@ -180,7 +240,9 @@ export function purgeUser(userId: string): string[] {
       try {
         const changed = database.query(`DELETE FROM ${table} WHERE ${column} = ?`).run(userId).changes;
         if (changed) touched.push(table);
-      } catch { /* table may not exist yet on a fresh DB; nothing to remove */ }
+      } catch {
+        /* table may not exist yet on a fresh DB; nothing to remove */
+      }
     }
   });
   wipe();

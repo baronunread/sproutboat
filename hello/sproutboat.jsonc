@@ -4,6 +4,6 @@
   "main": "src/index.js",
   "compatibility_date": "2026-08-26",
   "vars": {
-    "GREETING": "hello from Sproutboat"
-  }
+    "GREETING": "hello from Sproutboat",
+  },
 }

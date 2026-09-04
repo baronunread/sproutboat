@@ -20,9 +20,16 @@ async function bootWith(deploymentsJson: string): Promise<typeof import("./store
 }
 
 const row = (over: Partial<import("./store").Deployment>) => ({
-  id: "id", project: "app", ownerId: "user-1", username: "alice",
-  hostname: "app.alice.test", artifact: "a".repeat(64),
-  sproutPath: "/w", deployedAt: "2026-01-01T00:00:00.000Z", active: false, ...over,
+  id: "id",
+  project: "app",
+  ownerId: "user-1",
+  username: "alice",
+  hostname: "app.alice.test",
+  artifact: "a".repeat(64),
+  sproutPath: "/w",
+  deployedAt: "2026-01-01T00:00:00.000Z",
+  active: false,
+  ...over,
 });
 
 afterEach(async () => {
@@ -31,14 +38,26 @@ afterEach(async () => {
 });
 
 test("imports legacy deployments.json once, then renames it aside", async () => {
-  store = await bootWith(JSON.stringify([
-    row({ id: "d1", project: "app", artifact: "a".repeat(64), active: false }),
-    row({ id: "d2", project: "app", artifact: "b".repeat(64), active: true }),
-    row({ id: "d3", project: "blog", hostname: "blog.alice.test", artifact: "b".repeat(64), active: true }),
-  ]));
+  store = await bootWith(
+    JSON.stringify([
+      row({ id: "d1", project: "app", artifact: "a".repeat(64), active: false }),
+      row({ id: "d2", project: "app", artifact: "b".repeat(64), active: true }),
+      row({ id: "d3", project: "blog", hostname: "blog.alice.test", artifact: "b".repeat(64), active: true }),
+    ]),
+  );
 
-  expect(store.ownerDeployments("user-1").map((d) => d.id).sort()).toEqual(["d1", "d2", "d3"]);
-  expect(store.activeProjects("user-1").map((p) => p.name).sort()).toEqual(["app", "blog"]);
+  expect(
+    store
+      .ownerDeployments("user-1")
+      .map((d) => d.id)
+      .sort(),
+  ).toEqual(["d1", "d2", "d3"]);
+  expect(
+    store
+      .activeProjects("user-1")
+      .map((p) => p.name)
+      .sort(),
+  ).toEqual(["app", "blog"]);
 
   await expect(readFile(join(dir, "deployments.json"), "utf8")).rejects.toThrow();
   await expect(readFile(join(dir, "deployments.json.imported"), "utf8")).resolves.toContain("d1");
@@ -55,11 +74,18 @@ test("a corrupt legacy file is skipped, not fatal", async () => {
 
 test("import is atomic: a duplicate id in the file does not half-populate", async () => {
   // Second row reuses d1's id; INSERT OR IGNORE keeps the first, the rest still land.
-  store = await bootWith(JSON.stringify([
-    row({ id: "d1", project: "app", artifact: "a".repeat(64) }),
-    row({ id: "d1", project: "app", artifact: "c".repeat(64) }),
-    row({ id: "d9", project: "app", artifact: "c".repeat(64), active: true }),
-  ]));
-  expect(store.ownerDeployments("user-1").map((d) => d.id).sort()).toEqual(["d1", "d9"]);
+  store = await bootWith(
+    JSON.stringify([
+      row({ id: "d1", project: "app", artifact: "a".repeat(64) }),
+      row({ id: "d1", project: "app", artifact: "c".repeat(64) }),
+      row({ id: "d9", project: "app", artifact: "c".repeat(64), active: true }),
+    ]),
+  );
+  expect(
+    store
+      .ownerDeployments("user-1")
+      .map((d) => d.id)
+      .sort(),
+  ).toEqual(["d1", "d9"]);
   expect(store.projectDeployments("user-1", "app").find((d) => d.id === "d1")?.artifact).toBe("a".repeat(64));
 });

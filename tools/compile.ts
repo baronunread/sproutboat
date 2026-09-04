@@ -44,7 +44,10 @@ export async function compileHandler(input: string, output?: string): Promise<Co
     await mkdir(dirname(outputPath), { recursive: true });
     await mkdir(dirname(generatedPath), { recursive: true });
     const [source, prelude] = await Promise.all([readFile(inputPath, "utf8"), readFile(preludePath, "utf8")]);
-    await writeFile(generatedPath, wrapNativeFetchHandler(source, prelude, readVarsFromEnv(), readBindingsFromEnv(), defaultPort));
+    await writeFile(
+      generatedPath,
+      wrapNativeFetchHandler(source, prelude, readVarsFromEnv(), readBindingsFromEnv(), defaultPort),
+    );
 
     // `-s`: strip at link. Porffor emits full DWARF by default (~90% of a
     // static-musl binary); nothing needs it at runtime.
@@ -56,7 +59,10 @@ export async function compileHandler(input: string, output?: string): Promise<Co
       env: { ...process.env, PATH: `${resolve(root, "node_modules/.bin")}:${process.env.PATH ?? ""}` },
     });
     let timedOut = false;
-    const timeout = setTimeout(() => { timedOut = true; child.kill(); }, compileTimeoutMs);
+    const timeout = setTimeout(() => {
+      timedOut = true;
+      child.kill();
+    }, compileTimeoutMs);
     const [exitCode, stdout, stderr] = await Promise.all([
       child.exited,
       new Response(child.stdout).text(),
@@ -65,13 +71,32 @@ export async function compileHandler(input: string, output?: string): Promise<Co
     clearTimeout(timeout);
     const compileMs = performance.now() - started;
 
-    if (timedOut) return { ok: false, binaryPath: null, sizeBytes: null, compileMs, error: `porffor compile timed out after ${compileTimeoutMs}ms` };
+    if (timedOut)
+      return {
+        ok: false,
+        binaryPath: null,
+        sizeBytes: null,
+        compileMs,
+        error: `porffor compile timed out after ${compileTimeoutMs}ms`,
+      };
     if (exitCode !== 0 || !(await Bun.file(outputPath).exists())) {
-      return { ok: false, binaryPath: null, sizeBytes: null, compileMs, error: (stderr || stdout).trim() || `porf exited ${exitCode}` };
+      return {
+        ok: false,
+        binaryPath: null,
+        sizeBytes: null,
+        compileMs,
+        error: (stderr || stdout).trim() || `porf exited ${exitCode}`,
+      };
     }
     return { ok: true, binaryPath: outputPath, sizeBytes: (await stat(outputPath)).size, compileMs, error: null };
   } catch (error) {
-    return { ok: false, binaryPath: null, sizeBytes: null, compileMs: performance.now() - started, error: String(error) };
+    return {
+      ok: false,
+      binaryPath: null,
+      sizeBytes: null,
+      compileMs: performance.now() - started,
+      error: String(error),
+    };
   }
 }
 

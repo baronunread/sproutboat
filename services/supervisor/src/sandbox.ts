@@ -17,8 +17,18 @@ function cgroupWrapper(): string[] {
   const cpu = process.env.SPROUTBOAT_SPROUT_CPU_QUOTA || "50%";
   const pids = process.env.SPROUTBOAT_SPROUT_TASKS_MAX || "24";
   return [
-    "systemd-run", "--scope", "--quiet", "--collect",
-    "-p", `MemoryMax=${mem}`, "-p", "MemorySwapMax=0", "-p", `CPUQuota=${cpu}`, "-p", `TasksMax=${pids}`,
+    "systemd-run",
+    "--scope",
+    "--quiet",
+    "--collect",
+    "-p",
+    `MemoryMax=${mem}`,
+    "-p",
+    "MemorySwapMax=0",
+    "-p",
+    `CPUQuota=${cpu}`,
+    "-p",
+    `TasksMax=${pids}`,
     "--",
   ];
 }
@@ -37,12 +47,15 @@ export function sproutCommand(sproutPath: string): string[] {
   const mode = process.env.SPROUTBOAT_SPROUT_SANDBOX ?? (process.platform === "linux" ? "bwrap" : "none");
   if (mode === "bwrap") {
     // sprout-sandbox.sh applies the cgroup scope itself — don't double-wrap.
-    const launcher = process.env.SPROUTBOAT_SPROUT_SANDBOX_CMD || resolve(import.meta.dir, "../../../infra/sandbox/sprout-sandbox.sh");
+    const launcher =
+      process.env.SPROUTBOAT_SPROUT_SANDBOX_CMD || resolve(import.meta.dir, "../../../infra/sandbox/sprout-sandbox.sh");
     return [launcher, sproutPath];
   }
   if (mode === "none") {
     if (process.platform === "linux" && process.env.SPROUTBOAT_UNSAFE_NO_SANDBOX !== "1") {
-      throw new Error("refusing to run an untrusted native sprout unsandboxed on Linux; set SPROUTBOAT_SPROUT_SANDBOX=bwrap (or SPROUTBOAT_UNSAFE_NO_SANDBOX=1 for a trusted local test)");
+      throw new Error(
+        "refusing to run an untrusted native sprout unsandboxed on Linux; set SPROUTBOAT_SPROUT_SANDBOX=bwrap (or SPROUTBOAT_UNSAFE_NO_SANDBOX=1 for a trusted local test)",
+      );
     }
     return [...cgroupWrapper(), sproutPath];
   }

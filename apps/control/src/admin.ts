@@ -20,17 +20,29 @@ async function requireAdmin(request: Request): Promise<Response | null> {
   return null;
 }
 
-
 type ListedUser = {
-  id: string; email: string; name?: string | null; image?: string | null;
-  role?: string | null; banned?: boolean | null; banReason?: string | null; banExpires?: string | Date | null;
+  id: string;
+  email: string;
+  name?: string | null;
+  image?: string | null;
+  role?: string | null;
+  banned?: boolean | null;
+  banReason?: string | null;
+  banExpires?: string | Date | null;
   createdAt: string | Date;
 };
 
 type AdminUserQuery = {
-  limit?: number; offset?: number; sortBy?: string; sortDirection?: "asc" | "desc";
-  searchField?: "email" | "name"; searchOperator?: "contains" | "starts_with" | "ends_with"; searchValue?: string;
-  filterField?: string; filterOperator?: "eq"; filterValue?: string;
+  limit?: number;
+  offset?: number;
+  sortBy?: string;
+  sortDirection?: "asc" | "desc";
+  searchField?: "email" | "name";
+  searchOperator?: "contains" | "starts_with" | "ends_with";
+  searchValue?: string;
+  filterField?: string;
+  filterOperator?: "eq";
+  filterValue?: string;
 };
 
 async function listUsers(headers: Headers, query: AdminUserQuery): Promise<{ users: ListedUser[]; total: number }> {
@@ -41,8 +53,12 @@ async function listUsers(headers: Headers, query: AdminUserQuery): Promise<{ use
 }
 
 const publicUser = (user: ListedUser) => ({
-  id: user.id, email: user.email, name: user.name ?? null, image: user.image ?? null,
-  role: user.role ?? "user", banned: user.banned === true,
+  id: user.id,
+  email: user.email,
+  name: user.name ?? null,
+  image: user.image ?? null,
+  role: user.role ?? "user",
+  banned: user.banned === true,
   banReason: user.banReason ?? null,
   banExpires: user.banExpires ? new Date(user.banExpires).toISOString() : null,
   createdAt: new Date(user.createdAt).toISOString(),
@@ -55,8 +71,10 @@ async function poolGauges(): Promise<Record<string, number> | null> {
     const response = await fetch(`${url}/__sb/pool`, { signal: AbortSignal.timeout(1500) });
     if (!response.ok) return null;
     // SAFETY: the edge's /__sb/pool returns PoolStats — a flat number map.
-    return await response.json() as Record<string, number>;
-  } catch { return null; }
+    return (await response.json()) as Record<string, number>;
+  } catch {
+    return null;
+  }
 }
 
 export async function adminOverview(request: Request): Promise<Response> {
@@ -64,7 +82,13 @@ export async function adminOverview(request: Request): Promise<Response> {
   if (denied) return denied;
   const stats = globalStats();
   const [traffic, runtime] = await Promise.all([globalLogTotals(), poolGauges()]);
-  return Response.json({ ...stats, requests24h: traffic.requests, errors24h: traffic.errors, since: traffic.from, runtime });
+  return Response.json({
+    ...stats,
+    requests24h: traffic.requests,
+    errors24h: traffic.errors,
+    since: traffic.from,
+    runtime,
+  });
 }
 
 export async function adminUsers(request: Request): Promise<Response> {
@@ -97,16 +121,43 @@ export async function adminUsers(request: Request): Promise<Response> {
 export async function adminUserDetail(request: Request, id: string): Promise<Response> {
   const denied = await requireAdmin(request);
   if (denied) return denied;
-  const { users } = await listUsers(request.headers, { filterField: "id", filterOperator: "eq", filterValue: id, limit: 1 });
+  const { users } = await listUsers(request.headers, {
+    filterField: "id",
+    filterOperator: "eq",
+    filterValue: id,
+    limit: 1,
+  });
   const user = users[0];
   if (!user) return Response.json({ error: "user not found" }, { status: 404 });
-  const deployments = ownerDeployments(id).map(({ id: deploymentId, project, hostname, artifact, deployedAt, active }) =>
-    ({ id: deploymentId, project, hostname, artifact, deployedAt, active }));
-  let sessions: Array<{ id: string; createdAt: string; expiresAt: string; ipAddress: string | null; userAgent: string | null }> = [];
+  const deployments = ownerDeployments(id).map(
+    ({ id: deploymentId, project, hostname, artifact, deployedAt, active }) => ({
+      id: deploymentId,
+      project,
+      hostname,
+      artifact,
+      deployedAt,
+      active,
+    }),
+  );
+  let sessions: Array<{
+    id: string;
+    createdAt: string;
+    expiresAt: string;
+    ipAddress: string | null;
+    userAgent: string | null;
+  }> = [];
   try {
     const raw = await getAuth().api.listUserSessions({ body: { userId: id }, headers: request.headers });
     // SAFETY: listUserSessions returns { sessions: Session[] } for an authenticated admin.
-    const result = raw as { sessions: Array<{ id: string; createdAt: string | Date; expiresAt: string | Date; ipAddress?: string | null; userAgent?: string | null }> };
+    const result = raw as {
+      sessions: Array<{
+        id: string;
+        createdAt: string | Date;
+        expiresAt: string | Date;
+        ipAddress?: string | null;
+        userAgent?: string | null;
+      }>;
+    };
     sessions = result.sessions.map((session) => ({
       id: session.id,
       createdAt: new Date(session.createdAt).toISOString(),
@@ -114,7 +165,9 @@ export async function adminUserDetail(request: Request, id: string): Promise<Res
       ipAddress: session.ipAddress ?? null,
       userAgent: session.userAgent ?? null,
     }));
-  } catch { /* sessions are best-effort */ }
+  } catch {
+    /* sessions are best-effort */
+  }
   return Response.json({ user: publicUser(user), deployments, sessions });
 }
 
@@ -123,7 +176,9 @@ type JsonInput = string | number | boolean | null | undefined | JsonInput[] | { 
 const asText = (value: JsonInput): string | undefined =>
   Object(value) !== value && value === String(value) && String(value).trim() ? String(value).trim() : undefined;
 const asPositive = (value: JsonInput): number | undefined =>
-  Object(value) !== value && value === Number(value) && Number.isFinite(value) && Number(value) > 0 ? Number(value) : undefined;
+  Object(value) !== value && value === Number(value) && Number.isFinite(value) && Number(value) > 0
+    ? Number(value)
+    : undefined;
 
 const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
 const MIN_PASSWORD = 10;
@@ -143,12 +198,20 @@ export async function adminCreateUser(request: Request): Promise<Response> {
   const password = asText(body.password);
   const name = asText(body.name) ?? username;
   if (!email || !EMAIL_RE.test(email)) return Response.json({ error: "a valid email is required" }, { status: 400 });
-  if (!username || !validUsername(username)) return Response.json({ error: "username must be a 3–32 character lowercase slug and not reserved" }, { status: 400 });
-  if (!password || password.length < MIN_PASSWORD) return Response.json({ error: `password must be at least ${MIN_PASSWORD} characters` }, { status: 400 });
+  if (!username || !validUsername(username))
+    return Response.json(
+      { error: "username must be a 3–32 character lowercase slug and not reserved" },
+      { status: 400 },
+    );
+  if (!password || password.length < MIN_PASSWORD)
+    return Response.json({ error: `password must be at least ${MIN_PASSWORD} characters` }, { status: 400 });
 
   let userId: string;
   try {
-    const created = await getAuth().api.createUser({ body: { email, password, name: name!, role: "user" }, headers: request.headers });
+    const created = await getAuth().api.createUser({
+      body: { email, password, name: name!, role: "user" },
+      headers: request.headers,
+    });
     // SAFETY: the admin plugin's createUser resolves to { user: { id, ... } }.
     userId = (created as { user: { id: string } }).user.id;
   } catch (error) {
@@ -158,7 +221,10 @@ export async function adminCreateUser(request: Request): Promise<Response> {
   try {
     reserveUsername(userId, username);
   } catch (error) {
-    return Response.json({ error: error instanceof Error ? error.message : "namespace reservation failed" }, { status: 409 });
+    return Response.json(
+      { error: error instanceof Error ? error.message : "namespace reservation failed" },
+      { status: 409 },
+    );
   }
   return Response.json({ id: userId, email, username }, { status: 201 });
 }

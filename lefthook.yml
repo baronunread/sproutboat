@@ -3,9 +3,12 @@ pre-commit:
   commands:
     # Format first, so lint sees the same code a human would after `bun run fmt`
     # — no back-and-forth where a lint fix reintroduces a format issue or vice
-    # versa. Scoped to staged files only: oxfmt's defaults don't match this
-    # repo's style everywhere yet (see .oxfmtrc.json), and reformatting untouched
-    # files on someone else's commit would be a surprise nobody asked for.
+    # versa. Scoped to staged files only: the whole tree is formatted now, so
+    # reformatting untouched files on someone else's commit would only be noise.
+    #
+    # oxfmt 0.66 is not always idempotent — a chained .slice().map() with a
+    # destructured param took two passes to settle. If CI's fmt:check fails on a
+    # file you just formatted, run `bun run fmt` again before digging further.
     format:
       glob: "*.{js,jsx,ts,tsx,json,jsonc}"
       run: bunx oxfmt --write {staged_files}

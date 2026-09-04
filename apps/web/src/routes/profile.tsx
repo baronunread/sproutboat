@@ -3,7 +3,10 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { Avatar, Button, Panel, PanelHeading, TextField } from "../components";
 import { USERNAME_RULE, useAccount } from "../dashboard-data";
 
-export const Route = createFileRoute("/profile")({ component: Profile, head: () => ({ meta: [{ title: "Profile · Sproutboat" }] }) });
+export const Route = createFileRoute("/profile")({
+  component: Profile,
+  head: () => ({ meta: [{ title: "Profile · Sproutboat" }] }),
+});
 
 function Profile() {
   const { account, refresh } = useAccount();
@@ -17,26 +20,34 @@ function Profile() {
 
   const reserve = async (event: React.FormEvent) => {
     event.preventDefault();
-    if (!USERNAME_RULE.test(trimmed)) { setError("Use 3–32 lowercase letters, digits or hyphens."); return; }
-    setBusy(true); setError(null);
+    if (!USERNAME_RULE.test(trimmed)) {
+      setError("Use 3–32 lowercase letters, digits or hyphens.");
+      return;
+    }
+    setBusy(true);
+    setError(null);
     try {
       const response = await fetch("/api/account/namespace", {
-        method: "POST", credentials: "include",
-        headers: { "content-type": "application/json" }, body: JSON.stringify({ username: trimmed }),
+        method: "POST",
+        credentials: "include",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ username: trimmed }),
       });
       if (!response.ok) {
         // SAFETY: an error body from this endpoint is { error: string }.
-        const body = await response.json().catch(() => ({})) as { error?: string };
+        const body = (await response.json().catch(() => ({}))) as { error?: string };
         setError(body.error ?? "Choose an available 3–32 character lowercase namespace.");
         return;
       }
       // SAFETY: successful namespace reservation returns the updated profile contract.
-      const body = await response.json() as { profile: { username: string } };
+      const body = (await response.json()) as { profile: { username: string } };
       setProfile(body.profile);
       refresh();
     } catch {
       setError("Could not reach the control plane. Try again.");
-    } finally { setBusy(false); }
+    } finally {
+      setBusy(false);
+    }
   };
 
   const currentProfile = profile ?? account?.profile;
@@ -45,31 +56,53 @@ function Profile() {
   return (
     <>
       <section className="mb-8 flex items-center justify-between gap-8 border-b border-border pb-7 max-[800px]:mb-10 max-[800px]:flex-col max-[800px]:items-start [&_h1]:m-0 [&_h1]:text-[1.85rem] [&_h1]:font-bold [&_h1]:tracking-[-0.035em] [&_h1]:max-[480px]:text-[1.6rem] [&_p]:mt-1.5 [&_p]:max-w-[38rem] [&_p]:text-[0.875rem] [&_p]:leading-normal [&_p]:text-muted-foreground">
-        <div><h1>Profile</h1><p>Your deployment namespace is used in every project route.</p></div>
+        <div>
+          <h1>Profile</h1>
+          <p>Your deployment namespace is used in every project route.</p>
+        </div>
       </section>
       <Panel>
         {currentProfile ? (
           <>
             <div className="mb-4 flex items-center gap-4 [&_h2]:m-0 [&>div>p]:mt-1 [&>div>p]:text-[0.8rem] [&>div>p]:text-muted-foreground [&>div>p]:[overflow-wrap:anywhere]">
-              <span className="flex size-12 shrink-0 items-center justify-center overflow-hidden rounded-[10px] bg-secondary text-[1.1rem] font-semibold"><Avatar image={account?.user?.image} label={identityLabel} /></span>
+              <span className="flex size-12 shrink-0 items-center justify-center overflow-hidden rounded-[10px] bg-secondary text-[1.1rem] font-semibold">
+                <Avatar image={account?.user?.image} label={identityLabel} />
+              </span>
               <div>
                 <h2>{currentProfile.username}</h2>
-                {account?.user?.name && <p>{account.user.name}{account.user.email ? ` · ${account.user.email}` : ""}</p>}
+                {account?.user?.name && (
+                  <p>
+                    {account.user.name}
+                    {account.user.email ? ` · ${account.user.email}` : ""}
+                  </p>
+                )}
               </div>
             </div>
-            <p className="mt-3 text-[0.75rem] text-muted-foreground">Namespace changes are unavailable while deployments exist.</p>
+            <p className="mt-3 text-[0.75rem] text-muted-foreground">
+              Namespace changes are unavailable while deployments exist.
+            </p>
           </>
         ) : (
           <>
             <PanelHeading
               title="Claim your namespace"
-              description={<>Choose the name that will appear in routes such as <code>hello.name.sproutboat.com</code>.</>}
+              description={
+                <>
+                  Choose the name that will appear in routes such as <code>hello.name.sproutboat.com</code>.
+                </>
+              }
             />
-            <form className="mt-5 grid max-w-[36rem] gap-5 [&>[data-slot=form-actions]]:col-span-full" onSubmit={(event) => void reserve(event)}>
+            <form
+              className="mt-5 grid max-w-[36rem] gap-5 [&>[data-slot=form-actions]]:col-span-full"
+              onSubmit={(event) => void reserve(event)}
+            >
               <TextField
                 label="Namespace"
                 value={username}
-                onChange={(event) => { setUsername(event.target.value); setError(null); }}
+                onChange={(event) => {
+                  setUsername(event.target.value);
+                  setError(null);
+                }}
                 placeholder="andrea"
                 autoComplete="off"
                 spellCheck={false}
@@ -78,12 +111,24 @@ function Profile() {
                 error={invalid ? "Use 3–32 lowercase letters, digits or hyphens." : error}
               />
               <div data-slot="form-actions" className="mt-1 flex flex-wrap items-center gap-2.5">
-                <Button type="submit" variant="primary" busy={busy} busyLabel="Reserving…" disabled={!trimmed || invalid}>Reserve</Button>
+                <Button
+                  type="submit"
+                  variant="primary"
+                  busy={busy}
+                  busyLabel="Reserving…"
+                  disabled={!trimmed || invalid}
+                >
+                  Reserve
+                </Button>
               </div>
             </form>
           </>
         )}
-        <p><Link className="text-[0.8rem] text-sky underline-offset-2 hover:underline" to="/settings">Appearance settings</Link></p>
+        <p>
+          <Link className="text-[0.8rem] text-sky underline-offset-2 hover:underline" to="/settings">
+            Appearance settings
+          </Link>
+        </p>
       </Panel>
     </>
   );

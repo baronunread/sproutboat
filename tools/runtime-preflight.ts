@@ -32,7 +32,11 @@ async function writable(path: string): Promise<boolean> {
 
 async function commandOutput(command: string, args: string[]): Promise<{ code: number; output: string }> {
   const child = Bun.spawn([command, ...args], { stdout: "pipe", stderr: "pipe" });
-  const [code, stdout, stderr] = await Promise.all([child.exited, new Response(child.stdout).text(), new Response(child.stderr).text()]);
+  const [code, stdout, stderr] = await Promise.all([
+    child.exited,
+    new Response(child.stdout).text(),
+    new Response(child.stderr).text(),
+  ]);
   return { code, output: `${stdout}${stderr}`.trim() };
 }
 
@@ -42,13 +46,23 @@ async function namespaceCheck(name: string, label = name): Promise<void> {
   try {
     await readlink(namespacePath);
   } catch {
-    add(`${label} namespace`, "fail", `${namespacePath} is unavailable`, "Use a Linux kernel with namespace support enabled.");
+    add(
+      `${label} namespace`,
+      "fail",
+      `${namespacePath} is unavailable`,
+      "Use a Linux kernel with namespace support enabled.",
+    );
     return;
   }
 
   const limit = (await readable(limitPath))?.trim();
   if (limit === "0") add(`${label} namespace`, "fail", `${limitPath}=0`, `Raise ${limitPath} above zero.`);
-  else if (limit === null) add(`${label} namespace`, "warn", `${limitPath} is unavailable; namespace exists but its host limit could not be verified.`);
+  else if (limit === null)
+    add(
+      `${label} namespace`,
+      "warn",
+      `${limitPath} is unavailable; namespace exists but its host limit could not be verified.`,
+    );
   else add(`${label} namespace`, "pass", `${limitPath}=${limit}`);
 }
 
@@ -66,31 +80,69 @@ if (process.arch !== "x64") {
 
 const controllers = await readable("/sys/fs/cgroup/cgroup.controllers");
 if (controllers === null) {
-  add("cgroups v2", "fail", "/sys/fs/cgroup/cgroup.controllers is unavailable", "Boot with a unified cgroup v2 hierarchy.");
+  add(
+    "cgroups v2",
+    "fail",
+    "/sys/fs/cgroup/cgroup.controllers is unavailable",
+    "Boot with a unified cgroup v2 hierarchy.",
+  );
 } else {
   const missing = ["cpu", "memory", "pids"].filter((controller) => !controllers.split(/\s+/).includes(controller));
-  if (missing.length) add("cgroups v2", "fail", `missing controllers: ${missing.join(", ")}`, "Enable cpu, memory, and pids controllers in cgroup v2.");
+  if (missing.length)
+    add(
+      "cgroups v2",
+      "fail",
+      `missing controllers: ${missing.join(", ")}`,
+      "Enable cpu, memory, and pids controllers in cgroup v2.",
+    );
   else add("cgroups v2", "pass", `controllers: ${controllers.trim()}`);
 }
 
 if (controllers !== null) {
   const canWrite = await writable("/sys/fs/cgroup");
-  add("cgroup delegation", canWrite ? "pass" : "warn", canWrite ? "current process can create cgroups" : "current process cannot create cgroups", "The future supervisor systemd unit must use Delegate=yes and have a writable delegated cgroup.");
+  add(
+    "cgroup delegation",
+    canWrite ? "pass" : "warn",
+    canWrite ? "current process can create cgroups" : "current process cannot create cgroups",
+    "The future supervisor systemd unit must use Delegate=yes and have a writable delegated cgroup.",
+  );
 }
 
 // The worker keeps the caller's netns (it must serve loopback for the edge to
 // proxy to it); egress is denied by the edge unit's IPAddressDeny=any instead.
-for (const [name, label] of [["user", "user"], ["pid", "PID"], ["mnt", "mount"]]) await namespaceCheck(name, label);
+for (const [name, label] of [
+  ["user", "user"],
+  ["pid", "PID"],
+  ["mnt", "mount"],
+])
+  await namespaceCheck(name, label);
 
 // Old Debian/Ubuntu knob; removed in 6.6+ kernels (Ubuntu 24.04), where AppArmor
 // gates unprivileged userns instead. The functional bwrap check above is the
 // authoritative signal — this is only advisory.
 const usernsClone = (await readable("/proc/sys/kernel/unprivileged_userns_clone"))?.trim();
 const apparmorUserns = (await readable("/proc/sys/kernel/apparmor_restrict_unprivileged_userns"))?.trim();
-if (usernsClone === "0") add("unprivileged user namespaces", "fail", "kernel.unprivileged_userns_clone=0", "Set it to 1, or rely on a kernel that has dropped this knob.");
+if (usernsClone === "0")
+  add(
+    "unprivileged user namespaces",
+    "fail",
+    "kernel.unprivileged_userns_clone=0",
+    "Set it to 1, or rely on a kernel that has dropped this knob.",
+  );
 else if (usernsClone === "1") add("unprivileged user namespaces", "pass", "kernel.unprivileged_userns_clone=1");
-else if (apparmorUserns === "1") add("unprivileged user namespaces", "warn", "kernel.apparmor_restrict_unprivileged_userns=1; unconfined processes may be blocked from userns", "Ship an AppArmor profile for the edge, or set the sysctl to 0.");
-else add("unprivileged user namespaces", "warn", "no unprivileged-userns sysctl present (normal on 6.6+); trusting the live bwrap check above.");
+else if (apparmorUserns === "1")
+  add(
+    "unprivileged user namespaces",
+    "warn",
+    "kernel.apparmor_restrict_unprivileged_userns=1; unconfined processes may be blocked from userns",
+    "Ship an AppArmor profile for the edge, or set the sysctl to 0.",
+  );
+else
+  add(
+    "unprivileged user namespaces",
+    "warn",
+    "no unprivileged-userns sysctl present (normal on 6.6+); trusting the live bwrap check above.",
+  );
 
 const bwrap = Bun.which("bwrap");
 if (!bwrap) {
@@ -98,41 +150,93 @@ if (!bwrap) {
 } else {
   const version = await commandOutput(bwrap, ["--version"]);
   const help = await commandOutput(bwrap, ["--help"]);
-  if (version.code !== 0 || help.code !== 0) add("bubblewrap", "fail", `bwrap could not run: ${version.output || help.output}`, "Install a working bubblewrap package.");
-  else if (!help.output.includes("--seccomp")) add("bubblewrap", "fail", "bwrap does not advertise --seccomp", "Install a bubblewrap build with seccomp support.");
+  if (version.code !== 0 || help.code !== 0)
+    add(
+      "bubblewrap",
+      "fail",
+      `bwrap could not run: ${version.output || help.output}`,
+      "Install a working bubblewrap package.",
+    );
+  else if (!help.output.includes("--seccomp"))
+    add("bubblewrap", "fail", "bwrap does not advertise --seccomp", "Install a bubblewrap build with seccomp support.");
   else {
     // Functional check: the exact isolation sprout-sandbox.sh relies on.
     const sandboxRun = await commandOutput(bwrap, [
-      "--unshare-user", "--unshare-pid", "--unshare-net", "--unshare-ipc", "--unshare-uts",
-      "--clearenv", "--uid", "65534", "--gid", "65534",
-      "--proc", "/proc", "--dev", "/dev", "--tmpfs", "/tmp", "--ro-bind", "/usr", "/usr",
-      "--ro-bind-try", "/lib", "/lib", "--ro-bind-try", "/lib64", "/lib64", "--chdir", "/",
-      "--", "/usr/bin/env", "true",
+      "--unshare-user",
+      "--unshare-pid",
+      "--unshare-net",
+      "--unshare-ipc",
+      "--unshare-uts",
+      "--clearenv",
+      "--uid",
+      "65534",
+      "--gid",
+      "65534",
+      "--proc",
+      "/proc",
+      "--dev",
+      "/dev",
+      "--tmpfs",
+      "/tmp",
+      "--ro-bind",
+      "/usr",
+      "/usr",
+      "--ro-bind-try",
+      "/lib",
+      "/lib",
+      "--ro-bind-try",
+      "/lib64",
+      "/lib64",
+      "--chdir",
+      "/",
+      "--",
+      "/usr/bin/env",
+      "true",
     ]);
-    if (sandboxRun.code === 0) add("bubblewrap", "pass", `${version.output}; unprivileged user+net namespace sandbox works`);
-    else add("bubblewrap", "fail", `bwrap cannot create the sandbox: ${sandboxRun.output || `exit ${sandboxRun.code}`}`, "Permit unprivileged user namespaces (kernel.unprivileged_userns_clone=1) and ensure /usr, /lib are readable.");
+    if (sandboxRun.code === 0)
+      add("bubblewrap", "pass", `${version.output}; unprivileged user+net namespace sandbox works`);
+    else
+      add(
+        "bubblewrap",
+        "fail",
+        `bwrap cannot create the sandbox: ${sandboxRun.output || `exit ${sandboxRun.code}`}`,
+        "Permit unprivileged user namespaces (kernel.unprivileged_userns_clone=1) and ensure /usr, /lib are readable.",
+      );
   }
 }
 
 const systemdRun = Bun.which("systemd-run");
-add("systemd-run", "warn",
+add(
+  "systemd-run",
+  "warn",
   systemdRun
     ? "present; the POC still uses aggregate edge-cgroup limits (SPROUTBOAT_SPROUT_CGROUP=off) rather than per-sprout scopes"
     : "absent; the POC caps the whole edge cgroup instead of per-sprout scopes",
-  "For per-sprout CPU/memory/pids limits: loginctl enable-linger sproutboat-edge, Delegate=yes on its user slice, then SPROUTBOAT_SPROUT_CGROUP=auto.");
+  "For per-sprout CPU/memory/pids limits: loginctl enable-linger sproutboat-edge, Delegate=yes on its user slice, then SPROUTBOAT_SPROUT_CGROUP=auto.",
+);
 
 const sandboxScript = resolve(import.meta.dir, "../infra/sandbox/sprout-sandbox.sh");
 try {
   await access(sandboxScript, constants.X_OK);
   add("sprout-sandbox launcher", "pass", sandboxScript);
 } catch {
-  add("sprout-sandbox launcher", "fail", `${sandboxScript} is missing or not executable`, "chmod +x infra/sandbox/sprout-sandbox.sh");
+  add(
+    "sprout-sandbox launcher",
+    "fail",
+    `${sandboxScript} is missing or not executable`,
+    "chmod +x infra/sandbox/sprout-sandbox.sh",
+  );
 }
 
 const seccompActions = await readable("/proc/sys/kernel/seccomp/actions_avail");
 const seccompStatus = await readable("/proc/self/status");
 if (seccompActions === null || !/^Seccomp:\s*\d+/m.test(seccompStatus || "")) {
-  add("seccomp", "fail", "kernel seccomp interfaces are unavailable", "Use a kernel built with CONFIG_SECCOMP and CONFIG_SECCOMP_FILTER.");
+  add(
+    "seccomp",
+    "fail",
+    "kernel seccomp interfaces are unavailable",
+    "Use a kernel built with CONFIG_SECCOMP and CONFIG_SECCOMP_FILTER.",
+  );
 } else {
   add("seccomp", "pass", `actions: ${seccompActions.trim()}`);
 }

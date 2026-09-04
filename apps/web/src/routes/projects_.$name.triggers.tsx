@@ -1,6 +1,18 @@
 import { useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
-import { Button, ConfirmButton, Copy, Panel, PanelHeading, RECORD_NOTE, RecordList, RecordRow, Status, StatusMessage, TextField } from "../components";
+import {
+  Button,
+  ConfirmButton,
+  Copy,
+  Panel,
+  PanelHeading,
+  RECORD_NOTE,
+  RecordList,
+  RecordRow,
+  Status,
+  StatusMessage,
+  TextField,
+} from "../components";
 import { mutate, useJson, useProject } from "../dashboard-data";
 import { cn } from "@/lib/utils";
 
@@ -27,7 +39,10 @@ function ProjectTriggers() {
   return (
     <>
       <Panel variant="wide">
-        <PanelHeading title="Route" description="Generated from the project and your namespace. It always serves the active version." />
+        <PanelHeading
+          title="Route"
+          description="Generated from the project and your namespace. It always serves the active version."
+        />
         <dl className="mt-5 grid grid-cols-[repeat(auto-fit,minmax(16rem,1fr))] gap-x-8 gap-y-4 [&_code]:text-[0.78rem] [&_dd]:mt-1 [&_dd]:text-[0.85rem] [&_dd]:[overflow-wrap:anywhere] [&_dt]:text-[0.72rem] [&_dt]:tracking-wide [&_dt]:text-muted-foreground [&_dt]:uppercase">
           <div>
             <dt>Generated hostname</dt>
@@ -46,7 +61,10 @@ function ProjectTriggers() {
       <CustomDomains name={name} hasActive={Boolean(active)} />
 
       <Panel>
-        <PanelHeading title="Scheduled triggers" description="Cron schedules declared in the artifact fire against the active version." />
+        <PanelHeading
+          title="Scheduled triggers"
+          description="Cron schedules declared in the artifact fire against the active version."
+        />
         <p className="mt-3 text-[0.75rem] text-muted-foreground">
           A <code>triggers.crons</code> entry in <code>sproutboat.jsonc</code> is frozen into the artifact and invokes
           your <code>scheduled()</code> handler on the active version. The declared schedules for this project are on
@@ -72,28 +90,37 @@ function CustomDomains({ name, hasActive }: { name: string; hasActive: boolean }
   const add = async (event: React.FormEvent) => {
     event.preventDefault();
     const wanted = hostname.trim().toLowerCase();
-    if (!HOSTNAME_RULE.test(wanted)) { setError("Enter a full hostname, like www.example.com."); return; }
-    setBusy(true); setError(null); setNote(null);
+    if (!HOSTNAME_RULE.test(wanted)) {
+      setError("Enter a full hostname, like www.example.com.");
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    setNote(null);
     try {
       const response = await fetch(base, {
-        method: "POST", credentials: "include",
-        headers: { "content-type": "application/json" }, body: JSON.stringify({ hostname: wanted }),
+        method: "POST",
+        credentials: "include",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ hostname: wanted }),
       });
       if (!response.ok) {
         // SAFETY: an error body from the domains endpoint is { error: string }.
-        const body = await response.json().catch(() => ({})) as { error?: string };
+        const body = (await response.json().catch(() => ({}))) as { error?: string };
         setError(body.error ?? `Could not attach that hostname (${response.status}).`);
         return;
       }
       // SAFETY: a 2xx from POST domains is a DomainRecord with serverAddresses.
-      const created = await response.json() as DomainRecord;
+      const created = (await response.json()) as DomainRecord;
       setReachability((current) => ({ ...current, [created.hostname]: created }));
       setHostname("");
       setNote({ text: `Added ${created.hostname}. Add the TXT record below, then verify.`, tone: "success" });
       await refresh();
     } catch {
       setError("Could not reach the control plane. Try again.");
-    } finally { setBusy(false); }
+    } finally {
+      setBusy(false);
+    }
   };
 
   const verify = async (domain: string) => {
@@ -102,16 +129,18 @@ function CustomDomains({ name, hasActive }: { name: string; hasActive: boolean }
       const response = await fetch(`${base}/${domain}/verify`, { method: "POST", credentials: "include" });
       if (!response.ok) {
         // SAFETY: an error body from the domains endpoint is { error?: string }.
-        const failure = await response.json().catch(() => ({})) as { error?: string };
+        const failure = (await response.json().catch(() => ({}))) as { error?: string };
         setNote({ text: failure.error ?? "Verification failed. Check the TXT record and try again.", tone: "error" });
         return;
       }
       // SAFETY: a 2xx from verify is a DomainRecord, with reachability attached.
-      const body = await response.json() as DomainRecord;
+      const body = (await response.json()) as DomainRecord;
       setReachability((current) => ({ ...current, [domain]: body }));
       setNote({ text: `${domain} is verified.`, tone: "success" });
       await refresh();
-    } catch { setNote({ text: "Could not reach the control plane. Try again.", tone: "error" }); }
+    } catch {
+      setNote({ text: "Could not reach the control plane. Try again.", tone: "error" });
+    }
   };
 
   const remove = async (domain: string) => {
@@ -130,26 +159,38 @@ function CustomDomains({ name, hasActive }: { name: string; hasActive: boolean }
       {note && <StatusMessage tone={note.tone}>{note.text}</StatusMessage>}
 
       {state === "loading" ? (
-        <p className="min-h-56 px-5 pt-12 text-muted-foreground group-[.is-padded]/panel:px-0" aria-live="polite">Loading domains…</p>
+        <p className="min-h-56 px-5 pt-12 text-muted-foreground group-[.is-padded]/panel:px-0" aria-live="polite">
+          Loading domains…
+        </p>
       ) : state === "error" ? (
         <StatusMessage tone="error">Could not load custom domains.</StatusMessage>
       ) : list.length === 0 ? (
-        <p className="px-5 py-12 text-center text-[0.84rem] leading-relaxed text-muted-foreground group-[.is-padded]/panel:px-0 group-[.is-padded]/panel:py-5 group-[.is-padded]/panel:text-start [&_code]:text-foreground">No custom domains attached.</p>
+        <p className="px-5 py-12 text-center text-[0.84rem] leading-relaxed text-muted-foreground group-[.is-padded]/panel:px-0 group-[.is-padded]/panel:py-5 group-[.is-padded]/panel:text-start [&_code]:text-foreground">
+          No custom domains attached.
+        </p>
       ) : (
         <RecordList>
           {list.map((domain) => {
             const detail = reachability[domain.hostname];
             return (
               <RecordRow key={domain.hostname}>
-                <div><strong>{domain.hostname}</strong></div>
+                <div>
+                  <strong>{domain.hostname}</strong>
+                </div>
                 <Status live={domain.verified}>{domain.verified ? "Verified" : "Pending"}</Status>
-                {!domain.verified && <Button variant="quiet" onClick={() => void verify(domain.hostname)}>Verify</Button>}
+                {!domain.verified && (
+                  <Button variant="quiet" onClick={() => void verify(domain.hostname)}>
+                    Verify
+                  </Button>
+                )}
                 <ConfirmButton
                   label="Remove"
                   busyLabel="Removing…"
                   triggerVariant="quiet"
                   title={`Remove ${domain.hostname}?`}
-                  description={<>This hostname stops serving this project immediately. You can attach it again later.</>}
+                  description={
+                    <>This hostname stops serving this project immediately. You can attach it again later.</>
+                  }
                   confirmLabel="Remove domain"
                   onConfirm={() => remove(domain.hostname)}
                 />
@@ -162,7 +203,9 @@ function CustomDomains({ name, hasActive }: { name: string; hasActive: boolean }
                 )}
                 {detail?.warning && <p className={cn(RECORD_NOTE, "text-destructive")}>{detail.warning}</p>}
                 {detail?.serverAddresses?.length ? (
-                  <p className={RECORD_NOTE}>Point an A/AAAA record at <code>{detail.serverAddresses.join(", ")}</code>, DNS-only.</p>
+                  <p className={RECORD_NOTE}>
+                    Point an A/AAAA record at <code>{detail.serverAddresses.join(", ")}</code>, DNS-only.
+                  </p>
                 ) : null}
               </RecordRow>
             );
@@ -170,7 +213,10 @@ function CustomDomains({ name, hasActive }: { name: string; hasActive: boolean }
         </RecordList>
       )}
 
-      <form className="mt-5 grid max-w-[36rem] gap-5 [&>[data-slot=form-actions]]:col-span-full" onSubmit={(event) => void add(event)}>
+      <form
+        className="mt-5 grid max-w-[36rem] gap-5 [&>[data-slot=form-actions]]:col-span-full"
+        onSubmit={(event) => void add(event)}
+      >
         <TextField
           label="Add a hostname"
           type="text"
@@ -180,12 +226,25 @@ function CustomDomains({ name, hasActive }: { name: string; hasActive: boolean }
           placeholder="www.example.com"
           value={hostname}
           disabled={!hasActive}
-          onChange={(event) => { setHostname(event.target.value); setError(null); }}
-          hint={hasActive ? "A TXT record proves ownership; an A or AAAA record sends traffic here." : "Deploy a version before attaching a domain."}
+          onChange={(event) => {
+            setHostname(event.target.value);
+            setError(null);
+          }}
+          hint={
+            hasActive
+              ? "A TXT record proves ownership; an A or AAAA record sends traffic here."
+              : "Deploy a version before attaching a domain."
+          }
           error={invalid ? "Enter a full hostname, like www.example.com." : error}
         />
         <div data-slot="form-actions" className="mt-1 flex flex-wrap items-center gap-2.5">
-          <Button type="submit" variant="primary" busy={busy} busyLabel="Adding…" disabled={!hasActive || !hostname.trim() || invalid}>
+          <Button
+            type="submit"
+            variant="primary"
+            busy={busy}
+            busyLabel="Adding…"
+            disabled={!hasActive || !hostname.trim() || invalid}
+          >
             Add domain
           </Button>
         </div>

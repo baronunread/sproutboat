@@ -74,7 +74,9 @@ test("secrets: add and delete a project secret", async ({ page }) => {
   await row.getByRole("button", { name: /^delete$/i }).click();
   const dialog = page.getByRole("alertdialog");
   await dialog.getByRole("button", { name: /delete secret/i }).click();
-  await expect(page.getByRole("list", { name: "Secrets" }).getByRole("listitem").filter({ hasText: "E2E_TOKEN" })).toHaveCount(0);
+  await expect(
+    page.getByRole("list", { name: "Secrets" }).getByRole("listitem").filter({ hasText: "E2E_TOKEN" }),
+  ).toHaveCount(0);
 });
 
 test("a lowercase secret name is rejected inline", async ({ page }) => {

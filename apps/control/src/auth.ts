@@ -58,7 +58,8 @@ function createAuth() {
   const clientSecret = githubClientSecret();
   const githubEmulatorUrl = process.env.GITHUB_EMULATOR_URL?.replace(/\/$/, "");
   const dashboardUrl = process.env.SPROUTBOAT_DASHBOARD_URL || "https://dashboard.sproutboat.com";
-  if (!secret || secret.length < 32) throw new Error("BETTER_AUTH_SECRET must be set to at least 32 high-entropy characters");
+  if (!secret || secret.length < 32)
+    throw new Error("BETTER_AUTH_SECRET must be set to at least 32 high-entropy characters");
   if (!baseURL) throw new Error("BETTER_AUTH_URL must be set to the public dashboard URL");
   const apiKeyPlugin = apiKey({
     defaultPrefix: "sproutboat_",
@@ -67,32 +68,47 @@ function createAuth() {
     rateLimit: { enabled: true, maxRequests: 120, timeWindow: 60_000 },
   });
   const useEmulator = Boolean(githubEmulatorUrl && clientId && clientSecret);
-  const emulatorPlugin = useEmulator ? genericOAuth({ config: [{
-      providerId: "github",
-      name: "GitHub",
-      clientId: clientId!,
-      clientSecret: clientSecret!,
-      authorizationUrl: `${githubEmulatorUrl}/login/oauth/authorize`,
-      tokenUrl: `${githubEmulatorUrl}/login/oauth/access_token`,
-      userInfoUrl: `${githubEmulatorUrl}/user`,
-      accountIssuer: githubEmulatorUrl,
-      scopes: ["user:email"],
-      getUserInfo: async (tokens) => {
-        const response = await fetch(`${githubEmulatorUrl}/user`, { headers: { authorization: `Bearer ${tokens.accessToken}` } });
-        if (!response.ok) return null;
-        const profile = parseGithubProfile(await response.json());
-        if (!profile) return null;
-        return { id: profile.id, name: profile.name || profile.login || "GitHub developer", email: profile.email, image: profile.avatar_url, emailVerified: true };
-      },
-    }] }) : undefined;
+  const emulatorPlugin = useEmulator
+    ? genericOAuth({
+        config: [
+          {
+            providerId: "github",
+            name: "GitHub",
+            clientId: clientId!,
+            clientSecret: clientSecret!,
+            authorizationUrl: `${githubEmulatorUrl}/login/oauth/authorize`,
+            tokenUrl: `${githubEmulatorUrl}/login/oauth/access_token`,
+            userInfoUrl: `${githubEmulatorUrl}/user`,
+            accountIssuer: githubEmulatorUrl,
+            scopes: ["user:email"],
+            getUserInfo: async (tokens) => {
+              const response = await fetch(`${githubEmulatorUrl}/user`, {
+                headers: { authorization: `Bearer ${tokens.accessToken}` },
+              });
+              if (!response.ok) return null;
+              const profile = parseGithubProfile(await response.json());
+              if (!profile) return null;
+              return {
+                id: profile.id,
+                name: profile.name || profile.login || "GitHub developer",
+                email: profile.email,
+                image: profile.avatar_url,
+                emailVerified: true,
+              };
+            },
+          },
+        ],
+      })
+    : undefined;
   const adminPlugin = admin({ adminRoles: ["admin"], defaultRole: "user" });
   // GitHub sign-in never *creates* an account here — `disableSignUp` means the
   // OAuth callback only logs in someone who already has an account with that
   // email (the admin, or a user the admin provisioned), linking the GitHub
   // identity to it. No self-service signup, whether by email or by OAuth.
-  const socialGithub = !useEmulator && githubSignInConfigured()
-    ? { github: { clientId: clientId!, clientSecret: clientSecret!, disableSignUp: true } }
-    : {};
+  const socialGithub =
+    !useEmulator && githubSignInConfigured()
+      ? { github: { clientId: clientId!, clientSecret: clientSecret!, disableSignUp: true } }
+      : {};
   return betterAuth({
     appName: "Sproutboat",
     database: authDatabase(),
@@ -135,7 +151,10 @@ export function getAuth() {
 
 /** First admin email from SPROUTBOAT_ADMIN_EMAILS (the credential login id). */
 export function adminEmail(): string | undefined {
-  return (process.env.SPROUTBOAT_ADMIN_EMAILS || "").split(",").map((s) => s.trim()).filter(Boolean)[0];
+  return (process.env.SPROUTBOAT_ADMIN_EMAILS || "")
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean)[0];
 }
 
 let seeded = false;
@@ -177,6 +196,10 @@ export async function ensureAdminSeeded(): Promise<void> {
   // reserveUsername enforces the slug shape itself; a bad or taken name lands in
   // the same catch, so a second copy of the rule here would only be one to drift.
   const { reserveUsername } = await import("./identity");
-  try { reserveUsername(userId, username, { allowReserved: true }); } catch { /* invalid or already reserved */ }
+  try {
+    reserveUsername(userId, username, { allowReserved: true });
+  } catch {
+    /* invalid or already reserved */
+  }
   seeded = true;
 }

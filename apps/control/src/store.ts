@@ -18,23 +18,44 @@ import { decryptSecret, encryptSecret } from "./secrets-crypto";
 const dbPath = () => process.env.SPROUTBOAT_DATABASE_PATH || "/var/lib/sproutboat/sproutboat.sqlite";
 const routesPath = () => resolve(process.env.SPROUTBOAT_ROUTE_SNAPSHOT || "/var/lib/sproutboat/routes.json");
 const artifactRoot = () => resolve(process.env.SPROUTBOAT_ARTIFACTS_DIR || "/var/lib/sproutboat/artifacts");
-const legacyDeploymentsPath = () => resolve(process.env.SPROUTBOAT_DEPLOYMENTS_PATH || "/var/lib/sproutboat/deployments.json");
+const legacyDeploymentsPath = () =>
+  resolve(process.env.SPROUTBOAT_DEPLOYMENTS_PATH || "/var/lib/sproutboat/deployments.json");
 
 export type Deployment = {
-  id: string; project: string; ownerId: string; username: string;
-  hostname: string; artifact: string; sproutPath: string; deployedAt: string; active: boolean;
+  id: string;
+  project: string;
+  ownerId: string;
+  username: string;
+  hostname: string;
+  artifact: string;
+  sproutPath: string;
+  deployedAt: string;
+  active: boolean;
 };
 export type ProjectSummary = { name: string; hostname: string; activeDeploymentId: string; deployedAt: string };
 
 type DeploymentRow = {
-  id: string; project: string; owner_id: string; username: string;
-  hostname: string; artifact_digest: string; sprout_path: string; deployed_at: string; active: number;
+  id: string;
+  project: string;
+  owner_id: string;
+  username: string;
+  hostname: string;
+  artifact_digest: string;
+  sprout_path: string;
+  deployed_at: string;
+  active: number;
 };
 
 const toDeployment = (row: DeploymentRow): Deployment => ({
-  id: row.id, project: row.project, ownerId: row.owner_id, username: row.username,
-  hostname: row.hostname, artifact: row.artifact_digest, sproutPath: row.sprout_path,
-  deployedAt: row.deployed_at, active: row.active === 1,
+  id: row.id,
+  project: row.project,
+  ownerId: row.owner_id,
+  username: row.username,
+  hostname: row.hostname,
+  artifact: row.artifact_digest,
+  sproutPath: row.sprout_path,
+  deployedAt: row.deployed_at,
+  active: row.active === 1,
 });
 
 let db: Database | undefined;
@@ -43,19 +64,35 @@ let dbConnectedPath: string | undefined;
 function q<T>(sql: string, ...args: Array<string | number | null>): T[] {
   // SAFETY: callers pass a SELECT whose columns match T, against the schema
   // created in connection(); SQLite rows have no further shape to validate.
-  return connection().query(sql).all(...args) as T[];
+  return connection()
+    .query(sql)
+    .all(...args) as T[];
 }
 function q1<T>(sql: string, ...args: Array<string | number | null>): T | undefined {
   // SAFETY: as q(), for a single-row .get().
-  return (connection().query(sql).get(...args) as T | null) ?? undefined;
+  return (
+    (connection()
+      .query(sql)
+      .get(...args) as T | null) ?? undefined
+  );
 }
 
 function run(sql: string, ...args: Array<string | number | null>): number {
-  return connection().query(sql).run(...args).changes;
+  return connection()
+    .query(sql)
+    .run(...args).changes;
 }
 
 function present(deployment: Deployment): boolean {
-  for (const field of [deployment.id, deployment.ownerId, deployment.project, deployment.username, deployment.hostname, deployment.artifact, deployment.sproutPath]) {
+  for (const field of [
+    deployment.id,
+    deployment.ownerId,
+    deployment.project,
+    deployment.username,
+    deployment.hostname,
+    deployment.artifact,
+    deployment.sproutPath,
+  ]) {
     if (Object(field) === field || field !== String(field) || field === "") return false;
   }
   return true;
@@ -149,11 +186,17 @@ function connection(): Database {
 function importLegacyDeployments(): void {
   if ((q1<{ n: number }>("SELECT COUNT(*) AS n FROM deployments")?.n ?? 0) > 0) return;
   let raw: string;
-  try { raw = readFileSync(legacyDeploymentsPath(), "utf8"); }
-  catch { return; }
+  try {
+    raw = readFileSync(legacyDeploymentsPath(), "utf8");
+  } catch {
+    return;
+  }
   let parsed: unknown;
-  try { parsed = JSON.parse(raw); }
-  catch { return; } // a corrupt legacy file must not brick every store call
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return;
+  } // a corrupt legacy file must not brick every store call
   if (!Array.isArray(parsed)) return;
   // SAFETY: deployments.json was written by this service's own pre-#17 code with
   // the Deployment[] contract; present() drops any entry missing a string field.
@@ -162,35 +205,72 @@ function importLegacyDeployments(): void {
   const now = new Date().toISOString();
   connection().transaction(() => {
     for (const d of legacy) {
-      const at = Object(d.deployedAt) !== d.deployedAt && d.deployedAt === String(d.deployedAt) && d.deployedAt !== "" ? d.deployedAt : now;
-      run("INSERT OR IGNORE INTO projects (owner_id, name, username, created_at) VALUES (?, ?, ?, ?)", d.ownerId, d.project, d.username, at);
+      const at =
+        Object(d.deployedAt) !== d.deployedAt && d.deployedAt === String(d.deployedAt) && d.deployedAt !== ""
+          ? d.deployedAt
+          : now;
+      run(
+        "INSERT OR IGNORE INTO projects (owner_id, name, username, created_at) VALUES (?, ?, ?, ?)",
+        d.ownerId,
+        d.project,
+        d.username,
+        at,
+      );
       run("INSERT OR IGNORE INTO artifacts (digest, created_at) VALUES (?, ?)", d.artifact, at);
-      run(`INSERT OR IGNORE INTO deployments (id, owner_id, project, username, hostname, artifact_digest, sprout_path, deployed_at, active)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`, d.id, d.ownerId, d.project, d.username, d.hostname, d.artifact, d.sproutPath, at, d.active === true ? 1 : 0);
+      run(
+        `INSERT OR IGNORE INTO deployments (id, owner_id, project, username, hostname, artifact_digest, sprout_path, deployed_at, active)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        d.id,
+        d.ownerId,
+        d.project,
+        d.username,
+        d.hostname,
+        d.artifact,
+        d.sproutPath,
+        at,
+        d.active === true ? 1 : 0,
+      );
     }
   })();
-  try { renameSync(legacyDeploymentsPath(), `${legacyDeploymentsPath()}.imported`); } catch { /* best effort */ }
+  try {
+    renameSync(legacyDeploymentsPath(), `${legacyDeploymentsPath()}.imported`);
+  } catch {
+    /* best effort */
+  }
 }
 
 /** Of the given digests, the ones we still hold a row for that no deployment references. */
 function orphanedAmong(digests: string[]): string[] {
-  return [...new Set(digests)].filter((digest) =>
-    q1("SELECT 1 FROM artifacts WHERE digest = ?", digest)
-    && !q1("SELECT 1 FROM deployments WHERE artifact_digest = ? LIMIT 1", digest));
+  return [...new Set(digests)].filter(
+    (digest) =>
+      q1("SELECT 1 FROM artifacts WHERE digest = ?", digest) &&
+      !q1("SELECT 1 FROM deployments WHERE artifact_digest = ? LIMIT 1", digest),
+  );
 }
 
 // --- reads -----------------------------------------------------------------
 
 export function ownerDeployments(ownerId: string): Deployment[] {
-  return q<DeploymentRow>("SELECT * FROM deployments WHERE owner_id = ? ORDER BY deployed_at DESC", ownerId).map(toDeployment);
+  return q<DeploymentRow>("SELECT * FROM deployments WHERE owner_id = ? ORDER BY deployed_at DESC", ownerId).map(
+    toDeployment,
+  );
 }
 
 export function projectDeployments(ownerId: string, project: string): Deployment[] {
-  return q<DeploymentRow>("SELECT * FROM deployments WHERE owner_id = ? AND project = ? ORDER BY deployed_at DESC", ownerId, project).map(toDeployment);
+  return q<DeploymentRow>(
+    "SELECT * FROM deployments WHERE owner_id = ? AND project = ? ORDER BY deployed_at DESC",
+    ownerId,
+    project,
+  ).map(toDeployment);
 }
 
 export function projectDeployment(ownerId: string, project: string, id: string): Deployment | undefined {
-  const row = q1<DeploymentRow>("SELECT * FROM deployments WHERE id = ? AND owner_id = ? AND project = ?", id, ownerId, project);
+  const row = q1<DeploymentRow>(
+    "SELECT * FROM deployments WHERE id = ? AND owner_id = ? AND project = ?",
+    id,
+    ownerId,
+    project,
+  );
   return row ? toDeployment(row) : undefined;
 }
 
@@ -209,7 +289,8 @@ export function pruneProjectDeployments(ownerId: string, project: string, keep: 
   return connection().transaction(() => {
     const rows = q<DeploymentRow>(
       "SELECT * FROM deployments WHERE owner_id = ? AND project = ? ORDER BY deployed_at DESC",
-      ownerId, project,
+      ownerId,
+      project,
     );
     const doomed = rows.filter((row) => row.active !== 1).slice(keep);
     if (doomed.length === 0) return [];
@@ -221,15 +302,24 @@ export function pruneProjectDeployments(ownerId: string, project: string, keep: 
 
 export function activeProjects(ownerId: string): ProjectSummary[] {
   return q<DeploymentRow>("SELECT * FROM deployments WHERE owner_id = ? AND active = 1", ownerId)
-    .map((row) => ({ name: row.project, hostname: row.hostname, activeDeploymentId: row.id, deployedAt: row.deployed_at }))
+    .map((row) => ({
+      name: row.project,
+      hostname: row.hostname,
+      activeDeploymentId: row.id,
+      deployedAt: row.deployed_at,
+    }))
     .sort((left, right) => left.name.localeCompare(right.name));
 }
 
 // --- admin aggregates (cross-owner) ----------------------------------
 
 export type GlobalStats = {
-  owners: number; projects: number; activeProjects: number;
-  deployments: number; artifacts: number; bannedOwners: number;
+  owners: number;
+  projects: number;
+  activeProjects: number;
+  deployments: number;
+  artifacts: number;
+  bannedOwners: number;
 };
 
 export function globalStats(): GlobalStats {
@@ -245,8 +335,12 @@ export function globalStats(): GlobalStats {
 }
 
 export type OwnerRollup = {
-  ownerId: string; username: string;
-  projects: number; deployments: number; activeProjects: number; banned: boolean;
+  ownerId: string;
+  username: string;
+  projects: number;
+  deployments: number;
+  activeProjects: number;
+  banned: boolean;
 };
 
 /** One row per owner that has ever deployed. Owners with no deployments are absent. */
@@ -260,8 +354,11 @@ export function ownerRollups(): OwnerRollup[] {
             SUM(CASE WHEN active = 1 THEN 1 ELSE 0 END) AS active_projects
      FROM deployments GROUP BY owner_id`,
   ).map((row) => ({
-    ownerId: row.owner_id, username: row.username,
-    projects: row.projects, deployments: row.deployments, activeProjects: row.active_projects,
+    ownerId: row.owner_id,
+    username: row.username,
+    projects: row.projects,
+    deployments: row.deployments,
+    activeProjects: row.active_projects,
     banned: banned.has(row.owner_id),
   }));
 }
@@ -271,14 +368,37 @@ export function ownerRollups(): OwnerRollup[] {
 export function recordDeployment(input: Omit<Deployment, "active"> & { resourceIds?: string[] }): Deployment {
   const { resourceIds = [], ...deployment } = input;
   return connection().transaction(() => {
-    run("INSERT OR IGNORE INTO projects (owner_id, name, username, created_at) VALUES (?, ?, ?, ?)", deployment.ownerId, deployment.project, deployment.username, deployment.deployedAt);
-    run("INSERT OR IGNORE INTO artifacts (digest, created_at) VALUES (?, ?)", deployment.artifact, deployment.deployedAt);
+    run(
+      "INSERT OR IGNORE INTO projects (owner_id, name, username, created_at) VALUES (?, ?, ?, ?)",
+      deployment.ownerId,
+      deployment.project,
+      deployment.username,
+      deployment.deployedAt,
+    );
+    run(
+      "INSERT OR IGNORE INTO artifacts (digest, created_at) VALUES (?, ?)",
+      deployment.artifact,
+      deployment.deployedAt,
+    );
     run("UPDATE deployments SET active = 0 WHERE owner_id = ? AND project = ?", deployment.ownerId, deployment.project);
-    run(`INSERT INTO deployments (id, owner_id, project, username, hostname, artifact_digest, sprout_path, deployed_at, active)
+    run(
+      `INSERT INTO deployments (id, owner_id, project, username, hostname, artifact_digest, sprout_path, deployed_at, active)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1)`,
-      deployment.id, deployment.ownerId, deployment.project, deployment.username, deployment.hostname, deployment.artifact, deployment.sproutPath, deployment.deployedAt);
+      deployment.id,
+      deployment.ownerId,
+      deployment.project,
+      deployment.username,
+      deployment.hostname,
+      deployment.artifact,
+      deployment.sproutPath,
+      deployment.deployedAt,
+    );
     for (const resourceId of new Set(resourceIds)) {
-      run("INSERT OR IGNORE INTO deployment_resources (deployment_id, resource_id) VALUES (?, ?)", deployment.id, resourceId);
+      run(
+        "INSERT OR IGNORE INTO deployment_resources (deployment_id, resource_id) VALUES (?, ?)",
+        deployment.id,
+        resourceId,
+      );
     }
     return { ...deployment, active: true };
   })();
@@ -328,7 +448,9 @@ export function deploymentResources(ownerId: string, deploymentId: string): Stor
        JOIN resources r ON r.id = dr.resource_id
      WHERE dr.deployment_id = ? AND d.owner_id = ? AND r.owner_id = ?
      ORDER BY r.kind, r.name`,
-    deploymentId, ownerId, ownerId,
+    deploymentId,
+    ownerId,
+    ownerId,
   ).map(toResource);
 }
 
@@ -338,14 +460,20 @@ export function resourceReferencingProjects(ownerId: string, resourceId: string)
        JOIN deployments d ON d.id = dr.deployment_id
      WHERE dr.resource_id = ? AND d.owner_id = ?
      ORDER BY d.project`,
-    resourceId, ownerId,
+    resourceId,
+    ownerId,
   ).map((row) => row.project);
 }
 
 /** Returns the now-active deployment, or undefined if `id` is not a version of this project. */
 export function activateDeployment(ownerId: string, project: string, id: string): Deployment | undefined {
   return connection().transaction(() => {
-    const target = q1<DeploymentRow>("SELECT * FROM deployments WHERE id = ? AND owner_id = ? AND project = ?", id, ownerId, project);
+    const target = q1<DeploymentRow>(
+      "SELECT * FROM deployments WHERE id = ? AND owner_id = ? AND project = ?",
+      id,
+      ownerId,
+      project,
+    );
     if (!target) return undefined;
     run("UPDATE deployments SET active = 0 WHERE owner_id = ? AND project = ?", ownerId, project);
     run("UPDATE deployments SET active = 1 WHERE id = ?", id);
@@ -361,7 +489,11 @@ export function deleteProject(ownerId: string, project: string): ProjectDeletion
     const rows = q<DeploymentRow>("SELECT * FROM deployments WHERE owner_id = ? AND project = ?", ownerId, project);
     const digests = rows.map((row) => row.artifact_digest);
     run("DELETE FROM projects WHERE owner_id = ? AND name = ?", ownerId, project); // cascades to deployments
-    return { removed: rows.length, hostnames: [...new Set(rows.map((row) => row.hostname))], orphanedArtifacts: orphanedAmong(digests) };
+    return {
+      removed: rows.length,
+      hostnames: [...new Set(rows.map((row) => row.hostname))],
+      orphanedArtifacts: orphanedAmong(digests),
+    };
   })();
 }
 
@@ -374,7 +506,12 @@ export type DeploymentDeletion = { deleted: boolean; active: boolean; orphanedAr
  */
 export function deleteDeployment(ownerId: string, project: string, id: string): DeploymentDeletion | undefined {
   return connection().transaction(() => {
-    const row = q1<DeploymentRow>("SELECT * FROM deployments WHERE id = ? AND owner_id = ? AND project = ?", id, ownerId, project);
+    const row = q1<DeploymentRow>(
+      "SELECT * FROM deployments WHERE id = ? AND owner_id = ? AND project = ?",
+      id,
+      ownerId,
+      project,
+    );
     if (!row) return undefined;
     if (row.active === 1) return { deleted: false, active: true, orphanedArtifacts: [] };
     run("DELETE FROM deployments WHERE id = ?", id);
@@ -405,29 +542,46 @@ export function deleteOwner(ownerId: string): ProjectDeletion {
     const digests = rows.map((row) => row.artifact_digest);
     run("DELETE FROM projects WHERE owner_id = ?", ownerId);
     run("DELETE FROM resources WHERE owner_id = ?", ownerId);
-    return { removed: rows.length, hostnames: [...new Set(rows.map((row) => row.hostname))], orphanedArtifacts: orphanedAmong(digests) };
+    return {
+      removed: rows.length,
+      hostnames: [...new Set(rows.map((row) => row.hostname))],
+      orphanedArtifacts: orphanedAmong(digests),
+    };
   })();
 }
 
 // --- custom domains (#2) ----------------------------------------------
 
 export type CustomDomain = {
-  hostname: string; project: string; ownerId: string;
-  token: string; verifiedAt: string | null; createdAt: string;
+  hostname: string;
+  project: string;
+  ownerId: string;
+  token: string;
+  verifiedAt: string | null;
+  createdAt: string;
 };
 type CustomDomainRow = {
-  hostname: string; owner_id: string; project: string;
-  token: string; verified_at: string | null; created_at: string;
+  hostname: string;
+  owner_id: string;
+  project: string;
+  token: string;
+  verified_at: string | null;
+  created_at: string;
 };
 const toCustomDomain = (row: CustomDomainRow): CustomDomain => ({
-  hostname: row.hostname, project: row.project, ownerId: row.owner_id,
-  token: row.token, verifiedAt: row.verified_at, createdAt: row.created_at,
+  hostname: row.hostname,
+  project: row.project,
+  ownerId: row.owner_id,
+  token: row.token,
+  verifiedAt: row.verified_at,
+  createdAt: row.created_at,
 });
 
 export function projectCustomDomains(ownerId: string, project: string): CustomDomain[] {
   return q<CustomDomainRow>(
     "SELECT * FROM custom_domains WHERE owner_id = ? AND project = ? ORDER BY hostname",
-    ownerId, project,
+    ownerId,
+    project,
   ).map(toCustomDomain);
 }
 
@@ -439,28 +593,42 @@ export function customDomainByHostname(hostname: string): CustomDomain | undefin
 
 /** Claims `hostname` for a project, unverified. Returns undefined if it is
  *  already claimed (by this project or anyone else). */
-export function addCustomDomain(input: { hostname: string; ownerId: string; project: string; token: string }): CustomDomain | undefined {
+export function addCustomDomain(input: {
+  hostname: string;
+  ownerId: string;
+  project: string;
+  token: string;
+}): CustomDomain | undefined {
   if (customDomainByHostname(input.hostname)) return undefined;
   const createdAt = new Date().toISOString();
   run(
     "INSERT INTO custom_domains (hostname, owner_id, project, token, verified_at, created_at) VALUES (?, ?, ?, ?, NULL, ?)",
-    input.hostname, input.ownerId, input.project, input.token, createdAt,
+    input.hostname,
+    input.ownerId,
+    input.project,
+    input.token,
+    createdAt,
   );
   return { ...input, verifiedAt: null, createdAt };
 }
 
 export function markCustomDomainVerified(ownerId: string, project: string, hostname: string): boolean {
-  return run(
-    "UPDATE custom_domains SET verified_at = ? WHERE hostname = ? AND owner_id = ? AND project = ? AND verified_at IS NULL",
-    new Date().toISOString(), hostname, ownerId, project,
-  ) > 0;
+  return (
+    run(
+      "UPDATE custom_domains SET verified_at = ? WHERE hostname = ? AND owner_id = ? AND project = ? AND verified_at IS NULL",
+      new Date().toISOString(),
+      hostname,
+      ownerId,
+      project,
+    ) > 0
+  );
 }
 
 export function deleteCustomDomain(ownerId: string, project: string, hostname: string): boolean {
-  return run(
-    "DELETE FROM custom_domains WHERE hostname = ? AND owner_id = ? AND project = ?",
-    hostname, ownerId, project,
-  ) > 0;
+  return (
+    run("DELETE FROM custom_domains WHERE hostname = ? AND owner_id = ? AND project = ?", hostname, ownerId, project) >
+    0
+  );
 }
 
 // --- project secrets (#2) -------------------------------------------------
@@ -469,18 +637,27 @@ export function setSecret(ownerId: string, project: string, name: string, value:
   run(
     `INSERT INTO secrets (owner_id, project, name, ciphertext, updated_at) VALUES (?, ?, ?, ?, ?)
      ON CONFLICT(owner_id, project, name) DO UPDATE SET ciphertext = excluded.ciphertext, updated_at = excluded.updated_at`,
-    ownerId, project, name, encryptSecret(value), new Date().toISOString(),
+    ownerId,
+    project,
+    name,
+    encryptSecret(value),
+    new Date().toISOString(),
   );
 }
 
 /** Secret names for one project — never the values. Backs the API list. */
 export function secretNames(ownerId: string, project: string): string[] {
-  return q<{ name: string }>("SELECT name FROM secrets WHERE owner_id = ? AND project = ? ORDER BY name", ownerId, project)
-    .map((row) => row.name);
+  return q<{ name: string }>(
+    "SELECT name FROM secrets WHERE owner_id = ? AND project = ? ORDER BY name",
+    ownerId,
+    project,
+  ).map((row) => row.name);
 }
 
 export function secretCount(ownerId: string, project: string): number {
-  return q1<{ n: number }>("SELECT COUNT(*) AS n FROM secrets WHERE owner_id = ? AND project = ?", ownerId, project)?.n ?? 0;
+  return (
+    q1<{ n: number }>("SELECT COUNT(*) AS n FROM secrets WHERE owner_id = ? AND project = ?", ownerId, project)?.n ?? 0
+  );
 }
 
 export function deleteSecret(ownerId: string, project: string, name: string): boolean {
@@ -489,7 +666,11 @@ export function deleteSecret(ownerId: string, project: string, name: string): bo
 
 /** Decrypted `{ NAME: value }` for one project — internal only (writes `secrets.json`). */
 function projectSecretValues(ownerId: string, project: string) {
-  const rows = q<{ name: string; ciphertext: string }>("SELECT name, ciphertext FROM secrets WHERE owner_id = ? AND project = ?", ownerId, project);
+  const rows = q<{ name: string; ciphertext: string }>(
+    "SELECT name, ciphertext FROM secrets WHERE owner_id = ? AND project = ?",
+    ownerId,
+    project,
+  );
   return Object.fromEntries(rows.map((row) => [row.name, decryptSecret(row.ciphertext)]));
 }
 
@@ -533,10 +714,19 @@ export function resourceCount(ownerId: string): number {
 export function createResource(ownerId: string, kind: ResourceKind, name: string): StorageResource {
   const resource: StorageResource = {
     id: `${kind}_${randomBytes(12).toString("hex")}`,
-    ownerId, kind, name, createdAt: new Date().toISOString(),
+    ownerId,
+    kind,
+    name,
+    createdAt: new Date().toISOString(),
   };
-  run("INSERT INTO resources (id, owner_id, kind, name, created_at) VALUES (?, ?, ?, ?, ?)",
-    resource.id, ownerId, kind, name, resource.createdAt);
+  run(
+    "INSERT INTO resources (id, owner_id, kind, name, created_at) VALUES (?, ?, ?, ?, ?)",
+    resource.id,
+    ownerId,
+    kind,
+    name,
+    resource.createdAt,
+  );
   return resource;
 }
 
@@ -595,14 +785,21 @@ async function writeRouteSnapshot(): Promise<void> {
         // Deterministic bytes so the hash only moves when a value actually changes.
         const content = JSON.stringify(values, Object.keys(values).sort());
         await writeFile(path, content, { mode: 0o600 });
-        written.set(key, { secretsPath: path, secretsHash: createHash("sha256").update(content).digest("hex").slice(0, 16) });
+        written.set(key, {
+          secretsPath: path,
+          secretsHash: createHash("sha256").update(content).digest("hex").slice(0, 16),
+        });
       } else {
         await rm(path, { force: true });
         written.set(key, null);
       }
     }
     const info = written.get(key);
-    routes.push(info ? { hostname: row.hostname, sproutPath: row.sprout_path, ...info } : { hostname: row.hostname, sproutPath: row.sprout_path });
+    routes.push(
+      info
+        ? { hostname: row.hostname, sproutPath: row.sprout_path, ...info }
+        : { hostname: row.hostname, sproutPath: row.sprout_path },
+    );
   }
 
   await mkdir(dirname(routesPath()), { recursive: true });
@@ -632,7 +829,8 @@ export async function collectArtifacts(digests: string[]): Promise<{ removed: st
     // orphaned for a future sweep, not a broken deployment.
     const dropped = run(
       "DELETE FROM artifacts WHERE digest = ? AND NOT EXISTS (SELECT 1 FROM deployments WHERE artifact_digest = ?)",
-      digest, digest,
+      digest,
+      digest,
     );
     if (!dropped) continue;
     try {

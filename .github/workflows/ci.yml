@@ -18,4 +18,7 @@ jobs:
       - run: bun install --frozen-lockfile
       - run: bun run typecheck
       - run: bun run lint
+      # The tree is fully oxfmt-formatted as of the Tailwind/shadcn migration,
+      # so this can gate now — before that it could never have passed.
+      - run: bun run fmt:check
       - run: bun test apps/ services/ tests/

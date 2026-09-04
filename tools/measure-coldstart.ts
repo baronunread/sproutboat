@@ -32,11 +32,18 @@ const flag = (name: string) => {
 };
 const runs = Number(flag("-n") ?? flag("--runs") ?? 25);
 const prebuilt = flag("--bin");
-const projectDir = argv.find((a) => !a.startsWith("-") && a !== flag("-n") && a !== flag("--runs"))
-  ?? join(ROOT, "node_modules/sproutboat/examples/kitchen-sink");
+const projectDir =
+  argv.find((a) => !a.startsWith("-") && a !== flag("-n") && a !== flag("--runs")) ??
+  join(ROOT, "node_modules/sproutboat/examples/kitchen-sink");
 
 const work = mkdtempSync(join(tmpdir(), "sb-coldstart-"));
-process.on("exit", () => { try { rmSync(work, { recursive: true, force: true }); } catch { /* best effort */ } });
+process.on("exit", () => {
+  try {
+    rmSync(work, { recursive: true, force: true });
+  } catch {
+    /* best effort */
+  }
+});
 
 // ---- build the sprout (host-native) -------------------------------------------
 let bin: string;
@@ -45,7 +52,10 @@ if (prebuilt) {
   console.log(`using prebuilt binary: ${bin}`);
 } else {
   const cfg = parseConfig(readFileSync(join(projectDir, "sproutboat.jsonc"), "utf8"));
-  if (!cfg.ok) { console.error("bad config:", cfg.errors.join("; ")); process.exit(1); }
+  if (!cfg.ok) {
+    console.error("bad config:", cfg.errors.join("; "));
+    process.exit(1);
+  }
   const c = cfg.value;
   const bindings: Bindings = {
     ...EMPTY_BINDINGS,
@@ -70,28 +80,40 @@ if (prebuilt) {
   const t = performance.now();
   const r = Bun.spawnSync(["node", PORF, "native", gen, "-o", bin], {
     env: { ...process.env, PATH: `${join(ROOT, "node_modules/.bin")}:${process.env.PATH}` },
-    stdout: "pipe", stderr: "pipe",
+    stdout: "pipe",
+    stderr: "pipe",
   });
-  if (r.exitCode !== 0) { console.error("compile failed:\n" + r.stderr.toString() + r.stdout.toString()); process.exit(1); }
+  if (r.exitCode !== 0) {
+    console.error("compile failed:\n" + r.stderr.toString() + r.stdout.toString());
+    process.exit(1);
+  }
   console.log(`compiled in ${((performance.now() - t) / 1000).toFixed(1)}s\n`);
 }
 
 // ---- one cold start ---------------------------------------------------------
 const listens = (port: number) =>
   new Promise<boolean>((done) => {
-    const s = connect({ host: "127.0.0.1", port }, () => { s.destroy(); done(true); });
+    const s = connect({ host: "127.0.0.1", port }, () => {
+      s.destroy();
+      done(true);
+    });
     s.on("error", () => done(false));
   });
 
 async function once(port: number): Promise<{ total: number; boot: number; evalPhase: number }> {
   const file = startupFilePath(bin, port);
-  try { rmSync(file, { force: true }); } catch { /* fresh */ }
+  try {
+    rmSync(file, { force: true });
+  } catch {
+    /* fresh */
+  }
 
   const spawnedWall = Date.now();
   const t0 = performance.now();
   const child = Bun.spawn([bin], {
     env: { ...process.env, PORT: String(port), SB_STARTUP_FILE: file },
-    stdout: "ignore", stderr: "ignore",
+    stdout: "ignore",
+    stderr: "ignore",
   });
   const deadline = t0 + 10_000;
   // Spin for the first few ms (a cold start is single-digit ms), then back off
@@ -109,7 +131,9 @@ async function once(port: number): Promise<{ total: number; boot: number; evalPh
   try {
     const jsStarted = Number(readFileSync(file, "utf8").trim());
     if (Number.isFinite(jsStarted)) boot = Math.max(0, Math.min(total, jsStarted - spawnedWall));
-  } catch { /* marker missing -> boot unknown, report 0 */ }
+  } catch {
+    /* marker missing -> boot unknown, report 0 */
+  }
   return { total, boot, evalPhase: Math.max(0, total - boot) };
 }
 
@@ -134,10 +158,12 @@ console.log(`cold start x${runs}  (spawn -> listening; 2 warmup runs discarded)\
 for (let i = 0; i < runs; i++) {
   const port = 41_000 + Math.floor(Math.random() * 4000);
   const { total, boot, evalPhase } = await once(port);
-  totals.push(total); boots.push(boot); evals.push(evalPhase);
+  totals.push(total);
+  boots.push(boot);
+  evals.push(evalPhase);
   process.stdout.write(
     `  ${String(i + 1).padStart(3)}  total ${ms(total).padStart(9)}` +
-    `   boot ${ms(boot).padStart(9)}   eval ${ms(evalPhase).padStart(9)}\n`,
+      `   boot ${ms(boot).padStart(9)}   eval ${ms(evalPhase).padStart(9)}\n`,
   );
 }
 const haveBoot = boots.some((b) => b > 0);

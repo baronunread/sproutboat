@@ -41,7 +41,10 @@ export type ProjectRow = ProjectSummary & {
 
 export type DashboardOverview = {
   metrics: {
-    activeProjects: number; deployments: number; requestsLast24Hours: number; successRate: number | null;
+    activeProjects: number;
+    deployments: number;
+    requestsLast24Hours: number;
+    successRate: number | null;
     /** #76 — 24 buckets over the last 24h across every route this account owns. */
     trend: Array<{ start: string; count: number; errors: number }>;
   };
@@ -51,7 +54,8 @@ export type DashboardOverview = {
 
 export function deploymentDomain(): string {
   const domain = (process.env.SPROUTBOAT_DEPLOYMENT_DOMAIN || "sproutboat.com").toLowerCase();
-  if (!/^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+$/.test(domain)) throw new Error("SPROUTBOAT_DEPLOYMENT_DOMAIN must be a lowercase multi-label hostname");
+  if (!/^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+$/.test(domain))
+    throw new Error("SPROUTBOAT_DEPLOYMENT_DOMAIN must be a lowercase multi-label hostname");
   return domain;
 }
 
@@ -82,9 +86,14 @@ async function activePorfforVersion(ownerId: string, project: string): Promise<s
 async function authorized(request: Request): Promise<Actor | Response> {
   try {
     const actor = await actorFor(request);
-    return actor || Response.json({ error: "sign in and reserve a username before using this endpoint" }, { status: 401 });
+    return (
+      actor || Response.json({ error: "sign in and reserve a username before using this endpoint" }, { status: 401 })
+    );
   } catch (error) {
-    return Response.json({ error: error instanceof Error ? error.message : "authentication is unavailable" }, { status: 503 });
+    return Response.json(
+      { error: error instanceof Error ? error.message : "authentication is unavailable" },
+      { status: 503 },
+    );
   }
 }
 
@@ -137,9 +146,14 @@ export async function dashboardOverview(request: Request): Promise<Response> {
       trend: buckets,
     },
     projects: rows,
-    deployments: deployments
-      .slice(0, 20)
-      .map(({ id, project, hostname, artifact, deployedAt, active }) => ({ id, project, hostname, artifact, deployedAt, active })),
+    deployments: deployments.slice(0, 20).map(({ id, project, hostname, artifact, deployedAt, active }) => ({
+      id,
+      project,
+      hostname,
+      artifact,
+      deployedAt,
+      active,
+    })),
   };
   return Response.json(overview);
 }
@@ -157,8 +171,13 @@ export async function deploymentDetail(request: Request, project: string, id: st
   if (!found) return Response.json({ error: "deployment not found" }, { status: 404 });
   const validation = await validateArtifactDirectory(resolve(artifactRoot, found.artifact));
   return Response.json({
-    id: found.id, project: found.project, hostname: found.hostname, artifact: found.artifact,
-    sproutPath: found.sproutPath, deployedAt: found.deployedAt, active: found.active,
+    id: found.id,
+    project: found.project,
+    hostname: found.hostname,
+    artifact: found.artifact,
+    sproutPath: found.sproutPath,
+    deployedAt: found.deployedAt,
+    active: found.active,
     // #76 — the dashboard's version + bindings views: who shipped it, what the
     // artifact declares, and which owned resources it was recorded against.
     deployedBy: found.username,
@@ -178,7 +197,11 @@ export async function deleteDeployment(request: Request, project: string, id: st
   if (actor instanceof Response) return actor;
   const result = storeDeleteDeployment(actor.id, project, id);
   if (!result) return Response.json({ error: "deployment not found" }, { status: 404 });
-  if (result.active) return Response.json({ error: "cannot delete the active version — roll back or replace it first" }, { status: 409 });
+  if (result.active)
+    return Response.json(
+      { error: "cannot delete the active version — roll back or replace it first" },
+      { status: 409 },
+    );
   const cleanup = await collectArtifacts(result.orphanedArtifacts);
   return Response.json(
     { deleted: id, artifactsRemoved: cleanup.removed, artifactCleanupFailed: cleanup.failed },
@@ -237,8 +260,9 @@ export async function projectSproutLog(request: Request, project: string): Promi
   const active = projectDeployments(actor.id, project).find((deployment) => deployment.active);
   if (!active) return Response.json({ error: "no active deployment" }, { status: 404 });
   const text = await readSproutLogText(basename(dirname(active.sproutPath)));
-  return new Response(text || "(no sprout output — the deployment has not started, or its handler logs nothing)\n",
-    { headers: { "content-type": "text/plain; charset=utf-8" } });
+  return new Response(text || "(no sprout output — the deployment has not started, or its handler logs nothing)\n", {
+    headers: { "content-type": "text/plain; charset=utf-8" },
+  });
 }
 
 /** #10: coarse, bounded traffic aggregation for the project's charts. */
@@ -259,13 +283,20 @@ export async function deleteProject(request: Request, project: string): Promise<
   const actor = await authorized(request);
   if (actor instanceof Response) return actor;
   const confirm = new URL(request.url).searchParams.get("confirm");
-  if (confirm !== project) return Response.json({ error: "add ?confirm=<project name> to delete a project" }, { status: 400 });
+  if (confirm !== project)
+    return Response.json({ error: "add ?confirm=<project name> to delete a project" }, { status: 400 });
 
   const result = storeDeleteProject(actor.id, project);
   if (result.removed === 0) return Response.json({ error: "project not found" }, { status: 404 });
   await syncRoutes();
   const cleanup = await collectArtifacts(result.orphanedArtifacts);
-  const body = { deleted: project, versionsRemoved: result.removed, routeRemoved: result.hostnames, artifactsRemoved: cleanup.removed, artifactCleanupFailed: cleanup.failed };
+  const body = {
+    deleted: project,
+    versionsRemoved: result.removed,
+    routeRemoved: result.hostnames,
+    artifactsRemoved: cleanup.removed,
+    artifactCleanupFailed: cleanup.failed,
+  };
   return Response.json(body, { status: cleanup.failed.length ? 207 : 200 });
 }
 
@@ -281,10 +312,18 @@ function resolveResourceBindings(refs: ResourceBindingRef[], ownerId: string): s
     if (!resource) {
       // #79 — each kind is its own CLI command now; name the one they need.
       const command = ref.kind === "queue" ? "queues" : ref.kind;
-      return Response.json({ error: `binding ${ref.binding}: no resource ${ref.id} — create it with \`sproutboat ${command} create <name>\`` }, { status: 400 });
+      return Response.json(
+        {
+          error: `binding ${ref.binding}: no resource ${ref.id} — create it with \`sproutboat ${command} create <name>\``,
+        },
+        { status: 400 },
+      );
     }
     if (resource.kind !== ref.kind) {
-      return Response.json({ error: `binding ${ref.binding}: ${ref.id} is a ${resource.kind}, not a ${ref.kind}` }, { status: 400 });
+      return Response.json(
+        { error: `binding ${ref.binding}: ${ref.id} is a ${resource.kind}, not a ${ref.kind}` },
+        { status: 400 },
+      );
     }
     ids.push(ref.id);
   }
@@ -303,8 +342,11 @@ export async function artifactDigest(dir: string, binaryHash: string): Promise<s
   hash.update(binaryHash);
   for (const sidecar of ["bindings.json", "assets.json"]) {
     hash.update(`\n${sidecar}\n`);
-    try { hash.update(await readFile(resolve(dir, sidecar))); }
-    catch { /* sidecar absent for this project */ }
+    try {
+      hash.update(await readFile(resolve(dir, sidecar)));
+    } catch {
+      /* sidecar absent for this project */
+    }
   }
   return hash.digest("hex");
 }
@@ -312,7 +354,8 @@ export async function artifactDigest(dir: string, binaryHash: string): Promise<s
 export async function deployArtifact(request: Request, project: string): Promise<Response> {
   const actor = await authorized(request);
   if (actor instanceof Response) return actor;
-  if (!/^[a-z0-9](?:[a-z0-9-]{1,30}[a-z0-9])?$/.test(project)) return Response.json({ error: "invalid project name" }, { status: 400 });
+  if (!/^[a-z0-9](?:[a-z0-9-]{1,30}[a-z0-9])?$/.test(project))
+    return Response.json({ error: "invalid project name" }, { status: 400 });
   const rateLimited = await guardDeploy(actor.id, request);
   if (rateLimited) return rateLimited;
   if (projectDeployments(actor.id, project).length === 0) {
@@ -320,21 +363,28 @@ export async function deployArtifact(request: Request, project: string): Promise
     if (capped) return capped;
   }
   let form: FormData;
-  try { form = await request.formData(); }
-  catch { return Response.json({ error: "expected multipart artifact upload" }, { status: 400 }); }
+  try {
+    form = await request.formData();
+  } catch {
+    return Response.json({ error: "expected multipart artifact upload" }, { status: 400 });
+  }
   const manifest = form.get("manifest");
   const sprout = form.get("sprout");
-  if (!(manifest instanceof File) || !(sprout instanceof File)) return Response.json({ error: "upload must include manifest and sprout files" }, { status: 400 });
-  if (manifest.size > 64 * 1024 || sprout.size > 16 * 1024 * 1024) return Response.json({ error: "artifact exceeds upload limit" }, { status: 413 });
+  if (!(manifest instanceof File) || !(sprout instanceof File))
+    return Response.json({ error: "upload must include manifest and sprout files" }, { status: 400 });
+  if (manifest.size > 64 * 1024 || sprout.size > 16 * 1024 * 1024)
+    return Response.json({ error: "artifact exceeds upload limit" }, { status: 413 });
   // #1 — optional sidecars: bindings.json (drives the per-deployment broker) and
   // the static-asset tree (assets.json + one `asset` part per file, keyed by its
   // posix path). validateArtifactDirectory re-checks their shape and hashes.
   const bindings = form.get("bindings");
   const assetsManifest = form.get("assets_manifest");
   const assetFiles = form.getAll("asset").filter((part): part is File => part instanceof File);
-  if (bindings instanceof File && bindings.size > 64 * 1024) return Response.json({ error: "bindings.json exceeds 64 KiB" }, { status: 413 });
+  if (bindings instanceof File && bindings.size > 64 * 1024)
+    return Response.json({ error: "bindings.json exceeds 64 KiB" }, { status: 413 });
   if (assetFiles.length > 4096) return Response.json({ error: "too many asset files" }, { status: 413 });
-  if (assetFiles.reduce((sum, file) => sum + file.size, 0) > 64 * 1024 * 1024) return Response.json({ error: "assets exceed the 64 MiB limit" }, { status: 413 });
+  if (assetFiles.reduce((sum, file) => sum + file.size, 0) > 64 * 1024 * 1024)
+    return Response.json({ error: "assets exceed the 64 MiB limit" }, { status: 413 });
 
   const temporary = resolve(artifactRoot, `.upload-${randomUUID()}`);
   await mkdir(temporary, { recursive: true, mode: 0o750 });
@@ -345,31 +395,48 @@ export async function deployArtifact(request: Request, project: string): Promise
     ]);
     await chmod(resolve(temporary, "sprout"), 0o555);
     if (bindings instanceof File) {
-      await writeFile(resolve(temporary, "bindings.json"), new Uint8Array(await bindings.arrayBuffer()), { mode: 0o640 });
+      await writeFile(resolve(temporary, "bindings.json"), new Uint8Array(await bindings.arrayBuffer()), {
+        mode: 0o640,
+      });
     }
     if (assetsManifest instanceof File) {
-      await writeFile(resolve(temporary, "assets.json"), new Uint8Array(await assetsManifest.arrayBuffer()), { mode: 0o640 });
+      await writeFile(resolve(temporary, "assets.json"), new Uint8Array(await assetsManifest.arrayBuffer()), {
+        mode: 0o640,
+      });
       for (const file of assetFiles) {
         const key = file.name.startsWith("/") ? file.name : `/${file.name}`;
-        if (key.includes("..") || key.includes("\0")) return Response.json({ error: `invalid asset path: ${file.name}` }, { status: 400 });
+        if (key.includes("..") || key.includes("\0"))
+          return Response.json({ error: `invalid asset path: ${file.name}` }, { status: 400 });
         const target = resolve(temporary, "assets", `.${key}`);
-        if (!target.startsWith(resolve(temporary, "assets") + "/")) return Response.json({ error: `asset path escapes the tree: ${file.name}` }, { status: 400 });
+        if (!target.startsWith(resolve(temporary, "assets") + "/"))
+          return Response.json({ error: `asset path escapes the tree: ${file.name}` }, { status: 400 });
         await mkdir(dirname(target), { recursive: true, mode: 0o750 });
         await writeFile(target, new Uint8Array(await file.arrayBuffer()), { mode: 0o640 });
       }
     }
     const validation = await validateArtifactDirectory(temporary);
-    if (!validation.ok) return Response.json({ error: "invalid artifact", details: validation.errors }, { status: 400 });
-    if (validation.value.manifest.project !== project) return Response.json({ error: "manifest project does not match request path" }, { status: 400 });
+    if (!validation.ok)
+      return Response.json({ error: "invalid artifact", details: validation.errors }, { status: 400 });
+    if (validation.value.manifest.project !== project)
+      return Response.json({ error: "manifest project does not match request path" }, { status: 400 });
     const digest = await artifactDigest(temporary, validation.value.manifest.binaryHash);
 
     // Nothing changed — same sprout, same sidecars — and it is already live.
     // Drop the upload and report the no-op instead of stacking a duplicate version.
-    const unchanged = projectDeployments(actor.id, project).find((deployment) => deployment.active && deployment.artifact === digest);
+    const unchanged = projectDeployments(actor.id, project).find(
+      (deployment) => deployment.active && deployment.artifact === digest,
+    );
     if (unchanged) {
       await rm(temporary, { recursive: true, force: true });
       return Response.json(
-        { id: unchanged.id, hostname: unchanged.hostname, url: `https://${unchanged.hostname}`, artifact: digest, activated: false, unchanged: true },
+        {
+          id: unchanged.id,
+          hostname: unchanged.hostname,
+          url: `https://${unchanged.hostname}`,
+          artifact: digest,
+          activated: false,
+          unchanged: true,
+        },
         { status: 200 },
       );
     }
@@ -377,9 +444,11 @@ export async function deployArtifact(request: Request, project: string): Promise
     // #55: capture the outgoing version's Porffor pin before it is replaced.
     const previousPorffor = await activePorfforVersion(actor.id, project);
     const destination = resolve(artifactRoot, digest);
-    try { await rename(temporary, destination); }
-    catch (error) {
-      if (!(error instanceof Error) || !("code" in error) || (error.code !== "EEXIST" && error.code !== "ENOTEMPTY")) throw error;
+    try {
+      await rename(temporary, destination);
+    } catch (error) {
+      if (!(error instanceof Error) || !("code" in error) || (error.code !== "EEXIST" && error.code !== "ENOTEMPTY"))
+        throw error;
       // Same digest dir already on disk (a prior version of another project, or a
       // race). Its contents match this digest by construction, so reuse it.
       await rm(temporary, { recursive: true, force: true });
@@ -392,8 +461,14 @@ export async function deployArtifact(request: Request, project: string): Promise
 
     const hostname = deploymentHostname(project, actor.username);
     const deployment = recordDeployment({
-      id: randomUUID(), project, ownerId: actor.id, username: actor.username,
-      hostname, artifact: digest, sproutPath: resolve(destination, "sprout"), deployedAt: new Date().toISOString(),
+      id: randomUUID(),
+      project,
+      ownerId: actor.id,
+      username: actor.username,
+      hostname,
+      artifact: digest,
+      sproutPath: resolve(destination, "sprout"),
+      deployedAt: new Date().toISOString(),
       resourceIds: resolvedResources,
     });
     await syncRoutes();
@@ -401,10 +476,14 @@ export async function deployArtifact(request: Request, project: string): Promise
     const orphaned = pruneProjectDeployments(actor.id, project, LIMITS.versionsPerProject());
     if (orphaned.length > 0) await collectArtifacts(orphaned);
     const incomingPorffor = validation.value.manifest.porfforVersion;
-    const porfforDrift = previousPorffor && previousPorffor !== incomingPorffor
-      ? { from: previousPorffor, to: incomingPorffor }
-      : undefined;
-    return Response.json({ id: deployment.id, hostname, url: `https://${hostname}`, artifact: digest, activated: true, porfforDrift }, { status: 201 });
+    const porfforDrift =
+      previousPorffor && previousPorffor !== incomingPorffor
+        ? { from: previousPorffor, to: incomingPorffor }
+        : undefined;
+    return Response.json(
+      { id: deployment.id, hostname, url: `https://${hostname}`, artifact: digest, activated: true, porfforDrift },
+      { status: 201 },
+    );
   } catch (error) {
     await rm(temporary, { recursive: true, force: true });
     return Response.json({ error: error instanceof Error ? error.message : "deployment failed" }, { status: 500 });
@@ -420,21 +499,28 @@ export async function deployArtifact(request: Request, project: string): Promise
 export async function deleteAccount(request: Request): Promise<Response> {
   const actor = await authorized(request);
   if (actor instanceof Response) return actor;
-  if (actor.authentication !== "session") return Response.json({ error: "account deletion requires an interactive session" }, { status: 403 });
+  if (actor.authentication !== "session")
+    return Response.json({ error: "account deletion requires an interactive session" }, { status: 403 });
 
   const result = deleteOwner(actor.id);
   await syncRoutes();
   const cleanup = await collectArtifacts(result.orphanedArtifacts);
   const identity = purgeUser(actor.id);
 
-  const response = Response.json({
-    deleted: true,
-    versionsRemoved: result.removed,
-    routesRemoved: result.hostnames,
-    artifactsRemoved: cleanup.removed,
-    artifactCleanupFailed: cleanup.failed,
-    identityRemoved: identity,
-  }, { status: cleanup.failed.length ? 207 : 200 });
-  response.headers.append("set-cookie", "better-auth.session_token=; Path=/; Max-Age=0; HttpOnly; Secure; SameSite=Lax");
+  const response = Response.json(
+    {
+      deleted: true,
+      versionsRemoved: result.removed,
+      routesRemoved: result.hostnames,
+      artifactsRemoved: cleanup.removed,
+      artifactCleanupFailed: cleanup.failed,
+      identityRemoved: identity,
+    },
+    { status: cleanup.failed.length ? 207 : 200 },
+  );
+  response.headers.append(
+    "set-cookie",
+    "better-auth.session_token=; Path=/; Max-Age=0; HttpOnly; Secure; SameSite=Lax",
+  );
   return response;
 }

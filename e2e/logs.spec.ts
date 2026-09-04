@@ -12,7 +12,7 @@ test("traffic charts render from seeded edge logs", async ({ page }) => {
   await expect(page.getByRole("heading", { name: "Traffic" })).toBeVisible();
   await expect(page.getByRole("img", { name: /requests per time bucket/i })).toBeVisible(); // request bars
   await expect(page.getByRole("heading", { name: "Status codes" })).toBeVisible();
-  await expect(page.getByText("2xx", { exact: true })).toBeVisible();       // status distribution
+  await expect(page.getByText("2xx", { exact: true })).toBeVisible(); // status distribution
   await expect(page.getByText("p50", { exact: true }).first()).toBeVisible(); // latency percentiles
   await expect(page.getByRole("heading", { name: /Cold starts/ })).toBeVisible(); // startup metrics
 

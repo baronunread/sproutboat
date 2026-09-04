@@ -12,8 +12,14 @@ export type ResourceBindingRef = { binding: string; kind: "kv" | "d1" | "r2" | "
  * the rest are the plain name lists the CLI writes for the broker.
  */
 export type ArtifactBindings = {
-  kv: string[]; secrets: string[]; outbound: string[]; d1: string[]; r2: string[];
-  queues: string[]; analytics: string[]; crons: string[];
+  kv: string[];
+  secrets: string[];
+  outbound: string[];
+  d1: string[];
+  r2: string[];
+  queues: string[];
+  analytics: string[];
+  crons: string[];
   assets: string | null;
   durableObjects: Array<{ binding: string; className: string }>;
   resources: ResourceBindingRef[];
@@ -41,7 +47,8 @@ type Json = null | boolean | number | string | Json[] | { readonly [key: string]
 const isObj = (value: Json | undefined): value is { readonly [key: string]: Json } =>
   value !== null && Object(value) === value && !Array.isArray(value) && !(value instanceof Function);
 const isStr = (value: Json | undefined): value is string => Object(value) !== value && value === String(value);
-const isNum = (value: Json | undefined): value is number => Object(value) !== value && value === Number(value) && Number.isFinite(value);
+const isNum = (value: Json | undefined): value is number =>
+  Object(value) !== value && value === Number(value) && Number.isFinite(value);
 const isStrArray = (value: Json | undefined): value is string[] => Array.isArray(value) && value.every(isStr);
 
 function parseJson(text: string): Json | undefined {
@@ -67,13 +74,17 @@ function bindingsErrors(value: Json | undefined): string[] {
   if ("assets" in value && !isStr(value.assets)) errors.push("bindings.json.assets must be a string");
   if ("do" in value) {
     const dos = value.do;
-    const ok = Array.isArray(dos) && dos.every((entry) => isObj(entry) && isStr(entry.binding) && isStr(entry.className));
+    const ok =
+      Array.isArray(dos) && dos.every((entry) => isObj(entry) && isStr(entry.binding) && isStr(entry.className));
     if (!ok) errors.push("bindings.json.do must be an array of { binding, className }");
   }
   if ("resources" in value) {
     const resources = value.resources;
-    const ok = isObj(resources) && Object.values(resources).every((entry) =>
-      isObj(entry) && isStr(entry.id) && isStr(entry.kind) && isResourceKind(entry.kind));
+    const ok =
+      isObj(resources) &&
+      Object.values(resources).every(
+        (entry) => isObj(entry) && isStr(entry.id) && isStr(entry.kind) && isResourceKind(entry.kind),
+      );
     if (!ok) errors.push("bindings.json.resources must map binding names to { kind, id }");
   }
   return errors;
@@ -96,14 +107,20 @@ function bindingsOf(value: Json | undefined): ArtifactBindings {
   const names = (key: string): string[] => (isObj(value) && isStrArray(value[key]) ? value[key] : []);
   const dos = isObj(value) && Array.isArray(value.do) ? value.do : [];
   return {
-    kv: names("kv"), secrets: names("secrets"), outbound: names("outbound"),
-    d1: names("d1"), r2: names("r2"), queues: names("queues"),
-    analytics: names("analytics"), crons: names("crons"),
+    kv: names("kv"),
+    secrets: names("secrets"),
+    outbound: names("outbound"),
+    d1: names("d1"),
+    r2: names("r2"),
+    queues: names("queues"),
+    analytics: names("analytics"),
+    crons: names("crons"),
     assets: isObj(value) && isStr(value.assets) ? value.assets : null,
     durableObjects: dos.flatMap((entry) =>
       isObj(entry) && isStr(entry.binding) && isStr(entry.className)
         ? [{ binding: entry.binding, className: entry.className }]
-        : []),
+        : [],
+    ),
     resources: resourceBindingsOf(value),
   };
 }
@@ -112,8 +129,10 @@ function bindingsOf(value: Json | undefined): ArtifactBindings {
 async function assetsErrors(directory: string): Promise<string[]> {
   const parsed = parseJson(await readFile(resolve(directory, "assets.json"), "utf8").catch(() => ""));
   if (!isObj(parsed)) return ["assets.json is not a valid JSON object"];
-  if (!isStr(parsed.notFound) || !["none", "single-page-application", "404-page"].includes(parsed.notFound)) return ["assets.json.notFound is invalid"];
-  if (parsed.runSproutFirst !== true && parsed.runSproutFirst !== false && !isStrArray(parsed.runSproutFirst)) return ["assets.json.runSproutFirst must be a boolean or string[]"];
+  if (!isStr(parsed.notFound) || !["none", "single-page-application", "404-page"].includes(parsed.notFound))
+    return ["assets.json.notFound is invalid"];
+  if (parsed.runSproutFirst !== true && parsed.runSproutFirst !== false && !isStrArray(parsed.runSproutFirst))
+    return ["assets.json.runSproutFirst must be a boolean or string[]"];
   const files = parsed.files;
   if (!isObj(files)) return ["assets.json.files must be an object"];
   const entries = Object.entries(files);
@@ -122,8 +141,14 @@ async function assetsErrors(directory: string): Promise<string[]> {
   const errors: string[] = [];
   let total = 0;
   for (const [key, entry] of entries) {
-    if (!key.startsWith("/") || key.includes("..")) { errors.push(`assets.json key "${key}" must be an absolute posix path`); continue; }
-    if (!isObj(entry) || !isStr(entry.hash) || !isNum(entry.size)) { errors.push(`assets.json["${key}"] needs a string hash and numeric size`); continue; }
+    if (!key.startsWith("/") || key.includes("..")) {
+      errors.push(`assets.json key "${key}" must be an absolute posix path`);
+      continue;
+    }
+    if (!isObj(entry) || !isStr(entry.hash) || !isNum(entry.size)) {
+      errors.push(`assets.json["${key}"] needs a string hash and numeric size`);
+      continue;
+    }
     let bytes: Buffer;
     try {
       bytes = await readFile(resolve(directory, "assets", `.${key}`));
@@ -131,7 +156,8 @@ async function assetsErrors(directory: string): Promise<string[]> {
       errors.push(`assets/${key} is missing`);
       continue;
     }
-    if (createHash("sha256").update(bytes).digest("hex") !== entry.hash) errors.push(`assets/${key} does not match its recorded hash`);
+    if (createHash("sha256").update(bytes).digest("hex") !== entry.hash)
+      errors.push(`assets/${key} does not match its recorded hash`);
     total += bytes.length;
   }
   if (total > MAX_ASSET_BYTES) errors.push(`assets total ${total} bytes exceeds the ${MAX_ASSET_BYTES} limit`);
@@ -146,8 +172,11 @@ export async function validateArtifactDirectory(directory: string): Promise<Arti
   } catch {
     return { ok: false, errors: ["artifact directory does not exist"] };
   }
-  const unexpected = entries.filter((entry) => entry !== "manifest.json" && entry !== "sprout" && !OPTIONAL_ENTRIES.has(entry));
-  if (!entries.includes("manifest.json") || !entries.includes("sprout")) errors.push("artifact directory must contain manifest.json and sprout");
+  const unexpected = entries.filter(
+    (entry) => entry !== "manifest.json" && entry !== "sprout" && !OPTIONAL_ENTRIES.has(entry),
+  );
+  if (!entries.includes("manifest.json") || !entries.includes("sprout"))
+    errors.push("artifact directory must contain manifest.json and sprout");
   if (unexpected.length) errors.push(`artifact directory has unexpected entries: ${unexpected.join(", ")}`);
   const manifestPath = resolve(directory, "manifest.json");
   const sproutPath = resolve(directory, "sprout");
@@ -164,13 +193,17 @@ export async function validateArtifactDirectory(directory: string): Promise<Arti
   try {
     sprout = await readFile(sproutPath);
     const info = await stat(sproutPath);
-    if (!info.isFile() || info.size < 1 || info.size > 16 * 1024 * 1024) errors.push("sprout must be a 1 byte–16 MiB regular file");
-    if (sprout[0] !== 0x7f || sprout[1] !== 0x45 || sprout[2] !== 0x4c || sprout[3] !== 0x46) errors.push("sprout is not an ELF executable");
-    else if (sprout[4] !== 2 || sprout[5] !== 1 || sprout.readUInt16LE(18) !== 62) errors.push("sprout must be a 64-bit little-endian x86-64 ELF executable");
+    if (!info.isFile() || info.size < 1 || info.size > 16 * 1024 * 1024)
+      errors.push("sprout must be a 1 byte–16 MiB regular file");
+    if (sprout[0] !== 0x7f || sprout[1] !== 0x45 || sprout[2] !== 0x4c || sprout[3] !== 0x46)
+      errors.push("sprout is not an ELF executable");
+    else if (sprout[4] !== 2 || sprout[5] !== 1 || sprout.readUInt16LE(18) !== 62)
+      errors.push("sprout must be a 64-bit little-endian x86-64 ELF executable");
   } catch {
     errors.push("sprout is missing or unreadable");
   }
-  if (manifest && sprout && digest(sprout) !== manifest.binaryHash) errors.push("sprout digest does not match manifest binaryHash");
+  if (manifest && sprout && digest(sprout) !== manifest.binaryHash)
+    errors.push("sprout digest does not match manifest binaryHash");
 
   let bindings: ArtifactBindings | null = null;
   if (entries.includes("bindings.json")) {
@@ -182,7 +215,7 @@ export async function validateArtifactDirectory(directory: string): Promise<Arti
   const hasAssetsJson = entries.includes("assets.json");
   const hasAssetsDir = entries.includes("assets");
   if (hasAssetsJson !== hasAssetsDir) errors.push("assets.json and the assets/ directory must be present together");
-  else if (hasAssetsJson) errors.push(...await assetsErrors(directory));
+  else if (hasAssetsJson) errors.push(...(await assetsErrors(directory)));
 
   return errors.length || !manifest
     ? { ok: false, errors }

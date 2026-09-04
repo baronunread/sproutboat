@@ -28,12 +28,23 @@ function pruneUnownedRoutes(hostnames: readonly string[]): void {
   const path = resolve(homedir(), ".portless/routes.json");
   if (!existsSync(path)) return;
   let routes: PortlessRoute[];
-  try { routes = JSON.parse(readFileSync(path, "utf8")); } catch { return; }
+  try {
+    routes = JSON.parse(readFileSync(path, "utf8"));
+  } catch {
+    return;
+  }
   if (!Array.isArray(routes)) return;
   const doomed = routes.filter((route) => hostnames.includes(route.hostname) && !(route.pid > 0));
   if (doomed.length === 0) return;
   console.log(`→ clearing ${doomed.length} unowned portless route(s): ${doomed.map((r) => r.hostname).join(", ")}`);
-  writeFileSync(path, JSON.stringify(routes.filter((route) => !doomed.includes(route)), null, 2));
+  writeFileSync(
+    path,
+    JSON.stringify(
+      routes.filter((route) => !doomed.includes(route)),
+      null,
+      2,
+    ),
+  );
 }
 
 function requireCommand(command: string) {
@@ -66,7 +77,7 @@ function environment(extra: Record<string, string> = {}) {
 async function checked(label: string, command: string[], env = environment()) {
   console.log(`→ ${label}`);
   const child = Bun.spawn(command, { cwd: root, env, stdin: "inherit", stdout: "inherit", stderr: "inherit" });
-  if (await child.exited !== 0) throw new Error(`${label} failed`);
+  if ((await child.exited) !== 0) throw new Error(`${label} failed`);
 }
 
 function start(label: string, command: string[], env = environment()) {
@@ -88,17 +99,21 @@ function start(label: string, command: string[], env = environment()) {
 async function startProxy() {
   console.log("→ starting Portless HTTPS and wildcard routing");
   const child = Bun.spawn(["portless", "proxy", "start", "--wildcard"], {
-    cwd: root, env: environment(), stdin: "inherit", stdout: "pipe", stderr: "inherit",
+    cwd: root,
+    env: environment(),
+    stdin: "inherit",
+    stdout: "pipe",
+    stderr: "inherit",
   });
   const output = await new Response(child.stdout).text();
   process.stdout.write(output);
-  if (await child.exited !== 0) throw new Error("starting Portless HTTPS and wildcard routing failed");
+  if ((await child.exited) !== 0) throw new Error("starting Portless HTTPS and wildcard routing failed");
   if (/already running/i.test(output)) {
     console.warn(
       "\n!  A proxy was already listening, so --wildcard was not re-applied. If that\n" +
-      "   proxy was started without it, *.sproutboat.localhost will not route — no\n" +
-      "   edge, no deployment URLs. A proxy this harness started already has it.\n" +
-      "   To be sure: sudo ./node_modules/.bin/portless proxy stop -p 443 && bun run dev:local\n",
+        "   proxy was started without it, *.sproutboat.localhost will not route — no\n" +
+        "   edge, no deployment URLs. A proxy this harness started already has it.\n" +
+        "   To be sure: sudo ./node_modules/.bin/portless proxy stop -p 443 && bun run dev:local\n",
     );
   }
 }
@@ -114,24 +129,51 @@ async function main() {
 
   pruneUnownedRoutes([localDomain, `control.${localDomain}`, `dashboard.${localDomain}`]);
   await startProxy();
-  await checked("migrating local Control state", ["bunx", "--bun", "auth@1.7.1", "migrate", "--config", "apps/control/src/auth.migrate.ts", "--yes"]);
-  if (await fetch("http://127.0.0.1:4000").then(() => true).catch(() => false)) console.log("→ reusing GitHub emulator at http://localhost:4000");
+  await checked("migrating local Control state", [
+    "bunx",
+    "--bun",
+    "auth@1.7.1",
+    "migrate",
+    "--config",
+    "apps/control/src/auth.migrate.ts",
+    "--yes",
+  ]);
+  if (
+    await fetch("http://127.0.0.1:4000")
+      .then(() => true)
+      .catch(() => false)
+  )
+    console.log("→ reusing GitHub emulator at http://localhost:4000");
   else start("GitHub emulator", ["npx", "emulate", "--service", "github", "--seed", "tests/emulate.github.yaml"]);
-  start("Control at https://control.sproutboat.localhost", ["portless", "--force", "control.sproutboat", "bun", "run", "control"]);
+  start("Control at https://control.sproutboat.localhost", [
+    "portless",
+    "--force",
+    "control.sproutboat",
+    "bun",
+    "run",
+    "control",
+  ]);
   start("Edge wildcard at https://*.sproutboat.localhost", ["portless", "--force", "sproutboat", "bun", "run", "edge"]);
   // The dashboard's SSR auth loader fetches the control API over the self-signed
   // portless cert; let its process trust it for local dev.
-  start("dashboard at https://dashboard.sproutboat.localhost", ["portless", "--force", "dashboard.sproutboat", "bun", "run", "web"], environment({ NODE_TLS_REJECT_UNAUTHORIZED: "0" }));
-  console.log("\nReady:\n  Dashboard  https://dashboard.sproutboat.localhost\n  Control    https://control.sproutboat.localhost\n  Deployments https://<project>.<owner>.sproutboat.localhost\n\nDeploy with the CLI:\n  bunx sproutboat login --api-url https://control.sproutboat.localhost\n  bunx sproutboat deploy\n");
+  start(
+    "dashboard at https://dashboard.sproutboat.localhost",
+    ["portless", "--force", "dashboard.sproutboat", "bun", "run", "web"],
+    environment({ NODE_TLS_REJECT_UNAUTHORIZED: "0" }),
+  );
+  console.log(
+    "\nReady:\n  Dashboard  https://dashboard.sproutboat.localhost\n  Control    https://control.sproutboat.localhost\n  Deployments https://<project>.<owner>.sproutboat.localhost\n\nDeploy with the CLI:\n  bunx sproutboat login --api-url https://control.sproutboat.localhost\n  bunx sproutboat deploy\n",
+  );
 }
 
-for (const signal of ["SIGINT", "SIGTERM"] as const) process.on(signal, () => {
-  // Named, because this handler exits 0 — without it, "shut down on a signal"
-  // and "fell off the end of the script" are indistinguishable from the shell.
-  console.log(`\n→ ${signal} received, stopping ${processes.length} child processes`);
-  for (const child of processes) child.kill(signal);
-  process.exit();
-});
+for (const signal of ["SIGINT", "SIGTERM"] as const)
+  process.on(signal, () => {
+    // Named, because this handler exits 0 — without it, "shut down on a signal"
+    // and "fell off the end of the script" are indistinguishable from the shell.
+    console.log(`\n→ ${signal} received, stopping ${processes.length} child processes`);
+    for (const child of processes) child.kill(signal);
+    process.exit();
+  });
 
 await main();
 // Hold the harness open for as long as the platform is up. Waiting on the

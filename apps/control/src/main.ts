@@ -1,17 +1,57 @@
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { adminEmail, ensureAdminSeeded, getAuth, githubSignInConfigured } from "./auth";
-import { activateDeployment, dashboardOverview, deleteAccount, deleteDeployment, deleteProject, deploymentDetail, deployArtifact, listDeployments, listProjects, projectLogHistory, projectLogs, projectLogTail, projectMetrics, projectSproutLog } from "./deployments";
+import {
+  activateDeployment,
+  dashboardOverview,
+  deleteAccount,
+  deleteDeployment,
+  deleteProject,
+  deploymentDetail,
+  deployArtifact,
+  listDeployments,
+  listProjects,
+  projectLogHistory,
+  projectLogs,
+  projectLogTail,
+  projectMetrics,
+  projectSproutLog,
+} from "./deployments";
 import { addDomain, deleteDomain, listDomains, verifyDomain } from "./domains";
 import { listSecrets, putSecret, removeSecret } from "./secrets";
 import {
-  createResourceHandler, createResourceOfKind, deleteResourceHandler, listResources, listResourcesOfKind,
-  resourceKindForSegment, resourceOfKind, updateResourceHandler,
+  createResourceHandler,
+  createResourceOfKind,
+  deleteResourceHandler,
+  listResources,
+  listResourcesOfKind,
+  resourceKindForSegment,
+  resourceOfKind,
+  updateResourceHandler,
 } from "./resources";
 import { actorFor, profileForUser, reserveUsername, sessionUser } from "./identity";
 import { accountLimits, clientIp, logLimitEvent, rateHit, tlsIssuanceAllowed } from "./limits";
-import { approveCliAuthorization, createCliAuthorization, exchangeCliAuthorization, listCliCredentials, revokeAllCliCredentials, revokeCliCredential } from "./cli-authorization";
-import { adminBackups, adminCreateBackup, adminCreateUser, adminDeleteBackup, adminDownloadBackup, adminOverview, adminUserDetail, adminUsers, banUser, revokeUserSessions, unbanUser } from "./admin";
+import {
+  approveCliAuthorization,
+  createCliAuthorization,
+  exchangeCliAuthorization,
+  listCliCredentials,
+  revokeAllCliCredentials,
+  revokeCliCredential,
+} from "./cli-authorization";
+import {
+  adminBackups,
+  adminCreateBackup,
+  adminCreateUser,
+  adminDeleteBackup,
+  adminDownloadBackup,
+  adminOverview,
+  adminUserDetail,
+  adminUsers,
+  banUser,
+  revokeUserSessions,
+  unbanUser,
+} from "./admin";
 
 type Route = { hostname: string; sproutPath: string };
 const routesPath = resolve(process.env.SPROUTBOAT_ROUTE_SNAPSHOT || "/var/lib/sproutboat/routes.json");
@@ -65,7 +105,10 @@ const server = Bun.serve({
       try {
         return await getAuth().handler!(request);
       } catch (error) {
-        return Response.json({ error: error instanceof Error ? error.message : "authentication is unavailable" }, { status: 503 });
+        return Response.json(
+          { error: error instanceof Error ? error.message : "authentication is unavailable" },
+          { status: 503 },
+        );
       }
     }
     if (request.method === "GET" && url.pathname === "/api/config") {
@@ -73,7 +116,11 @@ const server = Bun.serve({
     }
     if (request.method === "POST" && url.pathname === "/api/cli/authorizations") {
       const wait = rateHit(`cli-auth:${clientIp(request)}`, 20);
-      if (wait > 0) return Response.json({ error: "too many login attempts; wait a moment" }, { status: 429, headers: { "retry-after": String(wait) } });
+      if (wait > 0)
+        return Response.json(
+          { error: "too many login attempts; wait a moment" },
+          { status: 429, headers: { "retry-after": String(wait) } },
+        );
       return createCliAuthorization();
     }
     if (request.method === "POST" && url.pathname === "/api/cli/authorizations/token") {
@@ -94,25 +141,36 @@ const server = Bun.serve({
           user: { name: account.name, email: account.email, image: account.image },
         });
       } catch (error) {
-        return Response.json({ error: error instanceof Error ? error.message : "authentication is unavailable" }, { status: 503 });
+        return Response.json(
+          { error: error instanceof Error ? error.message : "authentication is unavailable" },
+          { status: 503 },
+        );
       }
     }
     if (request.method === "DELETE" && url.pathname === "/api/account") {
       try {
         return await deleteAccount(request);
       } catch (error) {
-        return Response.json({ error: error instanceof Error ? error.message : "account deletion failed" }, { status: 500 });
+        return Response.json(
+          { error: error instanceof Error ? error.message : "account deletion failed" },
+          { status: 500 },
+        );
       }
     }
     if (url.pathname === "/api/account/credentials" || url.pathname.startsWith("/api/account/credentials/")) {
       try {
-        if (request.method === "GET" && url.pathname === "/api/account/credentials") return await listCliCredentials(request);
-        if (request.method === "DELETE" && url.pathname === "/api/account/credentials") return await revokeAllCliCredentials(request);
+        if (request.method === "GET" && url.pathname === "/api/account/credentials")
+          return await listCliCredentials(request);
+        if (request.method === "DELETE" && url.pathname === "/api/account/credentials")
+          return await revokeAllCliCredentials(request);
         const credential = /^\/api\/account\/credentials\/([A-Za-z0-9_-]+)$/.exec(url.pathname);
         if (request.method === "DELETE" && credential) return await revokeCliCredential(request, credential[1]);
         return new Response("not found", { status: 404 });
       } catch (error) {
-        return Response.json({ error: error instanceof Error ? error.message : "credential request failed" }, { status: 500 });
+        return Response.json(
+          { error: error instanceof Error ? error.message : "credential request failed" },
+          { status: 500 },
+        );
       }
     }
     if (request.method === "POST" && url.pathname === "/api/account/namespace") {
@@ -124,7 +182,10 @@ const server = Bun.serve({
         if (!username) return Response.json({ error: "username is required" }, { status: 400 });
         return Response.json({ profile: reserveUsername(account.id, username) }, { status: 201 });
       } catch (error) {
-        return Response.json({ error: error instanceof Error ? error.message : "could not reserve username" }, { status: 409 });
+        return Response.json(
+          { error: error instanceof Error ? error.message : "could not reserve username" },
+          { status: 409 },
+        );
       }
     }
     if (url.pathname.startsWith("/api/admin/")) {
@@ -149,7 +210,10 @@ const server = Bun.serve({
         if (request.method === "DELETE" && backup) return await adminDeleteBackup(request, backup[1]);
         return new Response("not found", { status: 404 });
       } catch (error) {
-        return Response.json({ error: error instanceof Error ? error.message : "admin request failed" }, { status: 500 });
+        return Response.json(
+          { error: error instanceof Error ? error.message : "admin request failed" },
+          { status: 500 },
+        );
       }
     }
     // #76 — the caps this box enforces, so the dashboard can show usage against
@@ -165,8 +229,10 @@ const server = Bun.serve({
     const activation = /^\/api\/projects\/([a-z0-9-]+)\/deployments\/([a-z0-9-]+)\/activate$/.exec(url.pathname);
     if (request.method === "POST" && activation) return activateDeployment(request, activation[1], activation[2]);
     const deploymentRecord = /^\/api\/projects\/([a-z0-9-]+)\/deployments\/([a-z0-9-]+)$/.exec(url.pathname);
-    if (request.method === "GET" && deploymentRecord) return deploymentDetail(request, deploymentRecord[1], deploymentRecord[2]);
-    if (request.method === "DELETE" && deploymentRecord) return deleteDeployment(request, deploymentRecord[1], deploymentRecord[2]);
+    if (request.method === "GET" && deploymentRecord)
+      return deploymentDetail(request, deploymentRecord[1], deploymentRecord[2]);
+    if (request.method === "DELETE" && deploymentRecord)
+      return deleteDeployment(request, deploymentRecord[1], deploymentRecord[2]);
     const metrics = /^\/api\/projects\/([a-z0-9-]+)\/metrics$/.exec(url.pathname);
     if (request.method === "GET" && metrics) return projectMetrics(request, metrics[1]);
     const logsHistory = /^\/api\/projects\/([a-z0-9-]+)\/logs$/.exec(url.pathname);
@@ -243,4 +309,6 @@ console.log(`Sproutboat control listening on http://${hostname}:${server.port}`)
 
 // Seed the single admin credential account so the dashboard is usable without
 // GitHub OAuth. Safe to run every boot; no-op once the account exists.
-ensureAdminSeeded().catch((error) => console.error(`admin seed skipped: ${error instanceof Error ? error.message : String(error)}`));
+ensureAdminSeeded().catch((error) =>
+  console.error(`admin seed skipped: ${error instanceof Error ? error.message : String(error)}`),
+);

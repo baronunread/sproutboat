@@ -1,6 +1,5 @@
 @import "tailwindcss";
 
-
 /* ---------------------------------------------------------------------------
  * Theme
  *
@@ -138,17 +137,36 @@
      components — which use bare `border` / `border-b` — would draw their edges
      in the text colour. This is the base rule shadcn's own globals.css ships
      with; without it the Select popover and table heads outline near-white. */
-  *, ::after, ::before, ::backdrop { border-color: var(--color-border); }
+  *,
+  ::after,
+  ::before,
+  ::backdrop {
+    border-color: var(--color-border);
+  }
 
-  a { color: inherit; }
-  button { cursor: pointer; }
-  input { font: inherit; }
+  a {
+    color: inherit;
+  }
+  button {
+    cursor: pointer;
+  }
+  input {
+    font: inherit;
+  }
 
-  :focus-visible { outline: 2px solid var(--color-ring); outline-offset: 2px; }
-  ::selection { background: var(--color-brand); color: #111; }
+  :focus-visible {
+    outline: 2px solid var(--color-ring);
+    outline-offset: 2px;
+  }
+  ::selection {
+    background: var(--color-brand);
+    color: #111;
+  }
 
   @media (prefers-reduced-motion: reduce) {
-    *, *::before, *::after {
+    *,
+    *::before,
+    *::after {
       scroll-behavior: auto !important;
       transition-duration: 0ms !important;
     }
@@ -156,6 +174,10 @@
 
   /* Touch targets: coarse pointers get the larger control height. */
   @media (pointer: coarse) {
-    input, select, button { min-height: 2.75rem; }
+    input,
+    select,
+    button {
+      min-height: 2.75rem;
+    }
   }
 }

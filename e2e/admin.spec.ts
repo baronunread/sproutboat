@@ -21,7 +21,10 @@ test("admin overview shows platform stats", async ({ page }) => {
 
 test("ban an account, verify it, then unban", async ({ page }) => {
   await page.goto("/admin/users");
-  const sofiaRow = page.getByRole("list", { name: "User accounts" }).getByRole("listitem").filter({ hasText: "sofia@example.test" });
+  const sofiaRow = page
+    .getByRole("list", { name: "User accounts" })
+    .getByRole("listitem")
+    .filter({ hasText: "sofia@example.test" });
   await expect(sofiaRow).toContainText("Active");
 
   await sofiaRow.getByRole("button", { name: /^ban$/i }).click();
