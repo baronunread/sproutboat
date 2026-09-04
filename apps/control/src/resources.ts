@@ -29,8 +29,10 @@ type JsonInput = string | number | boolean | null | undefined | JsonInput[] | { 
 const asText = (value: JsonInput): string =>
   Object(value) !== value && value === String(value) ? String(value).trim() : "";
 
-// 2–63 char lowercase slug, same shape wrangler accepts for namespace/bucket/db names.
-const NAME = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/;
+// 2–63 char lowercase slug, same shape wrangler accepts for namespace/bucket/db
+// names. The middle run is not optional: making it so also matches a single
+// character, which is not the 2–63 this rule and its error message promise.
+const NAME = /^[a-z0-9][a-z0-9-]{0,61}[a-z0-9]$/;
 
 function isResourceKind(value: string): value is ResourceKind {
   // SAFETY: RESOURCE_KINDS is the literal tuple of every ResourceKind, so

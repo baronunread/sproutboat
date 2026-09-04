@@ -1,6 +1,7 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { Arrow, Metric } from "../components";
+import { Arrow, EmptyState, Metric, Panel, PanelHeading, RECORD_TITLE, RecordList, RecordRow, Status, StatusMessage } from "../components";
 import { relativeTime, useOverview } from "../dashboard-data";
+import { buttonVariants } from "@/components/ui/button";
 
 /** Built once: an Intl formatter is expensive and this one never varies. */
 const HOUR = new Intl.DateTimeFormat(undefined, { hour: "2-digit", minute: "2-digit" });
@@ -21,34 +22,89 @@ function Overview() {
     const response = await fetch(`/api/cli/authorizations/${encodeURIComponent(cliCode)}/approve`, { method: "POST", credentials: "include" });
     if (response.ok) history.replaceState({}, "", "/");
   };
-  return <><section className="page-heading"><div><h1>Your deployments, at a glance.</h1><p>Live information from your active routes and deployment history.</p></div><Link className="button primary" to="/projects">View sprouts</Link></section>
-    {cliCode && <section className="connection-banner"><div><h2>Connect this machine to Sproutboat.</h2><p>{data ? "Approve this browser login to store a local CLI credential." : "Sign in and claim a namespace before approving this browser login."}</p></div>{data ? <button className="button primary" type="button" onClick={approve}>Approve login <Arrow /></button> : <Link className="button primary" to={state === "sign-in" ? "/login" : "/profile"}>Continue <Arrow /></Link>}</section>}
-    {state === "loading" ? <section className="data-panel loading-state" aria-live="polite">Loading workspace data…</section> : state === "sign-in" ? <section className="data-panel empty-state"><h2>Sign in to view your workspace</h2><p>Sign in to deploy and inspect your services.</p><Link className="button primary" to="/login">Sign in</Link></section> : state === "setup" ? <section className="data-panel empty-state"><h2>Claim your deployment namespace</h2><p>Set up the namespace that will be used in your project routes.</p><Link className="button primary" to="/profile">Set up profile</Link></section> : state === "error" ? <p className="form-error" role="alert">Could not load workspace data. Refresh and try again.</p> : <>
-      <AccountTrend trend={metrics?.trend ?? []} requests={metrics?.requestsLast24Hours ?? 0} />
-      <section className="metrics" aria-label="Deployment statistics"><Metric label="Active projects" value={metrics ? String(metrics.activeProjects) : "—"} detail="Routes currently serving" /><Metric label="Deployments" value={metrics ? String(metrics.deployments) : "—"} detail="Immutable versions" /><Metric label="Requests" value={metrics ? String(metrics.requestsLast24Hours) : "—"} detail="Last 24 hours" /><Metric label="Success rate" value={metrics ? metrics.successRate === null ? "—" : `${metrics.successRate}%` : "—"} detail={metrics?.successRate === null ? "No requests yet" : "Last 24 hours"} /></section>
-      <section className="data-panel">
-        <div className="panel-heading">
-          <div><h2>Recent deployments</h2><p>The ten most recent versions across every sprout.</p></div>
+  return (
+    <>
+      <section className="mb-8 flex items-center justify-between gap-8 border-b border-border pb-7 max-[800px]:mb-10 max-[800px]:flex-col max-[800px]:items-start [&_h1]:m-0 [&_h1]:text-[1.85rem] [&_h1]:font-bold [&_h1]:tracking-[-0.035em] [&_h1]:max-[480px]:text-[1.6rem] [&_p]:mt-1.5 [&_p]:max-w-[38rem] [&_p]:text-[0.875rem] [&_p]:leading-normal [&_p]:text-muted-foreground">
+        <div>
+          <h1>Your deployments, at a glance.</h1>
+          <p>Live information from your active routes and deployment history.</p>
         </div>
-        {data?.deployments.length ? (
-          <ul className="record-list">
-            {data.deployments.slice(0, 10).map((deployment) => (
-              <li key={deployment.id}>
-                <div>
-                  <Link className="record-title" to="/projects/$name/deployments/$id"
-                    params={{ name: deployment.project, id: deployment.id }}>{deployment.project}</Link>
-                  <small>Version {deployment.id.slice(0, 8)} · {deployment.hostname}</small>
-                </div>
-                <code title={`Artifact ${deployment.artifact}`}>Artifact {deployment.artifact.slice(0, 12)}</code>
-                <span>{relativeTime(deployment.deployedAt)}</span>
-                <b className={deployment.active ? "status live" : "status"}>{deployment.active ? "Active" : "Superseded"}</b>
-              </li>
-            ))}
-          </ul>
-        ) : <EmptyDeployment />}
+        <Link className={buttonVariants({ variant: "default", className: "text-[0.82rem]" })} to="/projects">View sprouts</Link>
       </section>
-    </>}
-  </>;
+
+      {cliCode && (
+        <section className="mb-6 flex items-center justify-between gap-8 rounded-lg border border-[color-mix(in_srgb,var(--color-sky)_25%,var(--color-border))] bg-[color-mix(in_srgb,var(--color-sky)_8%,var(--color-card))] p-5 max-[800px]:flex-col max-[800px]:items-start [&_h2]:m-0 [&_h2]:text-base [&_h2]:font-semibold [&_h2]:tracking-tight [&_p]:mt-1.5 [&_p]:max-w-[38rem] [&_p]:text-[0.8rem] [&_p]:leading-relaxed [&_p]:text-muted-foreground">
+          <div>
+            <h2>Connect this machine to Sproutboat.</h2>
+            <p>
+              {data
+                ? "Approve this browser login to store a local CLI credential."
+                : "Sign in and claim a namespace before approving this browser login."}
+            </p>
+          </div>
+          {data ? (
+            <button className={buttonVariants({ variant: "default", className: "text-[0.82rem]" })} type="button" onClick={approve}>Approve login <Arrow /></button>
+          ) : (
+            <Link className={buttonVariants({ variant: "default", className: "text-[0.82rem]" })} to={state === "sign-in" ? "/login" : "/profile"}>Continue <Arrow /></Link>
+          )}
+        </section>
+      )}
+
+      {state === "loading" ? (
+        <Panel variant="bare" className="min-h-56 px-5 pt-12 text-muted-foreground" aria-live="polite">Loading workspace data…</Panel>
+      ) : state === "sign-in" ? (
+        <Panel variant="bare">
+          <h2>Sign in to view your workspace</h2>
+          <p>Sign in to deploy and inspect your services.</p>
+          <Link className={buttonVariants({ variant: "default", className: "text-[0.82rem]" })} to="/login">Sign in</Link>
+        </Panel>
+      ) : state === "setup" ? (
+        <Panel variant="bare">
+          <h2>Claim your deployment namespace</h2>
+          <p>Set up the namespace that will be used in your project routes.</p>
+          <Link className={buttonVariants({ variant: "default", className: "text-[0.82rem]" })} to="/profile">Set up profile</Link>
+        </Panel>
+      ) : state === "error" ? (
+        <StatusMessage tone="error">Could not load workspace data. Refresh and try again.</StatusMessage>
+      ) : (
+        <>
+          <AccountTrend trend={metrics?.trend ?? []} requests={metrics?.requestsLast24Hours ?? 0} />
+
+          <section className="mb-6 grid grid-cols-[repeat(auto-fit,minmax(12rem,1fr))] gap-3 max-[480px]:grid-cols-1 max-[480px]:gap-2.5" aria-label="Deployment statistics">
+            <Metric label="Active projects" value={metrics ? String(metrics.activeProjects) : "—"}
+              detail="Routes currently serving" />
+            <Metric label="Deployments" value={metrics ? String(metrics.deployments) : "—"}
+              detail="Immutable versions" />
+            <Metric label="Requests" value={metrics ? String(metrics.requestsLast24Hours) : "—"}
+              detail="Last 24 hours" />
+            <Metric label="Success rate"
+              value={metrics ? (metrics.successRate === null ? "—" : `${metrics.successRate}%`) : "—"}
+              detail={metrics?.successRate === null ? "No requests yet" : "Last 24 hours"} />
+          </section>
+
+          <Panel variant="bare">
+            <PanelHeading title="Recent deployments" description="The ten most recent versions across every sprout." />
+            {data?.deployments.length ? (
+              <RecordList>
+                {data.deployments.slice(0, 10).map((deployment) => (
+                  <RecordRow key={deployment.id}>
+                    <div>
+                      <Link className={RECORD_TITLE} to="/projects/$name/deployments/$id"
+                        params={{ name: deployment.project, id: deployment.id }}>{deployment.project}</Link>
+                      <small>Version {deployment.id.slice(0, 8)} · {deployment.hostname}</small>
+                    </div>
+                    <code title={`Artifact ${deployment.artifact}`}>Artifact {deployment.artifact.slice(0, 12)}</code>
+                    <span>{relativeTime(deployment.deployedAt)}</span>
+                    <Status live={deployment.active}>{deployment.active ? "Active" : "Superseded"}</Status>
+                  </RecordRow>
+                ))}
+              </RecordList>
+            ) : <EmptyDeployment />}
+          </Panel>
+        </>
+      )}
+    </>
+  );
 }
 
 /**
@@ -61,11 +117,9 @@ function AccountTrend({ trend, requests }: { trend: Array<{ start: string; count
   const max = Math.max(1, ...trend.map((bucket) => bucket.count));
   const step = 100 / trend.length;
   return (
-    <section className="data-panel settings-panel account-trend">
-      <div className="panel-heading">
-        <div><h2>Traffic</h2><p>Requests across every route on this account, last 24 hours.</p></div>
-      </div>
-      <svg className="bars" viewBox="0 0 100 28" preserveAspectRatio="none" role="img"
+    <Panel variant="wide" className="mb-6 [&_.bars]:mt-4 [&_.bars]:h-20">
+      <PanelHeading title="Traffic" description="Requests across every route on this account, last 24 hours." />
+      <svg className="block h-20 w-full min-w-full [&_g:hover_rect]:opacity-75 [&_rect]:transition-opacity [&_rect]:duration-150" viewBox="0 0 100 28" preserveAspectRatio="none" role="img"
         aria-label={`Requests per hour across all routes, peak ${max} in one bucket`}>
         {trend.map((bucket, index) => {
           const height = (bucket.count / max) * 26;
@@ -79,20 +133,19 @@ function AccountTrend({ trend, requests }: { trend: Array<{ start: string; count
           );
         })}
       </svg>
-      <div className="bars-axis">
+      <div className="mt-1.5 flex justify-between text-[0.68rem] text-muted-foreground">
         <span>{HOUR.format(new Date(trend[0].start))}</span>
         <span>now</span>
       </div>
-    </section>
+    </Panel>
   );
 }
 
 export function EmptyDeployment() {
   return (
-    <div className="empty-state">
-      <h2>Deploy your first sprout</h2>
+    <EmptyState title="Deploy your first sprout">
       <p>Deploy from a project directory and its route, version history and traffic appear here.</p>
-      <code>sproutboat deploy hello</code>
-    </div>
+      <code className="mt-3 inline-block rounded-[5px] border border-border bg-background p-2.5 text-[0.76rem]">sproutboat deploy hello</code>
+    </EmptyState>
   );
 }

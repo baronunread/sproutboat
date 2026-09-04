@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from "react";
-import { Button, ConfirmButton, PanelHeading, StatusMessage, TextField } from "./components";
+import { Button, ConfirmButton, Panel, PanelHeading, StatusMessage, TextField } from "./components";
 import { mutate, relativeTime, useJson } from "./dashboard-data";
 
 type Credential = {
@@ -33,7 +33,7 @@ export function CliCredentials() {
   };
 
   return (
-    <section className="data-panel settings-panel">
+    <Panel variant="wide">
       <PanelHeading
         title="API tokens"
         description={<>Keys created by <code>sproutboat login</code>. Your browser session is separate and stays signed in.</>}
@@ -50,13 +50,13 @@ export function CliCredentials() {
       />
       {note && <StatusMessage tone={note.tone}>{note.text}</StatusMessage>}
       {state === "loading" ? (
-        <p className="loading-state" aria-live="polite">Loading tokens…</p>
+        <p className="min-h-56 px-5 pt-12 text-muted-foreground group-[.is-padded]/panel:px-0" aria-live="polite">Loading tokens…</p>
       ) : state === "error" ? (
-        <p className="form-error" role="alert">Could not load tokens. Refresh and try again.</p>
+        <StatusMessage tone="error">Could not load tokens. Refresh and try again.</StatusMessage>
       ) : items.length === 0 ? (
-        <p className="empty-state">No API tokens yet. Run <code>sproutboat login</code> on a machine to create one.</p>
+        <p className="px-5 py-12 text-center text-[0.84rem] leading-relaxed text-muted-foreground group-[.is-padded]/panel:px-0 group-[.is-padded]/panel:py-5 group-[.is-padded]/panel:text-start [&_code]:text-foreground">No API tokens yet. Run <code>sproutboat login</code> on a machine to create one.</p>
       ) : (
-        <ul className="credential-list" aria-label="API tokens">
+        <ul className="m-0 mt-4 list-none p-0 [&>li]:flex [&>li]:flex-wrap [&>li]:items-center [&>li]:gap-x-4 [&>li]:gap-y-2 [&>li]:border-t [&>li]:border-border [&>li]:py-3.5 [&>li:first-child]:border-t-0 [&>li>*]:flex-none [&>li>:first-child]:min-w-0 [&>li>:first-child]:flex-[1_1_14rem] [&_small]:mt-1 [&_small]:block [&_small]:text-[0.74rem] [&_small]:text-muted-foreground [&_span]:text-[0.74rem] [&_span]:text-muted-foreground [&_strong]:block [&_strong]:text-[0.85rem] [&_strong]:font-medium" aria-label="API tokens">
           {items.map((credential) => {
             const label = credential.name || credential.start || credential.id.slice(0, 8);
             return (
@@ -81,7 +81,7 @@ export function CliCredentials() {
           })}
         </ul>
       )}
-    </section>
+    </Panel>
   );
 }
 
@@ -115,12 +115,12 @@ export function DeleteAccount({ username }: { username?: string }) {
   };
 
   return (
-    <section className="data-panel settings-panel danger-panel">
+    <Panel className="[&_h2]:text-destructive">
       <PanelHeading
         title="Delete account"
         description="This permanently removes your namespace, every project and deployment, all routed hostnames, and every issued API token. Active routes stop serving immediately and you are signed out. This cannot be undone."
       />
-      <form className="form-grid" onSubmit={submit}>
+      <form className="mt-5 grid max-w-[36rem] gap-5 [&>[data-slot=form-actions]]:col-span-full" onSubmit={submit}>
         <TextField
           label={`Type ${expected || "your username"} to confirm`}
           value={confirm}
@@ -131,12 +131,12 @@ export function DeleteAccount({ username }: { username?: string }) {
           disabled={!expected}
           error={mismatch ? "That does not match your username." : error || null}
         />
-        <div className="form-actions">
+        <div data-slot="form-actions" className="mt-1 flex flex-wrap items-center gap-2.5">
           <Button type="submit" variant="danger" busy={busy} busyLabel="Deleting…" disabled={!expected || confirm !== expected}>
             Delete account
           </Button>
         </div>
       </form>
-    </section>
+    </Panel>
   );
 }

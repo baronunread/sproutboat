@@ -22,7 +22,9 @@ export type CliCredential = {
   enabled: boolean;
 };
 
-const slug = /^[a-z0-9](?:[a-z0-9-]{1,30}[a-z0-9])?$/;
+// 3–32, per the error message below. The middle run is not optional: making it
+// so also matches a single character, which is not a 3–32 character slug.
+const slug = /^[a-z0-9][a-z0-9-]{1,30}[a-z0-9]$/;
 const reservedUsernames = new Set(["www", "api", "admin", "status", "docs", "support", "cli", "dashboard", "sproutboat"]);
 let database: Database | undefined;
 let databasePath: string | undefined;

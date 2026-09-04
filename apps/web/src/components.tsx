@@ -2,18 +2,35 @@ import { useRouterState, Link } from "@tanstack/react-router";
 import {
   useEffect, useId, useRef, useState,
   type ButtonHTMLAttributes, type FormEvent, type InputHTMLAttributes, type ReactNode,
-  type SelectHTMLAttributes,
 } from "react";
+import type * as React from "react";
 import { useAccount } from "./dashboard-data";
+import { Button as UiButton } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Table, TableBody, TableHeader } from "@/components/ui/table";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
+import { cn } from "@/lib/utils";
 
 /* ---------------------------------------------------------------------------
  * Form primitives (#76)
  *
- * Every text field, select and textarea in the dashboard goes through these, so
- * a control cannot ship without a real <label>, its hint and error wired up via
+ * Every text field and select in the dashboard goes through these, so a control
+ * cannot ship without a real <label>, its hint and error wired up via
  * aria-describedby, aria-invalid on failure, and one shared visual language.
  * Passing `hideLabel` keeps the label in the accessibility tree and hides it
  * visually — a placeholder is never a label.
+ *
+ * The insides are shadcn/Radix; this wrapper is the part shadcn does not give
+ * you. Its <Input> is a bare styled input: the label/hint/error association is
+ * what makes a field accessible, and it belongs in one place rather than at
+ * every call site.
  * ------------------------------------------------------------------------- */
 
 type FieldProps = {
@@ -42,26 +59,31 @@ function FieldShell({
   label, hint, error, hideLabel, footer, fieldClassName, fieldId, hintId, errorId, children,
 }: FieldProps & { fieldId: string; hintId: string; errorId: string; children: ReactNode }) {
   return (
-    <div className={`field ${error ? "field-invalid" : ""} ${fieldClassName ?? ""}`.trim()}>
-      <label className={hideLabel ? "field-label visually-hidden" : "field-label"} htmlFor={fieldId}>{label}</label>
+    <div className={cn("grid min-w-0 gap-1.5", fieldClassName)}>
+      <Label className={cn("text-[0.78rem] font-medium", hideLabel && "sr-only")} htmlFor={fieldId}>{label}</Label>
       {children}
-      {hint && <p className="field-hint" id={hintId}>{hint}</p>}
-      {footer && <div className="field-footer">{footer}</div>}
-      {error && <p className="field-error" id={errorId} role="alert">{error}</p>}
+      {hint && <p className="max-w-[42rem] text-xs leading-normal text-muted-foreground" id={hintId}>{hint}</p>}
+      {footer && <div className="text-xs text-muted-foreground">{footer}</div>}
+      {error && (
+        <p className="flex items-center gap-1.5 text-xs text-destructive" id={errorId} role="alert">
+          <span aria-hidden="true" className="grid size-3.5 shrink-0 place-items-center rounded-full border border-current text-[0.6rem] font-bold">!</span>
+          {error}
+        </p>
+      )}
     </div>
   );
 }
 
 export function TextField({
-  label, hint, error, hideLabel, footer, fieldClassName, id, ...input
+  label, hint, error, hideLabel, footer, fieldClassName, id, className, ...input
 }: FieldProps & InputHTMLAttributes<HTMLInputElement>) {
   const { fieldId, hintId, errorId } = useFieldIds(id);
   return (
     <FieldShell label={label} hint={hint} error={error} hideLabel={hideLabel} footer={footer} fieldClassName={fieldClassName} fieldId={fieldId} hintId={hintId} errorId={errorId}>
-      <input
+      <Input
         {...input}
         id={fieldId}
-        className={`control ${input.className ?? ""}`.trim()}
+        className={cn("bg-background text-sm", className)}
         aria-invalid={error ? true : undefined}
         aria-describedby={describedBy(hint, error, hintId, errorId)}
       />
@@ -69,26 +91,43 @@ export function TextField({
   );
 }
 
+/**
+ * The select. Radix under the hood (via shadcn), so the option list is styled
+ * with the rest of the app instead of falling back to OS chrome, and it gets
+ * typeahead, keyboard navigation and a portal for free.
+ *
+ * `onValueChange` rather than a change event: Radix hands you the value, and
+ * there is no underlying <select> to read `event.target.value` from.
+ */
 export function SelectField({
-  label, hint, error, hideLabel, footer, fieldClassName, id, options, ...select
-}: FieldProps & SelectHTMLAttributes<HTMLSelectElement> & { options: ReadonlyArray<readonly [string, string]> }) {
+  label, hint, error, hideLabel, footer, fieldClassName, id, options, value,
+  onValueChange, disabled, placeholder,
+}: FieldProps & {
+  id?: string;
+  options: ReadonlyArray<readonly [string, string]>;
+  value: string;
+  onValueChange: (value: string) => void;
+  disabled?: boolean;
+  placeholder?: string;
+}) {
   const { fieldId, hintId, errorId } = useFieldIds(id);
   return (
     <FieldShell label={label} hint={hint} error={error} hideLabel={hideLabel} footer={footer} fieldClassName={fieldClassName} fieldId={fieldId} hintId={hintId} errorId={errorId}>
-      <div className="control-select">
-        <select
-          {...select}
+      <Select value={value} onValueChange={onValueChange} disabled={disabled}>
+        <SelectTrigger
           id={fieldId}
-          className={`control ${select.className ?? ""}`.trim()}
+          className="w-full bg-background text-sm"
           aria-invalid={error ? true : undefined}
           aria-describedby={describedBy(hint, error, hintId, errorId)}
         >
-          {options.map(([value, optionLabel]) => <option key={value} value={value}>{optionLabel}</option>)}
-        </select>
-        <svg className="control-chevron" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-          <path d="m4 6.5 4 4 4-4" />
-        </svg>
-      </div>
+          <SelectValue placeholder={placeholder} />
+        </SelectTrigger>
+        <SelectContent>
+          {options.map(([optionValue, optionLabel]) => (
+            <SelectItem key={optionValue} value={optionValue}>{optionLabel}</SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
     </FieldShell>
   );
 }
@@ -96,23 +135,34 @@ export function SelectField({
 /**
  * A button that owns its own pending state: `busy` disables it, marks it
  * aria-busy, and swaps the label so a screen reader hears the change too.
+ *
+ * `type` defaults to "button", not the HTML default of "submit": most of these
+ * sit inside a <form> as Cancel/Generate/inline actions, where submitting is
+ * never what the click meant. Submitters pass type="submit" explicitly.
+ *
+ * The variant names stay sproutboat's ("quiet" rather than "outline") because
+ * every call site already reads in them; they map onto shadcn's underneath.
  */
+const BUTTON_VARIANT = { primary: "default", quiet: "outline", danger: "danger" } as const;
+
 export function Button({
-  variant = "quiet", busy = false, busyLabel, children, className, disabled, ...button
+  variant = "quiet", busy = false, busyLabel, children, className, disabled, type = "button", ...button
 }: ButtonHTMLAttributes<HTMLButtonElement> & {
   variant?: "primary" | "quiet" | "danger";
   busy?: boolean;
   busyLabel?: string;
 }) {
   return (
-    <button
+    <UiButton
       {...button}
-      className={`button ${variant} ${className ?? ""}`.trim()}
+      type={type}
+      variant={BUTTON_VARIANT[variant]}
+      className={cn("text-[0.82rem]", className)}
       disabled={disabled || busy}
       aria-busy={busy || undefined}
     >
       {busy ? (busyLabel ?? "Working…") : children}
-    </button>
+    </UiButton>
   );
 }
 
@@ -120,30 +170,194 @@ export function Button({
  * One place for "what just happened" text. `tone="error"` announces
  * assertively (role=alert); everything else is polite (role=status).
  */
+const STATUS_TONE = {
+  info: "bg-muted text-muted-foreground",
+  success: "border-success/25 bg-success/12 text-success",
+  error: "border-destructive/25 bg-destructive/12 text-destructive",
+} as const;
+
 export function StatusMessage({ tone = "info", children }: { tone?: "info" | "success" | "error"; children: ReactNode }) {
   if (!children) return null;
   return (
-    <p className={`status-message ${tone}`} role={tone === "error" ? "alert" : "status"}>
-      {children}
-    </p>
+    <Alert
+      className={cn("mt-4 border-transparent px-3 py-2.5", STATUS_TONE[tone])}
+      role={tone === "error" ? "alert" : "status"}
+    >
+      <AlertDescription className="text-[0.8rem] leading-normal text-current">{children}</AlertDescription>
+    </Alert>
   );
 }
 
-/** Section heading + optional action, shared by every panel. */
+/* ---------------------------------------------------------------------------
+ * Data surfaces
+ *
+ * Two shapes carry nearly every screen: a flex row list (name on the left
+ * taking the slack, meta hugging the right, notes wrapping to their own line)
+ * and a dense scrollable table with a sticky head.
+ * ------------------------------------------------------------------------- */
+
+/** A row list inside a bare panel: rows divide and hover edge to edge. */
+export function RecordList({ className, ...list }: React.ComponentProps<"ul">) {
+  return <ul className={cn("m-0 list-none p-0", className)} {...list} />;
+}
+
+/**
+ * One row. `> :first-child` takes the slack and everything after it hugs the
+ * trailing edge, so a name/host block and a set of meta cells line up down the
+ * list however wide they are.
+ */
+export function RecordRow({ className, ...row }: React.ComponentProps<"li">) {
+  return (
+    <li
+      className={cn(
+        "flex min-h-[4.2rem] flex-wrap items-center gap-x-4 gap-y-2 border-b border-border px-5 py-3.5 last:border-b-0 hover:bg-accent",
+        "[&>*]:flex-none [&>:first-child]:min-w-0 [&>:first-child]:flex-[1_1_14rem]",
+        "[&>span]:min-w-24 [&>span]:text-end",
+        "[&_strong]:block [&_strong]:text-[0.84rem] [&_strong]:font-medium",
+        "[&_small]:block [&_small]:truncate [&_small]:text-[0.72rem] [&_small]:text-muted-foreground",
+        "[&_code]:truncate [&_code]:text-[0.72rem] [&_code]:tabular-nums",
+        "[&_span]:text-[0.72rem] [&_span]:text-muted-foreground [&_span]:tabular-nums",
+        className,
+      )}
+      {...row}
+    />
+  );
+}
+
+/** A row's explanatory detail (DNS instructions, warnings): its own line, last. */
+export const RECORD_NOTE = "order-9 basis-full text-[0.72rem] leading-relaxed text-muted-foreground [&_code]:[overflow-wrap:anywhere]";
+
+/** The link/button that names a row. */
+export const RECORD_TITLE = "cursor-pointer border-0 bg-transparent p-0 text-start text-[0.84rem] font-medium underline-offset-2 hover:underline";
+
+/**
+ * A dense table in a bounded scroll box with a sticky head. The caption names
+ * it for assistive tech and for `getByRole("table", { name })` in the e2e
+ * suite, so it stays even though it is visually hidden.
+ */
+export function DataTable({ caption, head, children, className }: {
+  caption: string;
+  head: ReactNode;
+  children: ReactNode;
+  className?: string;
+}) {
+  return (
+    <Table
+      containerClassName={cn("mt-3 max-h-[34rem] overflow-auto rounded-md border border-border", className)}
+      className="min-w-[30rem] text-[0.78rem]"
+    >
+      <caption className="sr-only">{caption}</caption>
+      <TableHeader className="[&_th]:sticky [&_th]:top-0 [&_th]:z-1 [&_th]:bg-card [&_th]:px-3.5 [&_th]:py-2.5 [&_th]:text-start [&_th]:text-[0.68rem] [&_th]:font-semibold [&_th]:tracking-wider [&_th]:whitespace-nowrap [&_th]:text-muted-foreground [&_th]:uppercase [&_tr]:border-b [&_tr]:border-border">
+        {head}
+      </TableHeader>
+      <TableBody className="[&_td]:border-t [&_td]:border-border [&_td]:px-3.5 [&_td]:py-2.5 [&_td]:align-middle [&_td]:whitespace-nowrap [&_td:last-child]:whitespace-normal [&_tr:first-child_td]:border-t-0 [&_tr:hover]:bg-accent [&_td:first-child]:text-foreground">
+        {children}
+      </TableBody>
+    </Table>
+  );
+}
+
+/** Right-aligned, tabular numeric cell; and the trailing actions cell. */
+export const NUM_CELL = "text-end tabular-nums";
+export const ACTIONS_CELL = "flex items-center justify-end gap-2 [&_button]:h-8 [&_button]:px-2.5";
+
+/** Status pip + label. `live` is the good state. */
+export function Status({ live, children }: { live?: boolean; children: ReactNode }) {
+  return (
+    <span className={cn(
+      "inline-flex min-w-22 items-center gap-1.5 text-[0.72rem] font-semibold",
+      "before:size-1.5 before:rounded-full before:content-['']",
+      live ? "text-success before:bg-success" : "text-muted-foreground before:bg-muted-foreground",
+    )}>
+      {children}
+    </span>
+  );
+}
+
+/* ---------------------------------------------------------------------------
+ * Panels
+ *
+ * One component instead of the eight `data-panel …` class combinations the
+ * routes used to spell out by hand. `padded` is the distinction that actually
+ * mattered and that the old CSS kept getting wrong: a bare panel has no inset
+ * so its rows can divide and hover edge to edge, and its children own the
+ * 1.25rem; a padded panel already insets, so its children must not inset again.
+ * ------------------------------------------------------------------------- */
+const PANEL_BASE = "group/panel overflow-hidden rounded-lg border border-border bg-card [&+&]:mt-6 max-[480px]:rounded-[7px]";
+
+export function Panel({
+  variant = "form", className, children, ...section
+}: React.ComponentProps<"section"> & {
+  /** form: a reading measure for fields and prose. wide: full column, for
+   *  tables and charts. bare: no padding, for panels that are just rows. */
+  variant?: "form" | "wide" | "bare";
+}) {
+  return (
+    <section
+      className={cn(
+        PANEL_BASE,
+        variant === "form" && "max-w-[46rem] p-6",
+        variant !== "bare" && "is-padded",
+        variant === "wide" && "max-w-none p-6",
+        className,
+      )}
+      {...section}
+    >
+      {children}
+    </section>
+  );
+}
+
+/** The muted "loading…" body a panel shows while its data is in flight. */
+export function LoadingPanel({ children }: { children: ReactNode }) {
+  return (
+    <Panel variant="bare" className="min-h-56 pt-12 text-muted-foreground" aria-live="polite">{children}</Panel>
+  );
+}
+
+/**
+ * Section heading + optional action, shared by every panel.
+ *
+ * The inset comes from the panel, not from here: a bare panel's heading owns
+ * the 1.25rem, a padded one's must not add to the padding the panel already
+ * has. Reading that off the parent is what the old CSS got wrong — it inset
+ * twice in .settings-panel, so the title sat 1.25rem right of its own rule.
+ */
 export function PanelHeading({ title, description, action }: { title: string; description?: ReactNode; action?: ReactNode }) {
   return (
-    <div className="panel-heading">
-      <div><h2>{title}</h2>{description && <p>{description}</p>}</div>
+    <div className="flex items-center justify-between gap-4 border-b border-border px-5 py-[1.1rem] group-[.is-padded]/panel:px-0 group-[.is-padded]/panel:pt-0 group-[.is-padded]/panel:pb-5">
+      <div>
+        <h2 className="m-0 text-[0.95rem] font-semibold tracking-[-0.015em] group-[.is-padded]/panel:text-base">{title}</h2>
+        {description && <p className="mt-1.5 max-w-[38rem] text-[0.875rem] leading-normal text-muted-foreground">{description}</p>}
+      </div>
       {action}
     </div>
   );
 }
 
 /**
- * Destructive confirmation in a native <dialog>: focus is trapped by the
- * platform, Escape closes it, and the trigger regains focus on close — none of
- * which window.confirm() gives us a way to style, and all of which a bespoke
- * modal would have to reimplement.
+ * The "nothing here yet" body. A centred hero when it fills a bare panel; a
+ * plain line of text when it sits between a heading and a form in a padded one.
+ */
+export function EmptyState({ title, children, className }: { title?: string; children: ReactNode; className?: string }) {
+  return (
+    <div className={cn(
+      "px-5 py-12 text-center group-[.is-padded]/panel:px-0 group-[.is-padded]/panel:py-5 group-[.is-padded]/panel:text-start",
+      className,
+    )}>
+      {title && <h2 className="m-0 text-[1.1rem] font-semibold">{title}</h2>}
+      <div className="mx-auto mt-2.5 max-w-[36rem] text-[0.84rem] leading-relaxed text-muted-foreground group-[.is-padded]/panel:mx-0 [&_code]:text-foreground">
+        {children}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Destructive confirmation, on Radix's AlertDialog: focus is trapped, Escape
+ * closes, the trigger regains focus on close, and the dialog is portalled so a
+ * row's overflow cannot clip it — the last of which the previous native
+ * <dialog> in a table cell did not guarantee.
  */
 export function ConfirmButton({
   label, busyLabel, title, description, confirmLabel, onConfirm, disabled,
@@ -163,39 +377,45 @@ export function ConfirmButton({
   triggerVariant?: "primary" | "quiet" | "danger";
   className?: string;
 }) {
-  const dialog = useRef<HTMLDialogElement>(null);
+  const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
-  const titleId = `confirm-${useId()}`;
 
   const run = async () => {
     setBusy(true);
     try { await onConfirm(); } finally {
       setBusy(false);
-      dialog.current?.close();
+      setOpen(false);
     }
   };
 
   return (
-    <>
-      <Button variant={triggerVariant ?? variant} className={className} disabled={disabled} busy={busy} busyLabel={busyLabel}
-        onClick={() => dialog.current?.showModal()}>
-        {label}
-      </Button>
-      <dialog className="confirm-dialog" ref={dialog} aria-labelledby={titleId}>
-        <h2 id={titleId}>{title}</h2>
-        <div className="confirm-body">{description}</div>
-        <div className="confirm-actions">
-          <Button variant="quiet" onClick={() => dialog.current?.close()}>Cancel</Button>
-          <Button variant={variant} busy={busy} busyLabel={busyLabel} onClick={() => void run()}>{confirmLabel}</Button>
-        </div>
-      </dialog>
-    </>
+    <AlertDialog open={open} onOpenChange={setOpen}>
+      <AlertDialogTrigger asChild>
+        <Button variant={triggerVariant ?? variant} className={className} disabled={disabled} busy={busy} busyLabel={busyLabel}>
+          {label}
+        </Button>
+      </AlertDialogTrigger>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>{title}</AlertDialogTitle>
+          <AlertDialogDescription asChild>
+            <div className="text-sm leading-relaxed text-muted-foreground">{description}</div>
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel asChild><Button variant="quiet">Cancel</Button></AlertDialogCancel>
+          <AlertDialogAction asChild onClick={(event) => { event.preventDefault(); void run(); }}>
+            <Button variant={variant} busy={busy} busyLabel={busyLabel}>{confirmLabel}</Button>
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
   );
 }
 
 export function SproutboatMark() {
   return (
-    <svg className="sproutboat-mark" viewBox="0 0 32 32" aria-hidden="true">
+    <svg className="size-[1.65rem] text-brand" viewBox="0 0 32 32" aria-hidden="true">
       <rect width="32" height="32" rx="8" fill="currentColor" />
       <path
         d="M10 23V9h7.3c3.3 0 5.4 1.8 5.4 4.7 0 3-2.1 4.8-5.4 4.8H14V23h-4Zm4-8h3c1.1 0 1.7-.5 1.7-1.3 0-.9-.6-1.4-1.7-1.4h-3V15Z"
@@ -219,7 +439,7 @@ const NAV_ICON_PATHS = {
     admin: <><path d="M8 2.5 3.5 4.2v3.5c0 3 1.9 5 4.5 5.8 2.6-.8 4.5-2.8 4.5-5.8V4.2z" /></>,
 };
 function NavIcon({ name }: { name: keyof typeof NAV_ICON_PATHS }) {
-  return <svg className="nav-icon" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="1.25" strokeLinecap="round" strokeLinejoin="round">{NAV_ICON_PATHS[name]}</svg>;
+  return <svg className="size-4 shrink-0" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="1.25" strokeLinecap="round" strokeLinejoin="round">{NAV_ICON_PATHS[name]}</svg>;
 }
 export function Arrow() {
   return (
@@ -282,6 +502,22 @@ const EXACT = { exact: true } as const;
  * keyboard operable and expandable without script — and `open` starts the group
  * expanded whenever the current route lives inside it.
  */
+/** One nav row. Shared by links and by a group's <summary>, so they line up. */
+const NAV_LINK = "flex items-center gap-2.5 rounded-md px-2.5 py-2 text-[0.82rem] text-muted-foreground no-underline hover:bg-accent aria-[current=page]:bg-accent aria-[current=page]:font-medium aria-[current=page]:text-foreground nav-collapsed:justify-center nav-collapsed:px-0 max-[800px]:whitespace-nowrap";
+const NAV_SECTION = "px-2.5 pb-1.5 text-[0.68rem] font-semibold tracking-wider text-muted-foreground uppercase max-[800px]:hidden nav-collapsed:hidden";
+const MENU_ITEM = "rounded border-0 bg-none px-2 py-1.5 text-left text-[0.8rem] text-muted-foreground no-underline hover:bg-accent hover:text-foreground";
+const AVATAR = "grid size-8 cursor-pointer place-items-center overflow-hidden rounded-[7px] border border-border bg-secondary text-[0.75rem] text-foreground list-none [&::-webkit-details-marker]:hidden";
+/** Small outlined pill: the Admin marker and the log table's Cold flag. */
+export const BADGE = "inline-block rounded-full border border-border px-1.5 py-0.5 text-[0.7rem]";
+/** Label text hidden when the rail is collapsed, but kept on narrow screens
+ *  where the rail becomes a horizontal strip and the icons alone would not do. */
+const NAV_LABEL = "nav-collapsed:hidden max-[800px]:nav-collapsed:inline";
+
+/**
+ * A collapsible nav section. `<details>` is the platform's disclosure widget —
+ * keyboard operable and expandable without script — and `open` starts the group
+ * expanded whenever the current route lives inside it.
+ */
 function NavGroup({ label, groupKey, icon, routeOpen, children }: {
   label: string;
   /** Stable key for the pre-paint script and the stored preference. */
@@ -304,21 +540,27 @@ function NavGroup({ label, groupKey, icon, routeOpen, children }: {
 
   return (
     <details
-      className={routeOpen ? "nav-group nav-group-current" : "nav-group"}
+      className="group/nav m-0"
       data-group={groupKey}
       open
       suppressHydrationWarning
       ref={group}
       onToggle={(event) => localStorage.setItem(`sproutboat-nav-group:${groupKey}`, event.currentTarget.open ? "open" : "closed")}
     >
-      <summary className="nav-link nav-group-summary">
+      {/* Collapsed, a group's children are hidden, so the icon has to carry
+          "you are here" on its own. */}
+      <summary className={cn(
+        NAV_LINK, "w-full cursor-pointer list-none [&::-webkit-details-marker]:hidden",
+        routeOpen && "nav-collapsed:bg-accent nav-collapsed:text-foreground",
+      )}>
         <NavIcon name={icon} />
-        <span>{label}</span>
-        <svg className="nav-chevron" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="1.25" strokeLinecap="round" strokeLinejoin="round">
+        <span className={cn("flex-1", NAV_LABEL)}>{label}</span>
+        <svg className={cn("size-3.5 shrink-0 transition-[rotate] duration-150 group-open/nav:rotate-90 motion-reduce:transition-none", NAV_LABEL)}
+          viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="1.25" strokeLinecap="round" strokeLinejoin="round">
           <path d="m6 4 4 4-4 4" />
         </svg>
       </summary>
-      <div className="nav-group-items">{children}</div>
+      <div className="mt-0.5 mb-1.5 grid gap-0.5 nav-collapsed:hidden max-[800px]:nav-collapsed:grid">{children}</div>
     </details>
   );
 }
@@ -347,63 +589,79 @@ export function Shell({
   };
   const username = account?.profile?.username;
   const displayName = username || account?.user?.name || "account";
+  const subLink = cn(NAV_LINK, "ps-[2.3rem] nav-collapsed:ps-0");
   return (
-    <div className="app-shell">
-      <aside className="sidebar">
-        <div className="sidebar-top">
-          <Link className="brand" to="/">
+    <div className="grid min-h-screen grid-cols-[15rem_minmax(0,1fr)] nav-collapsed:grid-cols-[4rem_minmax(0,1fr)] max-[800px]:grid-cols-1 max-[800px]:content-start max-[800px]:nav-collapsed:grid-cols-1">
+      <aside className="sticky top-0 flex h-screen flex-col border-r border-border bg-card px-3 py-[1.15rem] nav-collapsed:px-2 max-[800px]:static max-[800px]:h-auto max-[800px]:border-r-0 max-[800px]:border-b">
+        <div className="flex items-center justify-between gap-2 px-2 nav-collapsed:justify-center nav-collapsed:px-0">
+          <Link className="inline-flex items-center gap-2.5 px-2 py-1 text-[0.95rem] font-extrabold tracking-tight no-underline" to="/">
             <SproutboatMark />
-            <span>Sproutboat</span>
+            <span className="nav-collapsed:hidden">Sproutboat</span>
           </Link>
-          <button type="button" className="nav-toggle" onClick={toggleNav}
+          <button type="button"
+            className="grid size-8 place-items-center rounded-md border-0 bg-transparent text-muted-foreground hover:bg-accent hover:text-foreground [&_svg]:size-4"
+            onClick={toggleNav}
             aria-expanded={!collapsed} aria-label={collapsed ? "Expand navigation" : "Collapse navigation"}>
             <svg viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="1.25" strokeLinecap="round" strokeLinejoin="round">
               <rect x="2" y="3" width="12" height="10" rx="1.5" /><path d="M6.5 3v10" />
             </svg>
           </button>
         </div>
-        <nav aria-label="Primary navigation">
-          <Link className="nav-link" to="/" activeOptions={EXACT} activeProps={NAV_ACTIVE}>
-            <NavIcon name="overview" /><span>Overview</span>
+        <nav className="mt-11 grid gap-0.5 max-[800px]:mt-4 max-[800px]:flex max-[800px]:overflow-auto" aria-label="Primary navigation">
+          <Link className={NAV_LINK} to="/" activeOptions={EXACT} activeProps={NAV_ACTIVE}>
+            <NavIcon name="overview" /><span className={NAV_LABEL}>Overview</span>
           </Link>
 
-          <span className="nav-section-label">Build</span>
+          <span className={NAV_SECTION}>Build</span>
           <NavGroup label="Compute" groupKey="compute" icon="compute" routeOpen={computeOpen}>
-            <Link className="nav-link" to="/projects" activeProps={NAV_ACTIVE}>Sprouts</Link>
-            <Link className="nav-link" to="/queues" activeProps={NAV_ACTIVE}>Queues</Link>
+            <Link className={subLink} to="/projects" activeProps={NAV_ACTIVE}>Sprouts</Link>
+            <Link className={subLink} to="/queues" activeProps={NAV_ACTIVE}>Queues</Link>
           </NavGroup>
           <NavGroup label="Storage &amp; databases" groupKey="storage" icon="storage" routeOpen={storageOpen}>
-            <Link className="nav-link" to="/kv" activeProps={NAV_ACTIVE}>KV</Link>
-            <Link className="nav-link" to="/d1" activeProps={NAV_ACTIVE}>D1</Link>
-            <Link className="nav-link" to="/r2" activeProps={NAV_ACTIVE}>R2</Link>
+            <Link className={subLink} to="/kv" activeProps={NAV_ACTIVE}>KV</Link>
+            <Link className={subLink} to="/d1" activeProps={NAV_ACTIVE}>D1</Link>
+            <Link className={subLink} to="/r2" activeProps={NAV_ACTIVE}>R2</Link>
           </NavGroup>
 
-          <span className="nav-section-label nav-section-secondary">Account</span>
-          <Link className="nav-link" to="/settings" activeProps={NAV_ACTIVE}><NavIcon name="settings" /><span>Settings</span></Link>
+          <span className={cn(NAV_SECTION, "mt-5")}>Account</span>
+          <Link className={NAV_LINK} to="/settings" activeProps={NAV_ACTIVE}>
+            <NavIcon name="settings" /><span className={NAV_LABEL}>Settings</span>
+          </Link>
           {account?.isAdmin && (
-            <Link className="nav-link" to="/admin" activeProps={NAV_ACTIVE}><NavIcon name="admin" /><span>Admin</span></Link>
+            <Link className={NAV_LINK} to="/admin" activeProps={NAV_ACTIVE}>
+              <NavIcon name="admin" /><span className={NAV_LABEL}>Admin</span>
+            </Link>
           )}
         </nav>
-        <div className="sidebar-bottom">
-          <span className="status-dot" aria-hidden="true" />
+        <div className="mx-2 mt-auto border-t border-border pt-4 text-[0.72rem] text-muted-foreground max-[800px]:hidden nav-collapsed:hidden">
+          <span className="mr-1.5 inline-block size-[0.45rem] rounded-full bg-success" aria-hidden="true" />
           Experimental VPS POC
         </div>
       </aside>
-      <div className="main-column">
-        <header className="topbar">
-          <p><span>Personal account</span><b>/</b>{breadcrumb(pathname)}</p>
-          <div className="topbar-actions">
-            {account?.isAdmin && <span className="badge neutral">Admin</span>}
-            <details className="account-menu">
-              <summary aria-label="Open account menu" className="avatar"><Avatar image={account?.user?.image} label={displayName} /></summary>
-              <div className="account-dropdown">
-                {username ? <><strong>{username}</strong><Link to="/profile">Profile</Link><Link to="/settings">Settings</Link><button type="button" onClick={toggleTheme}>Toggle theme</button><button type="button" onClick={logout}>Log out</button></> : <><strong>Account</strong><Link to="/login">Sign in</Link></>}
+      <div className="flex min-h-dvh flex-col">
+        <header className="sticky top-0 z-5 flex h-14 items-center justify-between border-b border-border bg-[color-mix(in_srgb,var(--color-background)_90%,transparent)] px-8 backdrop-blur max-[800px]:px-5">
+          <p className="m-0 flex items-center gap-2 text-[0.8rem] whitespace-nowrap text-muted-foreground">
+            <span className="font-medium text-foreground max-[480px]:hidden">Personal account</span>
+            <span className="font-normal text-line-strong max-[480px]:hidden">/</span>
+            {breadcrumb(pathname)}
+          </p>
+          <div className="flex items-center gap-3">
+            {account?.isAdmin && <span className={BADGE}>Admin</span>}
+            <details className="relative">
+              <summary aria-label="Open account menu" className={AVATAR}><Avatar image={account?.user?.image} label={displayName} /></summary>
+              <div className="absolute top-[calc(100%+0.5rem)] right-0 z-2 grid w-44 gap-0.5 rounded-lg border border-border bg-popover p-2.5 shadow-[0_16px_48px_rgb(0_0_0/35%)]">
+                {username
+                  ? <><strong className="px-2 pt-1.5 pb-2.5 text-[0.8rem]">{username}</strong><Link className={MENU_ITEM} to="/profile">Profile</Link><Link className={MENU_ITEM} to="/settings">Settings</Link><button type="button" className={MENU_ITEM} onClick={toggleTheme}>Toggle theme</button><button type="button" className={MENU_ITEM} onClick={logout}>Log out</button></>
+                  : <><strong className="px-2 pt-1.5 pb-2.5 text-[0.8rem]">Account</strong><Link className={MENU_ITEM} to="/login">Sign in</Link></>}
               </div>
             </details>
           </div>
         </header>
-        <main id="content">{children}</main>
-        <footer className="app-footer"><span>Sproutboat experimental VPS platform</span><span>© {new Date().getFullYear()} Sproutboat</span><a href="mailto:hello@sproutboat.com">Contact</a></footer>
+        <main id="content" className="mx-auto w-full max-w-[1220px] grow px-10 pt-13 pb-20 max-[800px]:px-5 max-[800px]:pt-8 max-[800px]:pb-16">{children}</main>
+        <footer className="mt-auto flex justify-between gap-4 border-t border-border px-8 py-5 text-[0.7rem] text-muted-foreground max-[800px]:px-5 max-[480px]:flex-col max-[480px]:items-start">
+          <span>Sproutboat experimental VPS platform</span><span>© {new Date().getFullYear()} Sproutboat</span>
+          <a className="text-inherit underline-offset-2" href="mailto:hello@sproutboat.com">Contact</a>
+        </footer>
       </div>
     </div>
   );
@@ -454,8 +712,8 @@ export function DeleteProject({ name, onDeleted, triggerLabel = "Delete project"
 
   const mismatch = confirm !== "" && confirm !== name;
   return (
-    <form className="danger-confirm" onSubmit={submit}>
-      <div className="danger-confirm-row">
+    <form className="col-span-full grid gap-3 pt-1 pb-2" onSubmit={submit}>
+      <div className="flex flex-wrap items-end gap-2.5">
         <TextField
           id={fieldId}
           label={`Type ${name} to permanently delete this project, every deployed version, and its route`}
@@ -486,14 +744,19 @@ export function Copy({ value }: { value: string }) {
       timer.current = setTimeout(() => setDone(false), 1200);
     } catch { /* clipboard blocked */ }
   };
-  return <button type="button" className="copy-button" onClick={() => void copy()}>{done ? "Copied" : "Copy"}</button>;
+  return (
+    <button type="button" onClick={() => void copy()}
+      className="ms-1.5 rounded-[5px] border border-border bg-transparent px-1.5 py-0.5 align-middle text-[0.68rem] text-muted-foreground transition-[border-color,color,scale] duration-150 hover:border-line-strong hover:text-foreground active:scale-96">
+      {done ? "Copied" : "Copy"}
+    </button>
+  );
 }
 
 /** #18: the GitHub avatar with the username initial as fallback when it is absent or fails to load. */
 export function Avatar({ image, label }: { image?: string | null; label: string }) {
   const [failed, setFailed] = useState(false);
   if (image && !failed) {
-    return <img className="avatar-img" src={image} alt={`${label} avatar`} width={32} height={32} onError={() => setFailed(true)} />;
+    return <img className="block size-full object-cover" src={image} alt={`${label} avatar`} width={32} height={32} onError={() => setFailed(true)} />;
   }
   return <span aria-hidden="true">{label.slice(0, 1).toUpperCase() || "?"}</span>;
 }
@@ -507,13 +770,17 @@ export function Metric({
   label: string;
   value: string;
   detail: string;
+  /** `warning` is what admin uses for a non-zero error or ban count. */
   tone?: "neutral" | "warning";
 }) {
   return (
-    <section className={`metric-card ${tone}`} aria-label={label}>
-      <p>{label}</p>
-      <strong>{value}</strong>
-      <span>{detail}</span>
+    <section className="flex min-h-28 flex-col rounded-lg border border-border bg-card px-[1.15rem] py-4" aria-label={label}>
+      <p className="m-0 text-[0.72rem] text-muted-foreground">{label}</p>
+      <strong className={cn(
+        "mt-[1.35rem] mb-1 block text-[2rem] font-bold tracking-[-0.04em] tabular-nums",
+        tone === "warning" && "text-coral",
+      )}>{value}</strong>
+      <span className="text-[0.72rem] text-muted-foreground">{detail}</span>
     </section>
   );
 }

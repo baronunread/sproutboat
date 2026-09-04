@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useState } from "react";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
-import { ConfirmButton, Copy, PanelHeading, SelectField, StatusMessage } from "../components";
+import { ConfirmButton, Copy, DataTable, Panel, PanelHeading, SelectField, Status, StatusMessage } from "../components";
 import { mutate, relativeTime, useProject } from "../dashboard-data";
+import { buttonVariants } from "@/components/ui/button";
 
 export const Route = createFileRoute("/projects_/$name/deployments_/$id")({
   component: DeploymentDetail,
@@ -77,57 +78,57 @@ function DeploymentDetail() {
 
   return (
     <>
-      <p className="crumb"><Link to="/projects/$name/deployments" params={{ name }}>Deployments</Link> <span>/</span> {id.slice(0, 8)}</p>
+      <p className="m-0 mb-2 text-[0.78rem] text-muted-foreground [&_a]:underline-offset-2 [&_a:hover]:underline [&>span]:mx-1.5"><Link to="/projects/$name/deployments" params={{ name }}>Deployments</Link> <span>/</span> {id.slice(0, 8)}</p>
 
       {state === "loading" ? (
-        <section className="data-panel loading-state" aria-live="polite">Loading deployment…</section>
+        <Panel variant="bare" className="min-h-56 px-5 pt-12 text-muted-foreground" aria-live="polite">Loading deployment…</Panel>
       ) : state === "missing" ? (
-        <section className="data-panel empty-state">
+        <Panel variant="bare">
           <h2>Deployment not found</h2>
           <p>This version may have been deleted.</p>
-          <Link className="button primary" to="/projects/$name/deployments" params={{ name }}>Back to deployments</Link>
-        </section>
+          <Link className={buttonVariants({ variant: "default", className: "text-[0.82rem]" })} to="/projects/$name/deployments" params={{ name }}>Back to deployments</Link>
+        </Panel>
       ) : state === "error" || !detail ? (
-        <p className="form-error" role="alert">Could not load this deployment. Refresh and try again.</p>
+        <StatusMessage tone="error">Could not load this deployment. Refresh and try again.</StatusMessage>
       ) : (
         <>
-          <section className="data-panel settings-panel">
+          <Panel variant="wide">
             <PanelHeading title={`Version ${detail.id.slice(0, 8)}`} />
-            <p><b className={detail.active ? "status live" : "status"}>{detail.active ? "Active" : "Superseded"}</b></p>
-            <dl className="detail-grid">
+            <p><Status live={detail.active}>{detail.active ? "Active" : "Superseded"}</Status></p>
+            <dl className="mt-5 grid grid-cols-[repeat(auto-fit,minmax(16rem,1fr))] gap-x-8 gap-y-4 [&_code]:text-[0.78rem] [&_dd]:mt-1 [&_dd]:text-[0.85rem] [&_dd]:[overflow-wrap:anywhere] [&_dt]:text-[0.72rem] [&_dt]:tracking-wide [&_dt]:text-muted-foreground [&_dt]:uppercase">
               <div><dt>Deployment ID</dt><dd><code>{detail.id}</code><Copy value={detail.id} /></dd></div>
               <div><dt>Route</dt><dd><code>{detail.hostname}</code></dd></div>
               <div><dt>Artifact digest</dt><dd><code>{detail.artifact}</code><Copy value={detail.artifact} /></dd></div>
               <div><dt>Deployed by</dt><dd>{detail.deployedBy ?? "—"}</dd></div>
               <div><dt>Deployed</dt><dd>{new Date(detail.deployedAt).toLocaleString()} · {relativeTime(detail.deployedAt)}</dd></div>
             </dl>
-          </section>
+          </Panel>
 
           <BindingsSummary bindings={detail.bindings} resources={detail.resources} />
 
-          <section className="data-panel settings-panel">
+          <Panel variant="wide">
             <PanelHeading title="Artifact manifest" />
             {detail.manifest ? (
-              <dl className="detail-grid">
+              <dl className="mt-5 grid grid-cols-[repeat(auto-fit,minmax(16rem,1fr))] gap-x-8 gap-y-4 [&_code]:text-[0.78rem] [&_dd]:mt-1 [&_dd]:text-[0.85rem] [&_dd]:[overflow-wrap:anywhere] [&_dt]:text-[0.72rem] [&_dt]:tracking-wide [&_dt]:text-muted-foreground [&_dt]:uppercase">
                 {COMPARED.map(([key, label]) => (
                   <div key={key}><dt>{label}</dt><dd><code>{String(detail.manifest?.[key])}</code></dd></div>
                 ))}
               </dl>
             ) : (
-              <p className="form-status">Artifact metadata is unavailable{detail.manifestError ? `: ${detail.manifestError}` : "."}</p>
+              <p className="mb-4 text-[0.85rem] text-muted-foreground">Artifact metadata is unavailable{detail.manifestError ? `: ${detail.manifestError}` : "."}</p>
             )}
-          </section>
+          </Panel>
 
           <Compare name={name} current={detail} versions={deployments.filter((version) => version.id !== detail.id)} />
 
-          <section className="data-panel settings-panel">
+          <Panel>
             <PanelHeading title="Actions" />
             {detail.active ? (
               <StatusMessage>
                 The active version can&apos;t be rolled back or deleted. Roll back another version, or replace it with a new deploy.
               </StatusMessage>
             ) : (
-              <div className="form-actions">
+              <div data-slot="form-actions" className="mt-1 flex flex-wrap items-center gap-2.5">
                 <ConfirmButton
                   label="Roll back to this version"
                   busyLabel="Rolling back…"
@@ -150,7 +151,7 @@ function DeploymentDetail() {
               </div>
             )}
             {error && <StatusMessage tone="error">{error}</StatusMessage>}
-          </section>
+          </Panel>
         </>
       )}
     </>
@@ -177,24 +178,24 @@ function BindingsSummary({ bindings, resources }: { bindings: Bindings | null; r
   if (rows.length === 0 && bindings.outbound.length === 0) return null;
 
   return (
-    <section className="data-panel settings-panel">
+    <Panel variant="wide">
       <PanelHeading title="Bindings in this version" description="Baked into the artifact at build time." />
       {rows.length > 0 && (
-        <dl className="detail-grid">
+        <dl className="mt-5 grid grid-cols-[repeat(auto-fit,minmax(16rem,1fr))] gap-x-8 gap-y-4 [&_code]:text-[0.78rem] [&_dd]:mt-1 [&_dd]:text-[0.85rem] [&_dd]:[overflow-wrap:anywhere] [&_dt]:text-[0.72rem] [&_dt]:tracking-wide [&_dt]:text-muted-foreground [&_dt]:uppercase">
           {rows.map((entry) => (
             <div key={`${entry.kind}:${entry.binding}`}><dt>{entry.kind}</dt><dd><code>{entry.binding}</code></dd></div>
           ))}
         </dl>
       )}
       {bindings.outbound.length > 0 && (
-        <p className="hint">Outbound fetch allowed to: {bindings.outbound.map((host) => <code key={host}>{host} </code>)}</p>
+        <p className="mt-3 text-[0.75rem] text-muted-foreground">Outbound fetch allowed to: {bindings.outbound.map((host) => <code key={host}>{host} </code>)}</p>
       )}
       {resources.length > 0 && (
-        <p className="hint">
+        <p className="mt-3 text-[0.75rem] text-muted-foreground">
           Bound account resources: {resources.map((resource) => `${resource.name} (${resource.id})`).join(", ")}
         </p>
       )}
-    </section>
+    </Panel>
   );
 }
 
@@ -240,46 +241,40 @@ function Compare({ name, current, versions }: {
     : [];
 
   return (
-    <section className="data-panel wide-panel">
+    <Panel variant="wide">
       <PanelHeading title="Compare with another version" description="Which build inputs changed between two versions of this project." />
-      <div className="log-filters">
-        <SelectField label="Compare against" fieldClassName="grow" value={otherId} options={options}
-          onChange={(event) => setOtherId(event.target.value)} />
+      <div className="mt-5 mb-3 flex flex-wrap items-end gap-2.5">
+        <SelectField label="Compare against" fieldClassName="min-w-0 flex-[1_1_16rem]" value={otherId} options={options}
+          onValueChange={(value) => setOtherId(value)} />
       </div>
 
       {state === "loading" ? (
-        <p className="loading-state" aria-live="polite">Loading that version…</p>
+        <p className="min-h-56 px-5 pt-12 text-muted-foreground group-[.is-padded]/panel:px-0" aria-live="polite">Loading that version…</p>
       ) : state === "error" ? (
-        <p className="form-error" role="alert">Could not load that version.</p>
+        <StatusMessage tone="error">Could not load that version.</StatusMessage>
       ) : state === "ready" && other ? (
         !current.manifest || !other.manifest ? (
           <StatusMessage>One of these versions has no readable manifest, so there is nothing to compare.</StatusMessage>
         ) : differences.length === 0 ? (
           <StatusMessage tone="success">Identical build inputs — these versions differ only by when they were deployed.</StatusMessage>
         ) : (
-          <div className="log-scroll">
-            <table className="log-table compare-table">
-              <caption className="visually-hidden">Manifest differences between the two versions</caption>
-              <thead>
-                <tr>
+          <DataTable caption="Manifest differences between the two versions" className="[&_.compare-current]:text-sky"
+              head={<tr>
                   <th scope="col">Field</th>
                   <th scope="col">{other.id.slice(0, 8)}</th>
                   <th scope="col">{current.id.slice(0, 8)} (this version)</th>
-                </tr>
-              </thead>
-              <tbody>
-                {differences.map(([key, label]) => (
+                </tr>}
+            >
+              {differences.map(([key, label]) => (
                   <tr key={key}>
                     <td>{label}</td>
                     <td><code>{String(other.manifest?.[key])}</code></td>
-                    <td><code className="compare-current">{String(current.manifest?.[key])}</code></td>
+                    <td><code className="text-sky">{String(current.manifest?.[key])}</code></td>
                   </tr>
                 ))}
-              </tbody>
-            </table>
-          </div>
+            </DataTable>
         )
       ) : null}
-    </section>
+    </Panel>
   );
 }

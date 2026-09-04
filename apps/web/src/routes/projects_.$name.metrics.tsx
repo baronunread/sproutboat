@@ -1,4 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { StatusMessage } from "../components";
 import { useProject } from "../dashboard-data";
 import { TrafficCharts } from "../traffic-charts";
 
@@ -10,9 +11,7 @@ function ProjectMetrics() {
   return (
     <>
       {!active && (
-        <p className="status-message info" role="status">
-          This project has no active route right now — these charts cover past traffic only.
-        </p>
+        <StatusMessage>This project has no active route right now — these charts cover past traffic only.</StatusMessage>
       )}
       <TrafficCharts name={name} />
     </>

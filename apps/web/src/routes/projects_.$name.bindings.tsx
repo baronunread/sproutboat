@@ -1,5 +1,5 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { PanelHeading } from "../components";
+import { DataTable, Panel, PanelHeading, RecordList, RecordRow, StatusMessage } from "../components";
 import { useJson, useProject } from "../dashboard-data";
 
 /**
@@ -71,13 +71,13 @@ function ProjectBindings() {
 
   if (!activeVersion) {
     return (
-      <section className="data-panel settings-panel">
+      <Panel>
         <PanelHeading title="Bindings" description="What the running version can reach." />
-        <p className="empty-state">
+        <p className="px-5 py-12 text-center text-[0.84rem] leading-relaxed text-muted-foreground group-[.is-padded]/panel:px-0 group-[.is-padded]/panel:py-5 group-[.is-padded]/panel:text-start [&_code]:text-foreground">
           No active version. Bindings are declared in <code>sproutboat.jsonc</code> and baked into an artifact at build
           time, so they appear here once a version is serving.
         </p>
-      </section>
+      </Panel>
     );
   }
 
@@ -86,58 +86,52 @@ function ProjectBindings() {
 
   return (
     <>
-      <section className="data-panel wide-panel">
+      <Panel variant="wide">
         <PanelHeading
           title="Bindings"
           description={<>Declared by the active version&apos;s artifact. Change <code>sproutboat.jsonc</code> and redeploy to alter them.</>}
         />
 
         {state === "loading" ? (
-          <p className="loading-state" aria-live="polite">Loading bindings…</p>
+          <p className="min-h-56 px-5 pt-12 text-muted-foreground group-[.is-padded]/panel:px-0" aria-live="polite">Loading bindings…</p>
         ) : state === "error" ? (
-          <p className="form-error" role="alert">Could not load bindings. Refresh and try again.</p>
+          <StatusMessage tone="error">Could not load bindings. Refresh and try again.</StatusMessage>
         ) : !bindings ? (
-          <p className="empty-state">
+          <p className="px-5 py-12 text-center text-[0.84rem] leading-relaxed text-muted-foreground group-[.is-padded]/panel:px-0 group-[.is-padded]/panel:py-5 group-[.is-padded]/panel:text-start [&_code]:text-foreground">
             This version declares no bindings{data?.manifestError ? ` (${data.manifestError})` : ""}. Add them under{" "}
             <code>bindings</code> in <code>sproutboat.jsonc</code> and redeploy.
           </p>
         ) : rows.length === 0 ? (
-          <p className="empty-state">This version declares no bindings.</p>
+          <p className="px-5 py-12 text-center text-[0.84rem] leading-relaxed text-muted-foreground group-[.is-padded]/panel:px-0 group-[.is-padded]/panel:py-5 group-[.is-padded]/panel:text-start [&_code]:text-foreground">This version declares no bindings.</p>
         ) : (
-          <div className="log-scroll">
-            <table className="log-table">
-              <caption className="visually-hidden">Bindings declared by the active version</caption>
-              <thead>
-                <tr><th scope="col">Binding</th><th scope="col">Type</th><th scope="col">Target</th></tr>
-              </thead>
-              <tbody>
-                {rows.map((row) => (
+          <DataTable caption="Bindings declared by the active version"
+              head={<tr><th scope="col">Binding</th><th scope="col">Type</th><th scope="col">Target</th></tr>}
+            >
+              {rows.map((row) => (
                   <tr key={`${row.kind}:${row.binding}:${row.target}`}>
                     <td><code>{row.binding}</code></td>
                     <td>{KIND_LABEL.get(row.kind) ?? row.kind}</td>
                     <td>
                       {row.resourceId && KIND_PAGE.has(row.kind)
-                        ? <Link className="text-link" to={KIND_PAGE.get(row.kind)!}>{row.target}</Link>
+                        ? <Link className="text-[0.8rem] text-sky underline-offset-2 hover:underline" to={KIND_PAGE.get(row.kind)!}>{row.target}</Link>
                         : row.target}
-                      {row.resourceId && <small className="binding-id"> · <code>{row.resourceId}</code></small>}
+                      {row.resourceId && <small className="text-muted-foreground"> · <code>{row.resourceId}</code></small>}
                     </td>
                   </tr>
                 ))}
-              </tbody>
-            </table>
-          </div>
+            </DataTable>
         )}
-      </section>
+      </Panel>
 
       {bindings && bindings.crons.length > 0 && (
-        <section className="data-panel settings-panel">
+        <Panel>
           <PanelHeading title="Declared cron triggers" description="Frozen in the artifact, and fired against the active version. Run history is not surfaced yet (#81)." />
-          <ul className="record-list">
+          <RecordList>
             {bindings.crons.map((expression) => (
-              <li key={expression}><div><code>{expression}</code></div><span>Scheduled</span></li>
+              <RecordRow key={expression}><div><code>{expression}</code></div><span>Scheduled</span></RecordRow>
             ))}
-          </ul>
-        </section>
+          </RecordList>
+        </Panel>
       )}
     </>
   );

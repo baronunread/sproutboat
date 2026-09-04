@@ -4,6 +4,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "vite build --logLevel warn"
+    "build": "vite build --logLevel warn",
+    "typecheck": "tsc --noEmit"
   }
 }

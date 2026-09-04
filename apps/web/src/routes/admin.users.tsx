@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
-import { Button, Copy, PanelHeading, SelectField, StatusMessage, TextField } from "../components";
-import { relativeTime } from "../dashboard-data";
+import { Button, Copy, Panel, PanelHeading, RECORD_TITLE, RecordList, RecordRow, SelectField, Status, StatusMessage, TextField } from "../components";
+import { USERNAME_RULE, relativeTime } from "../dashboard-data";
 
 export const Route = createFileRoute("/admin/users")({ component: AdminUsers });
 
@@ -58,7 +58,7 @@ function AdminUsers() {
   };
 
   return (
-    <section className="data-panel wide-panel">
+    <Panel variant="wide">
       <PanelHeading
         title="Users"
         description="Accounts are created here — there is no self-service sign-up. Banning an account stops its routes immediately."
@@ -67,33 +67,33 @@ function AdminUsers() {
 
       {creating && <CreateUserForm onCreated={() => void load()} onClose={() => setCreating(false)} />}
 
-      <div className="log-filters">
-        <TextField label="Search users" type="search" fieldClassName="grow" placeholder="Search by email"
+      <div className="mt-5 mb-3 flex flex-wrap items-end gap-2.5">
+        <TextField label="Search users" type="search" fieldClassName="min-w-0 flex-[1_1_16rem]" placeholder="Search by email"
           value={query} onChange={(event) => { setOffset(0); setQuery(event.target.value); }} />
       </div>
       {note && <StatusMessage tone="error">{note}</StatusMessage>}
 
       {state === "loading" ? (
-        <p className="loading-state" aria-live="polite">Loading users…</p>
+        <p className="min-h-56 px-5 pt-12 text-muted-foreground group-[.is-padded]/panel:px-0" aria-live="polite">Loading users…</p>
       ) : state === "error" || !page ? (
-        <p className="form-error" role="alert">Could not load users. Refresh and try again.</p>
+        <StatusMessage tone="error">Could not load users. Refresh and try again.</StatusMessage>
       ) : page.users.length === 0 ? (
-        <p className="empty-state">No accounts match.</p>
+        <p className="px-5 py-12 text-center text-[0.84rem] leading-relaxed text-muted-foreground group-[.is-padded]/panel:px-0 group-[.is-padded]/panel:py-5 group-[.is-padded]/panel:text-start [&_code]:text-foreground">No accounts match.</p>
       ) : (
         <>
-          <ul className="user-list" aria-label="User accounts">
+          <ul className="m-0 mt-4 list-none p-0" aria-label="User accounts">
             {page.users.map((user) => (
               <UserItem key={user.id} user={user} onAct={act} />
             ))}
           </ul>
-          <div className="pager">
+          <div className="mt-4 flex items-center justify-center gap-4 text-[0.78rem] text-muted-foreground">
             <Button disabled={offset === 0} onClick={() => setOffset(Math.max(0, offset - PAGE))}>Previous</Button>
             <span>{offset + 1}–{Math.min(offset + page.users.length, page.total)} of {page.total}</span>
             <Button disabled={offset + PAGE >= page.total} onClick={() => setOffset(offset + PAGE)}>Next</Button>
           </div>
         </>
       )}
-    </section>
+    </Panel>
   );
 }
 
@@ -142,8 +142,8 @@ function CreateUserForm({ onCreated, onClose }: { onCreated: () => void; onClose
   }
 
   return (
-    <form className="create-user create-user-form" onSubmit={submit}>
-      <div className="form-grid two-up">
+    <form onSubmit={submit}>
+      <div className="mt-5 grid max-w-[46rem] grid-cols-[repeat(auto-fit,minmax(14rem,1fr))] gap-5 [&>[data-slot=form-actions]]:col-span-full">
         <TextField
           label="Email"
           type="email"
@@ -161,7 +161,7 @@ function CreateUserForm({ onCreated, onClose }: { onCreated: () => void; onClose
           value={username}
           onChange={(event) => { setUsername(event.target.value.toLowerCase()); setError(""); }}
           hint="3–32 lowercase letters, digits and hyphens. It appears in every route they deploy."
-          error={username !== "" && !/^[a-z0-9](?:[a-z0-9-]{1,30}[a-z0-9])?$/.test(username)
+          error={username !== "" && !USERNAME_RULE.test(username)
             ? "Use 3–32 lowercase letters, digits or hyphens." : null}
         />
         <TextField
@@ -178,7 +178,7 @@ function CreateUserForm({ onCreated, onClose }: { onCreated: () => void; onClose
           footer={<Button variant="quiet" onClick={() => setPassword(randomPassword())}>Generate a password</Button>}
         />
       </div>
-      <div className="form-actions">
+      <div data-slot="form-actions" className="mt-1 flex flex-wrap items-center gap-2.5">
         <Button variant="quiet" onClick={onClose}>Cancel</Button>
         <Button type="submit" variant="primary" busy={busy} busyLabel="Creating…" disabled={!email || !username || password.length < 10}>Create account</Button>
       </div>
@@ -225,60 +225,60 @@ function UserItem({ user, onAct }: { user: UserRow; onAct: (id: string, path: st
   };
 
   return (
-    <li className="user-item">
-      <div className="user-row">
-        <button type="button" className="record-title" aria-expanded={open} onClick={() => setOpen((value) => !value)}>{user.email}</button>
+    <li className="border-t border-border py-3 first:border-t-0 hover:bg-accent">
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-2 [&>button:first-child]:min-w-0 [&>button:first-child]:flex-[1_1_14rem] [&>button:not(:first-child)]:flex-none [&>small]:order-9 [&>small]:-mt-1 [&>small]:basis-full [&>small]:text-[0.72rem] [&>small]:text-muted-foreground [&>span]:flex-none [&>span]:text-[0.72rem] [&>span]:text-muted-foreground">
+        <button type="button" className={RECORD_TITLE} aria-expanded={open} onClick={() => setOpen((value) => !value)}>{user.email}</button>
         <small>{user.name ?? "—"} · {user.role} · joined {relativeTime(user.createdAt)}</small>
         <span>{user.projects} proj · {user.deployments} dep</span>
-        <b className={user.banned ? "status" : "status live"}>{user.banned ? "Banned" : "Active"}</b>
+        <Status live={!(user.banned)}>{user.banned ? "Banned" : "Active"}</Status>
         {user.banned
           ? <Button onClick={() => void onAct(user.id, "unban")}>Unban</Button>
           : <Button aria-expanded={banning} onClick={() => setBanning((value) => !value)}>Ban</Button>}
       </div>
 
-      {user.banned && user.banReason && <p className="hint">Reason: {user.banReason}{user.banExpires ? ` · lifts ${relativeTime(user.banExpires)}` : " · permanent"}</p>}
+      {user.banned && user.banReason && <p className="mt-3 text-[0.75rem] text-muted-foreground">Reason: {user.banReason}{user.banExpires ? ` · lifts ${relativeTime(user.banExpires)}` : " · permanent"}</p>}
 
       {banning && (
-        <div className="ban-form">
-          <TextField label="Ban reason" fieldClassName="grow" placeholder="Optional — shown in the users list"
+        <div className="mt-3 flex flex-wrap items-end gap-2.5">
+          <TextField label="Ban reason" fieldClassName="min-w-0 flex-[1_1_16rem]" placeholder="Optional — shown in the users list"
             value={reason} onChange={(event) => setReason(event.target.value)} />
           <SelectField label="Duration" value={String(duration)}
             options={DURATIONS.map(([label, seconds]) => [String(seconds), label] as const)}
-            onChange={(event) => setDuration(Number(event.target.value))} />
+            onValueChange={(value) => setDuration(Number(value))} />
           <Button onClick={() => setBanning(false)}>Cancel</Button>
           <Button variant="danger" busy={banBusy} busyLabel="Banning…" onClick={() => void submitBan()}>Ban account</Button>
         </div>
       )}
 
       {open && (
-        <div className="user-detail">
+        <div className="mt-3 border-l-2 border-border pl-4 [&_h4]:mt-4 [&_h4]:mb-1.5 [&_h4]:text-[0.78rem] [&_h4:first-child]:mt-0">
           {detailState === "loading" || detailState === "idle" ? (
-            <p className="loading-state" aria-live="polite">Loading…</p>
+            <p className="min-h-56 px-5 pt-12 text-muted-foreground group-[.is-padded]/panel:px-0" aria-live="polite">Loading…</p>
           ) : detailState === "error" || !detail ? (
-            <p className="form-error" role="alert">Could not load this account.</p>
+            <StatusMessage tone="error">Could not load this account.</StatusMessage>
           ) : (
             <>
               <h4>Deployments ({detail.deployments.length})</h4>
-              {detail.deployments.length === 0 ? <p className="hint">None.</p> : (
-                <ul className="record-list">
+              {detail.deployments.length === 0 ? <p className="mt-3 text-[0.75rem] text-muted-foreground">None.</p> : (
+                <RecordList>
                   {detail.deployments.map((deployment) => (
-                    <li key={deployment.id}>
+                    <RecordRow key={deployment.id}>
                       <div><strong>{deployment.project}</strong><small>{deployment.hostname}</small></div>
                       <span>{relativeTime(deployment.deployedAt)}</span>
-                      <b className={deployment.active ? "status live" : "status"}>{deployment.active ? "Active" : "Superseded"}</b>
-                    </li>
+                      <Status live={deployment.active}>{deployment.active ? "Active" : "Superseded"}</Status>
+                    </RecordRow>
                   ))}
-                </ul>
+                </RecordList>
               )}
               <h4>Sessions ({detail.sessions.length})</h4>
-              {detail.sessions.length === 0 ? <p className="hint">None.</p> : (
-                <ul className="session-list">
+              {detail.sessions.length === 0 ? <p className="mt-3 text-[0.75rem] text-muted-foreground">None.</p> : (
+                <ul className="m-0 list-none p-0 [&_li]:flex [&_li]:justify-between [&_li]:gap-3 [&_li]:border-t [&_li]:border-border [&_li]:py-1.5 [&_small]:text-muted-foreground">
                   {detail.sessions.map((session) => (
                     <li key={session.id}><span>{session.ipAddress ?? "unknown IP"}</span><small>expires {relativeTime(session.expiresAt)}</small></li>
                   ))}
                 </ul>
               )}
-              <div className="form-actions">
+              <div data-slot="form-actions" className="mt-1 flex flex-wrap items-center gap-2.5">
                 <Button onClick={() => void onAct(user.id, "sessions/revoke")}>Revoke all sessions</Button>
               </div>
             </>

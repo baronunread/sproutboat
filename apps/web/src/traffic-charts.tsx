@@ -1,5 +1,11 @@
 import { useCallback, useEffect, useState } from "react";
-import { SelectField } from "./components";
+import { Panel, PanelHeading, SelectField, StatusMessage } from "./components";
+import { cn } from "@/lib/utils";
+
+const STATUS_BAR = "block h-full min-w-0.5 rounded-[inherit] bg-muted-foreground";
+const STATUS_BAR_TONE = {
+  "2xx": "bg-success", "3xx": "bg-sky", "4xx": "bg-coral", "5xx": "bg-coral", other: "",
+} satisfies Record<StatusClass, string>;
 
 type StatusClass = "2xx" | "3xx" | "4xx" | "5xx" | "other";
 type Bucket = { start: string; count: number; errors: number; coldStarts: number };
@@ -50,16 +56,18 @@ const group = (value: number) => value.toLocaleString();
  * and a right-aligned tabular count. Sharing the component keeps status codes,
  * invocation status and methods on identical column edges.
  */
-function DistributionRow({ label, value, total, tone }: { label: string; value: number; total: number; tone?: string }) {
+function DistributionRow({ label, value, total, tone }: {
+  label: string; value: number; total: number; tone?: StatusClass;
+}) {
   const percent = total ? Math.round((value / total) * 100) : 0;
   return (
     <div>
       <dt>{label}</dt>
       <dd>
-        <div className="status-track">
-          <span className={tone ? `status-bar status-bar-${tone}` : "status-bar"} style={{ width: `${percent}%` }} />
+        <div className="h-2 overflow-hidden rounded-full bg-secondary">
+          <span className={tone ? cn(STATUS_BAR, STATUS_BAR_TONE[tone]) : STATUS_BAR} style={{ width: `${percent}%` }} />
         </div>
-        <span className="status-count">{group(value)}<small>{percent}%</small></span>
+        <span className="text-end text-[0.75rem] whitespace-nowrap tabular-nums [&_small]:ms-1.5 [&_small]:text-muted-foreground">{group(value)}<small>{percent}%</small></span>
       </dd>
     </div>
   );
@@ -86,7 +94,9 @@ function Sparkline({ values }: { values: number[] }) {
   const step = values.length > 1 ? 100 / (values.length - 1) : 0;
   const points = values.map((v, i) => `${(i * step).toFixed(2)},${(20 - (v / max) * 20).toFixed(2)}`).join(" ");
   return (
-    <svg className="metric-spark" viewBox="0 0 100 20" preserveAspectRatio="none" role="img" aria-hidden="true">
+    // Decorative: the card states the value and its delta in text, so the
+    // sparkline is hidden rather than given a role it would then have to label.
+    <svg className="mt-0.5 block h-[1.6rem] w-full" viewBox="0 0 100 20" preserveAspectRatio="none" aria-hidden="true">
       <polyline points={points} fill="none" stroke="var(--sky)" strokeWidth="1.5" vectorEffect="non-scaling-stroke" />
     </svg>
   );
@@ -99,13 +109,44 @@ function MetricCard({ title, value, delta, goodWhen = "up", spark }: {
   const dir = delta === null || Math.abs(delta) < 0.5 ? "flat" : delta > 0 ? "up" : "down";
   const tone = dir === "flat" ? "flat" : (dir === "up") === (goodWhen === "up") ? "up" : "down";
   return (
-    <div className="metric-card">
-      <span className="metric-title">{title}</span>
-      <span className="metric-value">{value}</span>
-      <span className={`metric-delta ${tone}`}>
+    <div className="flex flex-col gap-1.5 rounded-lg border border-border bg-card px-4 py-3.5">
+      <span className="text-[0.72rem] text-muted-foreground">{title}</span>
+      <span className="text-2xl tracking-tight tabular-nums">{value}</span>
+      <span className={cn("text-[0.72rem] tabular-nums", tone === "up" && "text-brand", tone === "down" && "text-coral", tone === "flat" && "text-muted-foreground")}>
         {delta === null ? "— no prior data" : `${delta > 0 ? "↑" : delta < 0 ? "↓" : ""} ${formatDelta(delta)} vs prev`}
       </span>
       {spark && spark.length > 1 && <Sparkline values={spark} />}
+    </div>
+  );
+}
+
+/** The KPI row. Its totals are derived from the buckets rather than served, so
+ *  it owns that arithmetic instead of running it inside the render tree. */
+function KpiCards({ metrics }: { metrics: Metrics }) {
+  const requests = metrics.buckets.reduce((sum, bucket) => sum + bucket.count, 0);
+  const errors = metrics.buckets.reduce((sum, bucket) => sum + bucket.errors, 0);
+  const errorRate = requests ? (errors / requests) * 100 : 0;
+  const previousErrorRate = metrics.previous.requests
+    ? (metrics.previous.errors / metrics.previous.requests) * 100
+    : 0;
+  const latencyDelta = metrics.latencyMs && metrics.previous.latencyP50 !== null
+    ? deltaPct(metrics.latencyMs.p50, metrics.previous.latencyP50)
+    : null;
+
+  return (
+    <div className="mt-5 grid grid-cols-[repeat(auto-fit,minmax(10.5rem,1fr))] gap-3">
+      <MetricCard title="Requests" value={group(requests)} goodWhen="up"
+        delta={deltaPct(requests, metrics.previous.requests)}
+        spark={metrics.buckets.map((bucket) => bucket.count)} />
+      <MetricCard title="Error rate" value={`${errorRate.toFixed(1)}%`} goodWhen="down"
+        delta={deltaPct(errorRate, previousErrorRate)}
+        spark={metrics.buckets.map((bucket) => bucket.errors)} />
+      <MetricCard title="Latency p50" goodWhen="down" delta={latencyDelta}
+        value={metrics.latencyMs ? `${group(metrics.latencyMs.p50)} ms` : "—"} />
+      <MetricCard title="Cache hit rate" goodWhen="up" delta={null}
+        value={metrics.cacheHitRate === null ? "—" : `${metrics.cacheHitRate.toFixed(1)}%`} />
+      <MetricCard title="Cold starts" value={group(metrics.coldStarts)} goodWhen="down" delta={null}
+        spark={metrics.buckets.map((bucket) => bucket.coldStarts)} />
     </div>
   );
 }
@@ -132,67 +173,56 @@ export function TrafficCharts({ name }: { name: string }) {
   const tickLabel = (iso: string) => (wide ? DAY : CLOCK).format(new Date(iso));
 
   return (
-    <section className="data-panel chart-panel">
-      <div className="panel-heading">
-        <div><h2>Traffic</h2><p>Aggregated from edge request logs. Coarse buckets over a bounded scan — not a metrics platform.</p></div>
-        <SelectField label="Time range" hideLabel value={range}
-          options={RANGES.map(([value, label]) => [value, `Last ${label}`] as const)}
-          onChange={(event) => setRange(event.target.value)} />
-      </div>
+    <Panel variant="wide">
+      <PanelHeading
+        title="Traffic"
+        description="Aggregated from edge request logs. Coarse buckets over a bounded scan — not a metrics platform."
+        action={
+          <SelectField label="Time range" hideLabel value={range} fieldClassName="min-w-44 shrink-0"
+            options={RANGES.map(([value, label]) => [value, `Last ${label}`] as const)}
+            onValueChange={(value) => setRange(value)} />
+        }
+      />
 
       {state === "loading" ? (
-        <p className="loading-state" aria-live="polite">Loading traffic…</p>
+        <p className="min-h-56 px-5 pt-12 text-muted-foreground group-[.is-padded]/panel:px-0" aria-live="polite">Loading traffic…</p>
       ) : state === "error" || !metrics ? (
-        <p className="form-error" role="alert">Could not load traffic. Refresh and try again.</p>
+        <StatusMessage tone="error">Could not load traffic. Refresh and try again.</StatusMessage>
       ) : metrics.sampleCount === 0 ? (
-        <p className="empty-state">No requests to this route in the selected range.</p>
+        <p className="px-5 py-12 text-center text-[0.84rem] leading-relaxed text-muted-foreground group-[.is-padded]/panel:px-0 group-[.is-padded]/panel:py-5 group-[.is-padded]/panel:text-start [&_code]:text-foreground">No requests to this route in the selected range.</p>
       ) : (
         <>
-          {metrics.windowTruncated && <p className="form-status">Older activity beyond the scan window is not included in these totals.</p>}
+          {metrics.windowTruncated && <p className="mb-4 text-[0.85rem] text-muted-foreground">Older activity beyond the scan window is not included in these totals.</p>}
 
-          {(() => {
-            const requests = metrics.buckets.reduce((sum, b) => sum + b.count, 0);
-            const errors = metrics.buckets.reduce((sum, b) => sum + b.errors, 0);
-            const errRate = requests ? (errors / requests) * 100 : 0;
-            const prevErrRate = metrics.previous.requests ? (metrics.previous.errors / metrics.previous.requests) * 100 : 0;
-            return (
-              <div className="metric-cards">
-                <MetricCard title="Requests" value={group(requests)} delta={deltaPct(requests, metrics.previous.requests)} goodWhen="up" spark={metrics.buckets.map((b) => b.count)} />
-                <MetricCard title="Error rate" value={`${errRate.toFixed(1)}%`} delta={deltaPct(errRate, prevErrRate)} goodWhen="down" spark={metrics.buckets.map((b) => b.errors)} />
-                <MetricCard title="Latency p50" value={metrics.latencyMs ? `${group(metrics.latencyMs.p50)} ms` : "—"} delta={metrics.latencyMs && metrics.previous.latencyP50 !== null ? deltaPct(metrics.latencyMs.p50, metrics.previous.latencyP50) : null} goodWhen="down" />
-                <MetricCard title="Cache hit rate" value={metrics.cacheHitRate === null ? "—" : `${metrics.cacheHitRate.toFixed(1)}%`} delta={null} goodWhen="up" />
-                <MetricCard title="Cold starts" value={group(metrics.coldStarts)} delta={null} goodWhen="down" spark={metrics.buckets.map((b) => b.coldStarts)} />
-              </div>
-            );
-          })()}
+          <KpiCards metrics={metrics} />
 
           <RequestBars buckets={metrics.buckets} tickLabel={tickLabel} />
 
-          <div className="chart-block">
+          <div className="mt-9 [&>h3]:m-0 [&>h3]:mb-3 [&>h3]:flex [&>h3]:flex-wrap [&>h3]:items-baseline [&>h3]:gap-1.5 [&>h3]:text-[0.85rem] [&>h3]:font-semibold [&_h3_small]:font-normal [&_h3_small]:text-muted-foreground">
             <h3>Status codes</h3>
-            <dl className="status-bars">
+            <dl className="m-0 grid gap-2 [&>div]:grid [&>div]:grid-cols-[minmax(4.5rem,6rem)_minmax(0,1fr)_auto] [&>div]:items-center [&>div]:gap-x-3.5 [&_dd]:m-0 [&_dd]:contents [&_dt]:text-[0.75rem] [&_dt]:tabular-nums [&_dt]:text-muted-foreground [&_dt]:[overflow-wrap:anywhere]">
               {STATUS_ROWS.map((cls) => (
                 <DistributionRow key={cls} label={cls} value={metrics.statusDistribution[cls]} total={metrics.sampleCount} tone={cls} />
               ))}
             </dl>
           </div>
 
-          <div className="chart-block">
+          <div className="mt-9 [&>h3]:m-0 [&>h3]:mb-3 [&>h3]:flex [&>h3]:flex-wrap [&>h3]:items-baseline [&>h3]:gap-1.5 [&>h3]:text-[0.85rem] [&>h3]:font-semibold [&_h3_small]:font-normal [&_h3_small]:text-muted-foreground">
             <h3>Latency</h3>
             {metrics.latencyMs ? (
-              <ul className="latency-tiles">
+              <ul className="m-0 grid list-none grid-cols-[repeat(auto-fit,minmax(7rem,8.5rem))] justify-start gap-x-8 gap-y-4 p-0 [&_span]:mt-0.5 [&_span]:block [&_span]:text-[0.72rem] [&_span]:text-muted-foreground [&_strong]:block [&_strong]:text-[1.35rem] [&_strong]:tracking-tight [&_strong]:tabular-nums">
                 <li><strong>{group(metrics.latencyMs.p50)} ms</strong><span>p50</span></li>
                 <li><strong>{group(metrics.latencyMs.p90)} ms</strong><span>p90</span></li>
                 <li><strong>{group(metrics.latencyMs.p99)} ms</strong><span>p99</span></li>
               </ul>
-            ) : <p className="empty-state">Not enough requests to compute latency percentiles.</p>}
-            <p className="hint">Nearest-rank percentiles over {group(metrics.sampleCount)} request{metrics.sampleCount === 1 ? "" : "s"}. The final bucket is still filling.</p>
+            ) : <p className="px-5 py-12 text-center text-[0.84rem] leading-relaxed text-muted-foreground group-[.is-padded]/panel:px-0 group-[.is-padded]/panel:py-5 group-[.is-padded]/panel:text-start [&_code]:text-foreground">Not enough requests to compute latency percentiles.</p>}
+            <p className="mt-3 text-[0.75rem] text-muted-foreground">Nearest-rank percentiles over {group(metrics.sampleCount)} request{metrics.sampleCount === 1 ? "" : "s"}. The final bucket is still filling.</p>
           </div>
 
           {metrics.ttfbMs && (
-            <div className="chart-block">
+            <div className="mt-9 [&>h3]:m-0 [&>h3]:mb-3 [&>h3]:flex [&>h3]:flex-wrap [&>h3]:items-baseline [&>h3]:gap-1.5 [&>h3]:text-[0.85rem] [&>h3]:font-semibold [&_h3_small]:font-normal [&_h3_small]:text-muted-foreground">
               <h3>Time to first byte <small>· edge → sprout response</small></h3>
-              <ul className="latency-tiles">
+              <ul className="m-0 grid list-none grid-cols-[repeat(auto-fit,minmax(7rem,8.5rem))] justify-start gap-x-8 gap-y-4 p-0 [&_span]:mt-0.5 [&_span]:block [&_span]:text-[0.72rem] [&_span]:text-muted-foreground [&_strong]:block [&_strong]:text-[1.35rem] [&_strong]:tracking-tight [&_strong]:tabular-nums">
                 <li><strong>{group(metrics.ttfbMs.p50)} ms</strong><span>p50</span></li>
                 <li><strong>{group(metrics.ttfbMs.p90)} ms</strong><span>p90</span></li>
                 <li><strong>{group(metrics.ttfbMs.p99)} ms</strong><span>p99</span></li>
@@ -201,20 +231,20 @@ export function TrafficCharts({ name }: { name: string }) {
           )}
 
           {metrics.cpuMs && (
-            <div className="chart-block">
+            <div className="mt-9 [&>h3]:m-0 [&>h3]:mb-3 [&>h3]:flex [&>h3]:flex-wrap [&>h3]:items-baseline [&>h3]:gap-1.5 [&>h3]:text-[0.85rem] [&>h3]:font-semibold [&_h3_small]:font-normal [&_h3_small]:text-muted-foreground">
               <h3>CPU time <small>· per invocation</small></h3>
-              <ul className="latency-tiles">
+              <ul className="m-0 grid list-none grid-cols-[repeat(auto-fit,minmax(7rem,8.5rem))] justify-start gap-x-8 gap-y-4 p-0 [&_span]:mt-0.5 [&_span]:block [&_span]:text-[0.72rem] [&_span]:text-muted-foreground [&_strong]:block [&_strong]:text-[1.35rem] [&_strong]:tracking-tight [&_strong]:tabular-nums">
                 <li><strong>{group(metrics.cpuMs.p50)} ms</strong><span>p50</span></li>
                 <li><strong>{group(metrics.cpuMs.p90)} ms</strong><span>p90</span></li>
                 <li><strong>{group(metrics.cpuMs.p99)} ms</strong><span>p99</span></li>
               </ul>
-              <p className="hint">Worker CPU consumed by the handler, self-reported per request (sync and <code>async</code>). Responses with a streamed body or a <code>Set-Cookie</code> header are excluded, so this covers a subset of requests.</p>
+              <p className="mt-3 text-[0.75rem] text-muted-foreground">Worker CPU consumed by the handler, self-reported per request (sync and <code>async</code>). Responses with a streamed body or a <code>Set-Cookie</code> header are excluded, so this covers a subset of requests.</p>
             </div>
           )}
 
-          <div className="chart-block">
+          <div className="mt-9 [&>h3]:m-0 [&>h3]:mb-3 [&>h3]:flex [&>h3]:flex-wrap [&>h3]:items-baseline [&>h3]:gap-1.5 [&>h3]:text-[0.85rem] [&>h3]:font-semibold [&_h3_small]:font-normal [&_h3_small]:text-muted-foreground">
             <h3>Cold starts <small>· spawn → listening</small></h3>
-            <ul className="latency-tiles">
+            <ul className="m-0 grid list-none grid-cols-[repeat(auto-fit,minmax(7rem,8.5rem))] justify-start gap-x-8 gap-y-4 p-0 [&_span]:mt-0.5 [&_span]:block [&_span]:text-[0.72rem] [&_span]:text-muted-foreground [&_strong]:block [&_strong]:text-[1.35rem] [&_strong]:tracking-tight [&_strong]:tabular-nums">
               <li><strong>{group(metrics.coldStarts)}</strong><span>cold starts</span></li>
               <li><strong>{metrics.sampleCount ? `${Math.round((metrics.coldStarts / metrics.sampleCount) * 100)}%` : "—"}</strong><span>of requests</span></li>
               <li><strong>{metrics.startupMs ? `${group(metrics.startupMs.p50)} ms` : "—"}</strong><span>startup p50</span></li>
@@ -225,35 +255,35 @@ export function TrafficCharts({ name }: { name: string }) {
                 <span>eval p50</span>
               </li>
             </ul>
-            <p className="hint">A cold start is a request that had to launch the sprout process (first hit after a deploy, crash, or idle eviction). <strong>boot</strong> is process create + <code>ld.so</code> + runtime init (static linking cuts this); <strong>eval</strong> is JS module evaluation + binding the listen socket (an inherited fd would cut this).</p>
+            <p className="mt-3 text-[0.75rem] text-muted-foreground">A cold start is a request that had to launch the sprout process (first hit after a deploy, crash, or idle eviction). <strong>boot</strong> is process create + <code>ld.so</code> + runtime init (static linking cuts this); <strong>eval</strong> is JS module evaluation + binding the listen socket (an inherited fd would cut this).</p>
           </div>
 
-          <div className="chart-block">
+          <div className="mt-9 [&>h3]:m-0 [&>h3]:mb-3 [&>h3]:flex [&>h3]:flex-wrap [&>h3]:items-baseline [&>h3]:gap-1.5 [&>h3]:text-[0.85rem] [&>h3]:font-semibold [&_h3_small]:font-normal [&_h3_small]:text-muted-foreground">
             <h3>Transfer</h3>
-            <ul className="latency-tiles">
+            <ul className="m-0 grid list-none grid-cols-[repeat(auto-fit,minmax(7rem,8.5rem))] justify-start gap-x-8 gap-y-4 p-0 [&_span]:mt-0.5 [&_span]:block [&_span]:text-[0.72rem] [&_span]:text-muted-foreground [&_strong]:block [&_strong]:text-[1.35rem] [&_strong]:tracking-tight [&_strong]:tabular-nums">
               <li><strong>{bytes(metrics.bytesIn)}</strong><span>request body in</span></li>
               <li><strong>{bytes(metrics.bytesOut)}</strong><span>response body out</span></li>
             </ul>
-            <p className="hint">Body bytes only, from Content-Length; streamed responses without a length are not counted.</p>
+            <p className="mt-3 text-[0.75rem] text-muted-foreground">Body bytes only, from Content-Length; streamed responses without a length are not counted.</p>
           </div>
 
           {Object.keys(metrics.invocationStatus).some((key) => key !== "ok") && (
-            <div className="chart-block">
+            <div className="mt-9 [&>h3]:m-0 [&>h3]:mb-3 [&>h3]:flex [&>h3]:flex-wrap [&>h3]:items-baseline [&>h3]:gap-1.5 [&>h3]:text-[0.85rem] [&>h3]:font-semibold [&_h3_small]:font-normal [&_h3_small]:text-muted-foreground">
               <h3>Invocation status</h3>
-              <dl className="status-bars">
+              <dl className="m-0 grid gap-2 [&>div]:grid [&>div]:grid-cols-[minmax(4.5rem,6rem)_minmax(0,1fr)_auto] [&>div]:items-center [&>div]:gap-x-3.5 [&_dd]:m-0 [&_dd]:contents [&_dt]:text-[0.75rem] [&_dt]:tabular-nums [&_dt]:text-muted-foreground [&_dt]:[overflow-wrap:anywhere]">
                 {Object.entries(metrics.invocationStatus).sort((a, b) => b[1] - a[1]).map(([status, value]) => (
                   <DistributionRow key={status} label={status} value={value} total={metrics.sampleCount}
                     tone={status === "ok" ? "2xx" : "5xx"} />
                 ))}
               </dl>
-              <p className="hint">`timed-out` and `response-too-large` are platform caps (#27); `sprout-unavailable` / `proxy` are runtime failures.</p>
+              <p className="mt-3 text-[0.75rem] text-muted-foreground">`timed-out` and `response-too-large` are platform caps (#27); `sprout-unavailable` / `proxy` are runtime failures.</p>
             </div>
           )}
 
           {Object.keys(metrics.methodDistribution).length > 0 && (
-            <div className="chart-block">
+            <div className="mt-9 [&>h3]:m-0 [&>h3]:mb-3 [&>h3]:flex [&>h3]:flex-wrap [&>h3]:items-baseline [&>h3]:gap-1.5 [&>h3]:text-[0.85rem] [&>h3]:font-semibold [&_h3_small]:font-normal [&_h3_small]:text-muted-foreground">
               <h3>Methods</h3>
-              <dl className="status-bars">
+              <dl className="m-0 grid gap-2 [&>div]:grid [&>div]:grid-cols-[minmax(4.5rem,6rem)_minmax(0,1fr)_auto] [&>div]:items-center [&>div]:gap-x-3.5 [&_dd]:m-0 [&_dd]:contents [&_dt]:text-[0.75rem] [&_dt]:tabular-nums [&_dt]:text-muted-foreground [&_dt]:[overflow-wrap:anywhere]">
                 {Object.entries(metrics.methodDistribution).sort((a, b) => b[1] - a[1]).map(([method, value]) => (
                   <DistributionRow key={method} label={method} value={value} total={metrics.sampleCount} />
                 ))}
@@ -262,7 +292,7 @@ export function TrafficCharts({ name }: { name: string }) {
           )}
         </>
       )}
-    </section>
+    </Panel>
   );
 }
 
@@ -273,10 +303,10 @@ function RequestBars({ buckets, tickLabel }: { buckets: Bucket[]; tickLabel: (is
   const height = 80;
   const width = buckets.length * step;
   return (
-    <div className="chart-block">
+    <div className="mt-9 [&>h3]:m-0 [&>h3]:mb-3 [&>h3]:flex [&>h3]:flex-wrap [&>h3]:items-baseline [&>h3]:gap-1.5 [&>h3]:text-[0.85rem] [&>h3]:font-semibold [&_h3_small]:font-normal [&_h3_small]:text-muted-foreground">
       <h3>Requests <small>· peak {group(max)}/bucket</small></h3>
-      <div className="bars-scroll">
-        <svg className="bars" viewBox={`0 0 ${width} ${height + 16}`} preserveAspectRatio="none" role="img"
+      <div className="overflow-x-auto">
+        <svg className="block h-24 w-full min-w-full [&_g:hover_rect]:opacity-75 [&_rect]:transition-opacity [&_rect]:duration-150" viewBox={`0 0 ${width} ${height + 16}`} preserveAspectRatio="none" role="img"
           aria-label={`Requests per time bucket, peak ${max}`}>
           {buckets.map((bucket, index) => {
             const barHeight = Math.round((bucket.count / max) * height);
@@ -295,8 +325,8 @@ function RequestBars({ buckets, tickLabel }: { buckets: Bucket[]; tickLabel: (is
           <line x1="0" y1={height} x2={width} y2={height} stroke="var(--line)" strokeWidth="1" vectorEffect="non-scaling-stroke" />
         </svg>
       </div>
-      <div className="bars-axis"><span>{tickLabel(buckets[0].start)}</span><span>{tickLabel(buckets[buckets.length - 1].start)}</span></div>
-      <p className="chart-legend"><span className="swatch swatch-total" /> requests <span className="swatch swatch-error" /> 5xx errors</p>
+      <div className="mt-1.5 flex justify-between text-[0.68rem] text-muted-foreground"><span>{tickLabel(buckets[0].start)}</span><span>{tickLabel(buckets[buckets.length - 1].start)}</span></div>
+      <p className="mt-2 flex items-center gap-1.5 text-[0.72rem] text-muted-foreground"><span className="inline-block size-[0.7rem] bg-muted-foreground" /> requests <span className="inline-block size-[0.7rem] bg-coral" /> 5xx errors</p>
     </div>
   );
 }

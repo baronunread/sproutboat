@@ -1,7 +1,8 @@
 import { useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
-import { Button, ConfirmButton, Copy, PanelHeading, StatusMessage, TextField } from "../components";
+import { Button, ConfirmButton, Copy, Panel, PanelHeading, RECORD_NOTE, RecordList, RecordRow, Status, StatusMessage, TextField } from "../components";
 import { mutate, useJson, useProject } from "../dashboard-data";
+import { cn } from "@/lib/utils";
 
 /**
  * #76 — Triggers: every way a request reaches this project. The generated
@@ -25,9 +26,9 @@ function ProjectTriggers() {
   const { name, active } = useProject();
   return (
     <>
-      <section className="data-panel settings-panel">
+      <Panel variant="wide">
         <PanelHeading title="Route" description="Generated from the project and your namespace. It always serves the active version." />
-        <dl className="detail-grid">
+        <dl className="mt-5 grid grid-cols-[repeat(auto-fit,minmax(16rem,1fr))] gap-x-8 gap-y-4 [&_code]:text-[0.78rem] [&_dd]:mt-1 [&_dd]:text-[0.85rem] [&_dd]:[overflow-wrap:anywhere] [&_dt]:text-[0.72rem] [&_dt]:tracking-wide [&_dt]:text-muted-foreground [&_dt]:uppercase">
           <div>
             <dt>Generated hostname</dt>
             <dd>
@@ -40,18 +41,18 @@ function ProjectTriggers() {
             <dd>{active ? "Serving the active version" : "Not serving — deploy a version or roll one back"}</dd>
           </div>
         </dl>
-      </section>
+      </Panel>
 
       <CustomDomains name={name} hasActive={Boolean(active)} />
 
-      <section className="data-panel settings-panel">
+      <Panel>
         <PanelHeading title="Scheduled triggers" description="Cron schedules declared in the artifact fire against the active version." />
-        <p className="hint">
+        <p className="mt-3 text-[0.75rem] text-muted-foreground">
           A <code>triggers.crons</code> entry in <code>sproutboat.jsonc</code> is frozen into the artifact and invokes
           your <code>scheduled()</code> handler on the active version. The declared schedules for this project are on
           the Bindings tab; per-run history is tracked in issue #81.
         </p>
-      </section>
+      </Panel>
     </>
   );
 }
@@ -120,7 +121,7 @@ function CustomDomains({ name, hasActive }: { name: string; hasActive: boolean }
   };
 
   return (
-    <section className="data-panel settings-panel">
+    <Panel>
       <PanelHeading
         title="Custom domains"
         description="Point your own hostname at this project. It serves the active version alongside the generated hostname."
@@ -129,19 +130,19 @@ function CustomDomains({ name, hasActive }: { name: string; hasActive: boolean }
       {note && <StatusMessage tone={note.tone}>{note.text}</StatusMessage>}
 
       {state === "loading" ? (
-        <p className="loading-state" aria-live="polite">Loading domains…</p>
+        <p className="min-h-56 px-5 pt-12 text-muted-foreground group-[.is-padded]/panel:px-0" aria-live="polite">Loading domains…</p>
       ) : state === "error" ? (
-        <p className="form-error" role="alert">Could not load custom domains.</p>
+        <StatusMessage tone="error">Could not load custom domains.</StatusMessage>
       ) : list.length === 0 ? (
-        <p className="empty-state">No custom domains attached.</p>
+        <p className="px-5 py-12 text-center text-[0.84rem] leading-relaxed text-muted-foreground group-[.is-padded]/panel:px-0 group-[.is-padded]/panel:py-5 group-[.is-padded]/panel:text-start [&_code]:text-foreground">No custom domains attached.</p>
       ) : (
-        <ul className="record-list domain-list">
+        <RecordList>
           {list.map((domain) => {
             const detail = reachability[domain.hostname];
             return (
-              <li key={domain.hostname}>
+              <RecordRow key={domain.hostname}>
                 <div><strong>{domain.hostname}</strong></div>
-                <b className={domain.verified ? "status live" : "status"}>{domain.verified ? "Verified" : "Pending"}</b>
+                <Status live={domain.verified}>{domain.verified ? "Verified" : "Pending"}</Status>
                 {!domain.verified && <Button variant="quiet" onClick={() => void verify(domain.hostname)}>Verify</Button>}
                 <ConfirmButton
                   label="Remove"
@@ -153,23 +154,23 @@ function CustomDomains({ name, hasActive }: { name: string; hasActive: boolean }
                   onConfirm={() => remove(domain.hostname)}
                 />
                 {domain.verification && (
-                  <p className="record-note">
+                  <p className={RECORD_NOTE}>
                     Add DNS <code>{domain.verification.type}</code> <code>{domain.verification.name}</code> ={" "}
                     <code>{domain.verification.value}</code>
                     <Copy value={domain.verification.value} />
                   </p>
                 )}
-                {detail?.warning && <p className="record-note warning">{detail.warning}</p>}
+                {detail?.warning && <p className={cn(RECORD_NOTE, "text-destructive")}>{detail.warning}</p>}
                 {detail?.serverAddresses?.length ? (
-                  <p className="record-note">Point an A/AAAA record at <code>{detail.serverAddresses.join(", ")}</code>, DNS-only.</p>
+                  <p className={RECORD_NOTE}>Point an A/AAAA record at <code>{detail.serverAddresses.join(", ")}</code>, DNS-only.</p>
                 ) : null}
-              </li>
+              </RecordRow>
             );
           })}
-        </ul>
+        </RecordList>
       )}
 
-      <form className="form-grid" onSubmit={(event) => void add(event)}>
+      <form className="mt-5 grid max-w-[36rem] gap-5 [&>[data-slot=form-actions]]:col-span-full" onSubmit={(event) => void add(event)}>
         <TextField
           label="Add a hostname"
           type="text"
@@ -183,12 +184,12 @@ function CustomDomains({ name, hasActive }: { name: string; hasActive: boolean }
           hint={hasActive ? "A TXT record proves ownership; an A or AAAA record sends traffic here." : "Deploy a version before attaching a domain."}
           error={invalid ? "Enter a full hostname, like www.example.com." : error}
         />
-        <div className="form-actions">
+        <div data-slot="form-actions" className="mt-1 flex flex-wrap items-center gap-2.5">
           <Button type="submit" variant="primary" busy={busy} busyLabel="Adding…" disabled={!hasActive || !hostname.trim() || invalid}>
             Add domain
           </Button>
         </div>
       </form>
-    </section>
+    </Panel>
   );
 }

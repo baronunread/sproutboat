@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
-import { Button, PanelHeading, SelectField, StatusMessage, TextField } from "../components";
+import { Button, DataTable, Panel, PanelHeading, SelectField, StatusMessage, TextField } from "../components";
 import { relativeTime, useProject } from "../dashboard-data";
+import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/projects_/$name/logs")({ component: ProjectLogs });
 
@@ -13,6 +14,10 @@ type LogRecord = {
 type LogPage = { events: LogRecord[]; nextBefore: string | null; windowTruncated: boolean };
 type TailFrame = { type: "ready" | "event" | "closed"; event?: LogRecord; reason?: string };
 type Row = { key: number; record: LogRecord; title: string };
+
+const LOG_STATUS = {
+  "2xx": "text-success", "3xx": "text-sky", "4xx": "text-coral", "5xx": "text-coral", other: "",
+} satisfies Record<StatusClass, string>;
 
 const FULL_TIME = new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "medium" });
 
@@ -125,13 +130,13 @@ function ProjectLogs() {
 
   return (
     <>
-      <section className="data-panel wide-panel">
+      <Panel variant="wide">
         <PanelHeading
           title="Request logs"
           description="Edge events for this project's route, newest first."
           action={
-            <div className="form-actions">
-              <span className={tailing ? "tail-state live" : "tail-state"}>{tailing ? "Live" : "Paused"}</span>
+            <div data-slot="form-actions" className="mt-1 flex flex-wrap items-center gap-2.5">
+              <span className={cn("text-[0.75rem]", tailing ? "text-brand before:mr-1.5 before:inline-block before:size-1.5 before:rounded-full before:bg-brand before:content-['']" : "text-muted-foreground")}>{tailing ? "Live" : "Paused"}</span>
               <Button variant={tailing ? "danger" : "quiet"} onClick={() => setTailing((on) => !on)}>
                 {tailing ? "Stop live tail" : "Start live tail"}
               </Button>
@@ -141,16 +146,16 @@ function ProjectLogs() {
 
         {!active && <StatusMessage>This project has no active route right now — only past traffic is shown.</StatusMessage>}
 
-        <search className="log-filters">
+        <search className="mt-5 mb-3 flex flex-wrap items-end gap-2.5">
           <SelectField label="Status" value={filters.statusClass} options={STATUS_OPTIONS}
-            onChange={(event) => set("statusClass", event.target.value)} />
+            onValueChange={(value) => set("statusClass", value)} />
           <SelectField label="Method" value={filters.method} options={METHOD_OPTIONS}
-            onChange={(event) => set("method", event.target.value)} />
+            onValueChange={(value) => set("method", value)} />
           <SelectField label="Duration" value={filters.minDuration} options={DURATION_OPTIONS}
-            onChange={(event) => set("minDuration", event.target.value)} />
+            onValueChange={(value) => set("minDuration", value)} />
           <SelectField label="Cold start" value={filters.coldStart} options={COLD_OPTIONS}
-            onChange={(event) => set("coldStart", event.target.value)} />
-          <TextField label="Search" type="search" fieldClassName="grow" placeholder="Match status, method, or failure text"
+            onValueChange={(value) => set("coldStart", value)} />
+          <TextField label="Search" type="search" fieldClassName="min-w-0 flex-[1_1_16rem]" placeholder="Match status, method, or failure text"
             value={filters.query} onChange={(event) => set("query", event.target.value)} />
           <Button variant="quiet" disabled={!filtered} onClick={() => setFilters(EMPTY)}>Clear</Button>
         </search>
@@ -159,44 +164,38 @@ function ProjectLogs() {
         {truncated && <StatusMessage>Showing the most recent window of activity; older history is not retained here.</StatusMessage>}
 
         {state === "loading" ? (
-          <p className="loading-state" aria-live="polite">Loading events…</p>
+          <p className="min-h-56 px-5 pt-12 text-muted-foreground group-[.is-padded]/panel:px-0" aria-live="polite">Loading events…</p>
         ) : state === "error" ? (
-          <p className="form-error" role="alert">Could not load logs. Refresh and try again.</p>
+          <StatusMessage tone="error">Could not load logs. Refresh and try again.</StatusMessage>
         ) : rows.length === 0 ? (
-          <p className="empty-state">{filtered ? "No requests match these filters." : "No requests recorded for this route yet."}</p>
+          <p className="px-5 py-12 text-center text-[0.84rem] leading-relaxed text-muted-foreground group-[.is-padded]/panel:px-0 group-[.is-padded]/panel:py-5 group-[.is-padded]/panel:text-start [&_code]:text-foreground">{filtered ? "No requests match these filters." : "No requests recorded for this route yet."}</p>
         ) : (
           <>
-            <div className="log-scroll">
-              <table className="log-table">
-                <caption className="visually-hidden">Request log, newest first</caption>
-                <thead>
-                  <tr>
-                    <th scope="col">Time</th><th scope="col">Method</th><th scope="col" className="num">Status</th>
-                    <th scope="col" className="num">Duration</th><th scope="col">Start</th><th scope="col">Failure</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {rows.map(({ key, record, title }) => (
+            <DataTable caption="Request log, newest first"
+              head={<tr>
+                    <th scope="col">Time</th><th scope="col">Method</th><th scope="col" className="text-end tabular-nums">Status</th>
+                    <th scope="col" className="text-end tabular-nums">Duration</th><th scope="col">Start</th><th scope="col">Failure</th>
+                  </tr>}
+            >
+              {rows.map(({ key, record, title }) => (
                     <tr key={key}>
                       <td title={title}>{relativeTime(record.at)}</td>
                       <td>{record.method ?? "—"}</td>
-                      <td className={`num log-status log-${record.statusClass}`}>{record.status}</td>
-                      <td className="num">{record.durationMs} ms</td>
-                      <td>{record.coldStart ? <span className="badge neutral">Cold</span> : "Warm"}</td>
+                      <td className={cn("text-end font-semibold tabular-nums", LOG_STATUS[record.statusClass])}>{record.status}</td>
+                      <td className="text-end tabular-nums">{record.durationMs} ms</td>
+                      <td>{record.coldStart ? <span className="badge">Cold</span> : "Warm"}</td>
                       <td>{record.failure ?? "—"}</td>
                     </tr>
                   ))}
-                </tbody>
-              </table>
-            </div>
+            </DataTable>
             {nextBefore && !tailing && (
-              <div className="form-actions">
+              <div data-slot="form-actions" className="mt-1 flex flex-wrap items-center gap-2.5">
                 <Button variant="quiet" onClick={() => void loadOlder()}>Load older</Button>
               </div>
             )}
           </>
         )}
-      </section>
+      </Panel>
 
       <SproutOutput name={name} />
     </>
@@ -225,21 +224,21 @@ function SproutOutput({ name }: { name: string }) {
   useEffect(() => { void load(); }, [load]);
 
   return (
-    <section className="data-panel wide-panel">
+    <Panel variant="wide">
       <PanelHeading
         title="Sprout output"
         description="stdout and stderr from the active version's process and its binding broker."
         action={<Button variant="quiet" busy={state === "loading"} busyLabel="Refreshing…" onClick={() => void load()}>Refresh</Button>}
       />
       {state === "missing" ? (
-        <p className="empty-state">No active deployment, so nothing is running to produce output.</p>
+        <p className="px-5 py-12 text-center text-[0.84rem] leading-relaxed text-muted-foreground group-[.is-padded]/panel:px-0 group-[.is-padded]/panel:py-5 group-[.is-padded]/panel:text-start [&_code]:text-foreground">No active deployment, so nothing is running to produce output.</p>
       ) : state === "error" ? (
-        <p className="form-error" role="alert">Could not read the sprout log. Refresh and try again.</p>
+        <StatusMessage tone="error">Could not read the sprout log. Refresh and try again.</StatusMessage>
       ) : state === "ready" ? (
-        <pre className="console-output" tabIndex={0} aria-label="Sprout process output">{text}</pre>
+        <pre className="mt-5 max-h-[26rem] overflow-auto rounded-md border border-border bg-background p-4 font-mono text-[0.76rem] leading-relaxed break-words whitespace-pre-wrap focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none" tabIndex={0} aria-label="Sprout process output">{text}</pre>
       ) : (
-        <p className="loading-state" aria-live="polite">Loading output…</p>
+        <p className="min-h-56 px-5 pt-12 text-muted-foreground group-[.is-padded]/panel:px-0" aria-live="polite">Loading output…</p>
       )}
-    </section>
+    </Panel>
   );
 }

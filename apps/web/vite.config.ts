@@ -1,6 +1,8 @@
+import { fileURLToPath } from "node:url";
 import { createLogger, defineConfig } from "vite";
 import { tanstackStart } from "@tanstack/react-start/plugin/vite";
 import react from "@vitejs/plugin-react";
+import tailwindcss from "@tailwindcss/vite";
 
 // The SPA-shell prerender during `vite build` fetches /api/* with no control
 // server running, so Vite's proxy logs an ECONNREFUSED/ENOTFOUND "error" per
@@ -18,7 +20,9 @@ export default defineConfig({
   // client-side from /api. `spa` emits a static shell + client bundle that Caddy
   // serves directly — no sproutboat-web service.
   customLogger: logger,
-  plugins: [tanstackStart({ spa: { enabled: true } }), react()],
+  plugins: [tailwindcss(), tanstackStart({ spa: { enabled: true } }), react()],
+  // shadcn generates components that import from "@/components/ui/*".
+  resolve: { alias: { "@": fileURLToPath(new URL("./src", import.meta.url)) } },
   server: {
     port: Number(process.env.PORT) || 5173,
     proxy: {

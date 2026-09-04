@@ -17,9 +17,11 @@ test("API tokens list and revoke through the confirm dialog", async ({ page }) =
   await expect(list).toHaveCount(1);
   await expect(list).toContainText(/laptop/i);
 
-  // #76 — revoking now opens a native <dialog> instead of window.confirm.
+  // #76 — revoking opens a confirmation dialog instead of window.confirm.
+  // Radix's AlertDialog exposes role=alertdialog, which is a distinct role
+  // from dialog as far as getByRole is concerned.
   await list.getByRole("button", { name: /^revoke$/i }).click();
-  const dialog = page.getByRole("dialog");
+  const dialog = page.getByRole("alertdialog");
   await expect(dialog).toBeVisible();
   await dialog.getByRole("button", { name: /revoke token/i }).click();
   await expect(page.getByText(/no api tokens yet/i)).toBeVisible();

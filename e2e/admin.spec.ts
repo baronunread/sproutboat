@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { authFile } from "./helpers";
+import { authFile, chooseOption } from "./helpers";
 
 test.use({ storageState: authFile("andrea") });
 
@@ -26,7 +26,7 @@ test("ban an account, verify it, then unban", async ({ page }) => {
 
   await sofiaRow.getByRole("button", { name: /^ban$/i }).click();
   await sofiaRow.getByLabel("Ban reason").fill("e2e abuse");
-  await sofiaRow.getByLabel("Duration").selectOption({ label: "7 days" });
+  await chooseOption(page, sofiaRow.getByRole("combobox", { name: "Duration" }), "7 days");
   await sofiaRow.getByRole("button", { name: /ban account/i }).click();
 
   await expect(sofiaRow).toContainText("Banned");

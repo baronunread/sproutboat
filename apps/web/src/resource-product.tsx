@@ -1,7 +1,8 @@
 import { useState, type ReactNode } from "react";
 import { Link, useNavigate } from "@tanstack/react-router";
-import { Button, ConfirmButton, Copy, PanelHeading, StatusMessage, TextField } from "./components";
+import { Button, ConfirmButton, Copy, DataTable, EmptyState, Panel, PanelHeading, StatusMessage, TextField } from "./components";
 import { mutate, relativeTime, useJson } from "./dashboard-data";
+import { buttonVariants } from "@/components/ui/button";
 
 /**
  * #77 — one product surface per resource kind, the way Cloudflare gives R2, KV,
@@ -25,7 +26,9 @@ export type Product = {
 
 type Resource = { id: string; kind: string; name: string; createdAt: string; projects?: string[] };
 
-const NAME_RULE = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/;
+/** 2–63: a first and last character with up to 61 between them. Not an optional
+ *  middle run — that also matches a single character, which the API rejects. */
+const NAME_RULE = /^[a-z0-9][a-z0-9-]{0,61}[a-z0-9]$/;
 
 const ICONS = {
   kv: <><rect x="2.5" y="4.5" width="11" height="7" rx="1.5" /><path d="M5.5 8h5" /></>,
@@ -36,7 +39,7 @@ const ICONS = {
 
 function ProductIcon({ icon }: { icon: Product["icon"] }) {
   return (
-    <svg className="product-icon" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor"
+    <svg className="size-[1.6rem] shrink-0 text-brand" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor"
       strokeWidth="1.25" strokeLinecap="round" strokeLinejoin="round">
       {ICONS[icon]}
     </svg>
@@ -56,21 +59,21 @@ export function ResourceList({ product }: { product: Product }) {
 
   return (
     <>
-      <section className="product-heading">
+      <section className="mb-8 flex flex-wrap items-start justify-between gap-x-8 gap-y-4 border-b border-border pb-7 [&_h1]:m-0 [&_h1]:flex [&_h1]:items-center [&_h1]:gap-2.5 [&_h1]:text-[1.85rem] [&_h1]:font-bold [&_h1]:tracking-[-0.035em] [&>div>p]:mt-1.5 [&>div>p]:max-w-[44rem] [&>div>p]:text-[0.875rem] [&>div>p]:leading-normal [&>div>p]:text-muted-foreground">
         <div>
           <h1><ProductIcon icon={product.icon} />{product.title}</h1>
           <p>{product.description}</p>
         </div>
-        <div className="product-actions">
-          <Link className="button primary" to={`/${product.segment}/new`}>Create {product.noun}</Link>
+        <div className="flex flex-wrap gap-2.5">
+          <Link className={buttonVariants({ variant: "default", className: "text-[0.82rem]" })} to={`/${product.segment}/new`}>Create {product.noun}</Link>
         </div>
       </section>
 
-      <div className="product-body">
+      <div className="grid items-start gap-6 grid-cols-[minmax(0,1fr)_18rem] max-[1000px]:grid-cols-1 [&_table]:min-w-0">
         <div>
-          <section className="data-panel">
-            <div className="product-search">
-              <TextField label={`Search ${product.title}`} hideLabel type="search" fieldClassName="grow"
+          <Panel variant="bare">
+            <div className="flex items-end gap-2.5 px-5 py-[1.1rem] [&>div:first-child]:flex-1">
+              <TextField label={`Search ${product.title}`} hideLabel type="search" fieldClassName="min-w-0 flex-[1_1_16rem]"
                 placeholder={`Search ${product.title}…`}
                 value={query} onChange={(event) => setQuery(event.target.value)} />
               <Button onClick={() => void refresh()} aria-label="Refresh list">Refresh</Button>
@@ -79,40 +82,33 @@ export function ResourceList({ product }: { product: Product }) {
             {note && <StatusMessage tone={note.tone}>{note.text}</StatusMessage>}
 
             {state === "loading" ? (
-              <p className="loading-state" aria-live="polite">Loading {product.title}…</p>
+              <p className="min-h-56 px-5 pt-12 text-muted-foreground group-[.is-padded]/panel:px-0" aria-live="polite">Loading {product.title}…</p>
             ) : state === "error" ? (
-              <p className="form-error" role="alert">Could not load {product.title}. Refresh and try again.</p>
+              <StatusMessage tone="error">Could not load {product.title}. Refresh and try again.</StatusMessage>
             ) : resources.length === 0 ? (
-              <div className="empty-state">
-                <h2>No {product.title} yet</h2>
+              <EmptyState title={`No ${product.title} yet`}>
                 <p>Create one, then bind it by id from your project config.</p>
-                <code>{product.bindingExample}</code>
-              </div>
+                <code className="mt-3 inline-block rounded-[5px] border border-border bg-background p-2.5 text-[0.76rem]">{product.bindingExample}</code>
+              </EmptyState>
             ) : shown.length === 0 ? (
-              <p className="empty-state">Nothing matches “{query.trim()}”.</p>
+              <p className="px-5 py-12 text-center text-[0.84rem] leading-relaxed text-muted-foreground group-[.is-padded]/panel:px-0 group-[.is-padded]/panel:py-5 group-[.is-padded]/panel:text-start [&_code]:text-foreground">Nothing matches “{query.trim()}”.</p>
             ) : (
-              <div className="log-scroll">
-                <table className="log-table">
-                  <caption className="visually-hidden">{product.title} in this account</caption>
-                  <thead>
-                    <tr>
+              <DataTable caption={`${product.title} in this account`}
+              head={<tr>
                       <th scope="col">Name</th>
                       <th scope="col">ID</th>
                       <th scope="col">Bound to</th>
                       <th scope="col">Created</th>
-                      <th scope="col" className="actions"><span className="visually-hidden">Actions</span></th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {shown.map((resource) => (
+                      <th scope="col" className="text-end"><span className="sr-only">Actions</span></th>
+                    </tr>}
+            >
+              {shown.map((resource) => (
                       <Row key={resource.id} product={product} resource={resource}
                         onChanged={async (text, tone = "success") => { setNote({ text, tone }); await refresh(); }} />
                     ))}
-                  </tbody>
-                </table>
-              </div>
+            </DataTable>
             )}
-          </section>
+          </Panel>
         </div>
 
         <UsageRail product={product} count={resources.length} />
@@ -155,7 +151,7 @@ function Row({ product, resource, onChanged }: {
     return (
       <tr>
         <td colSpan={5}>
-          <form className="rename-form" onSubmit={(event) => void rename(event)}>
+          <form className="flex flex-wrap items-end gap-2.5" onSubmit={(event) => void rename(event)}>
             <TextField label={`New name for ${resource.name}`} hideLabel value={name} autoComplete="off" spellCheck={false}
               error={error} onChange={(event) => { setName(event.target.value); setError(null); }} />
             <Button type="submit" variant="primary" busy={busy} busyLabel="Saving…">Save</Button>
@@ -169,13 +165,13 @@ function Row({ product, resource, onChanged }: {
   return (
     <tr>
       <td><strong>{resource.name}</strong></td>
-      <td className="resource-id">
+      <td className="whitespace-nowrap">
         <code title={resource.id}>{resource.id.slice(0, 14)}…</code>
         <Copy value={resource.id} />
       </td>
       <td>{resource.projects?.length ? resource.projects.join(", ") : "—"}</td>
       <td>{relativeTime(resource.createdAt)}</td>
-      <td className="actions row-actions">
+      <td className="flex items-center justify-end gap-2 [&_button]:h-8 [&_button]:px-2.5">
         <Button onClick={() => setRenaming(true)}>Rename</Button>
         <ConfirmButton
           label="Delete"
@@ -204,26 +200,32 @@ function UsageRail({ product, count }: { product: Product; count: number }) {
   const percent = cap && used !== undefined ? Math.min(100, Math.round((used / cap) * 100)) : 0;
 
   return (
-    <aside className="usage-rail" aria-label="Usage">
-      <section className="data-panel settings-panel">
+    <aside className="grid gap-6" aria-label="Usage">
+      <Panel>
         <PanelHeading title="Usage" />
-        <p className="usage-figure">{count}</p>
-        <p className="hint">{product.title} in this account.</p>
-        {cap !== undefined && used !== undefined && (
-          <>
-            <div className="usage-meter-head">
-              <span>All storage resources</span>
-              <strong>{used} / {cap}</strong>
+        {/* Both numbers are label/value pairs, so they share one set of edges
+            instead of a display figure floating above an unrelated meter. */}
+        <dl className="m-0 grid gap-2.5 [&>div]:flex [&>div]:items-baseline [&>div]:justify-between [&>div]:gap-4 [&_dd]:m-0 [&_dd]:text-[0.8rem] [&_dd]:font-semibold [&_dd]:whitespace-nowrap [&_dd]:tabular-nums [&_dt]:min-w-0 [&_dt]:text-[0.8rem] [&_dt]:text-muted-foreground">
+          <div>
+            <dt>{product.title}</dt>
+            <dd>{count}</dd>
+          </div>
+          {cap !== undefined && used !== undefined && (
+            <div>
+              <dt>All storage resources</dt>
+              <dd>{used} / {cap}</dd>
             </div>
-            <div className="usage-track" aria-hidden="true"><div className="usage-fill" style={{ width: `${percent}%` }} /></div>
-          </>
+          )}
+        </dl>
+        {cap !== undefined && used !== undefined && (
+          <div className="mt-3.5 h-[0.45rem] overflow-hidden rounded-full bg-secondary" aria-hidden="true"><div className="h-full min-w-0.5 rounded-[inherit] bg-sky transition-[width] duration-200" style={{ width: `${percent}%` }} /></div>
         )}
-      </section>
-      <section className="data-panel settings-panel">
-        <PanelHeading title="Bind it" />
-        <p className="hint">Add the handle to <code>sproutboat.jsonc</code>, then deploy.</p>
-        <pre className="console-output">{product.bindingExample}</pre>
-      </section>
+      </Panel>
+      <Panel>
+        <PanelHeading title="Add a binding" />
+        <p className="mt-3 text-[0.75rem] text-muted-foreground">Give it a handle in <code>sproutboat.jsonc</code>, then deploy.</p>
+        <pre className="mt-3.5 overflow-x-auto rounded-md border border-border bg-background px-3.5 py-3 font-mono text-[0.7rem] leading-relaxed whitespace-pre">{product.bindingExample}</pre>
+      </Panel>
     </aside>
   );
 }
@@ -251,16 +253,16 @@ export function CreateResource({ product }: { product: Product }) {
 
   return (
     <>
-      <section className="page-heading">
+      <section className="mb-8 flex items-center justify-between gap-8 border-b border-border pb-7 max-[800px]:mb-10 max-[800px]:flex-col max-[800px]:items-start [&_h1]:m-0 [&_h1]:text-[1.85rem] [&_h1]:font-bold [&_h1]:tracking-[-0.035em] [&_h1]:max-[480px]:text-[1.6rem] [&_p]:mt-1.5 [&_p]:max-w-[38rem] [&_p]:text-[0.875rem] [&_p]:leading-normal [&_p]:text-muted-foreground">
         <div>
-          <p className="crumb"><Link to={`/${product.segment}`}>{product.title}</Link> <span>/</span> Create</p>
+          <p className="m-0 mb-2 text-[0.78rem] text-muted-foreground [&_a]:underline-offset-2 [&_a:hover]:underline [&>span]:mx-1.5"><Link to={`/${product.segment}`}>{product.title}</Link> <span>/</span> Create</p>
           <h1>Create {product.noun}</h1>
           <p>{product.description}</p>
         </div>
       </section>
 
-      <section className="data-panel settings-panel">
-        <form className="form-grid" onSubmit={(event) => void submit(event)}>
+      <Panel>
+        <form className="mt-5 grid max-w-[36rem] gap-5 [&>[data-slot=form-actions]]:col-span-full" onSubmit={(event) => void submit(event)}>
           <TextField
             label={`${product.noun[0].toUpperCase()}${product.noun.slice(1)} name`}
             value={name}
@@ -273,14 +275,14 @@ export function CreateResource({ product }: { product: Product }) {
             hint="2–63 characters: lowercase letters, digits and hyphens. The id is generated for you."
             error={invalid ? "Use lowercase letters, digits and hyphens only." : error}
           />
-          <div className="form-actions">
+          <div data-slot="form-actions" className="mt-1 flex flex-wrap items-center gap-2.5">
             <Button type="submit" variant="primary" busy={busy} busyLabel="Creating…" disabled={!name.trim() || invalid}>
               Create {product.noun}
             </Button>
-            <Link className="button quiet" to={`/${product.segment}`}>Cancel</Link>
+            <Link className={buttonVariants({ variant: "outline", className: "text-[0.82rem]" })} to={`/${product.segment}`}>Cancel</Link>
           </div>
         </form>
-      </section>
+      </Panel>
     </>
   );
 }
