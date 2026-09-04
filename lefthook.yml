@@ -6,9 +6,14 @@ pre-commit:
     # versa. Scoped to staged files only: the whole tree is formatted now, so
     # reformatting untouched files on someone else's commit would only be noise.
     #
-    # oxfmt 0.66 is not always idempotent — a chained .slice().map() with a
-    # destructured param took two passes to settle. If CI's fmt:check fails on a
-    # file you just formatted, run `bun run fmt` again before digging further.
+    # If fmt:check ever fails on a file you just formatted, you have probably hit
+    # oxc#23852: a member chain of two or more calls whose last argument breaks
+    # across lines formats to a different (also stable) shape on the second pass,
+    # so one `oxfmt` run is not a fixed point. It is upstream and open, and
+    # Prettier shares it — both inherit it from objectWrap's default "preserve",
+    # which keeps an object expanded if the source had a newline after `{`.
+    # Break the chain into a named local rather than reaching for a second pass;
+    # `objectWrap: "collapse"` also avoids it but flattens objects everywhere.
     format:
       glob: "*.{js,jsx,ts,tsx,json,jsonc}"
       run: bunx oxfmt --write {staged_files}

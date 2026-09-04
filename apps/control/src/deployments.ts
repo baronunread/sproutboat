@@ -137,6 +137,7 @@ export async function dashboardOverview(request: Request): Promise<Response> {
     };
   });
 
+  const recent = deployments.slice(0, 20);
   const overview: DashboardOverview = {
     metrics: {
       activeProjects: projects.length,
@@ -146,7 +147,7 @@ export async function dashboardOverview(request: Request): Promise<Response> {
       trend: buckets,
     },
     projects: rows,
-    deployments: deployments.slice(0, 20).map(({ id, project, hostname, artifact, deployedAt, active }) => ({
+    deployments: recent.map(({ id, project, hostname, artifact, deployedAt, active }) => ({
       id,
       project,
       hostname,
