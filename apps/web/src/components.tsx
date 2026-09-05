@@ -588,13 +588,20 @@ export function ConfirmButton({
   );
 }
 
+/** The sprout from sproutboat.com — same geometry as the site's logo.svg and
+ *  favicon, so the dashboard, the site and the tab icon are one mark. */
 export function SproutboatMark() {
   return (
-    <svg className="size-[1.65rem] text-brand" viewBox="0 0 32 32" aria-hidden="true">
-      <rect width="32" height="32" rx="8" fill="currentColor" />
+    <svg className="size-[1.65rem] shrink-0" viewBox="0 0 32 32" fill="none" aria-hidden="true">
+      <path d="M16 29V15" stroke="#5BD97A" strokeWidth="2.6" strokeLinecap="round" />
       <path
-        d="M10 23V9h7.3c3.3 0 5.4 1.8 5.4 4.7 0 3-2.1 4.8-5.4 4.8H14V23h-4Zm4-8h3c1.1 0 1.7-.5 1.7-1.3 0-.9-.6-1.4-1.7-1.4h-3V15Z"
-        fill="white"
+        d="M16 16.5c0-4.7-3.8-8.5-8.5-8.5C6.7 8 6 8.7 6 9.5 6 14.2 9.8 18 14.5 18c.8 0 1.5-.7 1.5-1.5Z"
+        fill="#5BD97A"
+      />
+      <path
+        d="M16 15c0-4 3.2-7.2 7.2-7.2.7 0 1.3.6 1.3 1.3C24.5 12.8 21.3 16 17.3 16c-.7 0-1.3-.6-1.3-1Z"
+        fill="#5BD97A"
+        fillOpacity="0.72"
       />
     </svg>
   );
@@ -737,9 +744,9 @@ const EXACT = { exact: true } as const;
  */
 /** One nav row. Shared by links and by a group's <summary>, so they line up. */
 const NAV_LINK =
-  "flex items-center gap-2.5 rounded-md px-2.5 py-2 text-[0.82rem] text-muted-foreground no-underline hover:bg-accent aria-[current=page]:bg-accent aria-[current=page]:font-medium aria-[current=page]:text-foreground nav-collapsed:justify-center nav-collapsed:px-0 max-[800px]:whitespace-nowrap";
+  "flex items-center gap-2.5 rounded-md px-2.5 py-2 text-[0.82rem] text-muted-foreground no-underline hover:bg-accent aria-[current=page]:bg-accent aria-[current=page]:font-medium aria-[current=page]:text-foreground nav-collapsed:justify-center nav-collapsed:px-0 overflow-hidden whitespace-nowrap";
 const NAV_SECTION =
-  "px-2.5 pb-1.5 text-[0.68rem] font-semibold tracking-wider text-muted-foreground uppercase max-[800px]:hidden nav-collapsed:hidden";
+  "mt-4 px-2.5 pb-1.5 text-[0.68rem] font-semibold tracking-wider text-muted-foreground uppercase max-[800px]:hidden nav-collapsed:hidden";
 const MENU_ITEM =
   "rounded border-0 bg-none px-2 py-1.5 text-left text-[0.8rem] text-muted-foreground no-underline hover:bg-accent hover:text-foreground";
 const AVATAR =
@@ -747,8 +754,13 @@ const AVATAR =
 /** Small outlined pill: the Admin marker and the log table's Cold flag. */
 export const BADGE = "inline-block rounded-full border border-border px-1.5 py-0.5 text-[0.7rem]";
 /** Label text hidden when the rail is collapsed, but kept on narrow screens
- *  where the rail becomes a horizontal strip and the icons alone would not do. */
-const NAV_LABEL = "nav-collapsed:hidden max-[800px]:nav-collapsed:inline";
+ *  where the rail becomes a horizontal strip and the icons alone would not do.
+ *
+ *  Truncates rather than wraps. Expanding flips data-nav at once, so the labels
+ *  are back before the width has animated: "Storage & databases" would wrap to
+ *  two lines inside a 4rem rail and unwrap as it widened, jolting every row
+ *  below it. Now it clips to an ellipsis and grows back into place. */
+const NAV_LABEL = "min-w-0 truncate nav-collapsed:hidden max-[800px]:nav-collapsed:inline";
 
 /**
  * A collapsible nav section. `<details>` is the platform's disclosure widget —
@@ -760,6 +772,8 @@ function NavGroup({
   groupKey,
   icon,
   routeOpen,
+  collapsed,
+  onExpand,
   children,
 }: {
   label: string;
@@ -768,6 +782,11 @@ function NavGroup({
   icon: keyof typeof NAV_ICON_PATHS;
   /** True when the current route lives in this group. */
   routeOpen: boolean;
+  /** True while the rail is an icon strip. */
+  collapsed: boolean;
+  /** Expand the rail. Clicking a group icon while collapsed opens the rail
+   *  rather than toggling a disclosure whose children are hidden. */
+  onExpand: () => void;
   children: ReactNode;
 }) {
   const group = useRef<HTMLDetailsElement>(null);
@@ -792,9 +811,19 @@ function NavGroup({
         localStorage.setItem(`sproutboat-nav-group:${groupKey}`, event.currentTarget.open ? "open" : "closed")
       }
     >
-      {/* Collapsed, a group's children are hidden, so the icon has to carry
-          "you are here" on its own. */}
+      {/* Collapsed, a group's children are hidden, so the icon carries "you are
+          here" on its own. Clicking it expands the rail *and* opens this group:
+          expanding alone left the reader looking at a rail where the thing they
+          just clicked was still shut, which reads as the click having missed.
+          Assigning `open` fires a toggle event, so onToggle still persists it. */}
       <summary
+        title={collapsed ? label : undefined}
+        onClick={(event) => {
+          if (!collapsed) return;
+          event.preventDefault();
+          onExpand();
+          if (group.current) group.current.open = true;
+        }}
         className={cn(
           NAV_LINK,
           "w-full cursor-pointer list-none [&::-webkit-details-marker]:hidden",
@@ -838,21 +867,27 @@ export function Shell({ children }: { children: ReactNode }) {
   useEffect(() => {
     setCollapsed(document.documentElement.dataset.nav === "collapsed");
   }, []);
-  const toggleNav = () => {
-    const next = document.documentElement.dataset.nav !== "collapsed";
+  const setNav = (next: boolean) => {
     document.documentElement.dataset.nav = next ? "collapsed" : "expanded";
     localStorage.setItem("sproutboat-nav", next ? "collapsed" : "expanded");
     setCollapsed(next);
   };
+  const toggleNav = () => setNav(document.documentElement.dataset.nav !== "collapsed");
+  const expandNav = () => setNav(false);
   const username = account?.profile?.username;
   const displayName = username || account?.user?.name || "account";
   const subLink = cn(NAV_LINK, "ps-[2.3rem] nav-collapsed:ps-0");
   return (
-    <div className="grid min-h-screen grid-cols-[15rem_minmax(0,1fr)] nav-collapsed:grid-cols-[4rem_minmax(0,1fr)] max-[800px]:grid-cols-1 max-[800px]:content-start max-[800px]:nav-collapsed:grid-cols-1">
-      <aside className="sticky top-0 flex h-screen flex-col border-r border-border bg-card px-3 py-[1.15rem] nav-collapsed:px-2 max-[800px]:static max-[800px]:h-auto max-[800px]:border-r-0 max-[800px]:border-b">
-        <div className="flex items-center justify-between gap-2 px-2 nav-collapsed:justify-center nav-collapsed:px-0">
+    <div className="grid min-h-screen grid-cols-[15rem_minmax(0,1fr)] transition-[grid-template-columns] duration-200 ease-out motion-reduce:transition-none nav-collapsed:grid-cols-[4rem_minmax(0,1fr)] max-[800px]:grid-cols-1 max-[800px]:content-start max-[800px]:nav-collapsed:grid-cols-1">
+      <aside className="sticky top-0 flex h-screen flex-col overflow-hidden border-r border-border bg-card px-3 py-[1.15rem] transition-[padding] duration-200 ease-out motion-reduce:transition-none nav-collapsed:px-2 max-[800px]:static max-[800px]:h-auto max-[800px]:border-r-0 max-[800px]:border-b">
+        {/* One row tall in both states. Collapsed, the rail is 4rem wide and only
+            the toggle stays — the old flex-col stacked it under the mark, which
+            made the header ~40px taller and pushed every nav item below it down.
+            The toggle centres on the same axis as the nav icons, and is always
+            visible: it is the only way back to the expanded rail. */}
+        <div className="flex h-8 items-center justify-between gap-2 px-2 min-[801px]:nav-collapsed:justify-center min-[801px]:nav-collapsed:px-0">
           <Link
-            className="inline-flex items-center gap-2.5 px-2 py-1 text-[0.95rem] font-extrabold tracking-tight no-underline"
+            className="inline-flex items-center gap-2.5 px-2 py-1 text-[0.95rem] font-extrabold tracking-tight no-underline min-[801px]:nav-collapsed:hidden"
             to="/"
           >
             <SproutboatMark />
@@ -860,7 +895,7 @@ export function Shell({ children }: { children: ReactNode }) {
           </Link>
           <button
             type="button"
-            className="grid size-8 place-items-center rounded-md border-0 bg-transparent text-muted-foreground hover:bg-accent hover:text-foreground [&_svg]:size-4"
+            className="grid size-8 shrink-0 place-items-center rounded-md border-0 bg-transparent text-muted-foreground hover:bg-accent hover:text-foreground [&_svg]:size-4"
             onClick={toggleNav}
             aria-expanded={!collapsed}
             aria-label={collapsed ? "Expand navigation" : "Collapse navigation"}
@@ -879,17 +914,21 @@ export function Shell({ children }: { children: ReactNode }) {
             </svg>
           </button>
         </div>
-        <nav
-          className="mt-11 grid gap-0.5 max-[800px]:mt-4 max-[800px]:flex max-[800px]:overflow-auto"
-          aria-label="Primary navigation"
-        >
+        <nav className="mt-8 grid gap-0.5 max-[800px]:mt-4" aria-label="Primary navigation">
           <Link className={NAV_LINK} to="/" activeOptions={EXACT} activeProps={NAV_ACTIVE}>
             <NavIcon name="overview" />
             <span className={NAV_LABEL}>Overview</span>
           </Link>
 
           <span className={NAV_SECTION}>Build</span>
-          <NavGroup label="Compute" groupKey="compute" icon="compute" routeOpen={computeOpen}>
+          <NavGroup
+            label="Compute"
+            groupKey="compute"
+            icon="compute"
+            routeOpen={computeOpen}
+            collapsed={collapsed}
+            onExpand={expandNav}
+          >
             <Link className={subLink} to="/projects" activeProps={NAV_ACTIVE}>
               Sprouts
             </Link>
@@ -897,7 +936,14 @@ export function Shell({ children }: { children: ReactNode }) {
               Queues
             </Link>
           </NavGroup>
-          <NavGroup label="Storage &amp; databases" groupKey="storage" icon="storage" routeOpen={storageOpen}>
+          <NavGroup
+            label="Storage &amp; databases"
+            groupKey="storage"
+            icon="storage"
+            routeOpen={storageOpen}
+            collapsed={collapsed}
+            onExpand={expandNav}
+          >
             <Link className={subLink} to="/kv" activeProps={NAV_ACTIVE}>
               KV
             </Link>
@@ -909,7 +955,7 @@ export function Shell({ children }: { children: ReactNode }) {
             </Link>
           </NavGroup>
 
-          <span className={cn(NAV_SECTION, "mt-5")}>Account</span>
+          <span className={NAV_SECTION}>Account</span>
           <Link className={NAV_LINK} to="/settings" activeProps={NAV_ACTIVE}>
             <NavIcon name="settings" />
             <span className={NAV_LABEL}>Settings</span>
@@ -921,10 +967,6 @@ export function Shell({ children }: { children: ReactNode }) {
             </Link>
           )}
         </nav>
-        <div className="mx-2 mt-auto border-t border-border pt-4 text-[0.72rem] text-muted-foreground max-[800px]:hidden nav-collapsed:hidden">
-          <span className="mr-1.5 inline-block size-[0.45rem] rounded-full bg-success" aria-hidden="true" />
-          Experimental VPS POC
-        </div>
       </aside>
       <div className="flex min-h-dvh flex-col">
         <header className="sticky top-0 z-5 flex h-14 items-center justify-between border-b border-border bg-[color-mix(in_srgb,var(--color-background)_90%,transparent)] px-8 backdrop-blur max-[800px]:px-5">
@@ -974,7 +1016,7 @@ export function Shell({ children }: { children: ReactNode }) {
         >
           {children}
         </main>
-        <footer className="mt-auto flex justify-between gap-4 border-t border-border px-8 py-5 text-[0.7rem] text-muted-foreground max-[800px]:px-5 max-[480px]:flex-col max-[480px]:items-start">
+        <footer className="mt-auto flex flex-wrap items-center justify-center gap-x-6 gap-y-2 border-t border-border px-8 py-5 text-center text-[0.7rem] text-muted-foreground max-[800px]:px-5">
           <span>Sproutboat experimental VPS platform</span>
           <span>© {new Date().getFullYear()} Sproutboat</span>
           <a className="text-inherit underline-offset-2" href="mailto:hello@sproutboat.com">

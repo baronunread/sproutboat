@@ -22,7 +22,7 @@ export const Route = createFileRoute("/projects_/$name/deployments")({ component
 const STATE_OPTIONS = [
   ["all", "All versions"],
   ["active", "Active"],
-  ["superseded", "Superseded"],
+  ["inactive", "Inactive"],
 ] as const;
 const PAGE = 20;
 
@@ -35,7 +35,7 @@ function ProjectDeployments() {
   const needle = query.trim().toLowerCase();
   const matching = deployments.filter((deployment) => {
     if (status === "active" && !deployment.active) return false;
-    if (status === "superseded" && deployment.active) return false;
+    if (status === "inactive" && deployment.active) return false;
     if (!needle) return true;
     return `${deployment.id} ${deployment.artifact} ${deployment.hostname}`.toLowerCase().includes(needle);
   });
@@ -93,7 +93,7 @@ function ProjectDeployments() {
                 </div>
                 <code title={`Artifact ${deployment.artifact}`}>Artifact {deployment.artifact.slice(0, 12)}</code>
                 <span>{relativeTime(deployment.deployedAt)}</span>
-                <Status live={deployment.active}>{deployment.active ? "Active" : "Superseded"}</Status>
+                <Status live={deployment.active}>{deployment.active ? "Active" : "Inactive"}</Status>
               </RecordRow>
             ))}
           </RecordList>

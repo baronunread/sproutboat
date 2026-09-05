@@ -332,7 +332,7 @@ function UsageRail({ product, count }: { product: Product; count: number }) {
           )}
         </dl>
         {cap !== undefined && used !== undefined && (
-          <div className="mt-3.5 h-[0.45rem] overflow-hidden rounded-full bg-secondary" aria-hidden="true">
+          <div className="mt-5 h-[0.45rem] overflow-hidden rounded-full bg-secondary" aria-hidden="true">
             <div
               className="h-full min-w-0.5 rounded-[inherit] bg-sky transition-[width] duration-200"
               style={{ width: `${percent}%` }}

@@ -423,7 +423,7 @@ function UserItem({
                         <small>{deployment.hostname}</small>
                       </div>
                       <span>{relativeTime(deployment.deployedAt)}</span>
-                      <Status live={deployment.active}>{deployment.active ? "Active" : "Superseded"}</Status>
+                      <Status live={deployment.active}>{deployment.active ? "Active" : "Inactive"}</Status>
                     </RecordRow>
                   ))}
                 </RecordList>

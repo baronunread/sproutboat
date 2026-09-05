@@ -91,7 +91,7 @@ function Usage() {
           </div>
           <div>
             <dt>Retained versions</dt>
-            <dd>{limits.versionsPerProject} per project — older superseded versions are pruned automatically</dd>
+            <dd>{limits.versionsPerProject} per project — older inactive versions are pruned automatically</dd>
           </div>
         </dl>
       </Panel>

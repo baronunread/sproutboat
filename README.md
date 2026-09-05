@@ -1,6 +1,9 @@
 <div align="center">
 
-# 🌱 Sproutboat
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/logo-dark.svg">
+  <img src="docs/logo-light.svg" alt="Sproutboat" width="220" height="32">
+</picture>
 
 **Compile a JavaScript function to a native binary on your laptop.
 Ship the binary. The server never sees your code.**
