@@ -23,15 +23,19 @@ export function resolveTheme(pref: Theme, prefersLight: boolean): "dark" | "ligh
 /**
  * Two attributes, because the choice and the painted theme stop being the same
  * thing once "system" exists: data-theme is what the CSS keys off and is
- * always light or dark, data-theme-pref is what the reader picked. Nothing
- * stored still means dark — sproutboat is a dark product, so "system" is opted
- * into rather than defaulted to.
+ * always light or dark, data-theme-pref is what the reader picked.
+ *
+ * Nothing stored means "system": a reader who has never touched the control
+ * gets the theme their machine asks for. The prerendered shell still paints
+ * dark before the boot script runs — no data-theme attribute is the dark
+ * branch of the CSS — so a light-OS reader's first paint is corrected here,
+ * before it reaches the screen, rather than flashing after hydration.
  */
 export const THEME_BOOT = `
 (function () {
   var media = matchMedia('(prefers-color-scheme: light)');
   var paint = function () {
-    var pref = localStorage.getItem('sproutboat-theme') || 'dark';
+    var pref = localStorage.getItem('sproutboat-theme') || 'system';
     document.documentElement.dataset.themePref = pref;
     document.documentElement.dataset.theme =
       pref === 'system' ? (media.matches ? 'light' : 'dark') : pref;

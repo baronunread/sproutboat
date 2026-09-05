@@ -9,9 +9,9 @@
  * rewrite the no-flash boot script we keep the inversion and teach Tailwind
  * about it: tokens flip themselves, and the `dark:` variant means "not light".
  *
- * The attribute is always light or dark, never "system". A reader who picks
- * "system" has that stored, and the boot script resolves it against
- * prefers-color-scheme before stamping — which is what lets the light palette
+ * The attribute is always light or dark, never "system" — which is both the
+ * default and what a reader can pick explicitly. The boot script resolves it
+ * against prefers-color-scheme before stamping — which is what lets the light palette
  * below stay defined in one place instead of once per selector and once per
  * media query.
  * ------------------------------------------------------------------------- */

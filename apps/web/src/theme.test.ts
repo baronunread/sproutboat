@@ -40,10 +40,17 @@ describe("theme boot", () => {
     }
   });
 
-  test("nothing stored means dark, not the OS setting", () => {
-    const { dataset } = boot(null, true);
+  test("nothing stored follows the OS", () => {
+    expect(boot(null, true).dataset.theme).toBe("light");
+    expect(boot(null, false).dataset.theme).toBe("dark");
+    expect(boot(null, true).dataset.themePref).toBe("system");
+  });
+
+  test("a reader with nothing stored still tracks the OS changing", () => {
+    const { dataset, flipOS } = boot(null, false);
     expect(dataset.theme).toBe("dark");
-    expect(dataset.themePref).toBe("dark");
+    flipOS(true);
+    expect(dataset.theme).toBe("light");
   });
 
   test("system resolves against prefers-color-scheme", () => {

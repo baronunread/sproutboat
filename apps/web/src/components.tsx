@@ -708,12 +708,12 @@ function subscribeTheme(listener: () => void) {
 
 function themePref(): Theme {
   const pref = document.documentElement.dataset.themePref;
-  return pref === "light" || pref === "system" ? pref : "dark";
+  return pref === "light" || pref === "dark" ? pref : "system";
 }
 
 /** The prerendered shell is built with no reader, so it renders the default. */
 function themePrefOnServer(): Theme {
-  return "dark";
+  return "system";
 }
 
 /** The running app's half of what the boot script does before first paint.
@@ -728,9 +728,9 @@ function setTheme(pref: Theme) {
 
 /** One menu row rather than three: the label names the current state, so the
  *  button says what it is as well as what it will do, and the order below is
- *  the cycle. Dark first because that is where a reader with nothing stored
- *  already is. */
-const NEXT_THEME = { dark: "light", light: "system", system: "dark" } satisfies Record<Theme, Theme>;
+ *  the cycle. It starts at "system", where a reader with nothing stored
+ *  already is, and the two explicit choices follow. */
+const NEXT_THEME = { system: "dark", dark: "light", light: "system" } satisfies Record<Theme, Theme>;
 const THEME_LABEL = { dark: "Dark", light: "Light", system: "System" } satisfies Record<Theme, string>;
 
 const cycleTheme = () => setTheme(NEXT_THEME[themePref()]);
