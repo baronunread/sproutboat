@@ -35,6 +35,10 @@ SSH into a fresh Debian/Ubuntu or RHEL-family x86-64 box and run:
 curl -fsSL https://raw.githubusercontent.com/baronunread/sproutboat/main/install.sh | sudo bash
 ```
 
+That installs the newest released version. Set `SB_REF` to pin one
+(`SB_REF=v0.1.0`) or to track development (`SB_REF=main`); `sbctl update` moves
+to the newest release unless you say otherwise.
+
 It asks three or four questions — domain, ACME email, admin name — then runs
 unattended: unprivileged user namespaces, Caddy and bubblewrap, a default-deny
 firewall, the dashboard build, one admin identity, and the systemd services.

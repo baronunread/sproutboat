@@ -14,6 +14,10 @@
 # optional — set SB_GITHUB_CLIENT_ID + SB_GITHUB_CLIENT_SECRET to enable it.
 # SB_CF_TOKEN — optional, only to use DNS-01 (inbound :80 blocked).
 # SB_SKIP_DNS_CHECK=1 — don't wait for DNS to resolve.
+#
+# By default this installs the newest released version (the highest `v*` tag).
+# SB_REF=v0.1.0 pins a version, SB_REF=main tracks the development branch, and
+# `sbctl update` moves to the newest release unless SB_REF says otherwise.
 
 set -euo pipefail
 
@@ -23,7 +27,8 @@ STATE=/var/lib/sproutboat
 ETC=/etc/sproutboat
 CADDY_BIN=/usr/local/bin/caddy-sproutboat
 SB_REPO=${SB_REPO:-https://github.com/baronunread/sproutboat.git}
-SB_REF=${SB_REF:-main}
+# Empty means "newest release"; resolved once git exists (see: locate the source).
+SB_REF=${SB_REF:-}
 
 # Colours only when stdout is a terminal (never in CI logs / pipes).
 if [ -t 1 ]; then
@@ -114,8 +119,19 @@ say "Host: ${PRETTY_NAME:-$ID} ($PKG)"
 # treated as the source and rebuilt as-is.
 SRC=$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" 2>/dev/null && pwd || true)
 if [ "${SB_PULL:-0}" = 1 ] || [ -z "$SRC" ] || [ ! -f "$SRC/package.json" ] || [ ! -d "$SRC/apps/control" ]; then
-  say "Fetching Sproutboat ($SB_REF)"
   command -v git >/dev/null || { [ "$PKG" = apt ] && apt-get install -y -qq git || dnf install -y -q git; }
+  # Default to the newest release tag, so a plain `curl | bash` installs a
+  # version rather than whatever landed on main this morning. `ls-remote` needs
+  # no API token and no auth; an unreleased repo has no v* tags, so this falls
+  # back to main on its own. The grep keeps it to plain vX.Y.Z: `-v:refname`
+  # ranks v1.0.0-rc1 above v0.10.1, so a prerelease would otherwise install
+  # itself as the newest release. Ask for one by name (SB_REF=v1.0.0-rc1).
+  if [ -z "$SB_REF" ]; then
+    SB_REF=$(git ls-remote --tags --refs --sort=-v:refname "$SB_REPO" 'v*' 2>/dev/null |
+      grep -E 'refs/tags/v[0-9]+\.[0-9]+\.[0-9]+$' | head -1 | sed 's#.*refs/tags/##')
+    [ -n "$SB_REF" ] || { SB_REF=main; warn "no released version found — installing from main"; }
+  fi
+  say "Fetching Sproutboat ($SB_REF)"
   SRC=/opt/sproutboat-src
   if [ -d "$SRC/.git" ]; then git -C "$SRC" fetch -q --depth 1 origin "$SB_REF" && git -C "$SRC" reset -q --hard FETCH_HEAD
   else git clone -q --depth 1 --branch "$SB_REF" "$SB_REPO" "$SRC"; fi
