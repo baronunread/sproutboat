@@ -1,4 +1,13 @@
+import { useMemo } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
+import { defineChart } from "@tanstack/charts";
+import { barY } from "@tanstack/charts/bar";
+import { focusGroupX } from "@tanstack/charts/focus";
+import { Chart } from "@tanstack/charts/react/tooltip";
+import { scaleBand } from "@tanstack/charts/scales/band";
+import { scaleLinear } from "@tanstack/charts/scales/linear";
+import { stack } from "@tanstack/charts/stack";
+import { tooltip } from "@tanstack/charts/tooltip";
 import {
   Arrow,
   EmptyState,
@@ -176,42 +185,76 @@ function AccountTrend({
   requests: number;
 }) {
   if (trend.length === 0 || requests === 0) return null;
+  return <AccountTrendChart trend={trend} />;
+}
+
+type TrendRow = { start: string; series: "errors" | "requests"; value: number };
+
+/** Same shape as the project metrics chart: stacked buckets, errors at the
+ *  base, one grouped tooltip per hour, keyboard-navigable. Kept as its own
+ *  component so the hooks below sit above no early return. */
+function AccountTrendChart({ trend }: { trend: Array<{ start: string; count: number; errors: number }> }) {
   const max = Math.max(1, ...trend.map((bucket) => bucket.count));
-  const step = 100 / trend.length;
+  const label = (iso: string) => HOUR.format(new Date(iso));
+
+  const rows = useMemo<TrendRow[]>(
+    () =>
+      trend.flatMap((bucket) => [
+        { start: bucket.start, series: "errors" as const, value: bucket.errors },
+        { start: bucket.start, series: "requests" as const, value: Math.max(0, bucket.count - bucket.errors) },
+      ]),
+    [trend],
+  );
+
+  const definition = useMemo(
+    () =>
+      defineChart(
+        {
+          marks: [
+            barY(rows, {
+              x: "start",
+              y: "value",
+              z: "series",
+              fill: (row: TrendRow) => (row.series === "errors" ? "var(--coral)" : "var(--muted)"),
+              layout: stack(),
+            }),
+          ],
+          scales: {
+            x: { scale: scaleBand, axis: { ticks: { format: label }, tickLabels: { thin: true } } },
+            y: { scale: scaleLinear, nice: true },
+          },
+        },
+        { focus: focusGroupX, tooltip },
+      ),
+    [rows],
+  );
+
   return (
-    <Panel variant="wide" className="mb-6 [&_.bars]:mt-4 [&_.bars]:h-20">
+    <Panel variant="wide" className="mb-6">
       <PanelHeading title="Traffic" description="Requests across every route on this account, last 24 hours." />
-      <svg
-        className="block h-20 w-full min-w-full [&_g:hover_rect]:opacity-75 [&_rect]:transition-opacity [&_rect]:duration-150"
-        viewBox="0 0 100 28"
-        preserveAspectRatio="none"
-        role="img"
-        aria-label={`Requests per hour across all routes, peak ${max} in one bucket`}
-      >
-        {trend.map((bucket, index) => {
-          const height = (bucket.count / max) * 26;
-          const errorHeight = (bucket.errors / max) * 26;
+      <Chart
+        definition={definition}
+        ariaLabel={`Requests per hour across all routes, peak ${max} in one bucket`}
+        height={96}
+        className="mt-4 block w-full"
+        renderTooltipBody={({ points }) => {
+          const first = points[0]?.datum;
+          if (!first) return null;
+          const bucket = trend.find((candidate) => candidate.start === first.start);
+          if (!bucket) return null;
           return (
-            <g key={bucket.start}>
-              <title>{`${HOUR.format(new Date(bucket.start))} — ${bucket.count} request${bucket.count === 1 ? "" : "s"}, ${bucket.errors} error${bucket.errors === 1 ? "" : "s"}`}</title>
-              <rect x={index * step} y={26 - height} width={step - 0.6} height={height} fill="var(--muted)" />
-              {errorHeight > 0 && (
-                <rect
-                  x={index * step}
-                  y={26 - errorHeight}
-                  width={step - 0.6}
-                  height={errorHeight}
-                  fill="var(--coral)"
-                />
-              )}
-            </g>
+            <div className="grid gap-0.5 text-[0.75rem] tabular-nums">
+              <span className="text-muted-foreground">{label(bucket.start)}</span>
+              <span>
+                {bucket.count} request{bucket.count === 1 ? "" : "s"}
+              </span>
+              <span className={bucket.errors > 0 ? "text-coral" : "text-muted-foreground"}>
+                {bucket.errors} error{bucket.errors === 1 ? "" : "s"}
+              </span>
+            </div>
           );
-        })}
-      </svg>
-      <div className="mt-1.5 flex justify-between text-[0.68rem] text-muted-foreground">
-        <span>{HOUR.format(new Date(trend[0].start))}</span>
-        <span>now</span>
-      </div>
+        }}
+      />
     </Panel>
   );
 }
