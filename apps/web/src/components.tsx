@@ -744,9 +744,9 @@ const EXACT = { exact: true } as const;
  */
 /** One nav row. Shared by links and by a group's <summary>, so they line up. */
 const NAV_LINK =
-  "flex items-center gap-2.5 rounded-md px-2.5 py-2 text-[0.82rem] text-muted-foreground no-underline hover:bg-accent aria-[current=page]:bg-accent aria-[current=page]:font-medium aria-[current=page]:text-foreground nav-collapsed:justify-center nav-collapsed:px-0 max-[800px]:whitespace-nowrap";
+  "flex items-center gap-2.5 rounded-md px-2.5 py-2 text-[0.82rem] text-muted-foreground no-underline hover:bg-accent aria-[current=page]:bg-accent aria-[current=page]:font-medium aria-[current=page]:text-foreground nav-collapsed:justify-center nav-collapsed:px-0 overflow-hidden whitespace-nowrap";
 const NAV_SECTION =
-  "px-2.5 pb-1.5 text-[0.68rem] font-semibold tracking-wider text-muted-foreground uppercase max-[800px]:hidden nav-collapsed:hidden";
+  "mt-4 px-2.5 pb-1.5 text-[0.68rem] font-semibold tracking-wider text-muted-foreground uppercase max-[800px]:hidden nav-collapsed:hidden";
 const MENU_ITEM =
   "rounded border-0 bg-none px-2 py-1.5 text-left text-[0.8rem] text-muted-foreground no-underline hover:bg-accent hover:text-foreground";
 const AVATAR =
@@ -754,8 +754,13 @@ const AVATAR =
 /** Small outlined pill: the Admin marker and the log table's Cold flag. */
 export const BADGE = "inline-block rounded-full border border-border px-1.5 py-0.5 text-[0.7rem]";
 /** Label text hidden when the rail is collapsed, but kept on narrow screens
- *  where the rail becomes a horizontal strip and the icons alone would not do. */
-const NAV_LABEL = "nav-collapsed:hidden max-[800px]:nav-collapsed:inline";
+ *  where the rail becomes a horizontal strip and the icons alone would not do.
+ *
+ *  Truncates rather than wraps. Expanding flips data-nav at once, so the labels
+ *  are back before the width has animated: "Storage & databases" would wrap to
+ *  two lines inside a 4rem rail and unwrap as it widened, jolting every row
+ *  below it. Now it clips to an ellipsis and grows back into place. */
+const NAV_LABEL = "min-w-0 truncate nav-collapsed:hidden max-[800px]:nav-collapsed:inline";
 
 /**
  * A collapsible nav section. `<details>` is the platform's disclosure widget —
