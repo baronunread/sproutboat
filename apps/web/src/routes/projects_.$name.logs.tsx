@@ -161,7 +161,10 @@ function ProjectLogs() {
       if (!response.ok) return;
       // SAFETY: a 2xx from the log-history endpoint is the LogPage contract.
       const page = (await response.json()) as LogPage;
-      setRows((current) => [...current, ...wrap(page.events)]);
+      // wrap() bumps a ref for its keys, so it cannot run inside the updater:
+      // React may call an updater more than once and it must stay pure.
+      const older = wrap(page.events);
+      setRows((current) => [...current, ...older]);
       setNextBefore(page.nextBefore);
     } catch {
       /* keep the button for a retry */

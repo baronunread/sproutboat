@@ -35,6 +35,7 @@
         "porffor": "github:CanadaHonk/porffor#alpha-4",
         "portless": "0.15.5",
         "react-doctor": "0.9.12",
+        "style-doctor": "0.3.0",
         "tailwindcss": "4.3.3",
         "typescript": "^5.9.2",
         "vite": "^8.2.2",
@@ -1131,6 +1132,8 @@
     "stubborn-fs": ["stubborn-fs@2.0.0", "", { "dependencies": { "stubborn-utils": "^1.0.1" } }, "sha512-Y0AvSwDw8y+nlSNFXMm2g6L51rBGdAQT20J3YSOqxC53Lo3bjWRtr2BKcfYoAf352WYpsZSTURrA0tqhfgudPA=="],
 
     "stubborn-utils": ["stubborn-utils@1.0.2", "", {}, "sha512-zOh9jPYI+xrNOyisSelgym4tolKTJCQd5GBhK0+0xJvcYDcwlOoxF/rnFKQ2KRZknXSG9jWAp66fwP6AxN9STg=="],
+
+    "style-doctor": ["style-doctor@0.3.0", "", { "bin": { "style-doctor": "cli.js" } }, "sha512-9g5D5q+v6AdzNQ2m5RpC5Qw01dflMGiWeo+2E0lBU4QyL1ENUKhi8cGM8JT4L9TdtK62VXj2EEGjtRaXEN94fA=="],
 
     "tagged-tag": ["tagged-tag@1.0.0", "", {}, "sha512-yEFYrVhod+hdNyx7g5Bnkkb0G6si8HJurOoOEgC8B/O0uXLHlaey/65KRv6cuWBNhBgHKAROVpc7QyYqE5gFng=="],
 

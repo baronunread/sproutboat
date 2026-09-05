@@ -4,6 +4,7 @@ import {
   useId,
   useRef,
   useState,
+  useSyncExternalStore,
   type ButtonHTMLAttributes,
   type FormEvent,
   type InputHTMLAttributes,
@@ -376,10 +377,6 @@ export function DataTable({
   );
 }
 
-/** Right-aligned, tabular numeric cell; and the trailing actions cell. */
-export const NUM_CELL = "text-end tabular-nums";
-export const ACTIONS_CELL = "flex items-center justify-end gap-2 [&_button]:h-8 [&_button]:px-2.5";
-
 /** Status pip + label. `live` is the good state. */
 export function Status({ live, children }: { live?: boolean; children: ReactNode }) {
   return (
@@ -430,15 +427,6 @@ export function Panel({
     >
       {children}
     </section>
-  );
-}
-
-/** The muted "loading…" body a panel shows while its data is in flight. */
-export function LoadingPanel({ children }: { children: ReactNode }) {
-  return (
-    <Panel variant="bare" className="min-h-56 pt-12 text-muted-foreground" aria-live="polite">
-      {children}
-    </Panel>
   );
 }
 
@@ -853,6 +841,44 @@ function NavGroup({
   );
 }
 
+/* ---------------------------------------------------------------------------
+ * Rail state
+ *
+ * The collapsed flag lives on <html>, stamped by the boot script before first
+ * paint, because CSS keys off the attribute and collapsing moves layout. React
+ * needs its own copy for aria-expanded and for the group summaries, and reading
+ * it in an effect meant the first paint claimed "expanded" whatever the reader
+ * had stored — a stale aria-expanded, and a group click that toggled a hidden
+ * disclosure instead of opening the rail. useSyncExternalStore reads it during
+ * render instead, with a server snapshot so hydration still matches.
+ * ------------------------------------------------------------------------- */
+const navListeners = new Set<() => void>();
+
+function subscribeNav(listener: () => void) {
+  navListeners.add(listener);
+  return () => {
+    navListeners.delete(listener);
+  };
+}
+
+function navCollapsed() {
+  return document.documentElement.dataset.nav === "collapsed";
+}
+
+/** The prerendered shell is built with no reader, so it always renders expanded. */
+function navCollapsedOnServer() {
+  return false;
+}
+
+function setNavCollapsed(next: boolean) {
+  document.documentElement.dataset.nav = next ? "collapsed" : "expanded";
+  localStorage.setItem("sproutboat-nav", next ? "collapsed" : "expanded");
+  for (const listener of navListeners) listener();
+}
+
+const toggleNav = () => setNavCollapsed(!navCollapsed());
+const expandNav = () => setNavCollapsed(false);
+
 export function Shell({ children }: { children: ReactNode }) {
   const pathname = useRouterState({
     select: (state) => state.location.pathname,
@@ -860,20 +886,7 @@ export function Shell({ children }: { children: ReactNode }) {
   const { account } = useAccount();
   const computeOpen = inGroup(pathname, "compute");
   const storageOpen = inGroup(pathname, "storage");
-  // The rail's state is stamped on <html> by the boot script before first paint,
-  // so it never flashes expanded on reload. React mirrors it for aria-expanded;
-  // the attribute, not a class on this element, is what CSS keys off.
-  const [collapsed, setCollapsed] = useState(false);
-  useEffect(() => {
-    setCollapsed(document.documentElement.dataset.nav === "collapsed");
-  }, []);
-  const setNav = (next: boolean) => {
-    document.documentElement.dataset.nav = next ? "collapsed" : "expanded";
-    localStorage.setItem("sproutboat-nav", next ? "collapsed" : "expanded");
-    setCollapsed(next);
-  };
-  const toggleNav = () => setNav(document.documentElement.dataset.nav !== "collapsed");
-  const expandNav = () => setNav(false);
+  const collapsed = useSyncExternalStore(subscribeNav, navCollapsed, navCollapsedOnServer);
   const username = account?.profile?.username;
   const displayName = username || account?.user?.name || "account";
   const subLink = cn(NAV_LINK, "ps-[2.3rem] nav-collapsed:ps-0");

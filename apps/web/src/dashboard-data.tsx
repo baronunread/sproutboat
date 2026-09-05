@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 
 export type Account = {
   profile?: { username?: string };
@@ -36,11 +36,10 @@ export function AccountProvider({ children }: { children: ReactNode }) {
       alive = false;
     };
   }, [nonce]);
-  return (
-    <AccountContext.Provider value={{ account, state, refresh: () => setNonce((n) => n + 1) }}>
-      {children}
-    </AccountContext.Provider>
-  );
+  // A fresh object literal here is a new context value on every render of this
+  // provider, which re-renders every consumer whether or not anything changed.
+  const value = useMemo(() => ({ account, state, refresh: () => setNonce((n) => n + 1) }), [account, state]);
+  return <AccountContext.Provider value={value}>{children}</AccountContext.Provider>;
 }
 
 export function useAccount(): AccountState {

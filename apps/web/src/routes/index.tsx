@@ -26,6 +26,10 @@ import { buttonVariants } from "@/components/ui/button";
 /** Built once: an Intl formatter is expensive and this one never varies. */
 const HOUR = new Intl.DateTimeFormat(undefined, { hour: "2-digit", minute: "2-digit" });
 
+/** Module scope: it closes over nothing, so rebuilding it every render only
+ *  churned the chart definition's dependencies. */
+const hourLabel = (iso: string) => HOUR.format(new Date(iso));
+
 // __root.tsx's AuthGate redirects anon visitors to /login once the session
 // check resolves; useOverview also has its own sign-in state as a fallback.
 export const Route = createFileRoute("/")({
@@ -195,7 +199,6 @@ type TrendRow = { start: string; series: "errors" | "requests"; value: number };
  *  component so the hooks below sit above no early return. */
 function AccountTrendChart({ trend }: { trend: Array<{ start: string; count: number; errors: number }> }) {
   const max = Math.max(1, ...trend.map((bucket) => bucket.count));
-  const label = (iso: string) => HOUR.format(new Date(iso));
 
   const rows = useMemo<TrendRow[]>(
     () =>
@@ -220,7 +223,7 @@ function AccountTrendChart({ trend }: { trend: Array<{ start: string; count: num
             }),
           ],
           scales: {
-            x: { scale: scaleBand, axis: { ticks: { format: label }, tickLabels: { thin: true } } },
+            x: { scale: scaleBand, axis: { ticks: { format: hourLabel }, tickLabels: { thin: true } } },
             y: { scale: scaleLinear, nice: true },
           },
         },
@@ -244,7 +247,7 @@ function AccountTrendChart({ trend }: { trend: Array<{ start: string; count: num
           if (!bucket) return null;
           return (
             <div className="grid gap-0.5 text-[0.75rem] tabular-nums">
-              <span className="text-muted-foreground">{label(bucket.start)}</span>
+              <span className="text-muted-foreground">{hourLabel(bucket.start)}</span>
               <span>
                 {bucket.count} request{bucket.count === 1 ? "" : "s"}
               </span>
