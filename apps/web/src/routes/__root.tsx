@@ -13,7 +13,11 @@ export const Route = createRootRoute({ component: Root });
  */
 const BOOT = `
 document.documentElement.dataset.theme = localStorage.getItem('sproutboat-theme') || 'dark';
-document.documentElement.dataset.nav = localStorage.getItem('sproutboat-nav') || 'expanded';
+// No stored preference: expanded on a desktop rail, closed on a phone, where
+// the nav is a full-width block above the content and would otherwise push
+// every page down by its own height before the reader saw anything.
+document.documentElement.dataset.nav =
+  localStorage.getItem('sproutboat-nav') || (window.innerWidth <= 800 ? 'collapsed' : 'expanded');
 `;
 
 /**

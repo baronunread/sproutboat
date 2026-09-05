@@ -136,7 +136,7 @@ export function TextField({
       <Input
         {...input}
         id={fieldId}
-        className={cn("bg-background text-sm", className)}
+        className={cn("bg-background", className)}
         aria-invalid={error ? true : undefined}
         aria-describedby={describedBy(hint, error, hintId, errorId)}
       />
@@ -760,7 +760,7 @@ export const BADGE = "inline-block rounded-full border border-border px-1.5 py-0
  *  are back before the width has animated: "Storage & databases" would wrap to
  *  two lines inside a 4rem rail and unwrap as it widened, jolting every row
  *  below it. Now it clips to an ellipsis and grows back into place. */
-const NAV_LABEL = "min-w-0 truncate nav-collapsed:hidden max-[800px]:nav-collapsed:inline";
+const NAV_LABEL = "min-w-0 truncate nav-collapsed:hidden";
 
 /**
  * A collapsible nav section. `<details>` is the platform's disclosure widget —
@@ -848,7 +848,7 @@ function NavGroup({
           <path d="m6 4 4 4-4 4" />
         </svg>
       </summary>
-      <div className="mt-0.5 mb-1.5 grid gap-0.5 nav-collapsed:hidden max-[800px]:nav-collapsed:grid">{children}</div>
+      <div className="mt-0.5 mb-1.5 grid gap-0.5 nav-collapsed:hidden">{children}</div>
     </details>
   );
 }
@@ -891,7 +891,9 @@ export function Shell({ children }: { children: ReactNode }) {
             to="/"
           >
             <SproutboatMark />
-            <span className="nav-collapsed:hidden">Sproutboat</span>
+            {/* Collapsed on a phone the rail is a full-width bar with room for the
+                word; only the 4rem desktop rail has to drop it. */}
+            <span className="min-[801px]:nav-collapsed:hidden">Sproutboat</span>
           </Link>
           <button
             type="button"
@@ -914,7 +916,10 @@ export function Shell({ children }: { children: ReactNode }) {
             </svg>
           </button>
         </div>
-        <nav className="mt-8 grid gap-0.5 max-[800px]:mt-4" aria-label="Primary navigation">
+        <nav
+          className="mt-8 grid gap-0.5 max-[800px]:mt-4 max-[800px]:nav-collapsed:hidden"
+          aria-label="Primary navigation"
+        >
           <Link className={NAV_LINK} to="/" activeOptions={EXACT} activeProps={NAV_ACTIVE}>
             <NavIcon name="overview" />
             <span className={NAV_LABEL}>Overview</span>
