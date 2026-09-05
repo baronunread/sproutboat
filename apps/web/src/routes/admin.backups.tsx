@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
-import { Button, ConfirmButton, PanelHeading, StatusMessage } from "../components";
+import { Button, ConfirmButton, DataTable, Panel, PanelHeading, StatusMessage } from "../components";
 import { mutate, relativeTime } from "../dashboard-data";
+import { buttonVariants } from "@/components/ui/button";
 
 export const Route = createFileRoute("/admin/backups")({ component: AdminBackups });
 
@@ -58,7 +59,7 @@ function AdminBackups() {
   };
 
   return (
-    <section className="data-panel wide-panel">
+    <Panel variant="wide">
       <PanelHeading
         title="Backups"
         description="The SQLite metadata store plus the artifact directory and route snapshot, one gzipped archive each. A timer takes one daily; the last seven are kept."
@@ -67,45 +68,45 @@ function AdminBackups() {
 
       {note && <StatusMessage tone="error">{note}</StatusMessage>}
 
-      {state === "loading" && <p className="loading-state" aria-live="polite">Loading backups…</p>}
-      {state === "error" && <p className="form-error" role="alert">Could not load backups. Refresh and try again.</p>}
+      {state === "loading" && <p className="min-h-56 px-5 pt-12 text-muted-foreground group-[.is-padded]/panel:px-0" aria-live="polite">Loading backups…</p>}
+      {state === "error" && <StatusMessage tone="error">Could not load backups. Refresh and try again.</StatusMessage>}
       {state === "ready" && backups && backups.length === 0 && (
-        <p className="empty-state">No backups yet. Take one now, or wait for the daily timer.</p>
+        <p className="px-5 py-12 text-center text-[0.84rem] leading-relaxed text-muted-foreground group-[.is-padded]/panel:px-0 group-[.is-padded]/panel:py-5 group-[.is-padded]/panel:text-start [&_code]:text-foreground">No backups yet. Take one now, or wait for the daily timer.</p>
       )}
       {state === "ready" && backups && backups.length > 0 && (
-        <div className="log-scroll">
-        <table className="log-table">
-          <caption className="visually-hidden">Stored backup archives</caption>
-          <thead>
-            <tr><th scope="col">Archive</th><th scope="col" className="num">Size</th><th scope="col">Taken</th><th scope="col">Off-box</th><th scope="col" className="actions"><span className="visually-hidden">Actions</span></th></tr>
-          </thead>
-          <tbody>
-            {backups.map((backup) => (
-              <tr key={backup.name}>
-                <td><code>{backup.name}</code></td>
-                <td className="num">{humanSize(backup.sizeBytes)}</td>
-                <td>{relativeTime(backup.createdAt)}</td>
-                <td>{backup.offsite ? "Uploaded" : "—"}</td>
-                <td className="actions row-actions">
-                  <a className="button quiet" href={`/api/admin/backups/${encodeURIComponent(backup.name)}`} download>Download</a>
-                  <ConfirmButton
-                    label="Delete"
-                    busyLabel="Deleting…"
-                    triggerVariant="quiet"
-                    title={`Delete ${backup.name}?`}
-                    description={<>This removes the archive from this box{backup.offsite ? " and from off-box storage" : ""}. Restoring from it will no longer be possible. This cannot be undone.</>}
-                    confirmLabel="Delete backup"
-                    onConfirm={() => remove(backup.name)}
-                  />
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-        </div>
+        <DataTable caption="Stored backup archives"
+              head={<tr>
+                <th scope="col">Archive</th>
+                <th scope="col" className="text-end tabular-nums">Size</th>
+                <th scope="col">Taken</th>
+                <th scope="col">Off-box</th>
+                <th scope="col" className="text-end"><span className="sr-only">Actions</span></th>
+              </tr>}
+            >
+              {backups.map((backup) => (
+                <tr key={backup.name}>
+                  <td><code>{backup.name}</code></td>
+                  <td className="text-end tabular-nums">{humanSize(backup.sizeBytes)}</td>
+                  <td>{relativeTime(backup.createdAt)}</td>
+                  <td>{backup.offsite ? "Uploaded" : "—"}</td>
+                  <td className="flex items-center justify-end gap-2 [&_button]:h-8 [&_button]:px-2.5">
+                    <a className={buttonVariants({ variant: "outline", className: "text-[0.82rem]" })} href={`/api/admin/backups/${encodeURIComponent(backup.name)}`} download>Download</a>
+                    <ConfirmButton
+                      label="Delete"
+                      busyLabel="Deleting…"
+                      triggerVariant="quiet"
+                      title={`Delete ${backup.name}?`}
+                      description={<>This removes the archive from this box{backup.offsite ? " and from off-box storage" : ""}. Restoring from it will no longer be possible. This cannot be undone.</>}
+                      confirmLabel="Delete backup"
+                      onConfirm={() => remove(backup.name)}
+                    />
+                  </td>
+                </tr>
+              ))}
+            </DataTable>
       )}
 
-      <p className="hint">Off-box upload runs when <code>SPROUTBOAT_BACKUP_S3_*</code> is set in <code>/etc/sproutboat/control.env</code> (any S3-compatible store). Restore on the box: stop the services, replace <code>/var/lib/sproutboat/sproutboat.sqlite</code> and <code>artifacts/</code> from the archive, then start again. See <code>infra/README.md</code>.</p>
-    </section>
+      <p className="mt-3 text-[0.75rem] text-muted-foreground">Off-box upload runs when <code>SPROUTBOAT_BACKUP_S3_*</code> is set in <code>/etc/sproutboat/control.env</code> (any S3-compatible store). Restore on the box: stop the services, replace <code>/var/lib/sproutboat/sproutboat.sqlite</code> and <code>artifacts/</code> from the archive, then start again. See <code>infra/README.md</code>.</p>
+    </Panel>
   );
 }

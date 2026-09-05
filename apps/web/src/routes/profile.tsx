@@ -1,11 +1,9 @@
 import { useState } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { Avatar, Button, PanelHeading, TextField } from "../components";
-import { useAccount } from "../dashboard-data";
+import { Avatar, Button, Panel, PanelHeading, TextField } from "../components";
+import { USERNAME_RULE, useAccount } from "../dashboard-data";
 
 export const Route = createFileRoute("/profile")({ component: Profile, head: () => ({ meta: [{ title: "Profile · Sproutboat" }] }) });
-
-const USERNAME_RULE = /^[a-z0-9](?:[a-z0-9-]{1,30}[a-z0-9])?$/;
 
 function Profile() {
   const { account, refresh } = useAccount();
@@ -46,20 +44,20 @@ function Profile() {
 
   return (
     <>
-      <section className="page-heading">
+      <section className="mb-8 flex items-center justify-between gap-8 border-b border-border pb-7 max-[800px]:mb-10 max-[800px]:flex-col max-[800px]:items-start [&_h1]:m-0 [&_h1]:text-[1.85rem] [&_h1]:font-bold [&_h1]:tracking-[-0.035em] [&_h1]:max-[480px]:text-[1.6rem] [&_p]:mt-1.5 [&_p]:max-w-[38rem] [&_p]:text-[0.875rem] [&_p]:leading-normal [&_p]:text-muted-foreground">
         <div><h1>Profile</h1><p>Your deployment namespace is used in every project route.</p></div>
       </section>
-      <section className="data-panel settings-panel">
+      <Panel>
         {currentProfile ? (
           <>
-            <div className="profile-identity">
-              <span className="profile-avatar"><Avatar image={account?.user?.image} label={identityLabel} /></span>
+            <div className="mb-4 flex items-center gap-4 [&_h2]:m-0 [&>div>p]:mt-1 [&>div>p]:text-[0.8rem] [&>div>p]:text-muted-foreground [&>div>p]:[overflow-wrap:anywhere]">
+              <span className="flex size-12 shrink-0 items-center justify-center overflow-hidden rounded-[10px] bg-secondary text-[1.1rem] font-semibold"><Avatar image={account?.user?.image} label={identityLabel} /></span>
               <div>
                 <h2>{currentProfile.username}</h2>
                 {account?.user?.name && <p>{account.user.name}{account.user.email ? ` · ${account.user.email}` : ""}</p>}
               </div>
             </div>
-            <p className="hint">Namespace changes are unavailable while deployments exist.</p>
+            <p className="mt-3 text-[0.75rem] text-muted-foreground">Namespace changes are unavailable while deployments exist.</p>
           </>
         ) : (
           <>
@@ -67,7 +65,7 @@ function Profile() {
               title="Claim your namespace"
               description={<>Choose the name that will appear in routes such as <code>hello.name.sproutboat.com</code>.</>}
             />
-            <form className="form-grid namespace-input" onSubmit={(event) => void reserve(event)}>
+            <form className="mt-5 grid max-w-[36rem] gap-5 [&>[data-slot=form-actions]]:col-span-full" onSubmit={(event) => void reserve(event)}>
               <TextField
                 label="Namespace"
                 value={username}
@@ -79,14 +77,14 @@ function Profile() {
                 hint="3–32 characters: lowercase letters, digits and hyphens."
                 error={invalid ? "Use 3–32 lowercase letters, digits or hyphens." : error}
               />
-              <div className="form-actions">
+              <div data-slot="form-actions" className="mt-1 flex flex-wrap items-center gap-2.5">
                 <Button type="submit" variant="primary" busy={busy} busyLabel="Reserving…" disabled={!trimmed || invalid}>Reserve</Button>
               </div>
             </form>
           </>
         )}
-        <p><Link className="text-link" to="/settings">Appearance settings</Link></p>
-      </section>
+        <p><Link className="text-[0.8rem] text-sky underline-offset-2 hover:underline" to="/settings">Appearance settings</Link></p>
+      </Panel>
     </>
   );
 }

@@ -1,5 +1,6 @@
 import { createRouter, Link } from "@tanstack/react-router";
 import { routeTree } from "./routeTree.gen";
+import { Panel, PanelHeading } from "./components";
 
 /**
  * Router-level fallback for any unmatched route, including a `notFound()`
@@ -8,17 +9,12 @@ import { routeTree } from "./routeTree.gen";
  */
 function NotFound() {
   return (
-    <section className="data-panel settings-panel">
-      <div className="panel-heading">
-        <div>
-          <h2>Not found</h2>
-          <p>That page does not exist, or the project it belonged to has been deleted.</p>
-        </div>
-      </div>
-      <p className="hint">
-        <Link className="text-link" to="/">Back to overview</Link>
+    <Panel>
+      <PanelHeading title="Not found" description="That page does not exist, or the project it belonged to has been deleted." />
+      <p className="mt-3 text-[0.75rem] text-muted-foreground">
+        <Link className="text-[0.8rem] text-sky underline-offset-2 hover:underline" to="/">Back to overview</Link>
       </p>
-    </section>
+    </Panel>
   );
 }
 

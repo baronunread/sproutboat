@@ -104,6 +104,15 @@ export async function mutate(url: string, init: RequestInit = {}): Promise<strin
   }
 }
 
+/**
+ * The namespace rule, shared by the profile claim form and admin user creation
+ * so the two cannot drift. The middle run is what sets the length: a first and
+ * last character plus {1,30} between them is 3–32, which is what both forms say.
+ * Making that run optional (as it once was) silently also admitted a single
+ * character, so the server rejected names the form had accepted.
+ */
+export const USERNAME_RULE = /^[a-z0-9][a-z0-9-]{1,30}[a-z0-9]$/;
+
 export type Overview = {
   metrics: {
     activeProjects: number; deployments: number; requestsLast24Hours: number; successRate: number | null;

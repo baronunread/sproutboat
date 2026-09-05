@@ -2,7 +2,7 @@ import { HeadContent, Outlet, Scripts, createRootRoute, useNavigate, useRouterSt
 import { useEffect } from "react";
 import { NAV_GROUP_ROUTES, Shell } from "../components";
 import { AccountProvider, useAccount } from "../dashboard-data";
-import "../styles.css";
+import "../app.css";
 
 export const Route = createRootRoute({ component: Root });
 
@@ -68,7 +68,7 @@ function Root() {
         <HeadContent />
       </head>
       <body>
-        <a className="skip-link" href="#content">Skip to content</a>
+        <a className="fixed top-0 left-4 z-10 -translate-y-[110%] bg-brand px-4 py-3 text-[#101610] focus:translate-y-0" href="#content">Skip to content</a>
         <AccountProvider><AuthGate /></AccountProvider>
         <script dangerouslySetInnerHTML={{ __html: BOOT_NAV_GROUPS }} />
         <Scripts />

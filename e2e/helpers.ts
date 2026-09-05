@@ -1,7 +1,7 @@
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { existsSync } from "node:fs";
-import { expect, type Page } from "@playwright/test";
+import { expect, type Locator, type Page } from "@playwright/test";
 
 const here = dirname(fileURLToPath(import.meta.url));
 
@@ -29,4 +29,15 @@ export async function openProject(page: Page, name: string): Promise<void> {
   await page.goto("/projects");
   await page.getByRole("link", { name, exact: true }).click();
   await expect(page).toHaveURL(new RegExp(`/projects/${name}$`));
+}
+
+/**
+ * Pick a value in a SelectField. It is a Radix listbox, not a native <select>,
+ * so `selectOption` does not apply and the options are portalled to <body> —
+ * the trigger may be scoped to a row, the option never is. Options are chosen
+ * by their visible label, since a listbox has no value attribute to match on.
+ */
+export async function chooseOption(page: Page, trigger: Locator, option: string | RegExp): Promise<void> {
+  await trigger.click();
+  await page.getByRole("option", { name: option }).click();
 }

@@ -22,7 +22,10 @@ test("#77 — KV has its own page: create, rename and delete a namespace", async
 
   const row = rowsOf(page, /kv namespaces/i).filter({ hasText: "e2e-sessions" });
   await expect(row).toBeVisible();
-  await expect(row).toContainText(/kv_[0-9a-f]{24}/);
+  // The cell deliberately truncates to 14 characters, so the full id lives in
+  // the title (and on the Copy button) — asserting the whole id against the
+  // row's *text* can never pass.
+  await expect(row.getByRole("cell").nth(1).locator("code")).toHaveAttribute("title", /^kv_[0-9a-f]{24}$/);
 
   await row.getByRole("button", { name: /^rename$/i }).click();
   await page.getByLabel(/new name for e2e-sessions/i).fill("e2e-renamed");
@@ -31,7 +34,7 @@ test("#77 — KV has its own page: create, rename and delete a namespace", async
   await expect(renamed).toBeVisible();
 
   await renamed.getByRole("button", { name: /^delete$/i }).click();
-  const dialog = page.getByRole("dialog");
+  const dialog = page.getByRole("alertdialog");
   await expect(dialog).toBeVisible();
   await dialog.getByRole("button", { name: /delete namespace/i }).click();
   await expect(rowsOf(page, /kv namespaces/i).filter({ hasText: "e2e-renamed" })).toHaveCount(0);
@@ -69,7 +72,7 @@ test("secrets: add and delete a project secret", async ({ page }) => {
   await expect(row).not.toContainText("s3cret-value"); // the API never returns a value
 
   await row.getByRole("button", { name: /^delete$/i }).click();
-  const dialog = page.getByRole("dialog");
+  const dialog = page.getByRole("alertdialog");
   await dialog.getByRole("button", { name: /delete secret/i }).click();
   await expect(page.getByRole("list", { name: "Secrets" }).getByRole("listitem").filter({ hasText: "E2E_TOKEN" })).toHaveCount(0);
 });

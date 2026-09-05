@@ -22,11 +22,17 @@ test("roll back a superseded version, then it becomes active", async ({ page }) 
   await rows.last().getByRole("link").click();
   await expect(page).toHaveURL(/\/projects\/blog\/deployments\/[0-9a-f-]{36}$/);
 
-  // The detail view renders exactly one lifecycle badge, on the version panel.
-  const status = page.getByText(/^(Active|Superseded)$/);
+  // Scoped to the version panel. Page-wide, this regex also matches the two
+  // <option>s in the list page's State filter and a badge per row, so during
+  // the client-side transition off that route it intermittently resolved to
+  // five elements and failed strict mode rather than waiting for the detail.
+  const status = page
+    .locator("section")
+    .filter({ has: page.getByRole("heading", { name: /^Version [0-9a-f]{8}$/ }) })
+    .getByText(/^(Active|Superseded)$/);
   await expect(status).toHaveText("Superseded");
   await page.getByRole("button", { name: /roll back to this version/i }).click();
-  const dialog = page.getByRole("dialog");
+  const dialog = page.getByRole("alertdialog");
   await expect(dialog).toBeVisible();
   await dialog.getByRole("button", { name: /^roll back$/i }).click();
   await expect(status).toHaveText("Active");

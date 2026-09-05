@@ -174,9 +174,9 @@ export async function ensureAdminSeeded(): Promise<void> {
   // on first authenticated request, so nothing to set here. Reserve the
   // namespace now so the dashboard doesn't send the admin through setup.
   // allowReserved: the admin may hold a name like "admin" that other users can't.
+  // reserveUsername enforces the slug shape itself; a bad or taken name lands in
+  // the same catch, so a second copy of the rule here would only be one to drift.
   const { reserveUsername } = await import("./identity");
-  if (/^[a-z0-9](?:[a-z0-9-]{1,30}[a-z0-9])?$/.test(username)) {
-    try { reserveUsername(userId, username, { allowReserved: true }); } catch { /* already reserved */ }
-  }
+  try { reserveUsername(userId, username, { allowReserved: true }); } catch { /* invalid or already reserved */ }
   seeded = true;
 }

@@ -2,6 +2,8 @@ import { useCallback } from "react";
 import { createFileRoute, Link, Outlet } from "@tanstack/react-router";
 
 import { ProjectProvider, useJson, useOverview, type ProjectDeployment } from "../dashboard-data";
+import { buttonVariants } from "@/components/ui/button";
+import { Panel, StatusMessage } from "../components";
 
 export const Route = createFileRoute("/projects_/$name")({
   component: ProjectLayout,
@@ -37,33 +39,33 @@ function ProjectLayout() {
 
   return (
     <>
-      <section className="page-heading">
+      <section className="mb-8 flex items-center justify-between gap-8 border-b border-border pb-7 max-[800px]:mb-10 max-[800px]:flex-col max-[800px]:items-start [&_h1]:m-0 [&_h1]:text-[1.85rem] [&_h1]:font-bold [&_h1]:tracking-[-0.035em] [&_h1]:max-[480px]:text-[1.6rem] [&_p]:mt-1.5 [&_p]:max-w-[38rem] [&_p]:text-[0.875rem] [&_p]:leading-normal [&_p]:text-muted-foreground">
         <div>
-          <p className="crumb"><Link to="/projects">Sprouts</Link> <span>/</span> {name}</p>
+          <p className="m-0 mb-2 text-[0.78rem] text-muted-foreground [&_a]:underline-offset-2 [&_a:hover]:underline [&>span]:mx-1.5"><Link to="/projects">Sprouts</Link> <span>/</span> {name}</p>
           <h1>{name}</h1>
           {!loading && (active
             ? <p>{active.hostname}</p>
             : <p>No active route — every version is superseded.</p>)}
         </div>
-        {active && <a className="button quiet" href={`https://${active.hostname}`}>Open route</a>}
+        {active && <a className={buttonVariants({ variant: "outline", className: "text-[0.82rem]" })} href={`https://${active.hostname}`}>Open route</a>}
       </section>
 
       {loading ? (
-        <section className="data-panel loading-state" aria-live="polite">Loading project…</section>
+        <Panel variant="bare" className="min-h-56 px-5 pt-12 text-muted-foreground" aria-live="polite">Loading project…</Panel>
       ) : state === "error" || versions.state === "error" ? (
-        <p className="form-error" role="alert">Could not load this project. Refresh and try again.</p>
+        <StatusMessage tone="error">Could not load this project. Refresh and try again.</StatusMessage>
       ) : !exists ? (
-        <section className="data-panel empty-state">
+        <Panel variant="bare">
           <h2>No project named {name}</h2>
           <p>It may have been deleted, or the URL is wrong.</p>
-          <Link className="button primary" to="/projects">Back to projects</Link>
-        </section>
+          <Link className={buttonVariants({ variant: "default", className: "text-[0.82rem]" })} to="/projects">Back to projects</Link>
+        </Panel>
       ) : (
         <>
-          <nav className="section-nav" aria-label="Project sections">
+          <nav className="mb-6 flex flex-wrap gap-1 border-b border-border" aria-label="Project sections">
             {TABS.map(([to, label, exact]) => (
               <Link key={to} to={to} params={{ name }} activeOptions={exact ? { exact: true } : undefined}
-                activeProps={activeProps} className="section-tab">{label}</Link>
+                activeProps={activeProps} className="-mb-px border-b-2 border-transparent px-3 py-2 text-[0.85rem] text-muted-foreground no-underline hover:text-foreground aria-[current=page]:border-brand aria-[current=page]:text-foreground">{label}</Link>
             ))}
           </nav>
           <ProjectProvider value={{ name, deployments, active, refresh }}>

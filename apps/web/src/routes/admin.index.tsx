@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
-import { Metric } from "../components";
+import { Metric, Panel, StatusMessage } from "../components";
 
 export const Route = createFileRoute("/admin/")({ component: AdminOverview });
 
@@ -35,13 +35,13 @@ function AdminOverview() {
     return () => { ignore = true; };
   }, []);
 
-  if (state === "loading") return <section className="data-panel loading-state" aria-live="polite">Loading platform status…</section>;
-  if (state === "error" || !data) return <p className="form-error" role="alert">Could not load platform status. Refresh and try again.</p>;
+  if (state === "loading") return <Panel variant="bare" className="min-h-56 px-5 pt-12 text-muted-foreground" aria-live="polite">Loading platform status…</Panel>;
+  if (state === "error" || !data) return <StatusMessage tone="error">Could not load platform status. Refresh and try again.</StatusMessage>;
 
   const rt = data.runtime;
   return (
     <>
-      <section className="metrics" aria-label="Platform statistics">
+      <section className="mb-6 grid grid-cols-[repeat(auto-fit,minmax(12rem,1fr))] gap-3 max-[480px]:grid-cols-1 max-[480px]:gap-2.5" aria-label="Platform statistics">
         <Metric label="Accounts" value={String(data.owners)} detail="With at least one project" />
         <Metric label="Active projects" value={String(data.activeProjects)} detail="Routes currently serving" />
         <Metric label="Deployments" value={String(data.deployments)} detail="Immutable versions" />
@@ -51,7 +51,7 @@ function AdminOverview() {
         <Metric label="Banned accounts" value={String(data.bannedOwners)} detail="Routes stopped" tone={data.bannedOwners > 0 ? "warning" : "neutral"} />
       </section>
       {rt && (
-        <section className="metrics" aria-label="Runtime">
+        <section className="mb-6 grid grid-cols-[repeat(auto-fit,minmax(12rem,1fr))] gap-3 max-[480px]:grid-cols-1 max-[480px]:gap-2.5" aria-label="Runtime">
           <Metric label="Live sprouts" value={String(rt.live)} detail="Resident sprout processes" />
           <Metric label="Spawns" value={String(rt.spawns)} detail="Since edge start" />
           <Metric label="Restarts" value={String(rt.restarts)} detail="Replaced a crashed/evicted sprout" tone={rt.restarts > 0 ? "warning" : "neutral"} />

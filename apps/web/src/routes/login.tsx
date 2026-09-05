@@ -57,18 +57,21 @@ function Login() {
   const adminHint = config?.adminEmail && email === config.adminEmail;
 
   return (
-    <main className="login">
-      <Link className="brand" to="/"><SproutboatMark /><span>Sproutboat</span></Link>
-      <section>
+    // id="content" is the skip link's target: __root always renders the link,
+    // and /login is the one route that supplies its own <main> instead of the
+    // Shell's, so without this the link had nothing to jump to here.
+    <main id="content" className="grid min-h-screen place-items-center p-8">
+      <Link className="absolute top-6 left-6 inline-flex items-center gap-2.5 text-[0.95rem] font-extrabold tracking-tight no-underline" to="/"><SproutboatMark /><span>Sproutboat</span></Link>
+      <section className="w-full max-w-[27rem] rounded-xl border border-border bg-card p-8 [&>h1]:m-0 [&>h1]:max-w-[12ch] [&>h1]:text-[2rem] [&>h1]:leading-none [&>h1]:font-bold [&>h1]:tracking-[-0.035em] [&>p]:mb-6 [&>p]:text-[0.875rem] [&>p]:leading-relaxed [&>p]:text-muted-foreground">
         <h1>Sign in to your workspace.</h1>
         <p>Accounts are created by the admin — there is no self-service sign-up.</p>
         {config?.githubSignIn && (
           <>
-            <Button variant="primary" onClick={() => void signInWithGithub()}>Continue with GitHub</Button>
-            <p className="or-divider"><span>or</span></p>
+            <Button variant="primary" className="w-full" onClick={() => void signInWithGithub()}>Continue with GitHub</Button>
+            <p className="my-5 flex items-center gap-3 text-[0.75rem] text-muted-foreground before:h-px before:flex-1 before:bg-border before:content-[''] after:h-px after:flex-1 after:bg-border after:content-['']"><span>or</span></p>
           </>
         )}
-        <form className="form-grid password-signin" onSubmit={signInWithPassword}>
+        <form className="mt-5 grid max-w-[36rem] gap-5 [&>[data-slot=form-actions]]:col-span-full" onSubmit={signInWithPassword}>
           <TextField
             label="Email"
             id="signin-email"
@@ -91,8 +94,8 @@ function Login() {
             hint={adminHint ? <>Admin: your password is the token from <code>/root/sproutboat-admin.env</code>.</> : undefined}
             error={error ?? null}
           />
-          <div className="form-actions">
-            <Button type="submit" variant={config?.githubSignIn ? "quiet" : "primary"} busy={busy} busyLabel="Signing in…" disabled={!email || !password}>
+          <div data-slot="form-actions" className="mt-1 flex flex-wrap items-center gap-2.5">
+            <Button type="submit" className="w-full" variant={config?.githubSignIn ? "quiet" : "primary"} busy={busy} busyLabel="Signing in…" disabled={!email || !password}>
               Sign in
             </Button>
           </div>

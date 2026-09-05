@@ -1,0 +1,161 @@
+@import "tailwindcss";
+
+
+/* ---------------------------------------------------------------------------
+ * Theme
+ *
+ * Sproutboat is dark by default and opts *into* light with data-theme="light",
+ * stamped on <html> before first paint by the boot script in __root.tsx. That
+ * is the inverse of shadcn's :root-is-light / .dark convention, so rather than
+ * rewrite the no-flash boot script we keep the inversion and teach Tailwind
+ * about it: tokens flip themselves, and the `dark:` variant means "not light".
+ * ------------------------------------------------------------------------- */
+@custom-variant dark (&:where(:root:not([data-theme="light"]), :root:not([data-theme="light"]) *));
+
+/* The nav rail's collapsed state is stamped on <html> before first paint (same
+   reason as the theme: collapsing it moves layout, so it must not flash). This
+   variant is how a utility reacts to that ancestor state. */
+@custom-variant nav-collapsed (html[data-nav="collapsed"] &);
+
+/* shadcn's semantic names, mapped onto the palette this dashboard already uses.
+   Note --muted: shadcn means a muted *surface*, sproutboat's --muted is muted
+   *text*, so the two keep separate names and map across explicitly. */
+:root {
+  --background: var(--ink);
+  --foreground: var(--text);
+  --card: var(--panel);
+  --card-foreground: var(--text);
+  --popover: var(--panel);
+  --popover-foreground: var(--text);
+  --primary: var(--text);
+  --primary-foreground: var(--ink);
+  --secondary: var(--panel-2);
+  --secondary-foreground: var(--text);
+  --muted-surface: var(--panel-2);
+  --muted-foreground: var(--muted);
+  --accent: var(--panel-2);
+  --accent-foreground: var(--text);
+  --destructive: var(--coral);
+  --destructive-foreground: var(--ink);
+  --border: var(--line);
+  --input: var(--line);
+  --ring: var(--sky);
+  --radius: 0.375rem;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted-surface);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+
+  /* Sproutboat's own accents, available as utilities too. */
+  --color-line-strong: var(--line-strong);
+  --color-brand: var(--lime);
+  --color-sky: var(--sky);
+  --color-coral: var(--coral);
+  --color-success: var(--green);
+
+  --radius-sm: calc(var(--radius) - 2px);
+  --radius-md: var(--radius);
+  --radius-lg: calc(var(--radius) + 2px);
+  --radius-xl: calc(var(--radius) + 6px);
+
+  --font-sans: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, monospace;
+}
+
+/* ---------------------------------------------------------------------------
+ * Base
+ *
+ * What is left of the hand-written stylesheet: document-level defaults that
+ * belong to the page rather than to any component. Everything else is now a
+ * utility or a component in src/components.
+ * ------------------------------------------------------------------------- */
+@layer base {
+  :root {
+    color-scheme: dark;
+    font-synthesis: none;
+    font-family: var(--font-sans);
+
+    --ink: #0a0a0a;
+    --panel: #111111;
+    --panel-2: #171717;
+    --line: #2a2a2a;
+    --line-strong: #3a3a3a;
+    --text: #ededed;
+    --muted: #a1a1a1;
+    --lime: #f6821f;
+    --sky: #60a5fa;
+    --coral: #ff6b6b;
+    --green: #4ade80;
+  }
+
+  /* Light theme restates the accent hues too, not just the greys: every one of
+     them is picked for legibility against #0a0a0a, and each is used as text
+     somewhere, where on white they land at 1.7–2.6:1. These are the 700-weight
+     equivalents, which clear 4.5:1 on every surface they appear on — including
+     the tightest case, a status message's own 12% tint of itself. */
+  html[data-theme="light"] {
+    color-scheme: light;
+    --ink: #fafafa;
+    --panel: #ffffff;
+    --panel-2: #f4f4f5;
+    --line: #e4e4e7;
+    --line-strong: #d4d4d8;
+    --text: #18181b;
+    --muted: #71717a;
+    --lime: #9a3412;
+    --sky: #1d4ed8;
+    --coral: #b91c1c;
+    --green: #166534;
+  }
+
+  body {
+    background: var(--color-background);
+    color: var(--color-foreground);
+    letter-spacing: -0.006em;
+    margin: 0;
+    min-width: 320px;
+  }
+
+  /* Tailwind v4 defaults an uncoloured `border` to currentColor, so shadcn's
+     components — which use bare `border` / `border-b` — would draw their edges
+     in the text colour. This is the base rule shadcn's own globals.css ships
+     with; without it the Select popover and table heads outline near-white. */
+  *, ::after, ::before, ::backdrop { border-color: var(--color-border); }
+
+  a { color: inherit; }
+  button { cursor: pointer; }
+  input { font: inherit; }
+
+  :focus-visible { outline: 2px solid var(--color-ring); outline-offset: 2px; }
+  ::selection { background: var(--color-brand); color: #111; }
+
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+      scroll-behavior: auto !important;
+      transition-duration: 0ms !important;
+    }
+  }
+
+  /* Touch targets: coarse pointers get the larger control height. */
+  @media (pointer: coarse) {
+    input, select, button { min-height: 2.75rem; }
+  }
+}
