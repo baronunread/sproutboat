@@ -23,6 +23,8 @@ type Bindings = {
   assets: string | null;
   durableObjects: Array<{ binding: string; className: string }>;
   resources: ResourceRef[];
+  /** Older artifacts predate vars in bindings.json, so this can be absent. */
+  vars?: Record<string, string>;
 };
 type Resource = { id: string; kind: string; name: string };
 type Detail = { id: string; bindings: Bindings | null; resources: Resource[]; manifestError: string | null };
@@ -38,6 +40,7 @@ const KIND_LABEL = new Map([
   ["assets", "Static assets"],
   ["do", "Durable Object"],
   ["cron", "Cron trigger"],
+  ["var", "Variable"],
 ]);
 
 type Row = { binding: string; kind: string; target: string; resourceId: string | null };
@@ -90,6 +93,14 @@ function rowsFor(bindings: Bindings, resources: Resource[]): Row[] {
       ? [{ binding: bindings.assets, kind: "assets", target: "Files served from the artifact", resourceId: null }]
       : []),
     ...bindings.outbound.map((host) => ({ binding: "fetch", kind: "outbound", target: host, resourceId: null })),
+    // Plain baked config, shown with its value — unlike a secret, whose value
+    // the API never returns.
+    ...Object.entries(bindings.vars ?? {}).map(([binding, value]) => ({
+      binding,
+      kind: "var",
+      target: value,
+      resourceId: null,
+    })),
   ];
 }
 

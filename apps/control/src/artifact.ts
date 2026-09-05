@@ -23,6 +23,9 @@ export type ArtifactBindings = {
   assets: string | null;
   durableObjects: Array<{ binding: string; className: string }>;
   resources: ResourceBindingRef[];
+  /** Baked `vars` (env.NAME -> value). Plain config, not secret. Absent from
+   *  every artifact built before the CLI started writing them, hence `{}`. */
+  vars: Record<string, string>;
 };
 
 export type ValidatedArtifact = {
@@ -72,6 +75,13 @@ function bindingsErrors(value: Json | undefined): string[] {
     if (key in value && !isStrArray(value[key])) errors.push(`bindings.json.${key} must be a string[]`);
   }
   if ("assets" in value && !isStr(value.assets)) errors.push("bindings.json.assets must be a string");
+  // vars is a map, not one of the string[] lists checked above.
+  if ("vars" in value) {
+    const vars = value.vars;
+    if (!isObj(vars) || !Object.values(vars).every(isStr)) {
+      errors.push("bindings.json.vars must map names to string values");
+    }
+  }
   if ("do" in value) {
     const dos = value.do;
     const ok =
@@ -102,6 +112,14 @@ function resourceBindingsOf(value: Json | undefined): ResourceBindingRef[] {
   return refs;
 }
 
+/** The `vars` map from a bindings.json already known to pass `bindingsErrors`. */
+function varsOf(value: Json | undefined): ArtifactBindings["vars"] {
+  if (!isObj(value) || !isObj(value.vars)) return {};
+  const vars: ArtifactBindings["vars"] = {};
+  for (const [name, item] of Object.entries(value.vars)) if (isStr(item)) vars[name] = item;
+  return vars;
+}
+
 /** #76 — the whole binding set from a bindings.json already known to pass `bindingsErrors`. */
 function bindingsOf(value: Json | undefined): ArtifactBindings {
   const names = (key: string): string[] => (isObj(value) && isStrArray(value[key]) ? value[key] : []);
@@ -122,6 +140,7 @@ function bindingsOf(value: Json | undefined): ArtifactBindings {
         : [],
     ),
     resources: resourceBindingsOf(value),
+    vars: varsOf(value),
   };
 }
 
