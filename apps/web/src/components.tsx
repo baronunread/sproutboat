@@ -871,11 +871,16 @@ export function Shell({ children }: { children: ReactNode }) {
   const displayName = username || account?.user?.name || "account";
   const subLink = cn(NAV_LINK, "ps-[2.3rem] nav-collapsed:ps-0");
   return (
-    <div className="grid min-h-screen grid-cols-[15rem_minmax(0,1fr)] nav-collapsed:grid-cols-[4rem_minmax(0,1fr)] max-[800px]:grid-cols-1 max-[800px]:content-start max-[800px]:nav-collapsed:grid-cols-1">
-      <aside className="sticky top-0 flex h-screen flex-col border-r border-border bg-card px-3 py-[1.15rem] nav-collapsed:px-2 max-[800px]:static max-[800px]:h-auto max-[800px]:border-r-0 max-[800px]:border-b">
-        <div className="flex items-center justify-between gap-2 px-2 nav-collapsed:flex-col nav-collapsed:gap-3 nav-collapsed:px-0">
+    <div className="grid min-h-screen grid-cols-[15rem_minmax(0,1fr)] transition-[grid-template-columns] duration-200 ease-out motion-reduce:transition-none nav-collapsed:grid-cols-[4rem_minmax(0,1fr)] max-[800px]:grid-cols-1 max-[800px]:content-start max-[800px]:nav-collapsed:grid-cols-1">
+      <aside className="group/rail sticky top-0 flex h-screen flex-col overflow-hidden border-r border-border bg-card px-3 py-[1.15rem] transition-[padding] duration-200 ease-out motion-reduce:transition-none nav-collapsed:px-2 max-[800px]:static max-[800px]:h-auto max-[800px]:border-r-0 max-[800px]:border-b">
+        {/* One row tall in both states. Collapsed, the mark and the toggle share
+            a single grid cell and cross-fade on hover or keyboard focus —
+            stacking them (the old flex-col) made the header ~40px taller, which
+            pushed every nav item below it down and was the visible jump between
+            the two states. */}
+        <div className="flex h-8 items-center justify-between gap-2 px-2 min-[801px]:nav-collapsed:grid min-[801px]:nav-collapsed:place-items-center min-[801px]:nav-collapsed:gap-0 min-[801px]:nav-collapsed:px-0">
           <Link
-            className="inline-flex items-center gap-2.5 px-2 py-1 text-[0.95rem] font-extrabold tracking-tight no-underline"
+            className="inline-flex items-center gap-2.5 px-2 py-1 text-[0.95rem] font-extrabold tracking-tight no-underline transition-opacity min-[801px]:nav-collapsed:[grid-area:1/1] min-[801px]:nav-collapsed:px-0 min-[801px]:nav-collapsed:group-hover/rail:opacity-0 min-[801px]:nav-collapsed:has-[+button:focus-visible]:opacity-0 motion-reduce:transition-none"
             to="/"
           >
             <SproutboatMark />
@@ -883,7 +888,7 @@ export function Shell({ children }: { children: ReactNode }) {
           </Link>
           <button
             type="button"
-            className="grid size-8 place-items-center rounded-md border-0 bg-transparent text-muted-foreground hover:bg-accent hover:text-foreground [&_svg]:size-4"
+            className="grid size-8 place-items-center rounded-md border-0 bg-transparent text-muted-foreground transition-opacity hover:bg-accent hover:text-foreground [&_svg]:size-4 min-[801px]:nav-collapsed:[grid-area:1/1] min-[801px]:nav-collapsed:opacity-0 min-[801px]:nav-collapsed:group-hover/rail:opacity-100 min-[801px]:nav-collapsed:focus-visible:opacity-100 motion-reduce:transition-none"
             onClick={toggleNav}
             aria-expanded={!collapsed}
             aria-label={collapsed ? "Expand navigation" : "Collapse navigation"}
