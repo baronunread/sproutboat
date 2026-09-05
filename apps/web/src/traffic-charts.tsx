@@ -1,4 +1,12 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { defineChart } from "@tanstack/charts";
+import { barY } from "@tanstack/charts/bar";
+import { focusGroupX } from "@tanstack/charts/focus";
+import { Chart } from "@tanstack/charts/react/tooltip";
+import { scaleBand } from "@tanstack/charts/scales/band";
+import { scaleLinear } from "@tanstack/charts/scales/linear";
+import { stack } from "@tanstack/charts/stack";
+import { tooltip } from "@tanstack/charts/tooltip";
 import { Panel, PanelHeading, SelectField, StatusMessage } from "./components";
 import { cn } from "@/lib/utils";
 
@@ -472,62 +480,101 @@ export function TrafficCharts({ name }: { name: string }) {
   );
 }
 
+/** One stacked bar per time bucket: errors solid at the base, successes above.
+ *  The split is read by height, which a hatch fill over the same bar is not.
+ *
+ *  `focusGroupX` gives the whole bucket to one hover, so the tooltip reports
+ *  requests and errors together instead of whichever rect the pointer landed
+ *  on, and the host portals the tooltip out of the overflow-x-auto scroller
+ *  that would otherwise clip it. Keyboard users get the same points: arrows
+ *  walk the buckets, Enter pins, Escape dismisses. */
+type BarRow = { start: string; series: "errors" | "requests"; value: number };
+
 function RequestBars({ buckets, tickLabel }: { buckets: Bucket[]; tickLabel: (iso: string) => string }) {
   const max = Math.max(1, ...buckets.map((bucket) => bucket.count));
-  const step = 10;
-  const gap = 2;
-  const height = 80;
-  const width = buckets.length * step;
+  const rows = useMemo<BarRow[]>(
+    () =>
+      buckets.flatMap((bucket) => [
+        { start: bucket.start, series: "errors" as const, value: bucket.errors },
+        { start: bucket.start, series: "requests" as const, value: Math.max(0, bucket.count - bucket.errors) },
+      ]),
+    [buckets],
+  );
+
+  // One tick per distinct label. At 7d the formatter is month+day, so every
+  // bucket inside a day formats identically and the axis would read
+  // "1 set, 1 set, 1 set". Thinning only prevents overlap, not repetition.
+  const tickValues = useMemo(() => {
+    const seen = new Set<string>();
+    return buckets
+      .filter((bucket) => {
+        const label = tickLabel(bucket.start);
+        if (seen.has(label)) return false;
+        seen.add(label);
+        return true;
+      })
+      .map((bucket) => bucket.start);
+  }, [buckets, tickLabel]);
+
+  const definition = useMemo(
+    () =>
+      defineChart(
+        {
+          marks: [
+            barY(rows, {
+              x: "start",
+              y: "value",
+              z: "series",
+              // The palette stays in the dashboard's tokens rather than moving
+              // into --ts-chart-*, so the theme flip keeps owning it.
+              fill: (row: BarRow) => (row.series === "errors" ? "var(--coral)" : "var(--muted)"),
+              layout: stack(),
+            }),
+          ],
+          scales: {
+            x: {
+              scale: scaleBand,
+              // Without a format the band scale labels every bucket with its raw
+              // ISO start. `thin` then drops whatever would still collide, so
+              // this reads across the axis instead of only at the two ends.
+              axis: { ticks: { values: tickValues, format: tickLabel }, tickLabels: { thin: true } },
+            },
+            y: { scale: scaleLinear, nice: true },
+          },
+        },
+        { focus: focusGroupX, tooltip },
+      ),
+    [rows, tickValues, tickLabel],
+  );
+
   return (
     <div className="mt-9 [&>h3]:m-0 [&>h3]:mb-3 [&>h3]:flex [&>h3]:flex-wrap [&>h3]:items-baseline [&>h3]:gap-1.5 [&>h3]:text-[0.85rem] [&>h3]:font-semibold [&_h3_small]:font-normal [&_h3_small]:text-muted-foreground">
       <h3>
         Requests <small>· peak {group(max)}/bucket</small>
       </h3>
-      <div className="overflow-x-auto">
-        <svg
-          className="block h-24 w-full min-w-full [&_g:hover_rect]:opacity-75 [&_rect]:transition-opacity [&_rect]:duration-150"
-          viewBox={`0 0 ${width} ${height + 16}`}
-          preserveAspectRatio="none"
-          role="img"
-          aria-label={`Requests per time bucket, peak ${max}`}
-        >
-          {buckets.map((bucket, index) => {
-            const barHeight = Math.round((bucket.count / max) * height);
-            const errHeight = Math.round((bucket.errors / max) * height);
-            const x = index * step;
-            return (
-              <g key={bucket.start}>
-                <title>{`${tickLabel(bucket.start)} — ${bucket.count} request${bucket.count === 1 ? "" : "s"}, ${bucket.errors} error${bucket.errors === 1 ? "" : "s"}`}</title>
-                {/* Successes above, errors stacked solid at the base: the split is
-                    read by height, which a hatch fill over the same bar is not. */}
-                <rect
-                  x={x}
-                  y={height - barHeight}
-                  width={step - gap}
-                  height={Math.max(0, barHeight - errHeight)}
-                  fill="var(--muted)"
-                />
-                {errHeight > 0 && (
-                  <rect x={x} y={height - errHeight} width={step - gap} height={errHeight} fill="var(--coral)" />
-                )}
-              </g>
-            );
-          })}
-          <line
-            x1="0"
-            y1={height}
-            x2={width}
-            y2={height}
-            stroke="var(--line)"
-            strokeWidth="1"
-            vectorEffect="non-scaling-stroke"
-          />
-        </svg>
-      </div>
-      <div className="mt-1.5 flex justify-between text-[0.68rem] text-muted-foreground">
-        <span>{tickLabel(buckets[0].start)}</span>
-        <span>{tickLabel(buckets[buckets.length - 1].start)}</span>
-      </div>
+      <Chart
+        definition={definition}
+        ariaLabel={`Requests per time bucket, peak ${max}`}
+        height={96}
+        className="block w-full"
+        renderTooltipBody={({ points }) => {
+          const first = points[0]?.datum;
+          if (!first) return null;
+          const bucket = buckets.find((candidate) => candidate.start === first.start);
+          if (!bucket) return null;
+          return (
+            <div className="grid gap-0.5 text-[0.75rem] tabular-nums">
+              <span className="text-muted-foreground">{tickLabel(bucket.start)}</span>
+              <span>
+                {group(bucket.count)} request{bucket.count === 1 ? "" : "s"}
+              </span>
+              <span className={bucket.errors > 0 ? "text-coral" : "text-muted-foreground"}>
+                {group(bucket.errors)} error{bucket.errors === 1 ? "" : "s"}
+              </span>
+            </div>
+          );
+        }}
+      />
       <p className="mt-2 flex items-center gap-1.5 text-[0.72rem] text-muted-foreground">
         <span className="inline-block size-[0.7rem] bg-muted-foreground" /> requests{" "}
         <span className="inline-block size-[0.7rem] bg-coral" /> 5xx errors
