@@ -64,8 +64,7 @@ the hostname to `routes.json`. From then the edge serves it from whatever
 version of the project is active, and Caddy issues its cert on demand through
 the same `/internal/tls/allow` gate and per-hour ceiling as generated
 hostnames. The visitor's DNS must point the hostname at this box (A/AAAA or
-CNAME to the deployment domain). `SPROUTBOAT_MAX_DOMAINS_PER_PROJECT` (default
-5) caps how many a project may hold; deleting the project or the domain drops
+CNAME to the deployment domain). `SPROUTBOAT_MAX_DOMAINS_PER_PROJECT` (default 5) caps how many a project may hold; deleting the project or the domain drops
 it from the snapshot on the next sync.
 
 ## Hosts and binding
@@ -229,15 +228,15 @@ systemctl start sproutboat-control sproutboat-edge
 
 All configurable in `/etc/sproutboat/control.env`; sane defaults apply if unset.
 
-| Env var | Default | Effect |
-| --- | --- | --- |
-| `SPROUTBOAT_DEPLOY_RATE_PER_MIN` | 10 | deploys per account per minute (`429` + `Retry-After` past it) |
-| `SPROUTBOAT_DEPLOY_RATE_PER_IP_PER_MIN` | 20 | deploys per source IP per minute |
-| `SPROUTBOAT_MAX_PROJECTS_PER_ACCOUNT` | 50 | distinct projects one account may hold |
-| `SPROUTBOAT_MAX_VERSIONS_PER_PROJECT` | 25 | retained inactive versions; older ones are deleted and their artifacts GC'd |
-| `SPROUTBOAT_MAX_DOMAINS_PER_PROJECT` | 5 | custom domains one project may attach |
-| `SPROUTBOAT_MAX_SECRETS_PER_PROJECT` | 64 | secrets one project may hold |
-| `SPROUTBOAT_AUTH_RATE_MAX` / `_WINDOW_SEC` | 30 / 60 | Better Auth throttle on `/api/auth/*` (login, token) |
+| Env var                                    | Default | Effect                                                                      |
+| ------------------------------------------ | ------- | --------------------------------------------------------------------------- |
+| `SPROUTBOAT_DEPLOY_RATE_PER_MIN`           | 10      | deploys per account per minute (`429` + `Retry-After` past it)              |
+| `SPROUTBOAT_DEPLOY_RATE_PER_IP_PER_MIN`    | 20      | deploys per source IP per minute                                            |
+| `SPROUTBOAT_MAX_PROJECTS_PER_ACCOUNT`      | 50      | distinct projects one account may hold                                      |
+| `SPROUTBOAT_MAX_VERSIONS_PER_PROJECT`      | 25      | retained inactive versions; older ones are deleted and their artifacts GC'd |
+| `SPROUTBOAT_MAX_DOMAINS_PER_PROJECT`       | 5       | custom domains one project may attach                                       |
+| `SPROUTBOAT_MAX_SECRETS_PER_PROJECT`       | 64      | secrets one project may hold                                                |
+| `SPROUTBOAT_AUTH_RATE_MAX` / `_WINDOW_SEC` | 30 / 60 | Better Auth throttle on `/api/auth/*` (login, token)                        |
 
 ## Secrets (#2)
 
@@ -258,12 +257,12 @@ Rejections are written to `<state>/logs/control.ndjson` as
 **Per-worker runtime caps** (memory / CPU / pids) are opt-in and Linux-only —
 each sprout gets its own `systemd-run --scope`:
 
-| Env var | Default | |
-| --- | --- | --- |
-| `SPROUTBOAT_SPROUT_CGROUP` | unset | `1` to enable |
-| `SPROUTBOAT_SPROUT_MEMORY_MAX` | `128M` | scope `MemoryMax` |
-| `SPROUTBOAT_SPROUT_CPU_QUOTA` | `50%` | scope `CPUQuota` |
-| `SPROUTBOAT_SPROUT_TASKS_MAX` | `64` | scope `TasksMax` |
+| Env var                        | Default |                   |
+| ------------------------------ | ------- | ----------------- |
+| `SPROUTBOAT_SPROUT_CGROUP`     | unset   | `1` to enable     |
+| `SPROUTBOAT_SPROUT_MEMORY_MAX` | `128M`  | scope `MemoryMax` |
+| `SPROUTBOAT_SPROUT_CPU_QUOTA`  | `50%`   | scope `CPUQuota`  |
+| `SPROUTBOAT_SPROUT_TASKS_MAX`  | `64`    | scope `TasksMax`  |
 
 The edge unit still carries aggregate caps (`MemoryMax`/`CPUQuota`/`TasksMax`) as
 a backstop. Verify `systemd-run` is reachable for the `sproutboat-edge` user

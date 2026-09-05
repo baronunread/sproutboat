@@ -29,10 +29,18 @@ export function AccountProvider({ children }: { children: ReactNode }) {
         setAccount(body === null ? undefined : (body as Account));
         setState(body === null ? "anon" : "authed");
       })
-      .catch(() => { if (alive) setState("anon"); });
-    return () => { alive = false; };
+      .catch(() => {
+        if (alive) setState("anon");
+      });
+    return () => {
+      alive = false;
+    };
   }, [nonce]);
-  return <AccountContext.Provider value={{ account, state, refresh: () => setNonce((n) => n + 1) }}>{children}</AccountContext.Provider>;
+  return (
+    <AccountContext.Provider value={{ account, state, refresh: () => setNonce((n) => n + 1) }}>
+      {children}
+    </AccountContext.Provider>
+  );
 }
 
 export function useAccount(): AccountState {
@@ -60,30 +68,45 @@ export function useJson<T>(url: string | null) {
     setState("loading");
     try {
       const response = await fetch(url, { credentials: "include" });
-      if (!response.ok) { setState("error"); return; }
+      if (!response.ok) {
+        setState("error");
+        return;
+      }
       // SAFETY: only a 2xx body is read, and the caller names the contract that
       // endpoint satisfies; every other outcome sets state to "error" instead.
-      setData(await response.json() as T);
+      setData((await response.json()) as T);
       setState("ready");
-    } catch { setState("error"); }
+    } catch {
+      setState("error");
+    }
   }, [url]);
 
   useEffect(() => {
     let ignore = false;
-    if (url === null) { setState("ready"); return; }
+    if (url === null) {
+      setState("ready");
+      return;
+    }
     setState("loading");
     void fetch(url, { credentials: "include" })
       .then(async (response) => {
         if (ignore) return;
-        if (!response.ok) { setState("error"); return; }
+        if (!response.ok) {
+          setState("error");
+          return;
+        }
         // SAFETY: as above — a 2xx body only, typed by the calling view.
-        const body = await response.json() as T;
+        const body = (await response.json()) as T;
         if (ignore) return;
         setData(body);
         setState("ready");
       })
-      .catch(() => { if (!ignore) setState("error"); });
-    return () => { ignore = true; };
+      .catch(() => {
+        if (!ignore) setState("error");
+      });
+    return () => {
+      ignore = true;
+    };
   }, [url]);
 
   return { data, state, refresh };
@@ -95,7 +118,7 @@ export async function mutate(url: string, init: RequestInit = {}): Promise<strin
     const response = await fetch(url, { credentials: "include", ...init });
     if (!response.ok) {
       // SAFETY: an error body from the control API is { error?: string }.
-      const body = await response.json().catch(() => ({})) as { error?: string };
+      const body = (await response.json().catch(() => ({}))) as { error?: string };
       return body.error ?? `Request failed (${response.status}).`;
     }
     return null;
@@ -115,16 +138,33 @@ export const USERNAME_RULE = /^[a-z0-9][a-z0-9-]{1,30}[a-z0-9]$/;
 
 export type Overview = {
   metrics: {
-    activeProjects: number; deployments: number; requestsLast24Hours: number; successRate: number | null;
+    activeProjects: number;
+    deployments: number;
+    requestsLast24Hours: number;
+    successRate: number | null;
     trend?: Array<{ start: string; count: number; errors: number }>;
   };
   projects: Array<{
-    name: string; hostname: string; activeDeploymentId: string; deployedAt: string;
+    name: string;
+    hostname: string;
+    activeDeploymentId: string;
+    deployedAt: string;
     // #78 — served by a current control plane; optional so an older one degrades
     // to dashes instead of throwing in the middle of the list.
-    versions?: number; domains?: number; requests24h?: number; errors24h?: number; latencyP50?: number | null;
+    versions?: number;
+    domains?: number;
+    requests24h?: number;
+    errors24h?: number;
+    latencyP50?: number | null;
   }>;
-  deployments: Array<{ id: string; project: string; hostname: string; artifact: string; deployedAt: string; active: boolean }>;
+  deployments: Array<{
+    id: string;
+    project: string;
+    hostname: string;
+    artifact: string;
+    deployedAt: string;
+    active: boolean;
+  }>;
 };
 
 const DATE_FORMATTER = new Intl.DateTimeFormat(undefined, { dateStyle: "medium" });
@@ -137,7 +177,7 @@ export function useOverview() {
       .then(async (response) => {
         if (response.ok) {
           // SAFETY: /api/overview returns the Overview contract for successful responses.
-          setData(await response.json() as Overview);
+          setData((await response.json()) as Overview);
           return setState("ready");
         }
         if (response.status !== 401) return setState("error");
@@ -146,7 +186,9 @@ export function useOverview() {
       })
       .catch(() => setState("error"));
   }, []);
-  useEffect(() => { void refresh(); }, [refresh]);
+  useEffect(() => {
+    void refresh();
+  }, [refresh]);
   return { data, state, error: state === "error", refresh };
 }
 
@@ -159,7 +201,12 @@ export function useOverview() {
  * slice `/api/overview` carries, which silently truncated this view.
  */
 export type ProjectDeployment = {
-  id: string; project: string; hostname: string; artifact: string; deployedAt: string; active: boolean;
+  id: string;
+  project: string;
+  hostname: string;
+  artifact: string;
+  deployedAt: string;
+  active: boolean;
 };
 
 export type ProjectView = {

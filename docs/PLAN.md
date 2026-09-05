@@ -119,23 +119,23 @@ Wrangler where the platform has a real equivalent.
 
 ### POC commands
 
-| Command | Behavior |
-| --- | --- |
-| `sproutboat login` | Open browser authorization and securely save a scoped CLI credential locally |
-| `sproutboat logout` | Revoke and remove the local token |
-| `sproutboat whoami` | Show account, username namespace, and API endpoint |
-| `sproutboat init [name]` | Create a starter handler and `sproutboat.jsonc` |
-| `sproutboat dev [--port]` | Build and run locally with the production ABI |
-| `sproutboat check` | Validate config, source surface, and local prerequisites |
-| `sproutboat build` | Produce a deployable artifact without uploading |
-| `sproutboat deploy` | Build locally, then upload and activate on success |
-| `sproutboat deploy --dry-run` | Build and report sizes without uploading |
-| `sproutboat deploy --artifact <path>` | Upload a previously built artifact |
-| `sproutboat tail [--status]` | Stream bounded deployment logs |
-| `sproutboat versions list` | List immutable versions |
-| `sproutboat versions view <id>` | Show one manifest and deployment status |
-| `sproutboat rollback [id]` | Atomically reactivate a stored version |
-| `sproutboat delete` | Delete the project after explicit confirmation |
+| Command                               | Behavior                                                                     |
+| ------------------------------------- | ---------------------------------------------------------------------------- |
+| `sproutboat login`                    | Open browser authorization and securely save a scoped CLI credential locally |
+| `sproutboat logout`                   | Revoke and remove the local token                                            |
+| `sproutboat whoami`                   | Show account, username namespace, and API endpoint                           |
+| `sproutboat init [name]`              | Create a starter handler and `sproutboat.jsonc`                              |
+| `sproutboat dev [--port]`             | Build and run locally with the production ABI                                |
+| `sproutboat check`                    | Validate config, source surface, and local prerequisites                     |
+| `sproutboat build`                    | Produce a deployable artifact without uploading                              |
+| `sproutboat deploy`                   | Build locally, then upload and activate on success                           |
+| `sproutboat deploy --dry-run`         | Build and report sizes without uploading                                     |
+| `sproutboat deploy --artifact <path>` | Upload a previously built artifact                                           |
+| `sproutboat tail [--status]`          | Stream bounded deployment logs                                               |
+| `sproutboat versions list`            | List immutable versions                                                      |
+| `sproutboat versions view <id>`       | Show one manifest and deployment status                                      |
+| `sproutboat rollback [id]`            | Atomically reactivate a stored version                                       |
+| `sproutboat delete`                   | Delete the project after explicit confirmation                               |
 
 `secret`, custom-domain, storage, and environment commands are reserved for a
 later phase. Do not ship placeholder commands that imply unsupported features.
@@ -151,8 +151,8 @@ later phase. Do not ship placeholder commands that imply unsupported features.
   "main": "src/index.js",
   "compatibility_date": "2026-08-26",
   "vars": {
-    "GREETING": "hello"
-  }
+    "GREETING": "hello",
+  },
 }
 ```
 
@@ -241,24 +241,24 @@ flowchart TB
 
 ### Technology choices
 
-| Area | POC choice |
-| --- | --- |
-| Language/runtime | TypeScript on Bun |
-| Marketing site | Static site on Cloudflare Pages |
-| Dashboard UI | React 19 and TanStack Start with SSR; developer and admin surfaces |
-| Control HTTP server | `Bun.serve` and Web `Request`/`Response` APIs |
-| Authentication | Better Auth, GitHub OAuth only, SQLite sessions |
-| Database | `bun:sqlite`, WAL mode, explicit SQL migrations |
-| CLI | TypeScript, shipped as standalone Bun executables and via `bunx` |
-| Local bundler | Rolldown, version pinned in the build image |
-| Compiler | Exact Porffor release/source identity pinned in the build image |
-| TLS/reverse proxy | Caddy |
-| Artifact storage | Content-addressed local filesystem |
-| Runtime isolation | bubblewrap, unprivileged users, cgroups v2, seccomp |
-| Service management | systemd |
-| Provisioning | Provider-neutral Ansible roles and inventory |
-| Backups | Restic to a small off-server S3-compatible bucket |
-| Tests | Bun test, CLI/API integration tests, browser smoke tests |
+| Area                | POC choice                                                         |
+| ------------------- | ------------------------------------------------------------------ |
+| Language/runtime    | TypeScript on Bun                                                  |
+| Marketing site      | Static site on Cloudflare Pages                                    |
+| Dashboard UI        | React 19 and TanStack Start with SSR; developer and admin surfaces |
+| Control HTTP server | `Bun.serve` and Web `Request`/`Response` APIs                      |
+| Authentication      | Better Auth, GitHub OAuth only, SQLite sessions                    |
+| Database            | `bun:sqlite`, WAL mode, explicit SQL migrations                    |
+| CLI                 | TypeScript, shipped as standalone Bun executables and via `bunx`   |
+| Local bundler       | Rolldown, version pinned in the build image                        |
+| Compiler            | Exact Porffor release/source identity pinned in the build image    |
+| TLS/reverse proxy   | Caddy                                                              |
+| Artifact storage    | Content-addressed local filesystem                                 |
+| Runtime isolation   | bubblewrap, unprivileged users, cgroups v2, seccomp                |
+| Service management  | systemd                                                            |
+| Provisioning        | Provider-neutral Ansible roles and inventory                       |
+| Backups             | Restic to a small off-server S3-compatible bucket                  |
+| Tests               | Bun test, CLI/API integration tests, browser smoke tests           |
 
 Do not place the runtime supervisor inside a general Docker Compose stack. It
 needs explicit host access to namespaces and cgroups. Caddy, control, and edge
@@ -352,18 +352,18 @@ from the dashboard.
 
 Use SQLite foreign keys, migrations, UTC timestamps, and opaque IDs.
 
-| Table | Essential fields |
-| --- | --- |
-| Better Auth tables | User, account, session, verification data |
-| `profiles` | user id, unique username slug, created time |
-| `cli_authorizations` | user code hash, verifier hash, scopes, state, expiry |
-| `api_tokens` | user id, token hash, scopes, last used, revoked time |
-| `projects` | owner id, unique owner/name pair, active deployment id |
-| `deployments` | project id, artifact id, manifest JSON, state, timestamps |
-| `artifacts` | content hash, path, size, platform signature, ref count |
-| `routes` | hostname, project id, active deployment id |
-| `nodes` | name, role, region, architecture, identity, health, last seen |
-| `audit_events` | actor, action, target, safe metadata, timestamp |
+| Table                | Essential fields                                              |
+| -------------------- | ------------------------------------------------------------- |
+| Better Auth tables   | User, account, session, verification data                     |
+| `profiles`           | user id, unique username slug, created time                   |
+| `cli_authorizations` | user code hash, verifier hash, scopes, state, expiry          |
+| `api_tokens`         | user id, token hash, scopes, last used, revoked time          |
+| `projects`           | owner id, unique owner/name pair, active deployment id        |
+| `deployments`        | project id, artifact id, manifest JSON, state, timestamps     |
+| `artifacts`          | content hash, path, size, platform signature, ref count       |
+| `routes`             | hostname, project id, active deployment id                    |
+| `nodes`              | name, role, region, architecture, identity, health, last seen |
+| `audit_events`       | actor, action, target, safe metadata, timestamp               |
 
 Request logs remain in size-bounded rotated files for the POC. SQLite stores
 deployment summaries, not every request body or log line.
@@ -478,12 +478,12 @@ Starting light-theme tokens, to be contrast- and gamut-verified in the browser:
   --bg: oklch(0.982 0.004 290);
   --surface: oklch(1 0 0);
   --surface-subtle: oklch(0.965 0.008 290);
-  --text: oklch(0.220 0.018 285);
-  --text-muted: oklch(0.500 0.020 285);
-  --border: oklch(0.900 0.012 290);
-  --accent: oklch(0.520 0.200 302);
-  --accent-hover: oklch(0.460 0.190 302);
-  --accent-soft: oklch(0.950 0.035 302);
+  --text: oklch(0.22 0.018 285);
+  --text-muted: oklch(0.5 0.02 285);
+  --border: oklch(0.9 0.012 290);
+  --accent: oklch(0.52 0.2 302);
+  --accent-hover: oklch(0.46 0.19 302);
+  --accent-soft: oklch(0.95 0.035 302);
 }
 ```
 

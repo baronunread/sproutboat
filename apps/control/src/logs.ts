@@ -72,14 +72,20 @@ function parseLine(line: string, hostname?: string): LogRecord | undefined {
     // SAFETY: the edge writes one JSON value per line; it is read only through
     // the guards below, and any line that fails them is dropped.
     value = JSON.parse(line) as LogJson;
-  } catch { return undefined; }
-  if (!isRecord(value) || !isText(value.hostname) || (hostname !== undefined && value.hostname !== hostname)) return undefined;
+  } catch {
+    return undefined;
+  }
+  if (!isRecord(value) || !isText(value.hostname) || (hostname !== undefined && value.hostname !== hostname))
+    return undefined;
   if (!isText(value.at) || !isFiniteNumber(value.status) || !isFiniteNumber(value.durationMs)) return undefined;
   const status = value.status;
-  const failure = isText(value.error) ? value.error
-    : status >= 500 ? "upstream error"
-    : status === 404 ? "no route"
-    : null;
+  const failure = isText(value.error)
+    ? value.error
+    : status >= 500
+      ? "upstream error"
+      : status === 404
+        ? "no route"
+        : null;
   const num = (v: LogJson | undefined): number | null => (isFiniteNumber(v) ? v : null);
   return {
     at: value.at,
@@ -101,14 +107,21 @@ function parseLine(line: string, hostname?: string): LogRecord | undefined {
 }
 
 async function tailBytes(from: number, to: number): Promise<string> {
-  try { return await Bun.file(logPath()).slice(from, to).text(); }
-  catch { return ""; }
+  try {
+    return await Bun.file(logPath()).slice(from, to).text();
+  } catch {
+    return "";
+  }
 }
 
 /** Last-SCAN_CAP-bytes tail of the log as lines, with the partial leading line dropped. */
 async function tailLines(): Promise<{ lines: string[]; windowTruncated: boolean }> {
   let size = 0;
-  try { size = Bun.file(logPath()).size; } catch { return { lines: [], windowTruncated: false }; }
+  try {
+    size = Bun.file(logPath()).size;
+  } catch {
+    return { lines: [], windowTruncated: false };
+  }
   const start = Math.max(0, size - SCAN_CAP);
   const windowTruncated = start > 0;
   const lines = (await tailBytes(start, size)).split("\n");
@@ -120,10 +133,15 @@ async function tailLines(): Promise<{ lines: string[]; windowTruncated: boolean 
 export async function readLogHistory(
   hostname: string,
   options: {
-    before?: string; limit?: number; statusClass?: string; q?: string;
+    before?: string;
+    limit?: number;
+    statusClass?: string;
+    q?: string;
     // #3 query builder: the dashboard's field filters, applied in the same
     // single pass as the text match so a filtered page costs one scan.
-    method?: string; minDurationMs?: number; coldStart?: boolean;
+    method?: string;
+    minDurationMs?: number;
+    coldStart?: boolean;
   },
 ): Promise<LogPage> {
   const limit = Math.min(Math.max(1, options.limit ?? 100), MAX_LIMIT);
@@ -283,7 +301,6 @@ export async function aggregateLogs(hostname: string, range: string): Promise<Me
     else if (record.cacheStatus === "miss") cacheMisses += 1;
   }
 
-
   return {
     range: resolved,
     from: new Date(from).toISOString(),
@@ -320,7 +337,10 @@ export async function aggregateLogs(hostname: string, range: string): Promise<Me
  * #76 — also returns the same window split into BUCKET_COUNT buckets, so the
  * account overview can draw a traffic trend without a second scan of the log.
  */
-export async function routeTraffic(hostnames: Set<string>, rangeMs = RANGE_MS["24h"]): Promise<{
+export async function routeTraffic(
+  hostnames: Set<string>,
+  rangeMs = RANGE_MS["24h"],
+): Promise<{
   requests: number;
   successes: number;
   buckets: Array<{ start: string; count: number; errors: number }>;
@@ -341,7 +361,9 @@ export async function routeTraffic(hostnames: Set<string>, rangeMs = RANGE_MS["2
     try {
       // SAFETY: one JSON value per line from the edge; read only via the guards below.
       value = JSON.parse(line) as LogJson;
-    } catch { continue; }
+    } catch {
+      continue;
+    }
     if (!isRecord(value) || !isText(value.hostname) || !hostnames.has(value.hostname)) continue;
     if (!isText(value.at) || !isFiniteNumber(value.status)) continue;
     const at = Date.parse(value.at);
@@ -380,7 +402,9 @@ export async function routeTraffic(hostnames: Set<string>, rangeMs = RANGE_MS["2
 }
 
 /** #admin: request/error totals across every route, bounded to the tail window. */
-export async function globalLogTotals(rangeMs = RANGE_MS["24h"]): Promise<{ requests: number; errors: number; from: string; to: string }> {
+export async function globalLogTotals(
+  rangeMs = RANGE_MS["24h"],
+): Promise<{ requests: number; errors: number; from: string; to: string }> {
   const to = Date.now();
   const from = to - rangeMs;
   const { lines } = await tailLines();
@@ -400,7 +424,12 @@ export async function globalLogTotals(rangeMs = RANGE_MS["24h"]): Promise<{ requ
 /** Chronological last-N records as NDJSON text — backs the CLI `tail` endpoint. */
 export async function readLogTailText(hostname: string, limit = 100): Promise<string> {
   const page = await readLogHistory(hostname, { limit });
-  return page.events.length ? `${page.events.map((event) => JSON.stringify(event)).reverse().join("\n")}\n` : "";
+  return page.events.length
+    ? `${page.events
+        .map((event) => JSON.stringify(event))
+        .reverse()
+        .join("\n")}\n`
+    : "";
 }
 
 /**
@@ -421,46 +450,66 @@ export async function readSproutLogText(digest: string, maxBytes = 64 * 1024): P
 }
 
 /** Server-Sent Events stream of new matching records; stops on disconnect or the time cap. */
-type TailFrame =
-  | { type: "ready" }
-  | { type: "closed"; reason: string }
-  | { type: "event"; event: LogRecord };
+type TailFrame = { type: "ready" } | { type: "closed"; reason: string } | { type: "event"; event: LogRecord };
 
 export function tailLogs(hostname: string, signal: AbortSignal): Response {
   const encoder = new TextEncoder();
   const stream = new ReadableStream<Uint8Array>({
     start(controller) {
       let offset = 0;
-      try { offset = Bun.file(logPath()).size; } catch { offset = 0; }
+      try {
+        offset = Bun.file(logPath()).size;
+      } catch {
+        offset = 0;
+      }
       let closed = false;
       const finish = () => {
         if (closed) return;
         closed = true;
         clearInterval(timer);
         signal.removeEventListener("abort", finish);
-        try { controller.close(); } catch { /* already closed */ }
+        try {
+          controller.close();
+        } catch {
+          /* already closed */
+        }
       };
       const send = (payload: TailFrame) => {
-        try { controller.enqueue(encoder.encode(`data: ${JSON.stringify(payload)}\n\n`)); }
-        catch { finish(); }
+        try {
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify(payload)}\n\n`));
+        } catch {
+          finish();
+        }
       };
 
       send({ type: "ready" });
       const deadline = Date.now() + TAIL_MAX_MS;
-      const timer = setInterval(() => { void poll(); }, TAIL_POLL_MS);
+      const timer = setInterval(() => {
+        void poll();
+      }, TAIL_POLL_MS);
       signal.addEventListener("abort", finish);
 
       async function poll(): Promise<void> {
         if (signal.aborted) return finish();
-        if (Date.now() > deadline) { send({ type: "closed", reason: "tail time limit reached" }); return finish(); }
+        if (Date.now() > deadline) {
+          send({ type: "closed", reason: "tail time limit reached" });
+          return finish();
+        }
         let size = 0;
-        try { size = Bun.file(logPath()).size; } catch { return; }
+        try {
+          size = Bun.file(logPath()).size;
+        } catch {
+          return;
+        }
         if (size < offset) offset = 0; // log rotated or truncated
         if (size <= offset) return;
         const end = Math.min(size, offset + TAIL_READ_CAP);
         const chunk = await tailBytes(offset, end);
         const lastNewline = chunk.lastIndexOf("\n");
-        if (lastNewline < 0) { if (end < size) offset = end; return; }
+        if (lastNewline < 0) {
+          if (end < size) offset = end;
+          return;
+        }
         const complete = chunk.slice(0, lastNewline);
         offset += Buffer.byteLength(complete, "utf8") + 1;
         for (const line of complete.split("\n")) {
@@ -471,6 +520,10 @@ export function tailLogs(hostname: string, signal: AbortSignal): Response {
     },
   });
   return new Response(stream, {
-    headers: { "content-type": "text/event-stream", "cache-control": "no-cache, no-transform", connection: "keep-alive" },
+    headers: {
+      "content-type": "text/event-stream",
+      "cache-control": "no-cache, no-transform",
+      connection: "keep-alive",
+    },
   });
 }

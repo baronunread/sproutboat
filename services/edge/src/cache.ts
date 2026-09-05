@@ -82,5 +82,7 @@ export class EdgeCache {
     }
   }
 
-  get size(): number { return this.#entries.size; }
+  get size(): number {
+    return this.#entries.size;
+  }
 }

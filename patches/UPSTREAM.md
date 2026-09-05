@@ -19,15 +19,15 @@ LLM-written prose** — rewrite the drafts below in your own words before filing
 
 **alpha-4 checked (2026-08-29, `a415d19`).** Nothing relevant changed:
 
-| Gap | alpha-4 | Action |
-| --- | --- | --- |
-| `URLSearchParams` / `URL.prototype.searchParams` | still missing (`runtime/fetch-globals.js:204`) | keep prelude; Draft A stands |
-| static `Response.json(data, init)` | still missing (`fetch-globals.js:326`, instance `json()` only) | keep prelude; Draft A stands |
-| class declaration not hoisted into scope | still throws in interpreter **and** native | Draft B stands |
-| env access / `$PORT` | no `Porffor.env`; `porf_native_fetch_get_port` unchanged | keep `patches/porffor-render.patch` (applied clean to alpha-4) |
-| compat suite | 30/30 compile, 28/30 match — identical to alpha-3 | GO holds |
-| `Date` string parse (`15-date-iso`, `16-date-parts`) | non-ISO strings mis-parsed | **real Porffor bug — file it** (see Draft D) |
-| `URL` accessors / `crypto.randomUUID` / `structuredClone` | absent | shimmed in the prelude (this session); fold into Draft A |
+| Gap                                                       | alpha-4                                                        | Action                                                         |
+| --------------------------------------------------------- | -------------------------------------------------------------- | -------------------------------------------------------------- |
+| `URLSearchParams` / `URL.prototype.searchParams`          | still missing (`runtime/fetch-globals.js:204`)                 | keep prelude; Draft A stands                                   |
+| static `Response.json(data, init)`                        | still missing (`fetch-globals.js:326`, instance `json()` only) | keep prelude; Draft A stands                                   |
+| class declaration not hoisted into scope                  | still throws in interpreter **and** native                     | Draft B stands                                                 |
+| env access / `$PORT`                                      | no `Porffor.env`; `porf_native_fetch_get_port` unchanged       | keep `patches/porffor-render.patch` (applied clean to alpha-4) |
+| compat suite                                              | 30/30 compile, 28/30 match — identical to alpha-3              | GO holds                                                       |
+| `Date` string parse (`15-date-iso`, `16-date-parts`)      | non-ISO strings mis-parsed                                     | **real Porffor bug — file it** (see Draft D)                   |
+| `URL` accessors / `crypto.randomUUID` / `structuredClone` | absent                                                         | shimmed in the prelude (this session); fold into Draft A       |
 
 So the drafts below are still accurate — bump their version line from
 `alpha-3 (03b6b54)` to `alpha-4 (a415d19)` before filing. Re-check on the next
@@ -48,10 +48,14 @@ alpha-3 (`03b6b54`), `porf native`, `export default { fetch }`.
 but no `searchParams` and no `URLSearchParams` class.
 
 ```js
-export default { port: 3000, fetch(request) {
-  return new Response(new URL(request.url).searchParams.get("q") ?? "none");
-} };
+export default {
+  port: 3000,
+  fetch(request) {
+    return new Response(new URL(request.url).searchParams.get("q") ?? "none");
+  },
+};
 ```
+
 ```
 $ ./handler & curl 'localhost:3000/?q=hi'
 Uncaught ReferenceError: URLSearchParams is not defined
@@ -63,8 +67,14 @@ Instance `Response.prototype.json()` exists; the static builder
 `Response.json(data, init)` (WHATWG / workerd / Bun / Deno) does not.
 
 ```js
-export default { port: 3000, fetch() { return Response.json({ ok: true }); } };
+export default {
+  port: 3000,
+  fetch() {
+    return Response.json({ ok: true });
+  },
+};
 ```
+
 → `Uncaught TypeError`
 
 ### notes
@@ -86,10 +96,19 @@ export default { port: 3000, fetch() { return Response.json({ ok: true }); } };
 alpha-3 (`03b6b54`). Fails in both the interpreter and `native`.
 
 ```js
-class A { get x() { return new B(); } }
-class B { constructor() { this.ok = true; } }
-console.log(new A().x.ok);   // expected: true
+class A {
+  get x() {
+    return new B();
+  }
+}
+class B {
+  constructor() {
+    this.ok = true;
+  }
+}
+console.log(new A().x.ok); // expected: true
 ```
+
 ```
 Uncaught ReferenceError: B is not defined
 ```
@@ -130,7 +149,7 @@ a lenient/legacy string is read as `year, month, day` in source order rather tha
 the locale `month/day/year` V8, JSC (Bun) and Deno accept:
 
 ```js
-new Date("3,5,8").toISOString()
+new Date("3,5,8").toISOString();
 // V8 / Bun / Deno: "2008-03-04T23:00:00.000Z"  (M/D/YY, local tz)
 // Porffor native:  "0003-05-08T00:00:00.000Z"
 ```
@@ -148,20 +167,20 @@ disproportionate. Filing so it can be fixed in `compiler/builtins`.
 
 alpha-4 (`a415d19`), `porf native` and `porf run` alike.
 
-Distinct from Draft D: that one is about *non-ISO* strings, where the grammar is
+Distinct from Draft D: that one is about _non-ISO_ strings, where the grammar is
 implementation-defined. This is a fully ISO 8601 input with a numeric offset,
 where the correct instant is specified.
 
 ```js
-new Date("2024-01-02T03:04:05+02:00").toISOString()
+new Date("2024-01-02T03:04:05+02:00").toISOString();
 // V8 / Bun / Deno: "2024-01-02T01:04:05.000Z"
 // Porffor:         "2024-01-02T03:04:05.002Z"   <- offset ignored; "02" became 2ms
 
-new Date("2024-01-02T03:04:05-05:00").toISOString()
+new Date("2024-01-02T03:04:05-05:00").toISOString();
 // V8:      "2024-01-02T08:04:05.000Z"
 // Porffor: "2024-01-02T03:04:05.005Z"
 
-new Date("2024-01-02T03:04:05.250+01:00").toISOString()
+new Date("2024-01-02T03:04:05.250+01:00").toISOString();
 // V8:      "2024-01-02T02:04:05.250Z"
 // Porffor: "2024-01-02T04:04:05.250Z"   <- offset applied with the wrong sign
 ```

@@ -17,9 +17,14 @@ async function makeArtifact(digest: string): Promise<string> {
   return join(path, "sprout");
 }
 const D = (over: Partial<import("./store").Deployment> & { id: string; artifact: string }) => ({
-  id: over.id, project: over.project ?? "app", ownerId: over.ownerId ?? "user-1", username: over.username ?? "alice",
-  hostname: over.hostname ?? `${over.project ?? "app"}.alice.test`, artifact: over.artifact,
-  sproutPath: over.sproutPath ?? join(dir, "artifacts", over.artifact, "sprout"), deployedAt: over.deployedAt ?? deployedAt(),
+  id: over.id,
+  project: over.project ?? "app",
+  ownerId: over.ownerId ?? "user-1",
+  username: over.username ?? "alice",
+  hostname: over.hostname ?? `${over.project ?? "app"}.alice.test`,
+  artifact: over.artifact,
+  sproutPath: over.sproutPath ?? join(dir, "artifacts", over.artifact, "sprout"),
+  deployedAt: over.deployedAt ?? deployedAt(),
 });
 
 beforeAll(async () => {
@@ -36,8 +41,10 @@ afterAll(async () => {
 });
 
 test("recordDeployment keeps exactly one active version per project", async () => {
-  const a = "a".repeat(64), b = "b".repeat(64);
-  await makeArtifact(a); await makeArtifact(b);
+  const a = "a".repeat(64),
+    b = "b".repeat(64);
+  await makeArtifact(a);
+  await makeArtifact(b);
   store.recordDeployment(D({ id: "d1", artifact: a }));
   store.recordDeployment(D({ id: "d2", artifact: b }));
   const versions = store.projectDeployments("user-1", "app");
@@ -58,7 +65,7 @@ test("activateDeployment rolls back to an older version without a second active 
 test("deleteProject drops the route and GCs only unreferenced artifacts", async () => {
   const shared = "c".repeat(64);
   await makeArtifact(shared);
-  store.recordDeployment(D({ id: "d3", project: "app", artifact: shared }));   // app -> shared (active)
+  store.recordDeployment(D({ id: "d3", project: "app", artifact: shared })); // app -> shared (active)
   store.recordDeployment(D({ id: "d4", project: "other", hostname: "other.alice.test", artifact: shared })); // other -> shared
 
   const result = store.deleteProject("user-1", "app");
@@ -95,7 +102,11 @@ test("collectArtifacts never removes an artifact a deployment still references",
   const out = await store.collectArtifacts([e]);
   expect(out).toEqual({ removed: [], failed: [] });
   let bytesGone = false;
-  try { await access(join(dir, "artifacts", e, "sprout")); } catch { bytesGone = true; }
+  try {
+    await access(join(dir, "artifacts", e, "sprout"));
+  } catch {
+    bytesGone = true;
+  }
   expect(bytesGone).toBe(false); // bytes untouched
 
   store.deleteProject("user-1", "keep");
@@ -105,8 +116,10 @@ test("collectArtifacts never removes an artifact a deployment still references",
 test("syncRoutes serializes so a later mutation is never lost to an earlier snapshot", async () => {
   store.deleteOwner("user-1");
   await store.syncRoutes();
-  const f = "f".repeat(64), g = "0".repeat(64);
-  await makeArtifact(f); await makeArtifact(g);
+  const f = "f".repeat(64),
+    g = "0".repeat(64);
+  await makeArtifact(f);
+  await makeArtifact(g);
 
   store.recordDeployment(D({ id: "s1", project: "one", hostname: "one.alice.test", artifact: f }));
   const first = store.syncRoutes();
@@ -119,8 +132,10 @@ test("syncRoutes serializes so a later mutation is never lost to an earlier snap
 });
 
 test("deleteDeployment removes an inactive version only, GCs its orphan, scoped to owner", async () => {
-  const h1 = "1".repeat(64), h2 = "2".repeat(64);
-  await makeArtifact(h1); await makeArtifact(h2);
+  const h1 = "1".repeat(64),
+    h2 = "2".repeat(64);
+  await makeArtifact(h1);
+  await makeArtifact(h2);
   store.recordDeployment(D({ id: "v1", project: "site", hostname: "site.alice.test", artifact: h1 }));
   store.recordDeployment(D({ id: "v2", project: "site", hostname: "site.alice.test", artifact: h2 })); // v2 active, v1 superseded
 
@@ -128,7 +143,11 @@ test("deleteDeployment removes an inactive version only, GCs its orphan, scoped 
   expect(store.projectDeployment("user-1", "site", "missing")).toBeUndefined();
   expect(store.projectDeployment("user-2", "site", "v1")).toBeUndefined();
 
-  expect(store.deleteDeployment("user-1", "site", "v2")).toEqual({ deleted: false, active: true, orphanedArtifacts: [] });
+  expect(store.deleteDeployment("user-1", "site", "v2")).toEqual({
+    deleted: false,
+    active: true,
+    orphanedArtifacts: [],
+  });
   expect(store.deleteDeployment("user-2", "site", "v1")).toBeUndefined();
 
   const gone = store.deleteDeployment("user-1", "site", "v1");
@@ -141,10 +160,16 @@ test("deleteDeployment removes an inactive version only, GCs its orphan, scoped 
 });
 
 test("banOwner drops the owner's routes from the snapshot; unbanOwner restores them", async () => {
-  const x = "e".repeat(64), y = "f".repeat(64);
-  await makeArtifact(x); await makeArtifact(y);
-  store.recordDeployment(D({ id: "ba1", ownerId: "acct-a", username: "ann", project: "a1", hostname: "a1.ann.test", artifact: x }));
-  store.recordDeployment(D({ id: "bb1", ownerId: "acct-b", username: "bo", project: "b1", hostname: "b1.bo.test", artifact: y }));
+  const x = "e".repeat(64),
+    y = "f".repeat(64);
+  await makeArtifact(x);
+  await makeArtifact(y);
+  store.recordDeployment(
+    D({ id: "ba1", ownerId: "acct-a", username: "ann", project: "a1", hostname: "a1.ann.test", artifact: x }),
+  );
+  store.recordDeployment(
+    D({ id: "bb1", ownerId: "acct-b", username: "bo", project: "b1", hostname: "b1.bo.test", artifact: y }),
+  );
   await store.syncRoutes();
   expect((await routes()).map((r) => r.hostname).sort()).toEqual(["a1.ann.test", "b1.bo.test"]);
 
@@ -161,8 +186,12 @@ test("banOwner drops the owner's routes from the snapshot; unbanOwner restores t
 test("globalStats and ownerRollups aggregate across owners", () => {
   store.banOwner("acct-b");
   const stats = store.globalStats();
-  expect({ owners: stats.owners, projects: stats.projects, deployments: stats.deployments, bannedOwners: stats.bannedOwners })
-    .toEqual({ owners: 2, projects: 2, deployments: 2, bannedOwners: 1 });
+  expect({
+    owners: stats.owners,
+    projects: stats.projects,
+    deployments: stats.deployments,
+    bannedOwners: stats.bannedOwners,
+  }).toEqual({ owners: 2, projects: 2, deployments: 2, bannedOwners: 1 });
 
   const rollups = store.ownerRollups().sort((left, right) => left.ownerId.localeCompare(right.ownerId));
   expect(rollups).toEqual([
@@ -186,7 +215,10 @@ test("#76 — deploymentResources returns the version's bound resources, owner-s
     resourceIds: [kv.id, r2.id, other.id, kv.id], // duplicate + a resource this owner does not hold
   });
 
-  expect(store.deploymentResources("res-owner", "dr1").map((resource) => resource.name)).toEqual(["sessions", "uploads"]);
+  expect(store.deploymentResources("res-owner", "dr1").map((resource) => resource.name)).toEqual([
+    "sessions",
+    "uploads",
+  ]);
   expect(store.deploymentResources("other-owner", "dr1")).toEqual([]); // another owner sees nothing
   expect(store.deploymentResources("res-owner", "missing")).toEqual([]);
 

@@ -94,11 +94,17 @@ function spawnWithBroker(sproutPath: string, port: number, secretsPath?: string 
     : null;
   const openLog = (mode: "w" | "a"): number | "ignore" => {
     if (!sproutLogPath) return "ignore";
-    try { mkdirSync(dirname(sproutLogPath), { recursive: true }); return openSync(sproutLogPath, mode); }
-    catch { return "ignore"; }
+    try {
+      mkdirSync(dirname(sproutLogPath), { recursive: true });
+      return openSync(sproutLogPath, mode);
+    } catch {
+      return "ignore";
+    }
   };
-  const withLog = (fd: number | "ignore") => ({ stdout: fd, stderr: fd } as const);
-  const closeLog = (fd: number | "ignore") => { if (fd !== "ignore") closeSync(fd); };
+  const withLog = (fd: number | "ignore") => ({ stdout: fd, stderr: fd }) as const;
+  const closeLog = (fd: number | "ignore") => {
+    if (fd !== "ignore") closeSync(fd);
+  };
 
   if (existsSync(bindingsPath)) {
     const brokerPort = port + 10_000;
@@ -107,8 +113,9 @@ function spawnWithBroker(sproutPath: string, port: number, secretsPath?: string 
     // broker state can't live in `workerDir/.broker`. Put it beside the request
     // log, whose dir the edge owns; fall back to the artifact dir for dev/tests
     // where it is writable. Nothing creates the tree, so mkdir it here.
-    const stateBase = process.env.SPROUTBOAT_BROKER_STATE_DIR
-      || (process.env.SPROUTBOAT_LOG_PATH ? resolve(dirname(process.env.SPROUTBOAT_LOG_PATH), "brokers") : workerDir);
+    const stateBase =
+      process.env.SPROUTBOAT_BROKER_STATE_DIR ||
+      (process.env.SPROUTBOAT_LOG_PATH ? resolve(dirname(process.env.SPROUTBOAT_LOG_PATH), "brokers") : workerDir);
     const stateDir = resolve(stateBase, basename(workerDir));
     mkdirSync(resolve(stateDir, "d1"), { recursive: true });
     // #74 — account-level KV/R2/queue/D1 resources live in one shared dir keyed
@@ -116,8 +123,9 @@ function spawnWithBroker(sproutPath: string, port: number, secretsPath?: string 
     // per-owner): the control plane already refuses a deploy that references an
     // id the caller doesn't own, and the id is unguessable. This is what lets a
     // resource's data outlive a redeploy and be shared between projects.
-    const resourceDir = process.env.SPROUTBOAT_RESOURCE_DIR
-      || (process.env.SPROUTBOAT_LOG_PATH
+    const resourceDir =
+      process.env.SPROUTBOAT_RESOURCE_DIR ||
+      (process.env.SPROUTBOAT_LOG_PATH
         ? resolve(dirname(process.env.SPROUTBOAT_LOG_PATH), "resources")
         : resolve(stateBase, "..", "resources"));
     mkdirSync(resourceDir, { recursive: true });
@@ -127,16 +135,25 @@ function spawnWithBroker(sproutPath: string, port: number, secretsPath?: string 
       // bare "bun" is ENOENT and every sprout with bindings fails to launch.
       // `--smol`: the broker is near-idle and one per deployment — trade GC CPU
       // (idle here) for a smaller JSC heap.
-      process.execPath, "--smol", brokerEntry,
-      "--port", String(brokerPort),
-      "--token", token,
-      "--db", resolve(stateDir, "state.sqlite"),
-      "--data-dir", resolve(stateDir, "d1"),
-      "--resource-dir", resourceDir,
-      "--bindings", bindingsPath,
+      process.execPath,
+      "--smol",
+      brokerEntry,
+      "--port",
+      String(brokerPort),
+      "--token",
+      token,
+      "--db",
+      resolve(stateDir, "state.sqlite"),
+      "--data-dir",
+      resolve(stateDir, "d1"),
+      "--resource-dir",
+      resourceDir,
+      "--bindings",
+      bindingsPath,
       // The broker's flag is `--sprout-url` (worker->sprout rename); passing the
       // old `--worker-url` makes its parseArgs throw and the broker never starts.
-      "--sprout-url", `http://127.0.0.1:${port}/`,
+      "--sprout-url",
+      `http://127.0.0.1:${port}/`,
     ];
     // #2 — secrets come from a per-project file the control plane writes outside
     // the shared artifact dir; the path rides in on the route snapshot.
@@ -151,12 +168,21 @@ function spawnWithBroker(sproutPath: string, port: number, secretsPath?: string 
   }
 
   const startupFile = startupFilePath(sproutPath, port);
-  try { rmSync(startupFile, { force: true }); } catch { /* fresh spawn */ }
+  try {
+    rmSync(startupFile, { force: true });
+  } catch {
+    /* fresh spawn */
+  }
 
   let sprout: Bun.Subprocess | null = null;
   let stopped = false;
   const capturedBroker = broker;
-  const stop = () => { if (stopped) return; stopped = true; sprout?.kill(9); capturedBroker?.kill(9); };
+  const stop = () => {
+    if (stopped) return;
+    stopped = true;
+    sprout?.kill(9);
+    capturedBroker?.kill(9);
+  };
 
   // The broker is a Bun process; a freshly compiled native sprout is ready in
   // ~1ms and would fire its first env.KV / env.ASSETS call into a broker that
@@ -169,7 +195,10 @@ function spawnWithBroker(sproutPath: string, port: number, secretsPath?: string 
       if (stopped) return 0;
       // Broker never listened — don't start a sprout that will only crash on its
       // first binding call. Resolve as a failed exit; the pool retries next hit.
-      if (!up) { capturedBroker.kill(9); return 1; }
+      if (!up) {
+        capturedBroker.kill(9);
+        return 1;
+      }
     }
     const sproutFd = openLog(capturedBroker ? "a" : "w");
     try {
@@ -208,7 +237,10 @@ export function spawnSprout(sproutPath: string, port: number, secretsPath?: stri
 
 async function listens(port: number): Promise<boolean> {
   return new Promise((done) => {
-    const socket = connect({ host: "127.0.0.1", port }, () => { socket.destroy(); done(true); });
+    const socket = connect({ host: "127.0.0.1", port }, () => {
+      socket.destroy();
+      done(true);
+    });
     socket.on("error", () => done(false));
   });
 }
@@ -255,12 +287,21 @@ class SproutServer {
       this.startupMs = Date.now() - spawnedAt;
       this.bootMs = readBootMs(startupFilePath(sproutPath, port), spawnedAt, this.startupMs);
     });
-    void this.#child.exited.then(() => { if (!this.#closed) { this.#closed = true; this.onExit(this); } });
+    void this.#child.exited.then(() => {
+      if (!this.#closed) {
+        this.#closed = true;
+        this.onExit(this);
+      }
+    });
   }
 
-  get closed(): boolean { return this.#closed; }
+  get closed(): boolean {
+    return this.#closed;
+  }
 
-  async ready(): Promise<void> { return this.#ready; }
+  async ready(): Promise<void> {
+    return this.#ready;
+  }
 
   dispose(): void {
     if (this.#closed) return;
@@ -313,7 +354,13 @@ export class SproutPool {
   #readyFailures = 0;
   #idleEvictions = 0;
 
-  constructor({ spawn = spawnSprout, readyTimeoutMs = defaultReadyTimeoutMs, idleMs = defaultIdleMs, now = Date.now, portRange = defaultPortRange }: SproutPoolOptions = {}) {
+  constructor({
+    spawn = spawnSprout,
+    readyTimeoutMs = defaultReadyTimeoutMs,
+    idleMs = defaultIdleMs,
+    now = Date.now,
+    portRange = defaultPortRange,
+  }: SproutPoolOptions = {}) {
     this.#spawn = spawn;
     this.#readyTimeoutMs = readyTimeoutMs;
     this.#idleMs = idleMs;
@@ -342,10 +389,18 @@ export class SproutPool {
       const port = this.#freePort();
       this.#usedPorts.add(port);
       this.#spawns += 1;
-      server = new SproutServer(key, port, this.#spawn, this.#readyTimeoutMs, this.#now, (dead) => {
-        if (this.#servers.get(key) === dead) this.#servers.delete(key);
-        this.#usedPorts.delete(dead.port);
-      }, secretsPath);
+      server = new SproutServer(
+        key,
+        port,
+        this.#spawn,
+        this.#readyTimeoutMs,
+        this.#now,
+        (dead) => {
+          if (this.#servers.get(key) === dead) this.#servers.delete(key);
+          this.#usedPorts.delete(dead.port);
+        },
+        secretsPath,
+      );
       this.#servers.set(key, server);
     }
     server.lastUsedAt = this.#now();
@@ -358,7 +413,12 @@ export class SproutPool {
       this.#usedPorts.delete(server.port);
       throw error;
     }
-    return { url: server.url, coldStart, startupMs: coldStart ? server.startupMs : 0, bootMs: coldStart ? server.bootMs : 0 };
+    return {
+      url: server.url,
+      coldStart,
+      startupMs: coldStart ? server.startupMs : 0,
+      bootMs: coldStart ? server.bootMs : 0,
+    };
   }
 
   dispose(sproutPath: string): void {

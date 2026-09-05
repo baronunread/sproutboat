@@ -5,5 +5,5 @@ export default {
     const text = (form.get("text") || "").trim();
     if (command !== "/deploy") return new Response("unknown command", { status: 400 });
     return Response.json({ response_type: "ephemeral", text: text ? "Deploying " + text : "Missing target" });
-  }
+  },
 };

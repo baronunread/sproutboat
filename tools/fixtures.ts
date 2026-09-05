@@ -27,6 +27,11 @@ export const fixtures: RequestFixture[] = [
     method: "POST",
     url: "http://localhost/users/42?q=3%2C5%2C8",
     headers: { "content-type": "application/json", "x-github-event": "pull_request", "x-state": "running" },
-    body: JSON.stringify({ id: 42, note: "x".repeat(200), tags: ["alpha", "beta", "gamma"], nested: { a: 1, b: 2, c: 3 } }),
+    body: JSON.stringify({
+      id: 42,
+      note: "x".repeat(200),
+      tags: ["alpha", "beta", "gamma"],
+      nested: { a: 1, b: 2, c: 3 },
+    }),
   },
 ];

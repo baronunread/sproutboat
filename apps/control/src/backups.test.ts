@@ -27,7 +27,9 @@ beforeEach(async () => {
   await writeFile(join(dir, "artifacts", "abc123", "sprout"), "ELFDATA");
   await writeFile(join(dir, "routes.json"), "[]");
 });
-afterEach(async () => { await rm(dir, { recursive: true, force: true }); });
+afterEach(async () => {
+  await rm(dir, { recursive: true, force: true });
+});
 
 async function tarList(path: string): Promise<string[]> {
   const child = Bun.spawn(["tar", "-tzf", path], { stdout: "pipe" });
@@ -64,7 +66,10 @@ test("listBackups: newest first, ignores non-backup files", async () => {
 
 test("retention: keeps only SPROUTBOAT_BACKUP_KEEP newest", async () => {
   process.env.SPROUTBOAT_BACKUP_KEEP = "2";
-  for (let i = 0; i < 3; i++) { await mod.createBackup(); await Bun.sleep(1100); }
+  for (let i = 0; i < 3; i++) {
+    await mod.createBackup();
+    await Bun.sleep(1100);
+  }
   expect(await mod.listBackups()).toHaveLength(2);
 });
 

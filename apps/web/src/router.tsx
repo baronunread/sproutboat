@@ -10,9 +10,14 @@ import { Panel, PanelHeading } from "./components";
 function NotFound() {
   return (
     <Panel>
-      <PanelHeading title="Not found" description="That page does not exist, or the project it belonged to has been deleted." />
+      <PanelHeading
+        title="Not found"
+        description="That page does not exist, or the project it belonged to has been deleted."
+      />
       <p className="mt-3 text-[0.75rem] text-muted-foreground">
-        <Link className="text-[0.8rem] text-sky underline-offset-2 hover:underline" to="/">Back to overview</Link>
+        <Link className="text-[0.8rem] text-sky underline-offset-2 hover:underline" to="/">
+          Back to overview
+        </Link>
       </p>
     </Panel>
   );
@@ -28,5 +33,7 @@ export function getRouter() {
 }
 
 declare module "@tanstack/react-router" {
-  interface Register { router: ReturnType<typeof getRouter>; }
+  interface Register {
+    router: ReturnType<typeof getRouter>;
+  }
 }

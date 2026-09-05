@@ -54,7 +54,11 @@ function AuthGate() {
   // the flicker, and a reload had no chrome at all until the page component
   // mounted. /login is the one screen with no shell around it.
   if (pathname === "/login") return <Outlet />;
-  return <Shell><Outlet /></Shell>;
+  return (
+    <Shell>
+      <Outlet />
+    </Shell>
+  );
 }
 
 function Root() {
@@ -68,8 +72,15 @@ function Root() {
         <HeadContent />
       </head>
       <body>
-        <a className="fixed top-0 left-4 z-10 -translate-y-[110%] bg-brand px-4 py-3 text-[#101610] focus:translate-y-0" href="#content">Skip to content</a>
-        <AccountProvider><AuthGate /></AccountProvider>
+        <a
+          className="fixed top-0 left-4 z-10 -translate-y-[110%] bg-brand px-4 py-3 text-[#101610] focus:translate-y-0"
+          href="#content"
+        >
+          Skip to content
+        </a>
+        <AccountProvider>
+          <AuthGate />
+        </AccountProvider>
         <script dangerouslySetInnerHTML={{ __html: BOOT_NAV_GROUPS }} />
         <Scripts />
       </body>

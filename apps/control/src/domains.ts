@@ -48,9 +48,14 @@ const HOSTNAME = /^(?=.{1,253}$)([a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z][a
 async function authorized(request: Request): Promise<Actor | Response> {
   try {
     const actor = await actorFor(request);
-    return actor || Response.json({ error: "sign in and reserve a username before using this endpoint" }, { status: 401 });
+    return (
+      actor || Response.json({ error: "sign in and reserve a username before using this endpoint" }, { status: 401 })
+    );
   } catch (error) {
-    return Response.json({ error: error instanceof Error ? error.message : "authentication is unavailable" }, { status: 503 });
+    return Response.json(
+      { error: error instanceof Error ? error.message : "authentication is unavailable" },
+      { status: 503 },
+    );
   }
 }
 
@@ -60,7 +65,11 @@ async function addressesOf(hostname: string): Promise<string[]> {
   const resolver = new Resolver();
   const out: string[] = [];
   for (const query of [resolver.resolve4.bind(resolver), resolver.resolve6.bind(resolver)]) {
-    try { out.push(...(await query(hostname))); } catch { /* that record type is absent */ }
+    try {
+      out.push(...(await query(hostname)));
+    } catch {
+      /* that record type is absent */
+    }
   }
   return out;
 }
@@ -84,7 +93,10 @@ async function serverAddresses(base: string): Promise<string[]> {
  * hostname resolves to none of this box's addresses. A verified TXT proves
  * ownership but says nothing about an A record, and an apex often has none.
  */
-async function withReachability<T extends object>(view: T, hostname: string): Promise<T | (T & { warning: string; serverAddresses: string[] })> {
+async function withReachability<T extends object>(
+  view: T,
+  hostname: string,
+): Promise<T | (T & { warning: string; serverAddresses: string[] })> {
   const servers = await serverAddresses(deploymentDomain());
   if (servers.length === 0) return view;
   const hits = (await addressesOf(hostname)).some((addr) => servers.includes(addr));
@@ -101,7 +113,10 @@ const publicView = (domain: { hostname: string; verifiedAt: string | null; token
   verified: domain.verifiedAt !== null,
   verifiedAt: domain.verifiedAt,
   createdAt: domain.createdAt,
-  verification: domain.verifiedAt !== null ? null : { type: "TXT", name: txtName(domain.hostname), value: `${TXT_PREFIX}${domain.token}` },
+  verification:
+    domain.verifiedAt !== null
+      ? null
+      : { type: "TXT", name: txtName(domain.hostname), value: `${TXT_PREFIX}${domain.token}` },
 });
 
 export async function listDomains(request: Request, project: string): Promise<Response> {
@@ -121,18 +136,30 @@ export async function addDomain(request: Request, project: string): Promise<Resp
   const body: { readonly [key: string]: JsonInput } = await request.json().catch(() => ({}));
   const hostname = asText(body.hostname).toLowerCase();
 
-  if (!HOSTNAME.test(hostname)) return Response.json({ error: "hostname must be a valid lowercase FQDN" }, { status: 400 });
+  if (!HOSTNAME.test(hostname))
+    return Response.json({ error: "hostname must be a valid lowercase FQDN" }, { status: 400 });
   const base = deploymentDomain();
   if (isPlatformManagedHost(hostname, base)) {
-    return Response.json({ error: `${hostname} is inside the platform-managed ${base} space; only ${base} and www.${base} can be attached here` }, { status: 400 });
+    return Response.json(
+      {
+        error: `${hostname} is inside the platform-managed ${base} space; only ${base} and www.${base} can be attached here`,
+      },
+      { status: 400 },
+    );
   }
   const existing = customDomainByHostname(hostname);
   if (existing) {
     const mine = existing.ownerId === actor.id && existing.project === project;
-    return Response.json({ error: mine ? "this project already has that domain" : "that hostname is already claimed" }, { status: 409 });
+    return Response.json(
+      { error: mine ? "this project already has that domain" : "that hostname is already claimed" },
+      { status: 409 },
+    );
   }
   if (projectCustomDomains(actor.id, project).length >= LIMITS.domainsPerProject()) {
-    return Response.json({ error: `a project may hold at most ${LIMITS.domainsPerProject()} custom domains` }, { status: 429 });
+    return Response.json(
+      { error: `a project may hold at most ${LIMITS.domainsPerProject()} custom domains` },
+      { status: 429 },
+    );
   }
 
   const token = randomUUID().replace(/-/g, "");
@@ -151,15 +178,22 @@ export async function verifyDomain(request: Request, project: string, hostname: 
 
   const want = `${TXT_PREFIX}${domain.token}`;
   let records: string[][];
-  try { records = await resolveTxt(txtName(domain.hostname)); }
-  catch (error) {
+  try {
+    records = await resolveTxt(txtName(domain.hostname));
+  } catch (error) {
     const code = error instanceof Error && "code" in error ? String(error.code) : "";
     const detail = code === "ENOTFOUND" || code === "ENODATA" ? "no TXT record found" : "TXT lookup failed";
-    return Response.json({ error: detail, expected: { type: "TXT", name: txtName(domain.hostname), value: want } }, { status: 400 });
+    return Response.json(
+      { error: detail, expected: { type: "TXT", name: txtName(domain.hostname), value: want } },
+      { status: 400 },
+    );
   }
   const found = records.some((chunks) => chunks.join("").trim() === want);
   if (!found) {
-    return Response.json({ error: "TXT record does not match", expected: { type: "TXT", name: txtName(domain.hostname), value: want } }, { status: 400 });
+    return Response.json(
+      { error: "TXT record does not match", expected: { type: "TXT", name: txtName(domain.hostname), value: want } },
+      { status: 400 },
+    );
   }
 
   markCustomDomainVerified(actor.id, project, domain.hostname);

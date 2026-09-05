@@ -40,8 +40,7 @@ interface LogEvent {
 }
 
 function isObject(value: EdgeInput): value is EdgeJsonObject {
-  return value !== null && Object(value) === value && !Array.isArray(value)
-    && !(value instanceof Function);
+  return value !== null && Object(value) === value && !Array.isArray(value) && !(value instanceof Function);
 }
 
 function isString(value: EdgeInput): value is string {
@@ -56,9 +55,20 @@ async function loadRoutes(path: string): Promise<Map<string, Route>> {
   if (!Array.isArray(routes)) throw new TypeError("invalid route snapshot");
   const result = new Map<string, Route>();
   for (const route of routes) {
-    if (!isObject(route) || !isString(route.hostname) || !/^[a-z0-9.-]+$/.test(route.hostname) || !isString(route.sproutPath) || !route.sproutPath.startsWith("/")) throw new TypeError("invalid route snapshot");
+    if (
+      !isObject(route) ||
+      !isString(route.hostname) ||
+      !/^[a-z0-9.-]+$/.test(route.hostname) ||
+      !isString(route.sproutPath) ||
+      !route.sproutPath.startsWith("/")
+    )
+      throw new TypeError("invalid route snapshot");
     const secretsPath = isString(route.secretsPath) && route.secretsPath.startsWith("/") ? route.secretsPath : null;
-    result.set(route.hostname, { sproutPath: route.sproutPath, secretsPath, secretsHash: isString(route.secretsHash) ? route.secretsHash : null });
+    result.set(route.hostname, {
+      sproutPath: route.sproutPath,
+      secretsPath,
+      secretsHash: isString(route.secretsHash) ? route.secretsHash : null,
+    });
   }
   return result;
 }
@@ -83,32 +93,48 @@ function cappedBody(
   host: string,
   onEnd: (bytes: number, ok: boolean) => void,
 ): ReadableStream<Uint8Array> | null {
-  if (!body) { onEnd(0, true); return null; }
+  if (!body) {
+    onEnd(0, true);
+    return null;
+  }
   let sent = 0;
   let ended = false;
   // `flush` covers normal completion and the byte-cap abort; a client that
   // hangs up mid-stream won't reach here and that request goes unlogged.
-  const finish = (ok: boolean) => { if (!ended) { ended = true; onEnd(sent, ok); } };
-  return body.pipeThrough(new TransformStream<Uint8Array, Uint8Array>({
-    transform(chunk, controller) {
-      sent += chunk.byteLength;
-      if (sent > responseMaxBytes) {
-        console.error(`response body cap (${responseMaxBytes}B) exceeded for ${host}`);
-        finish(false);
-        controller.error(new Error("response exceeded byte cap"));
-        return;
-      }
-      controller.enqueue(chunk);
-    },
-    flush() { finish(true); },
-  }));
+  const finish = (ok: boolean) => {
+    if (!ended) {
+      ended = true;
+      onEnd(sent, ok);
+    }
+  };
+  return body.pipeThrough(
+    new TransformStream<Uint8Array, Uint8Array>({
+      transform(chunk, controller) {
+        sent += chunk.byteLength;
+        if (sent > responseMaxBytes) {
+          console.error(`response body cap (${responseMaxBytes}B) exceeded for ${host}`);
+          finish(false);
+          controller.error(new Error("response exceeded byte cap"));
+          return;
+        }
+        controller.enqueue(chunk);
+      },
+      flush() {
+        finish(true);
+      },
+    }),
+  );
 }
 // The bare deployment domain has no content of its own; unrouted, it goes to the dashboard.
 const deploymentDomain = (process.env.SPROUTBOAT_DEPLOYMENT_DOMAIN || "sproutboat.local").toLowerCase();
-const dashboardUrl = (process.env.SPROUTBOAT_DASHBOARD_URL || `https://dashboard.${deploymentDomain}`).replace(/\/$/, "");
+const dashboardUrl = (process.env.SPROUTBOAT_DASHBOARD_URL || `https://dashboard.${deploymentDomain}`).replace(
+  /\/$/,
+  "",
+);
 async function snapshotMtime(path: string): Promise<number> {
-  try { return (await stat(path)).mtimeMs; }
-  catch (error) {
+  try {
+    return (await stat(path)).mtimeMs;
+  } catch (error) {
     if (error instanceof Error && "code" in error && error.code === "ENOENT") return 0;
     throw error;
   }
@@ -160,7 +186,9 @@ function assetManifestFor(sproutPath: string): AssetManifest | null {
       manifest = JSON.parse(readFileSync(path, "utf8")) as AssetManifest;
     }
   } catch (error) {
-    console.error(`asset manifest load failed for ${sproutPath}: ${error instanceof Error ? error.message : String(error)}`);
+    console.error(
+      `asset manifest load failed for ${sproutPath}: ${error instanceof Error ? error.message : String(error)}`,
+    );
   }
   assetManifests.set(sproutPath, manifest);
   return manifest;
@@ -207,8 +235,11 @@ const server = Bun.serve({
     const started = performance.now();
     const elapsed = () => Math.round(performance.now() - started);
     const reqBytes = Number(request.headers.get("content-length")) || 0;
-    try { await refreshRoutes(); }
-    catch (error) { console.error(`route snapshot reload failed: ${error instanceof Error ? error.message : String(error)}`); }
+    try {
+      await refreshRoutes();
+    } catch (error) {
+      console.error(`route snapshot reload failed: ${error instanceof Error ? error.message : String(error)}`);
+    }
     // #30 — runtime-lifecycle gauges, loopback only (edge binds 127.0.0.1).
     if (new URL(request.url).pathname === "/__sb/pool") return Response.json(pool.stats());
     const host = request.headers.get("host")?.split(":")[0]?.toLowerCase();
@@ -218,7 +249,14 @@ const server = Bun.serve({
       // attached it to a project (allowed for the apex + www). Otherwise, send it
       // to the dashboard rather than a bare 404.
       if (host === deploymentDomain) return Response.redirect(dashboardUrl, 302);
-      log({ hostname: host || null, method: request.method, status: 404, durationMs: elapsed(), reqBytes, errorKind: "no-route" });
+      log({
+        hostname: host || null,
+        method: request.method,
+        status: 404,
+        durationMs: elapsed(),
+        reqBytes,
+        errorKind: "no-route",
+      });
       return new Response("unknown deployment", { status: 404 });
     }
     const sproutPath = route.sproutPath;
@@ -234,28 +272,60 @@ const server = Bun.serve({
         ? resolveAssetKey(decodeURIComponent(target.pathname), (k) => Boolean(manifest.files[k]))
         : null;
       const entry =
-        manifest && assetKey && !isSproutFirst(manifest.runSproutFirst, assetKey) ? manifest.files[assetKey] : undefined;
+        manifest && assetKey && !isSproutFirst(manifest.runSproutFirst, assetKey)
+          ? manifest.files[assetKey]
+          : undefined;
       if (entry && assetKey) {
         const inm = request.headers.get("if-none-match");
         const etag = `"${entry.hash}"`;
         if (inm === etag) {
-          log({ hostname: host, method: request.method, status: 304, durationMs: elapsed(), reqBytes, resBytes: 0, cacheStatus: "asset" });
+          log({
+            hostname: host,
+            method: request.method,
+            status: 304,
+            durationMs: elapsed(),
+            reqBytes,
+            resBytes: 0,
+            cacheStatus: "asset",
+          });
           return new Response(null, { status: 304, headers: { etag } });
         }
         const body = request.method === "HEAD" ? null : await readFile(join(dirname(sproutPath), "assets", assetKey));
-        log({ hostname: host, method: request.method, status: 200, durationMs: elapsed(), reqBytes, resBytes: entry.size, cacheStatus: "asset" });
+        log({
+          hostname: host,
+          method: request.method,
+          status: 200,
+          durationMs: elapsed(),
+          reqBytes,
+          resBytes: entry.size,
+          cacheStatus: "asset",
+        });
         return new Response(body, {
           status: 200,
-          headers: { "content-type": entry.type, etag, "content-length": String(entry.size), "cache-control": "public, max-age=0, must-revalidate" },
+          headers: {
+            "content-type": entry.type,
+            etag,
+            "content-length": String(entry.size),
+            "cache-control": "public, max-age=0, must-revalidate",
+          },
         });
       }
     }
 
-    const cacheKey = cache && request.method === "GET" ? EdgeCache.key(host, "GET", target.pathname + target.search) : null;
+    const cacheKey =
+      cache && request.method === "GET" ? EdgeCache.key(host, "GET", target.pathname + target.search) : null;
     if (cacheKey) {
       const hit = cache!.get(cacheKey);
       if (hit) {
-        log({ hostname: host, method: "GET", status: hit.status, durationMs: elapsed(), reqBytes, resBytes: hit.body.byteLength, cacheStatus: "hit" });
+        log({
+          hostname: host,
+          method: "GET",
+          status: hit.status,
+          durationMs: elapsed(),
+          reqBytes,
+          resBytes: hit.body.byteLength,
+          cacheStatus: "hit",
+        });
         return new Response(hit.body, { status: hit.status, headers: [...hit.headers, ["sb-cache", "HIT"]] });
       }
     }
@@ -272,7 +342,16 @@ const server = Bun.serve({
       bootMs = endpoint.coldStart ? endpoint.bootMs : null;
     } catch (error) {
       console.error(`sprout unavailable for ${host}: ${error instanceof Error ? error.message : String(error)}`);
-      log({ hostname: host, method: request.method, status: 502, durationMs: elapsed(), reqBytes, ttfbMs: null, error: "sprout unavailable", errorKind: "sprout-unavailable" });
+      log({
+        hostname: host,
+        method: request.method,
+        status: 502,
+        durationMs: elapsed(),
+        reqBytes,
+        ttfbMs: null,
+        error: "sprout unavailable",
+        errorKind: "sprout-unavailable",
+      });
       return new Response("sprout failed", { status: 502 });
     }
 
@@ -296,11 +375,22 @@ const server = Bun.serve({
       // `Number(null)` is 0, not NaN — so a missing content-length would read as
       // a finite 0 and slip past both the response-size cap and the cache-entry
       // cap. Treat "absent" as unknown.
-      const declared = upstream.headers.has("content-length")
-        ? Number(upstream.headers.get("content-length"))
-        : NaN;
+      const declared = upstream.headers.has("content-length") ? Number(upstream.headers.get("content-length")) : NaN;
       if (Number.isFinite(declared) && declared > responseMaxBytes) {
-        log({ hostname: host, method: request.method, status: 502, durationMs: ttfbMs, ttfbMs, reqBytes, resBytes: declared, coldStart, startupMs, bootMs, error: "response too large", errorKind: "response-too-large" });
+        log({
+          hostname: host,
+          method: request.method,
+          status: 502,
+          durationMs: ttfbMs,
+          ttfbMs,
+          reqBytes,
+          resBytes: declared,
+          coldStart,
+          startupMs,
+          bootMs,
+          error: "response too large",
+          errorKind: "response-too-large",
+        });
         return new Response("response too large", { status: 502 });
       }
 
@@ -309,7 +399,20 @@ const server = Bun.serve({
         const buffered = await upstream.arrayBuffer();
         const headers: [string, string][] = [...upstream.headers.entries()].filter(([name]) => name !== "x-sb-cpu-ms");
         cache!.set(cacheKey, upstream.status, headers, buffered, ttl);
-        log({ hostname: host, method: "GET", status: upstream.status, durationMs: elapsed(), ttfbMs, reqBytes, resBytes: buffered.byteLength, coldStart, startupMs, bootMs, cpuMs, cacheStatus: "miss" });
+        log({
+          hostname: host,
+          method: "GET",
+          status: upstream.status,
+          durationMs: elapsed(),
+          ttfbMs,
+          reqBytes,
+          resBytes: buffered.byteLength,
+          coldStart,
+          startupMs,
+          bootMs,
+          cpuMs,
+          cacheStatus: "miss",
+        });
         return new Response(buffered, { status: upstream.status, headers: [...headers, ["sb-cache", "MISS"]] });
       }
 
@@ -318,9 +421,19 @@ const server = Bun.serve({
       // durationMs is the full request duration and resBytes is the real count.
       const body = cappedBody(upstream.body, host, (bytes) => {
         log({
-          hostname: host, method: request.method, status: upstream.status, durationMs: elapsed(),
-          ttfbMs, reqBytes, resBytes: Number.isFinite(declared) ? declared : bytes,
-          coldStart, startupMs, bootMs, cpuMs, errorKind: upstream.status >= 500 ? "upstream-5xx" : undefined, cacheStatus,
+          hostname: host,
+          method: request.method,
+          status: upstream.status,
+          durationMs: elapsed(),
+          ttfbMs,
+          reqBytes,
+          resBytes: Number.isFinite(declared) ? declared : bytes,
+          coldStart,
+          startupMs,
+          bootMs,
+          cpuMs,
+          errorKind: upstream.status >= 500 ? "upstream-5xx" : undefined,
+          cacheStatus,
         });
       });
       const headers = new Headers(upstream.headers);
@@ -330,8 +443,22 @@ const server = Bun.serve({
     } catch (error) {
       const timedOut = error instanceof Error && (error.name === "TimeoutError" || error.name === "AbortError");
       const status = timedOut ? 504 : 502;
-      console.error(`sprout ${timedOut ? "timed out" : "failure"} for ${host}: ${error instanceof Error ? error.message : String(error)}`);
-      log({ hostname: host, method: request.method, status, durationMs: elapsed(), reqBytes, ttfbMs: null, coldStart, startupMs, bootMs, error: timedOut ? "request timed out" : "sprout failure", errorKind: timedOut ? "timed-out" : "proxy" });
+      console.error(
+        `sprout ${timedOut ? "timed out" : "failure"} for ${host}: ${error instanceof Error ? error.message : String(error)}`,
+      );
+      log({
+        hostname: host,
+        method: request.method,
+        status,
+        durationMs: elapsed(),
+        reqBytes,
+        ttfbMs: null,
+        coldStart,
+        startupMs,
+        bootMs,
+        error: timedOut ? "request timed out" : "sprout failure",
+        errorKind: timedOut ? "timed-out" : "proxy",
+      });
       return new Response(timedOut ? "request timed out" : "sprout failed", { status });
     }
   },

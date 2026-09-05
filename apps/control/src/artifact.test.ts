@@ -22,10 +22,18 @@ async function seed(over: { bindings?: unknown; assets?: { manifest: unknown; fi
   const worker = elf();
   await writeFile(join(dir, "sprout"), worker);
   const manifest = {
-    schemaVersion: 2, project: "app", target: "linux-x86_64", runtime: "native-fetch",
-    capabilityProfile: "http-sync-v0", porfforVersion: "alpha-4 (a415d19)", esbuildVersion: "0.28.2",
-    buildImage: "stamp", sourceHash: "sha256:" + "0".repeat(64), binaryHash: "sha256:" + sha(worker),
-    binarySize: worker.length, builtAt: new Date().toISOString(),
+    schemaVersion: 2,
+    project: "app",
+    target: "linux-x86_64",
+    runtime: "native-fetch",
+    capabilityProfile: "http-sync-v0",
+    porfforVersion: "alpha-4 (a415d19)",
+    esbuildVersion: "0.28.2",
+    buildImage: "stamp",
+    sourceHash: "sha256:" + "0".repeat(64),
+    binaryHash: "sha256:" + sha(worker),
+    binarySize: worker.length,
+    builtAt: new Date().toISOString(),
   };
   await writeFile(join(dir, "manifest.json"), JSON.stringify(manifest));
   if (over.bindings !== undefined) await writeFile(join(dir, "bindings.json"), JSON.stringify(over.bindings));
@@ -38,8 +46,12 @@ async function seed(over: { bindings?: unknown; assets?: { manifest: unknown; fi
   }
 }
 
-beforeEach(async () => { dir = await mkdtemp(join(tmpdir(), "sb-artifact-")); });
-afterEach(async () => { await rm(dir, { recursive: true, force: true }); });
+beforeEach(async () => {
+  dir = await mkdtemp(join(tmpdir(), "sb-artifact-"));
+});
+afterEach(async () => {
+  await rm(dir, { recursive: true, force: true });
+});
 
 test("bare manifest + sprout validates", async () => {
   await seed();
@@ -48,7 +60,14 @@ test("bare manifest + sprout validates", async () => {
 });
 
 test("a well-formed bindings.json is accepted", async () => {
-  await seed({ bindings: { kv: ["SESSIONS"], secrets: ["API_KEY"], do: [{ binding: "COUNTER", className: "Counter" }], crons: ["0 3 * * *"] } });
+  await seed({
+    bindings: {
+      kv: ["SESSIONS"],
+      secrets: ["API_KEY"],
+      do: [{ binding: "COUNTER", className: "Counter" }],
+      crons: ["0 3 * * *"],
+    },
+  });
   expect((await validateArtifactDirectory(dir)).ok).toBe(true);
 });
 
@@ -64,16 +83,24 @@ test("#74 — bindings.json.resources is validated and surfaced as resourceBindi
   const result = await validateArtifactDirectory(dir);
   expect(result.ok).toBe(true);
   if (result.ok) {
-    expect(result.value.resourceBindings).toEqual([{ binding: "LINKS", kind: "kv", id: "kv_0123456789abcdef01234567" }]);
+    expect(result.value.resourceBindings).toEqual([
+      { binding: "LINKS", kind: "kv", id: "kv_0123456789abcdef01234567" },
+    ]);
   }
 });
 
 test("#76 — every declared binding is surfaced for the dashboard's Bindings view", async () => {
-  await seed({ bindings: {
-    kv: ["LINKS"], secrets: ["API_KEY"], outbound: ["https://api.example.com"], queues: ["JOBS"],
-    assets: "ASSETS", do: [{ binding: "COUNTER", className: "Counter" }],
-    resources: { LINKS: { kind: "kv", id: "kv_0123456789abcdef01234567" } },
-  } });
+  await seed({
+    bindings: {
+      kv: ["LINKS"],
+      secrets: ["API_KEY"],
+      outbound: ["https://api.example.com"],
+      queues: ["JOBS"],
+      assets: "ASSETS",
+      do: [{ binding: "COUNTER", className: "Counter" }],
+      resources: { LINKS: { kind: "kv", id: "kv_0123456789abcdef01234567" } },
+    },
+  });
   const result = await validateArtifactDirectory(dir);
   expect(result.ok).toBe(true);
   if (!result.ok) return;
@@ -103,10 +130,16 @@ test("#74 — a resources entry with an unknown kind is rejected", async () => {
 
 test("an assets tree with matching hashes is accepted", async () => {
   const body = "<!doctype html>hi";
-  await seed({ assets: {
-    manifest: { notFound: "single-page-application", runSproutFirst: false, files: { "/index.html": { hash: sha(Buffer.from(body)), size: body.length, type: "text/html" } } },
-    files: { "/index.html": body },
-  } });
+  await seed({
+    assets: {
+      manifest: {
+        notFound: "single-page-application",
+        runSproutFirst: false,
+        files: { "/index.html": { hash: sha(Buffer.from(body)), size: body.length, type: "text/html" } },
+      },
+      files: { "/index.html": body },
+    },
+  });
   expect((await validateArtifactDirectory(dir)).ok).toBe(true);
 });
 
@@ -119,10 +152,16 @@ test("assets.json without the assets/ directory is rejected", async () => {
 });
 
 test("an asset whose bytes don't match its recorded hash is rejected", async () => {
-  await seed({ assets: {
-    manifest: { notFound: "none", runSproutFirst: false, files: { "/app.js": { hash: "0".repeat(64), size: 3, type: "text/javascript" } } },
-    files: { "/app.js": "xyz" },
-  } });
+  await seed({
+    assets: {
+      manifest: {
+        notFound: "none",
+        runSproutFirst: false,
+        files: { "/app.js": { hash: "0".repeat(64), size: 3, type: "text/javascript" } },
+      },
+      files: { "/app.js": "xyz" },
+    },
+  });
   const result = await validateArtifactDirectory(dir);
   expect(result.ok).toBe(false);
   if (!result.ok) expect(result.errors.join(" ")).toContain("does not match its recorded hash");

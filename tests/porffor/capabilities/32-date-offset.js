@@ -9,5 +9,5 @@ export default {
       minus: new Date("2024-01-02T03:04:05-05:00").toISOString(),
       millis: new Date("2024-01-02T03:04:05.250+01:00").toISOString(),
     });
-  }
+  },
 };

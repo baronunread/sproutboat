@@ -10,7 +10,14 @@
 import { appendFile, mkdir } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { actorFor, type Actor } from "./identity";
-import { activeProjects, ownerProjectCount, projectCustomDomains, projectDeployments, resourceCount, secretCount } from "./store";
+import {
+  activeProjects,
+  ownerProjectCount,
+  projectCustomDomains,
+  projectDeployments,
+  resourceCount,
+  secretCount,
+} from "./store";
 
 const num = (name: string, fallback: number): number => {
   const value = Number(process.env[name]);
@@ -68,16 +75,22 @@ export function clientIp(request: Request): string {
 }
 
 const eventLogPath = (): string =>
-  process.env.SPROUTBOAT_CONTROL_LOG_PATH || resolve(dirname(process.env.SPROUTBOAT_LOG_PATH || "/var/lib/sproutboat/logs/requests.ndjson"), "control.ndjson");
+  process.env.SPROUTBOAT_CONTROL_LOG_PATH ||
+  resolve(dirname(process.env.SPROUTBOAT_LOG_PATH || "/var/lib/sproutboat/logs/requests.ndjson"), "control.ndjson");
 
 export type LimitEvent = "deploy-rate-account" | "deploy-rate-ip" | "project-cap" | "tls-issuance";
 
-export async function logLimitEvent(event: LimitEvent, fields: { actor?: string; ip?: string; detail?: string }): Promise<void> {
+export async function logLimitEvent(
+  event: LimitEvent,
+  fields: { actor?: string; ip?: string; detail?: string },
+): Promise<void> {
   const line = JSON.stringify({ at: new Date().toISOString(), kind: "limit", event, ...fields }) + "\n";
   try {
     await mkdir(dirname(eventLogPath()), { recursive: true });
     await appendFile(eventLogPath(), line);
-  } catch { /* observability is best-effort; never block the request path */ }
+  } catch {
+    /* observability is best-effort; never block the request path */
+  }
 }
 
 function tooMany(retryAfterSec: number, message: string): Response {
@@ -98,7 +111,11 @@ export async function guardDeploy(actorId: string, request: Request): Promise<Re
   }
   const byAccount = rateHit(`deploy:acct:${actorId}`, LIMITS.deployPerAccount());
   if (byAccount > 0) {
-    await logLimitEvent("deploy-rate-account", { actor: actorId, ip, detail: `limit ${LIMITS.deployPerAccount()}/min` });
+    await logLimitEvent("deploy-rate-account", {
+      actor: actorId,
+      ip,
+      detail: `limit ${LIMITS.deployPerAccount()}/min`,
+    });
     return tooMany(byAccount, "too many deploys; slow down");
   }
   return null;
@@ -108,11 +125,18 @@ export async function guardDeploy(actorId: string, request: Request): Promise<Re
  * Enforce the per-account project cap when a deploy would create a *new*
  * project. Returns a 429 response, or null to proceed.
  */
-export async function guardNewProject(actorId: string, request: Request, currentProjectCount: number): Promise<Response | null> {
+export async function guardNewProject(
+  actorId: string,
+  request: Request,
+  currentProjectCount: number,
+): Promise<Response | null> {
   const cap = LIMITS.projectsPerAccount();
   if (currentProjectCount < cap) return null;
   await logLimitEvent("project-cap", { actor: actorId, ip: clientIp(request), detail: `cap ${cap}` });
-  return Response.json({ error: `project limit reached (${cap}); delete a project first` }, { status: 429, headers: { "retry-after": "0" } });
+  return Response.json(
+    { error: `project limit reached (${cap}); delete a project first` },
+    { status: 429, headers: { "retry-after": "0" } },
+  );
 }
 
 // --- #26 ACME issuance ceiling -----------------------------------------
@@ -153,9 +177,13 @@ export async function accountLimits(request: Request): Promise<Response> {
   try {
     actor = await actorFor(request);
   } catch (error) {
-    return Response.json({ error: error instanceof Error ? error.message : "authentication is unavailable" }, { status: 503 });
+    return Response.json(
+      { error: error instanceof Error ? error.message : "authentication is unavailable" },
+      { status: 503 },
+    );
   }
-  if (!actor) return Response.json({ error: "sign in and reserve a username before using this endpoint" }, { status: 401 });
+  if (!actor)
+    return Response.json({ error: "sign in and reserve a username before using this endpoint" }, { status: 401 });
 
   const projects = activeProjects(actor.id).map((project) => ({
     name: project.name,

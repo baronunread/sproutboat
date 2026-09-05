@@ -22,14 +22,22 @@ beforeAll(async () => {
   seed.close();
   identity = await import("./identity");
 });
-afterAll(async () => { await rm(dir, { recursive: true, force: true }); });
+afterAll(async () => {
+  await rm(dir, { recursive: true, force: true });
+});
 
 test("listCredentials: owner-scoped, newest first, safe fields only, no hash", () => {
   const list = identity.listCredentials("u1");
   expect(list.map((credential) => credential.id)).toEqual(["k2", "k1"]);
   expect(list[0]).toEqual({
-    id: "k2", name: "ci", prefix: "sproutboat_", start: "sproutboat_cd34",
-    createdAt: "2026-03-01T00:00:00.000Z", lastUsedAt: null, expiresAt: "2026-12-01T00:00:00.000Z", enabled: true,
+    id: "k2",
+    name: "ci",
+    prefix: "sproutboat_",
+    start: "sproutboat_cd34",
+    createdAt: "2026-03-01T00:00:00.000Z",
+    lastUsedAt: null,
+    expiresAt: "2026-12-01T00:00:00.000Z",
+    enabled: true,
   });
   expect(list[1].lastUsedAt).toBe("2026-02-01T10:00:00.000Z");
   expect(JSON.stringify(list)).not.toContain("HASH");

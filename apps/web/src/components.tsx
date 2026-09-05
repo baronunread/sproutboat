@@ -1,7 +1,13 @@
 import { useRouterState, Link } from "@tanstack/react-router";
 import {
-  useEffect, useId, useRef, useState,
-  type ButtonHTMLAttributes, type FormEvent, type InputHTMLAttributes, type ReactNode,
+  useEffect,
+  useId,
+  useRef,
+  useState,
+  type ButtonHTMLAttributes,
+  type FormEvent,
+  type InputHTMLAttributes,
+  type ReactNode,
 } from "react";
 import type * as React from "react";
 import { useAccount } from "./dashboard-data";
@@ -12,8 +18,14 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Table, TableBody, TableHeader } from "@/components/ui/table";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
-  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
-  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { cn } from "@/lib/utils";
@@ -56,17 +68,37 @@ function describedBy(hint: ReactNode, error: string | null | undefined, hintId: 
 }
 
 function FieldShell({
-  label, hint, error, hideLabel, footer, fieldClassName, fieldId, hintId, errorId, children,
+  label,
+  hint,
+  error,
+  hideLabel,
+  footer,
+  fieldClassName,
+  fieldId,
+  hintId,
+  errorId,
+  children,
 }: FieldProps & { fieldId: string; hintId: string; errorId: string; children: ReactNode }) {
   return (
     <div className={cn("grid min-w-0 gap-1.5", fieldClassName)}>
-      <Label className={cn("text-[0.78rem] font-medium", hideLabel && "sr-only")} htmlFor={fieldId}>{label}</Label>
+      <Label className={cn("text-[0.78rem] font-medium", hideLabel && "sr-only")} htmlFor={fieldId}>
+        {label}
+      </Label>
       {children}
-      {hint && <p className="max-w-[42rem] text-xs leading-normal text-muted-foreground" id={hintId}>{hint}</p>}
+      {hint && (
+        <p className="max-w-[42rem] text-xs leading-normal text-muted-foreground" id={hintId}>
+          {hint}
+        </p>
+      )}
       {footer && <div className="text-xs text-muted-foreground">{footer}</div>}
       {error && (
         <p className="flex items-center gap-1.5 text-xs text-destructive" id={errorId} role="alert">
-          <span aria-hidden="true" className="grid size-3.5 shrink-0 place-items-center rounded-full border border-current text-[0.6rem] font-bold">!</span>
+          <span
+            aria-hidden="true"
+            className="grid size-3.5 shrink-0 place-items-center rounded-full border border-current text-[0.6rem] font-bold"
+          >
+            !
+          </span>
           {error}
         </p>
       )}
@@ -75,11 +107,29 @@ function FieldShell({
 }
 
 export function TextField({
-  label, hint, error, hideLabel, footer, fieldClassName, id, className, ...input
+  label,
+  hint,
+  error,
+  hideLabel,
+  footer,
+  fieldClassName,
+  id,
+  className,
+  ...input
 }: FieldProps & InputHTMLAttributes<HTMLInputElement>) {
   const { fieldId, hintId, errorId } = useFieldIds(id);
   return (
-    <FieldShell label={label} hint={hint} error={error} hideLabel={hideLabel} footer={footer} fieldClassName={fieldClassName} fieldId={fieldId} hintId={hintId} errorId={errorId}>
+    <FieldShell
+      label={label}
+      hint={hint}
+      error={error}
+      hideLabel={hideLabel}
+      footer={footer}
+      fieldClassName={fieldClassName}
+      fieldId={fieldId}
+      hintId={hintId}
+      errorId={errorId}
+    >
       <Input
         {...input}
         id={fieldId}
@@ -100,8 +150,18 @@ export function TextField({
  * there is no underlying <select> to read `event.target.value` from.
  */
 export function SelectField({
-  label, hint, error, hideLabel, footer, fieldClassName, id, options, value,
-  onValueChange, disabled, placeholder,
+  label,
+  hint,
+  error,
+  hideLabel,
+  footer,
+  fieldClassName,
+  id,
+  options,
+  value,
+  onValueChange,
+  disabled,
+  placeholder,
 }: FieldProps & {
   id?: string;
   options: ReadonlyArray<readonly [string, string]>;
@@ -112,7 +172,17 @@ export function SelectField({
 }) {
   const { fieldId, hintId, errorId } = useFieldIds(id);
   return (
-    <FieldShell label={label} hint={hint} error={error} hideLabel={hideLabel} footer={footer} fieldClassName={fieldClassName} fieldId={fieldId} hintId={hintId} errorId={errorId}>
+    <FieldShell
+      label={label}
+      hint={hint}
+      error={error}
+      hideLabel={hideLabel}
+      footer={footer}
+      fieldClassName={fieldClassName}
+      fieldId={fieldId}
+      hintId={hintId}
+      errorId={errorId}
+    >
       <Select value={value} onValueChange={onValueChange} disabled={disabled}>
         <SelectTrigger
           id={fieldId}
@@ -124,7 +194,9 @@ export function SelectField({
         </SelectTrigger>
         <SelectContent>
           {options.map(([optionValue, optionLabel]) => (
-            <SelectItem key={optionValue} value={optionValue}>{optionLabel}</SelectItem>
+            <SelectItem key={optionValue} value={optionValue}>
+              {optionLabel}
+            </SelectItem>
           ))}
         </SelectContent>
       </Select>
@@ -146,7 +218,14 @@ export function SelectField({
 const BUTTON_VARIANT = { primary: "default", quiet: "outline", danger: "danger" } as const;
 
 export function Button({
-  variant = "quiet", busy = false, busyLabel, children, className, disabled, type = "button", ...button
+  variant = "quiet",
+  busy = false,
+  busyLabel,
+  children,
+  className,
+  disabled,
+  type = "button",
+  ...button
 }: ButtonHTMLAttributes<HTMLButtonElement> & {
   variant?: "primary" | "quiet" | "danger";
   busy?: boolean;
@@ -176,7 +255,13 @@ const STATUS_TONE = {
   error: "border-destructive/25 bg-destructive/12 text-destructive",
 } as const;
 
-export function StatusMessage({ tone = "info", children }: { tone?: "info" | "success" | "error"; children: ReactNode }) {
+export function StatusMessage({
+  tone = "info",
+  children,
+}: {
+  tone?: "info" | "success" | "error";
+  children: ReactNode;
+}) {
   if (!children) return null;
   return (
     <Alert
@@ -225,17 +310,24 @@ export function RecordRow({ className, ...row }: React.ComponentProps<"li">) {
 }
 
 /** A row's explanatory detail (DNS instructions, warnings): its own line, last. */
-export const RECORD_NOTE = "order-9 basis-full text-[0.72rem] leading-relaxed text-muted-foreground [&_code]:[overflow-wrap:anywhere]";
+export const RECORD_NOTE =
+  "order-9 basis-full text-[0.72rem] leading-relaxed text-muted-foreground [&_code]:[overflow-wrap:anywhere]";
 
 /** The link/button that names a row. */
-export const RECORD_TITLE = "cursor-pointer border-0 bg-transparent p-0 text-start text-[0.84rem] font-medium underline-offset-2 hover:underline";
+export const RECORD_TITLE =
+  "cursor-pointer border-0 bg-transparent p-0 text-start text-[0.84rem] font-medium underline-offset-2 hover:underline";
 
 /**
  * A dense table in a bounded scroll box with a sticky head. The caption names
  * it for assistive tech and for `getByRole("table", { name })` in the e2e
  * suite, so it stays even though it is visually hidden.
  */
-export function DataTable({ caption, head, children, className }: {
+export function DataTable({
+  caption,
+  head,
+  children,
+  className,
+}: {
   caption: string;
   head: ReactNode;
   children: ReactNode;
@@ -264,11 +356,13 @@ export const ACTIONS_CELL = "flex items-center justify-end gap-2 [&_button]:h-8 
 /** Status pip + label. `live` is the good state. */
 export function Status({ live, children }: { live?: boolean; children: ReactNode }) {
   return (
-    <span className={cn(
-      "inline-flex min-w-22 items-center gap-1.5 text-[0.72rem] font-semibold",
-      "before:size-1.5 before:rounded-full before:content-['']",
-      live ? "text-success before:bg-success" : "text-muted-foreground before:bg-muted-foreground",
-    )}>
+    <span
+      className={cn(
+        "inline-flex min-w-22 items-center gap-1.5 text-[0.72rem] font-semibold",
+        "before:size-1.5 before:rounded-full before:content-['']",
+        live ? "text-success before:bg-success" : "text-muted-foreground before:bg-muted-foreground",
+      )}
+    >
       {children}
     </span>
   );
@@ -283,10 +377,14 @@ export function Status({ live, children }: { live?: boolean; children: ReactNode
  * so its rows can divide and hover edge to edge, and its children own the
  * 1.25rem; a padded panel already insets, so its children must not inset again.
  * ------------------------------------------------------------------------- */
-const PANEL_BASE = "group/panel overflow-hidden rounded-lg border border-border bg-card [&+&]:mt-6 max-[480px]:rounded-[7px]";
+const PANEL_BASE =
+  "group/panel overflow-hidden rounded-lg border border-border bg-card [&+&]:mt-6 max-[480px]:rounded-[7px]";
 
 export function Panel({
-  variant = "form", className, children, ...section
+  variant = "form",
+  className,
+  children,
+  ...section
 }: React.ComponentProps<"section"> & {
   /** form: a reading measure for fields and prose. wide: full column, for
    *  tables and charts. bare: no padding, for panels that are just rows. */
@@ -311,7 +409,9 @@ export function Panel({
 /** The muted "loading…" body a panel shows while its data is in flight. */
 export function LoadingPanel({ children }: { children: ReactNode }) {
   return (
-    <Panel variant="bare" className="min-h-56 pt-12 text-muted-foreground" aria-live="polite">{children}</Panel>
+    <Panel variant="bare" className="min-h-56 pt-12 text-muted-foreground" aria-live="polite">
+      {children}
+    </Panel>
   );
 }
 
@@ -323,12 +423,24 @@ export function LoadingPanel({ children }: { children: ReactNode }) {
  * has. Reading that off the parent is what the old CSS got wrong — it inset
  * twice in .settings-panel, so the title sat 1.25rem right of its own rule.
  */
-export function PanelHeading({ title, description, action }: { title: string; description?: ReactNode; action?: ReactNode }) {
+export function PanelHeading({
+  title,
+  description,
+  action,
+}: {
+  title: string;
+  description?: ReactNode;
+  action?: ReactNode;
+}) {
   return (
     <div className="flex items-center justify-between gap-4 border-b border-border px-5 py-[1.1rem] group-[.is-padded]/panel:px-0 group-[.is-padded]/panel:pt-0 group-[.is-padded]/panel:pb-5">
       <div>
-        <h2 className="m-0 text-[0.95rem] font-semibold tracking-[-0.015em] group-[.is-padded]/panel:text-base">{title}</h2>
-        {description && <p className="mt-1.5 max-w-[38rem] text-[0.875rem] leading-normal text-muted-foreground">{description}</p>}
+        <h2 className="m-0 text-[0.95rem] font-semibold tracking-[-0.015em] group-[.is-padded]/panel:text-base">
+          {title}
+        </h2>
+        {description && (
+          <p className="mt-1.5 max-w-[38rem] text-[0.875rem] leading-normal text-muted-foreground">{description}</p>
+        )}
       </div>
       {action}
     </div>
@@ -339,12 +451,22 @@ export function PanelHeading({ title, description, action }: { title: string; de
  * The "nothing here yet" body. A centred hero when it fills a bare panel; a
  * plain line of text when it sits between a heading and a form in a padded one.
  */
-export function EmptyState({ title, children, className }: { title?: string; children: ReactNode; className?: string }) {
+export function EmptyState({
+  title,
+  children,
+  className,
+}: {
+  title?: string;
+  children: ReactNode;
+  className?: string;
+}) {
   return (
-    <div className={cn(
-      "px-5 py-12 text-center group-[.is-padded]/panel:px-0 group-[.is-padded]/panel:py-5 group-[.is-padded]/panel:text-start",
-      className,
-    )}>
+    <div
+      className={cn(
+        "px-5 py-12 text-center group-[.is-padded]/panel:px-0 group-[.is-padded]/panel:py-5 group-[.is-padded]/panel:text-start",
+        className,
+      )}
+    >
       {title && <h2 className="m-0 text-[1.1rem] font-semibold">{title}</h2>}
       <div className="mx-auto mt-2.5 max-w-[36rem] text-[0.84rem] leading-relaxed text-muted-foreground group-[.is-padded]/panel:mx-0 [&_code]:text-foreground">
         {children}
@@ -360,8 +482,16 @@ export function EmptyState({ title, children, className }: { title?: string; chi
  * <dialog> in a table cell did not guarantee.
  */
 export function ConfirmButton({
-  label, busyLabel, title, description, confirmLabel, onConfirm, disabled,
-  variant = "danger", triggerVariant, className,
+  label,
+  busyLabel,
+  title,
+  description,
+  confirmLabel,
+  onConfirm,
+  disabled,
+  variant = "danger",
+  triggerVariant,
+  className,
 }: {
   label: string;
   busyLabel?: string;
@@ -382,7 +512,9 @@ export function ConfirmButton({
 
   const run = async () => {
     setBusy(true);
-    try { await onConfirm(); } finally {
+    try {
+      await onConfirm();
+    } finally {
       setBusy(false);
       setOpen(false);
     }
@@ -391,7 +523,13 @@ export function ConfirmButton({
   return (
     <AlertDialog open={open} onOpenChange={setOpen}>
       <AlertDialogTrigger asChild>
-        <Button variant={triggerVariant ?? variant} className={className} disabled={disabled} busy={busy} busyLabel={busyLabel}>
+        <Button
+          variant={triggerVariant ?? variant}
+          className={className}
+          disabled={disabled}
+          busy={busy}
+          busyLabel={busyLabel}
+        >
           {label}
         </Button>
       </AlertDialogTrigger>
@@ -403,9 +541,19 @@ export function ConfirmButton({
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
-          <AlertDialogCancel asChild><Button variant="quiet">Cancel</Button></AlertDialogCancel>
-          <AlertDialogAction asChild onClick={(event) => { event.preventDefault(); void run(); }}>
-            <Button variant={variant} busy={busy} busyLabel={busyLabel}>{confirmLabel}</Button>
+          <AlertDialogCancel asChild>
+            <Button variant="quiet">Cancel</Button>
+          </AlertDialogCancel>
+          <AlertDialogAction
+            asChild
+            onClick={(event) => {
+              event.preventDefault();
+              void run();
+            }}
+          >
+            <Button variant={variant} busy={busy} busyLabel={busyLabel}>
+              {confirmLabel}
+            </Button>
           </AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>
@@ -426,20 +574,73 @@ export function SproutboatMark() {
 }
 
 const NAV_ICON_PATHS = {
-    overview: <><rect x="2.5" y="2.5" width="4" height="4" rx=".75" /><rect x="9.5" y="2.5" width="4" height="4" rx=".75" /><rect x="2.5" y="9.5" width="4" height="4" rx=".75" /><rect x="9.5" y="9.5" width="4" height="4" rx=".75" /></>,
-    // Compute: a processor die, the way every console draws "runs your code".
-    compute: <><rect x="4.5" y="4.5" width="7" height="7" rx="1" /><path d="M6.5 2.5v2M9.5 2.5v2M6.5 11.5v2M9.5 11.5v2M2.5 6.5h2M2.5 9.5h2M11.5 6.5h2M11.5 9.5h2" /></>,
-    // A sprout, for the unit that actually serves requests.
-    sprouts: <><path d="M8 13.5V7" /><path d="M8 7C8 4.8 6.2 3 4 3c0 2.2 1.8 4 4 4Z" /><path d="M8 8.5c0-1.9 1.5-3.4 3.4-3.4 0 1.9-1.5 3.4-3.4 3.4Z" /></>,
-    deployments: <><path d="M8 2.5v7" /><path d="m5.5 7 2.5 2.5L10.5 7" /><path d="M3 11.5v2h10v-2" /></>,
-    storage: <><ellipse cx="8" cy="4" rx="5" ry="1.8" /><path d="M3 4v8c0 1 2.2 1.8 5 1.8s5-.8 5-1.8V4" /><path d="M3 8c0 1 2.2 1.8 5 1.8s5-.8 5-1.8" /></>,
-    // Sliders, not a sun: settings are things you adjust.
-    settings: <><path d="M2.5 5h6M11 5h2.5M2.5 11h2.5M7.5 11h6" /><circle cx="9.75" cy="5" r="1.6" /><circle cx="6.25" cy="11" r="1.6" /></>,
-    // A shield reads as "privileged area" where a second gear reads as "more settings".
-    admin: <><path d="M8 2.5 3.5 4.2v3.5c0 3 1.9 5 4.5 5.8 2.6-.8 4.5-2.8 4.5-5.8V4.2z" /></>,
+  overview: (
+    <>
+      <rect x="2.5" y="2.5" width="4" height="4" rx=".75" />
+      <rect x="9.5" y="2.5" width="4" height="4" rx=".75" />
+      <rect x="2.5" y="9.5" width="4" height="4" rx=".75" />
+      <rect x="9.5" y="9.5" width="4" height="4" rx=".75" />
+    </>
+  ),
+  // Compute: a processor die, the way every console draws "runs your code".
+  compute: (
+    <>
+      <rect x="4.5" y="4.5" width="7" height="7" rx="1" />
+      <path d="M6.5 2.5v2M9.5 2.5v2M6.5 11.5v2M9.5 11.5v2M2.5 6.5h2M2.5 9.5h2M11.5 6.5h2M11.5 9.5h2" />
+    </>
+  ),
+  // A sprout, for the unit that actually serves requests.
+  sprouts: (
+    <>
+      <path d="M8 13.5V7" />
+      <path d="M8 7C8 4.8 6.2 3 4 3c0 2.2 1.8 4 4 4Z" />
+      <path d="M8 8.5c0-1.9 1.5-3.4 3.4-3.4 0 1.9-1.5 3.4-3.4 3.4Z" />
+    </>
+  ),
+  deployments: (
+    <>
+      <path d="M8 2.5v7" />
+      <path d="m5.5 7 2.5 2.5L10.5 7" />
+      <path d="M3 11.5v2h10v-2" />
+    </>
+  ),
+  storage: (
+    <>
+      <ellipse cx="8" cy="4" rx="5" ry="1.8" />
+      <path d="M3 4v8c0 1 2.2 1.8 5 1.8s5-.8 5-1.8V4" />
+      <path d="M3 8c0 1 2.2 1.8 5 1.8s5-.8 5-1.8" />
+    </>
+  ),
+  // Sliders, not a sun: settings are things you adjust.
+  settings: (
+    <>
+      <path d="M2.5 5h6M11 5h2.5M2.5 11h2.5M7.5 11h6" />
+      <circle cx="9.75" cy="5" r="1.6" />
+      <circle cx="6.25" cy="11" r="1.6" />
+    </>
+  ),
+  // A shield reads as "privileged area" where a second gear reads as "more settings".
+  admin: (
+    <>
+      <path d="M8 2.5 3.5 4.2v3.5c0 3 1.9 5 4.5 5.8 2.6-.8 4.5-2.8 4.5-5.8V4.2z" />
+    </>
+  ),
 };
 function NavIcon({ name }: { name: keyof typeof NAV_ICON_PATHS }) {
-  return <svg className="size-4 shrink-0" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="1.25" strokeLinecap="round" strokeLinejoin="round">{NAV_ICON_PATHS[name]}</svg>;
+  return (
+    <svg
+      className="size-4 shrink-0"
+      viewBox="0 0 16 16"
+      aria-hidden="true"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.25"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      {NAV_ICON_PATHS[name]}
+    </svg>
+  );
 }
 export function Arrow() {
   return (
@@ -486,12 +687,17 @@ const inGroup = (pathname: string, group: keyof typeof NAV_GROUP_ROUTES) =>
 
 /** Segments whose display name is not just their capitalised path. */
 const SEGMENT_LABELS = new Map([
-  ["kv", "KV"], ["d1", "D1"], ["r2", "R2"], ["projects", "Sprouts"],
+  ["kv", "KV"],
+  ["d1", "D1"],
+  ["r2", "R2"],
+  ["projects", "Sprouts"],
 ]);
 
 function breadcrumb(pathname: string): string {
   if (pathname === "/") return "Overview";
-  return pathname.slice(1).split("/")
+  return pathname
+    .slice(1)
+    .split("/")
     .map((segment) => SEGMENT_LABELS.get(segment) ?? segment)
     .join("/");
 }
@@ -503,10 +709,14 @@ const EXACT = { exact: true } as const;
  * expanded whenever the current route lives inside it.
  */
 /** One nav row. Shared by links and by a group's <summary>, so they line up. */
-const NAV_LINK = "flex items-center gap-2.5 rounded-md px-2.5 py-2 text-[0.82rem] text-muted-foreground no-underline hover:bg-accent aria-[current=page]:bg-accent aria-[current=page]:font-medium aria-[current=page]:text-foreground nav-collapsed:justify-center nav-collapsed:px-0 max-[800px]:whitespace-nowrap";
-const NAV_SECTION = "px-2.5 pb-1.5 text-[0.68rem] font-semibold tracking-wider text-muted-foreground uppercase max-[800px]:hidden nav-collapsed:hidden";
-const MENU_ITEM = "rounded border-0 bg-none px-2 py-1.5 text-left text-[0.8rem] text-muted-foreground no-underline hover:bg-accent hover:text-foreground";
-const AVATAR = "grid size-8 cursor-pointer place-items-center overflow-hidden rounded-[7px] border border-border bg-secondary text-[0.75rem] text-foreground list-none [&::-webkit-details-marker]:hidden";
+const NAV_LINK =
+  "flex items-center gap-2.5 rounded-md px-2.5 py-2 text-[0.82rem] text-muted-foreground no-underline hover:bg-accent aria-[current=page]:bg-accent aria-[current=page]:font-medium aria-[current=page]:text-foreground nav-collapsed:justify-center nav-collapsed:px-0 max-[800px]:whitespace-nowrap";
+const NAV_SECTION =
+  "px-2.5 pb-1.5 text-[0.68rem] font-semibold tracking-wider text-muted-foreground uppercase max-[800px]:hidden nav-collapsed:hidden";
+const MENU_ITEM =
+  "rounded border-0 bg-none px-2 py-1.5 text-left text-[0.8rem] text-muted-foreground no-underline hover:bg-accent hover:text-foreground";
+const AVATAR =
+  "grid size-8 cursor-pointer place-items-center overflow-hidden rounded-[7px] border border-border bg-secondary text-[0.75rem] text-foreground list-none [&::-webkit-details-marker]:hidden";
 /** Small outlined pill: the Admin marker and the log table's Cold flag. */
 export const BADGE = "inline-block rounded-full border border-border px-1.5 py-0.5 text-[0.7rem]";
 /** Label text hidden when the rail is collapsed, but kept on narrow screens
@@ -518,7 +728,13 @@ const NAV_LABEL = "nav-collapsed:hidden max-[800px]:nav-collapsed:inline";
  * keyboard operable and expandable without script — and `open` starts the group
  * expanded whenever the current route lives inside it.
  */
-function NavGroup({ label, groupKey, icon, routeOpen, children }: {
+function NavGroup({
+  label,
+  groupKey,
+  icon,
+  routeOpen,
+  children,
+}: {
   label: string;
   /** Stable key for the pre-paint script and the stored preference. */
   groupKey: string;
@@ -545,18 +761,34 @@ function NavGroup({ label, groupKey, icon, routeOpen, children }: {
       open
       suppressHydrationWarning
       ref={group}
-      onToggle={(event) => localStorage.setItem(`sproutboat-nav-group:${groupKey}`, event.currentTarget.open ? "open" : "closed")}
+      onToggle={(event) =>
+        localStorage.setItem(`sproutboat-nav-group:${groupKey}`, event.currentTarget.open ? "open" : "closed")
+      }
     >
       {/* Collapsed, a group's children are hidden, so the icon has to carry
           "you are here" on its own. */}
-      <summary className={cn(
-        NAV_LINK, "w-full cursor-pointer list-none [&::-webkit-details-marker]:hidden",
-        routeOpen && "nav-collapsed:bg-accent nav-collapsed:text-foreground",
-      )}>
+      <summary
+        className={cn(
+          NAV_LINK,
+          "w-full cursor-pointer list-none [&::-webkit-details-marker]:hidden",
+          routeOpen && "nav-collapsed:bg-accent nav-collapsed:text-foreground",
+        )}
+      >
         <NavIcon name={icon} />
         <span className={cn("flex-1", NAV_LABEL)}>{label}</span>
-        <svg className={cn("size-3.5 shrink-0 transition-[rotate] duration-150 group-open/nav:rotate-90 motion-reduce:transition-none", NAV_LABEL)}
-          viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="1.25" strokeLinecap="round" strokeLinejoin="round">
+        <svg
+          className={cn(
+            "size-3.5 shrink-0 transition-[rotate] duration-150 group-open/nav:rotate-90 motion-reduce:transition-none",
+            NAV_LABEL,
+          )}
+          viewBox="0 0 16 16"
+          aria-hidden="true"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.25"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        >
           <path d="m6 4 4 4-4 4" />
         </svg>
       </summary>
@@ -565,11 +797,7 @@ function NavGroup({ label, groupKey, icon, routeOpen, children }: {
   );
 }
 
-export function Shell({
-  children,
-}: {
-  children: ReactNode;
-}) {
+export function Shell({ children }: { children: ReactNode }) {
   const pathname = useRouterState({
     select: (state) => state.location.pathname,
   });
@@ -580,7 +808,9 @@ export function Shell({
   // so it never flashes expanded on reload. React mirrors it for aria-expanded;
   // the attribute, not a class on this element, is what CSS keys off.
   const [collapsed, setCollapsed] = useState(false);
-  useEffect(() => { setCollapsed(document.documentElement.dataset.nav === "collapsed"); }, []);
+  useEffect(() => {
+    setCollapsed(document.documentElement.dataset.nav === "collapsed");
+  }, []);
   const toggleNav = () => {
     const next = document.documentElement.dataset.nav !== "collapsed";
     document.documentElement.dataset.nav = next ? "collapsed" : "expanded";
@@ -594,42 +824,73 @@ export function Shell({
     <div className="grid min-h-screen grid-cols-[15rem_minmax(0,1fr)] nav-collapsed:grid-cols-[4rem_minmax(0,1fr)] max-[800px]:grid-cols-1 max-[800px]:content-start max-[800px]:nav-collapsed:grid-cols-1">
       <aside className="sticky top-0 flex h-screen flex-col border-r border-border bg-card px-3 py-[1.15rem] nav-collapsed:px-2 max-[800px]:static max-[800px]:h-auto max-[800px]:border-r-0 max-[800px]:border-b">
         <div className="flex items-center justify-between gap-2 px-2 nav-collapsed:justify-center nav-collapsed:px-0">
-          <Link className="inline-flex items-center gap-2.5 px-2 py-1 text-[0.95rem] font-extrabold tracking-tight no-underline" to="/">
+          <Link
+            className="inline-flex items-center gap-2.5 px-2 py-1 text-[0.95rem] font-extrabold tracking-tight no-underline"
+            to="/"
+          >
             <SproutboatMark />
             <span className="nav-collapsed:hidden">Sproutboat</span>
           </Link>
-          <button type="button"
+          <button
+            type="button"
             className="grid size-8 place-items-center rounded-md border-0 bg-transparent text-muted-foreground hover:bg-accent hover:text-foreground [&_svg]:size-4"
             onClick={toggleNav}
-            aria-expanded={!collapsed} aria-label={collapsed ? "Expand navigation" : "Collapse navigation"}>
-            <svg viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="1.25" strokeLinecap="round" strokeLinejoin="round">
-              <rect x="2" y="3" width="12" height="10" rx="1.5" /><path d="M6.5 3v10" />
+            aria-expanded={!collapsed}
+            aria-label={collapsed ? "Expand navigation" : "Collapse navigation"}
+          >
+            <svg
+              viewBox="0 0 16 16"
+              aria-hidden="true"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.25"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <rect x="2" y="3" width="12" height="10" rx="1.5" />
+              <path d="M6.5 3v10" />
             </svg>
           </button>
         </div>
-        <nav className="mt-11 grid gap-0.5 max-[800px]:mt-4 max-[800px]:flex max-[800px]:overflow-auto" aria-label="Primary navigation">
+        <nav
+          className="mt-11 grid gap-0.5 max-[800px]:mt-4 max-[800px]:flex max-[800px]:overflow-auto"
+          aria-label="Primary navigation"
+        >
           <Link className={NAV_LINK} to="/" activeOptions={EXACT} activeProps={NAV_ACTIVE}>
-            <NavIcon name="overview" /><span className={NAV_LABEL}>Overview</span>
+            <NavIcon name="overview" />
+            <span className={NAV_LABEL}>Overview</span>
           </Link>
 
           <span className={NAV_SECTION}>Build</span>
           <NavGroup label="Compute" groupKey="compute" icon="compute" routeOpen={computeOpen}>
-            <Link className={subLink} to="/projects" activeProps={NAV_ACTIVE}>Sprouts</Link>
-            <Link className={subLink} to="/queues" activeProps={NAV_ACTIVE}>Queues</Link>
+            <Link className={subLink} to="/projects" activeProps={NAV_ACTIVE}>
+              Sprouts
+            </Link>
+            <Link className={subLink} to="/queues" activeProps={NAV_ACTIVE}>
+              Queues
+            </Link>
           </NavGroup>
           <NavGroup label="Storage &amp; databases" groupKey="storage" icon="storage" routeOpen={storageOpen}>
-            <Link className={subLink} to="/kv" activeProps={NAV_ACTIVE}>KV</Link>
-            <Link className={subLink} to="/d1" activeProps={NAV_ACTIVE}>D1</Link>
-            <Link className={subLink} to="/r2" activeProps={NAV_ACTIVE}>R2</Link>
+            <Link className={subLink} to="/kv" activeProps={NAV_ACTIVE}>
+              KV
+            </Link>
+            <Link className={subLink} to="/d1" activeProps={NAV_ACTIVE}>
+              D1
+            </Link>
+            <Link className={subLink} to="/r2" activeProps={NAV_ACTIVE}>
+              R2
+            </Link>
           </NavGroup>
 
           <span className={cn(NAV_SECTION, "mt-5")}>Account</span>
           <Link className={NAV_LINK} to="/settings" activeProps={NAV_ACTIVE}>
-            <NavIcon name="settings" /><span className={NAV_LABEL}>Settings</span>
+            <NavIcon name="settings" />
+            <span className={NAV_LABEL}>Settings</span>
           </Link>
           {account?.isAdmin && (
             <Link className={NAV_LINK} to="/admin" activeProps={NAV_ACTIVE}>
-              <NavIcon name="admin" /><span className={NAV_LABEL}>Admin</span>
+              <NavIcon name="admin" />
+              <span className={NAV_LABEL}>Admin</span>
             </Link>
           )}
         </nav>
@@ -648,19 +909,50 @@ export function Shell({
           <div className="flex items-center gap-3">
             {account?.isAdmin && <span className={BADGE}>Admin</span>}
             <details className="relative">
-              <summary aria-label="Open account menu" className={AVATAR}><Avatar image={account?.user?.image} label={displayName} /></summary>
+              <summary aria-label="Open account menu" className={AVATAR}>
+                <Avatar image={account?.user?.image} label={displayName} />
+              </summary>
               <div className="absolute top-[calc(100%+0.5rem)] right-0 z-2 grid w-44 gap-0.5 rounded-lg border border-border bg-popover p-2.5 shadow-[0_16px_48px_rgb(0_0_0/35%)]">
-                {username
-                  ? <><strong className="px-2 pt-1.5 pb-2.5 text-[0.8rem]">{username}</strong><Link className={MENU_ITEM} to="/profile">Profile</Link><Link className={MENU_ITEM} to="/settings">Settings</Link><button type="button" className={MENU_ITEM} onClick={toggleTheme}>Toggle theme</button><button type="button" className={MENU_ITEM} onClick={logout}>Log out</button></>
-                  : <><strong className="px-2 pt-1.5 pb-2.5 text-[0.8rem]">Account</strong><Link className={MENU_ITEM} to="/login">Sign in</Link></>}
+                {username ? (
+                  <>
+                    <strong className="px-2 pt-1.5 pb-2.5 text-[0.8rem]">{username}</strong>
+                    <Link className={MENU_ITEM} to="/profile">
+                      Profile
+                    </Link>
+                    <Link className={MENU_ITEM} to="/settings">
+                      Settings
+                    </Link>
+                    <button type="button" className={MENU_ITEM} onClick={toggleTheme}>
+                      Toggle theme
+                    </button>
+                    <button type="button" className={MENU_ITEM} onClick={logout}>
+                      Log out
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <strong className="px-2 pt-1.5 pb-2.5 text-[0.8rem]">Account</strong>
+                    <Link className={MENU_ITEM} to="/login">
+                      Sign in
+                    </Link>
+                  </>
+                )}
               </div>
             </details>
           </div>
         </header>
-        <main id="content" className="mx-auto w-full max-w-[1220px] grow px-10 pt-13 pb-20 max-[800px]:px-5 max-[800px]:pt-8 max-[800px]:pb-16">{children}</main>
+        <main
+          id="content"
+          className="mx-auto w-full max-w-[1220px] grow px-10 pt-13 pb-20 max-[800px]:px-5 max-[800px]:pt-8 max-[800px]:pb-16"
+        >
+          {children}
+        </main>
         <footer className="mt-auto flex justify-between gap-4 border-t border-border px-8 py-5 text-[0.7rem] text-muted-foreground max-[800px]:px-5 max-[480px]:flex-col max-[480px]:items-start">
-          <span>Sproutboat experimental VPS platform</span><span>© {new Date().getFullYear()} Sproutboat</span>
-          <a className="text-inherit underline-offset-2" href="mailto:hello@sproutboat.com">Contact</a>
+          <span>Sproutboat experimental VPS platform</span>
+          <span>© {new Date().getFullYear()} Sproutboat</span>
+          <a className="text-inherit underline-offset-2" href="mailto:hello@sproutboat.com">
+            Contact
+          </a>
         </footer>
       </div>
     </div>
@@ -673,7 +965,12 @@ export function Shell({
  * Delete button stays disabled until the field matches. `onDeleted` is the
  * caller's list refresh — the row unmounts this component on success.
  */
-export function DeleteProject({ name, onDeleted, triggerLabel = "Delete project", triggerVariant = "danger" }: {
+export function DeleteProject({
+  name,
+  onDeleted,
+  triggerLabel = "Delete project",
+  triggerVariant = "danger",
+}: {
   name: string;
   onDeleted: () => void;
   /** Rows use a short, quiet trigger; the danger zone names the action in full. */
@@ -687,20 +984,34 @@ export function DeleteProject({ name, onDeleted, triggerLabel = "Delete project"
   const fieldId = `delete-project-${name}`;
 
   if (!open) {
-    return <Button variant={triggerVariant} onClick={() => setOpen(true)}>{triggerLabel}</Button>;
+    return (
+      <Button variant={triggerVariant} onClick={() => setOpen(true)}>
+        {triggerLabel}
+      </Button>
+    );
   }
 
-  const reset = () => { setOpen(false); setConfirm(""); setError(""); };
+  const reset = () => {
+    setOpen(false);
+    setConfirm("");
+    setError("");
+  };
   const submit = async (event: FormEvent) => {
     event.preventDefault();
-    setError(""); setBusy(true);
+    setError("");
+    setBusy(true);
     try {
       const response = await fetch(`/api/projects/${encodeURIComponent(name)}?confirm=${encodeURIComponent(confirm)}`, {
-        method: "DELETE", credentials: "include",
+        method: "DELETE",
+        credentials: "include",
       });
       if (!response.ok) {
         setBusy(false);
-        setError(response.status === 404 ? "This project no longer exists — it may already be deleted." : "Could not delete this project. Try again.");
+        setError(
+          response.status === 404
+            ? "This project no longer exists — it may already be deleted."
+            : "Could not delete this project. Try again.",
+        );
         return;
       }
       onDeleted();
@@ -721,11 +1032,18 @@ export function DeleteProject({ name, onDeleted, triggerLabel = "Delete project"
           autoComplete="off"
           spellCheck={false}
           placeholder={name}
-          onChange={(event) => { setConfirm(event.target.value); setError(""); }}
+          onChange={(event) => {
+            setConfirm(event.target.value);
+            setError("");
+          }}
           error={mismatch ? "That does not match the project name." : error || null}
         />
-        <Button variant="quiet" onClick={reset} disabled={busy}>Cancel</Button>
-        <Button type="submit" variant="danger" busy={busy} busyLabel="Deleting…" disabled={confirm !== name}>Delete permanently</Button>
+        <Button variant="quiet" onClick={reset} disabled={busy}>
+          Cancel
+        </Button>
+        <Button type="submit" variant="danger" busy={busy} busyLabel="Deleting…" disabled={confirm !== name}>
+          Delete permanently
+        </Button>
       </div>
     </form>
   );
@@ -742,11 +1060,16 @@ export function Copy({ value }: { value: string }) {
       setDone(true);
       clearTimeout(timer.current);
       timer.current = setTimeout(() => setDone(false), 1200);
-    } catch { /* clipboard blocked */ }
+    } catch {
+      /* clipboard blocked */
+    }
   };
   return (
-    <button type="button" onClick={() => void copy()}
-      className="ms-1.5 rounded-[5px] border border-border bg-transparent px-1.5 py-0.5 align-middle text-[0.68rem] text-muted-foreground transition-[border-color,color,scale] duration-150 hover:border-line-strong hover:text-foreground active:scale-96">
+    <button
+      type="button"
+      onClick={() => void copy()}
+      className="ms-1.5 rounded-[5px] border border-border bg-transparent px-1.5 py-0.5 align-middle text-[0.68rem] text-muted-foreground transition-[border-color,color,scale] duration-150 hover:border-line-strong hover:text-foreground active:scale-96"
+    >
       {done ? "Copied" : "Copy"}
     </button>
   );
@@ -756,7 +1079,16 @@ export function Copy({ value }: { value: string }) {
 export function Avatar({ image, label }: { image?: string | null; label: string }) {
   const [failed, setFailed] = useState(false);
   if (image && !failed) {
-    return <img className="block size-full object-cover" src={image} alt={`${label} avatar`} width={32} height={32} onError={() => setFailed(true)} />;
+    return (
+      <img
+        className="block size-full object-cover"
+        src={image}
+        alt={`${label} avatar`}
+        width={32}
+        height={32}
+        onError={() => setFailed(true)}
+      />
+    );
   }
   return <span aria-hidden="true">{label.slice(0, 1).toUpperCase() || "?"}</span>;
 }
@@ -774,12 +1106,19 @@ export function Metric({
   tone?: "neutral" | "warning";
 }) {
   return (
-    <section className="flex min-h-28 flex-col rounded-lg border border-border bg-card px-[1.15rem] py-4" aria-label={label}>
+    <section
+      className="flex min-h-28 flex-col rounded-lg border border-border bg-card px-[1.15rem] py-4"
+      aria-label={label}
+    >
       <p className="m-0 text-[0.72rem] text-muted-foreground">{label}</p>
-      <strong className={cn(
-        "mt-[1.35rem] mb-1 block text-[2rem] font-bold tracking-[-0.04em] tabular-nums",
-        tone === "warning" && "text-coral",
-      )}>{value}</strong>
+      <strong
+        className={cn(
+          "mt-[1.35rem] mb-1 block text-[2rem] font-bold tracking-[-0.04em] tabular-nums",
+          tone === "warning" && "text-coral",
+        )}
+      >
+        {value}
+      </strong>
       <span className="text-[0.72rem] text-muted-foreground">{detail}</span>
     </section>
   );

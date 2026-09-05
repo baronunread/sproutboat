@@ -10,7 +10,9 @@ let store: typeof import("./store");
 const now = () => new Date().toISOString();
 
 async function routeHosts(): Promise<Record<string, string>> {
-  const list: Array<{ hostname: string; sproutPath: string }> = JSON.parse(await readFile(join(dir, "routes.json"), "utf8"));
+  const list: Array<{ hostname: string; sproutPath: string }> = JSON.parse(
+    await readFile(join(dir, "routes.json"), "utf8"),
+  );
   return Object.fromEntries(list.map((route) => [route.hostname, route.sproutPath]));
 }
 async function deploy(project: string, digest: string, id: string): Promise<string> {
@@ -18,14 +20,28 @@ async function deploy(project: string, digest: string, id: string): Promise<stri
   await mkdir(artifactDir, { recursive: true });
   await writeFile(join(artifactDir, "sprout"), "binary");
   const sproutPath = join(artifactDir, "sprout");
-  store.recordDeployment({ id, ownerId: "user-1", project, username: "alice", hostname: `${project}.alice.test`, artifact: digest, sproutPath, deployedAt: now() });
+  store.recordDeployment({
+    id,
+    ownerId: "user-1",
+    project,
+    username: "alice",
+    hostname: `${project}.alice.test`,
+    artifact: digest,
+    sproutPath,
+    deployedAt: now(),
+  });
   await store.syncRoutes();
   return sproutPath;
 }
 
 let roots: string[] = [];
-beforeAll(async () => { store = await import("./store"); });
-afterAll(async () => { store.closeStore(); await Promise.all(roots.map((root) => rm(root, { recursive: true, force: true }))); });
+beforeAll(async () => {
+  store = await import("./store");
+});
+afterAll(async () => {
+  store.closeStore();
+  await Promise.all(roots.map((root) => rm(root, { recursive: true, force: true })));
+});
 beforeEach(async () => {
   store.closeStore(); // drop the previous test's connection so a fresh DB path is picked up
   dir = await mkdtemp(join(tmpdir(), "sb-domains-"));
@@ -51,9 +67,15 @@ test("add is unverified and stays out of the route snapshot until verified", asy
 test("hostname is globally unique", async () => {
   await deploy("app", "a".repeat(64), "d1");
   await deploy("blog", "b".repeat(64), "d2");
-  expect(store.addCustomDomain({ hostname: "dup.acme.test", ownerId: "user-1", project: "app", token: "t" })).toBeTruthy();
-  expect(store.addCustomDomain({ hostname: "dup.acme.test", ownerId: "user-1", project: "blog", token: "t" })).toBeUndefined();
-  expect(store.addCustomDomain({ hostname: "dup.acme.test", ownerId: "user-2", project: "x", token: "t" })).toBeUndefined();
+  expect(
+    store.addCustomDomain({ hostname: "dup.acme.test", ownerId: "user-1", project: "app", token: "t" }),
+  ).toBeTruthy();
+  expect(
+    store.addCustomDomain({ hostname: "dup.acme.test", ownerId: "user-1", project: "blog", token: "t" }),
+  ).toBeUndefined();
+  expect(
+    store.addCustomDomain({ hostname: "dup.acme.test", ownerId: "user-2", project: "x", token: "t" }),
+  ).toBeUndefined();
 });
 
 test("a verified domain follows whatever version is active", async () => {
@@ -99,10 +121,10 @@ test("a banned owner's custom domain leaves the snapshot", async () => {
 
 test("isPlatformManagedHost: apex + www attachable, generated subdomains not", () => {
   const base = "sproutboat.com";
-  expect(domains.isPlatformManagedHost("sproutboat.com", base)).toBe(false);       // apex
-  expect(domains.isPlatformManagedHost("www.sproutboat.com", base)).toBe(false);   // www
+  expect(domains.isPlatformManagedHost("sproutboat.com", base)).toBe(false); // apex
+  expect(domains.isPlatformManagedHost("www.sproutboat.com", base)).toBe(false); // www
   expect(domains.isPlatformManagedHost("hello.alice.sproutboat.com", base)).toBe(true);
   expect(domains.isPlatformManagedHost("api.sproutboat.com", base)).toBe(true);
-  expect(domains.isPlatformManagedHost("example.com", base)).toBe(false);          // external
-  expect(domains.isPlatformManagedHost("notsproutboat.com", base)).toBe(false);    // suffix but not subdomain
+  expect(domains.isPlatformManagedHost("example.com", base)).toBe(false); // external
+  expect(domains.isPlatformManagedHost("notsproutboat.com", base)).toBe(false); // suffix but not subdomain
 });

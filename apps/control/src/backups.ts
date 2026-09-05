@@ -111,7 +111,12 @@ async function run(command: string[]): Promise<void> {
 }
 
 async function exists(path: string): Promise<boolean> {
-  try { await stat(path); return true; } catch { return false; }
+  try {
+    await stat(path);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 /** Upload one archive off-box and prune remote copies to keepCount(). Best-effort. */
@@ -120,13 +125,17 @@ async function copyOffsite(localPath: string, name: string): Promise<boolean> {
   if (!client) return false;
   try {
     await client.write(s3Key(name), Bun.file(localPath), { type: "application/gzip" });
-    const remote = [...await remoteNames()].sort().reverse();
+    const remote = [...(await remoteNames())].sort().reverse();
     for (const stale of remote.slice(keepCount())) {
-      await client.delete(s3Key(stale)).catch(() => { /* prune is best-effort */ });
+      await client.delete(s3Key(stale)).catch(() => {
+        /* prune is best-effort */
+      });
     }
     return true;
   } catch (error) {
-    console.error(`backup: off-box upload failed (${error instanceof Error ? error.message : String(error)}); local copy kept`);
+    console.error(
+      `backup: off-box upload failed (${error instanceof Error ? error.message : String(error)}); local copy kept`,
+    );
     return false;
   }
 }
@@ -141,8 +150,11 @@ export async function createBackup(): Promise<BackupEntry> {
   try {
     // Consistent SQLite snapshot (safe while control keeps writing).
     const source = new Database(dbPath(), { readonly: true, create: false });
-    try { source.run("VACUUM INTO ?", [resolve(staging, "sproutboat.sqlite")]); }
-    finally { source.close(); }
+    try {
+      source.run("VACUUM INTO ?", [resolve(staging, "sproutboat.sqlite")]);
+    } finally {
+      source.close();
+    }
 
     // Archive root: sproutboat.sqlite + the artifacts dir + routes.json (+ the
     // legacy deployments.json) + secrets.key. The key MUST be in the backup —
@@ -150,7 +162,12 @@ export async function createBackup(): Promise<BackupEntry> {
     // (#2). The decrypted secrets/ dir is not archived: `syncRoutes()`
     // regenerates it from the DB on restore.
     const tar = ["tar", "-czf", outPath, "-C", staging, "sproutboat.sqlite"];
-    for (const path of [artifactsDir(), routesPath(), resolve(stateDir(), "deployments.json"), resolve(stateDir(), "secrets.key")]) {
+    for (const path of [
+      artifactsDir(),
+      routesPath(),
+      resolve(stateDir(), "deployments.json"),
+      resolve(stateDir(), "secrets.key"),
+    ]) {
       if (await exists(path)) tar.push("-C", dirname(path), basename(path));
     }
     await run(tar);
@@ -167,7 +184,10 @@ export async function deleteBackup(name: string): Promise<boolean> {
   const path = backupPath(name);
   if (!path) return false;
   const client = s3();
-  if (client && NAME_RE.test(name)) await client.delete(s3Key(name)).catch(() => { /* may not be offsite */ });
+  if (client && NAME_RE.test(name))
+    await client.delete(s3Key(name)).catch(() => {
+      /* may not be offsite */
+    });
   if (!(await exists(path))) return false;
   await rm(path, { force: true });
   return true;
@@ -175,8 +195,16 @@ export async function deleteBackup(name: string): Promise<boolean> {
 
 async function pruneOldBackups(): Promise<void> {
   let names: string[];
-  try { names = await readdir(backupsDir()); } catch { return; }
-  const stale = names.filter((name) => NAME_RE.test(name)).sort().reverse().slice(keepCount());
+  try {
+    names = await readdir(backupsDir());
+  } catch {
+    return;
+  }
+  const stale = names
+    .filter((name) => NAME_RE.test(name))
+    .sort()
+    .reverse()
+    .slice(keepCount());
   for (const name of stale) await rm(resolve(backupsDir(), name), { force: true });
 }
 

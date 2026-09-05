@@ -13,7 +13,10 @@ function humanSize(bytes: number): string {
   const units = ["KiB", "MiB", "GiB"];
   let value = bytes / 1024;
   let unit = 0;
-  while (value >= 1024 && unit < units.length - 1) { value /= 1024; unit += 1; }
+  while (value >= 1024 && unit < units.length - 1) {
+    value /= 1024;
+    unit += 1;
+  }
   return `${value.toFixed(1)} ${units[unit]}`;
 }
 
@@ -26,14 +29,21 @@ function AdminBackups() {
   const load = useCallback(async () => {
     try {
       const response = await fetch("/api/admin/backups", { credentials: "include" });
-      if (!response.ok) { setState("error"); return; }
+      if (!response.ok) {
+        setState("error");
+        return;
+      }
       // SAFETY: a 2xx from /api/admin/backups is the { backups } contract.
-      const body = await response.json() as { backups: Backup[] };
+      const body = (await response.json()) as { backups: Backup[] };
       setBackups(body.backups);
       setState("ready");
-    } catch { setState("error"); }
+    } catch {
+      setState("error");
+    }
   }, []);
-  useEffect(() => { void load(); }, [load]);
+  useEffect(() => {
+    void load();
+  }, [load]);
 
   const backUpNow = async () => {
     setBusy(true);
@@ -42,19 +52,24 @@ function AdminBackups() {
       const response = await fetch("/api/admin/backups", { method: "POST", credentials: "include" });
       if (!response.ok) {
         // SAFETY: an error body from this endpoint is { error: string }.
-        const body = await response.json().catch(() => ({})) as { error?: string };
+        const body = (await response.json().catch(() => ({}))) as { error?: string };
         setNote(body.error ?? "Backup failed.");
       } else {
         await load();
       }
-    } catch { setNote("Could not reach the control plane."); }
+    } catch {
+      setNote("Could not reach the control plane.");
+    }
     setBusy(false);
   };
 
   const remove = async (name: string) => {
     setNote("");
     const failure = await mutate(`/api/admin/backups/${encodeURIComponent(name)}`, { method: "DELETE" });
-    if (failure) { setNote(failure); return; }
+    if (failure) {
+      setNote(failure);
+      return;
+    }
     await load();
   };
 
@@ -63,50 +78,85 @@ function AdminBackups() {
       <PanelHeading
         title="Backups"
         description="The SQLite metadata store plus the artifact directory and route snapshot, one gzipped archive each. A timer takes one daily; the last seven are kept."
-        action={<Button busy={busy} busyLabel="Backing up…" onClick={() => void backUpNow()}>Back up now</Button>}
+        action={
+          <Button busy={busy} busyLabel="Backing up…" onClick={() => void backUpNow()}>
+            Back up now
+          </Button>
+        }
       />
 
       {note && <StatusMessage tone="error">{note}</StatusMessage>}
 
-      {state === "loading" && <p className="min-h-56 px-5 pt-12 text-muted-foreground group-[.is-padded]/panel:px-0" aria-live="polite">Loading backups…</p>}
+      {state === "loading" && (
+        <p className="min-h-56 px-5 pt-12 text-muted-foreground group-[.is-padded]/panel:px-0" aria-live="polite">
+          Loading backups…
+        </p>
+      )}
       {state === "error" && <StatusMessage tone="error">Could not load backups. Refresh and try again.</StatusMessage>}
       {state === "ready" && backups && backups.length === 0 && (
-        <p className="px-5 py-12 text-center text-[0.84rem] leading-relaxed text-muted-foreground group-[.is-padded]/panel:px-0 group-[.is-padded]/panel:py-5 group-[.is-padded]/panel:text-start [&_code]:text-foreground">No backups yet. Take one now, or wait for the daily timer.</p>
+        <p className="px-5 py-12 text-center text-[0.84rem] leading-relaxed text-muted-foreground group-[.is-padded]/panel:px-0 group-[.is-padded]/panel:py-5 group-[.is-padded]/panel:text-start [&_code]:text-foreground">
+          No backups yet. Take one now, or wait for the daily timer.
+        </p>
       )}
       {state === "ready" && backups && backups.length > 0 && (
-        <DataTable caption="Stored backup archives"
-              head={<tr>
-                <th scope="col">Archive</th>
-                <th scope="col" className="text-end tabular-nums">Size</th>
-                <th scope="col">Taken</th>
-                <th scope="col">Off-box</th>
-                <th scope="col" className="text-end"><span className="sr-only">Actions</span></th>
-              </tr>}
-            >
-              {backups.map((backup) => (
-                <tr key={backup.name}>
-                  <td><code>{backup.name}</code></td>
-                  <td className="text-end tabular-nums">{humanSize(backup.sizeBytes)}</td>
-                  <td>{relativeTime(backup.createdAt)}</td>
-                  <td>{backup.offsite ? "Uploaded" : "—"}</td>
-                  <td className="flex items-center justify-end gap-2 [&_button]:h-8 [&_button]:px-2.5">
-                    <a className={buttonVariants({ variant: "outline", className: "text-[0.82rem]" })} href={`/api/admin/backups/${encodeURIComponent(backup.name)}`} download>Download</a>
-                    <ConfirmButton
-                      label="Delete"
-                      busyLabel="Deleting…"
-                      triggerVariant="quiet"
-                      title={`Delete ${backup.name}?`}
-                      description={<>This removes the archive from this box{backup.offsite ? " and from off-box storage" : ""}. Restoring from it will no longer be possible. This cannot be undone.</>}
-                      confirmLabel="Delete backup"
-                      onConfirm={() => remove(backup.name)}
-                    />
-                  </td>
-                </tr>
-              ))}
-            </DataTable>
+        <DataTable
+          caption="Stored backup archives"
+          head={
+            <tr>
+              <th scope="col">Archive</th>
+              <th scope="col" className="text-end tabular-nums">
+                Size
+              </th>
+              <th scope="col">Taken</th>
+              <th scope="col">Off-box</th>
+              <th scope="col" className="text-end">
+                <span className="sr-only">Actions</span>
+              </th>
+            </tr>
+          }
+        >
+          {backups.map((backup) => (
+            <tr key={backup.name}>
+              <td>
+                <code>{backup.name}</code>
+              </td>
+              <td className="text-end tabular-nums">{humanSize(backup.sizeBytes)}</td>
+              <td>{relativeTime(backup.createdAt)}</td>
+              <td>{backup.offsite ? "Uploaded" : "—"}</td>
+              <td className="flex items-center justify-end gap-2 [&_button]:h-8 [&_button]:px-2.5">
+                <a
+                  className={buttonVariants({ variant: "outline", className: "text-[0.82rem]" })}
+                  href={`/api/admin/backups/${encodeURIComponent(backup.name)}`}
+                  download
+                >
+                  Download
+                </a>
+                <ConfirmButton
+                  label="Delete"
+                  busyLabel="Deleting…"
+                  triggerVariant="quiet"
+                  title={`Delete ${backup.name}?`}
+                  description={
+                    <>
+                      This removes the archive from this box{backup.offsite ? " and from off-box storage" : ""}.
+                      Restoring from it will no longer be possible. This cannot be undone.
+                    </>
+                  }
+                  confirmLabel="Delete backup"
+                  onConfirm={() => remove(backup.name)}
+                />
+              </td>
+            </tr>
+          ))}
+        </DataTable>
       )}
 
-      <p className="mt-3 text-[0.75rem] text-muted-foreground">Off-box upload runs when <code>SPROUTBOAT_BACKUP_S3_*</code> is set in <code>/etc/sproutboat/control.env</code> (any S3-compatible store). Restore on the box: stop the services, replace <code>/var/lib/sproutboat/sproutboat.sqlite</code> and <code>artifacts/</code> from the archive, then start again. See <code>infra/README.md</code>.</p>
+      <p className="mt-3 text-[0.75rem] text-muted-foreground">
+        Off-box upload runs when <code>SPROUTBOAT_BACKUP_S3_*</code> is set in <code>/etc/sproutboat/control.env</code>{" "}
+        (any S3-compatible store). Restore on the box: stop the services, replace{" "}
+        <code>/var/lib/sproutboat/sproutboat.sqlite</code> and <code>artifacts/</code> from the archive, then start
+        again. See <code>infra/README.md</code>.
+      </p>
     </Panel>
   );
 }

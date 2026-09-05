@@ -14,17 +14,15 @@ export default async function globalSetup(): Promise<void> {
   const strictTls = process.env.NODE_TLS_REJECT_UNAUTHORIZED;
   process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
   const healthy = await fetch(`${control}/internal/health`)
-    .then((response) => response.ok).catch(() => false)
+    .then((response) => response.ok)
+    .catch(() => false)
     .finally(() => {
       if (strictTls === undefined) delete process.env.NODE_TLS_REJECT_UNAUTHORIZED;
       else process.env.NODE_TLS_REJECT_UNAUTHORIZED = strictTls;
     });
 
   if (!healthy) {
-    throw new Error(
-      `Sproutboat stack not reachable at ${control}.\n` +
-      `Start it first:  bun run dev:local`,
-    );
+    throw new Error(`Sproutboat stack not reachable at ${control}.\n` + `Start it first:  bun run dev:local`);
   }
 
   execSync("bun run seed --reset --e2e", { cwd: root, stdio: "inherit" });

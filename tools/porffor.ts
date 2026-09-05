@@ -16,6 +16,8 @@ export function porfforVersion(): string {
     const channel = /"porffor":\s*"github:CanadaHonk\/porffor#([\w.-]+)"/.exec(lock)?.[1];
     const commit = /CanadaHonk\/porffor#([0-9a-f]{7,40})/.exec(lock)?.[1];
     if (channel) return commit ? `${channel} (${commit.slice(0, 7)})` : channel;
-  } catch { /* fall through */ }
+  } catch {
+    /* fall through */
+  }
   return "unknown";
 }

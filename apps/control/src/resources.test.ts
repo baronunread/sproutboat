@@ -8,8 +8,13 @@ let dir: string;
 let store: typeof import("./store");
 const roots: string[] = [];
 
-beforeAll(async () => { store = await import("./store"); });
-afterAll(async () => { store.closeStore(); await Promise.all(roots.map((r) => rm(r, { recursive: true, force: true }))); });
+beforeAll(async () => {
+  store = await import("./store");
+});
+afterAll(async () => {
+  store.closeStore();
+  await Promise.all(roots.map((r) => rm(r, { recursive: true, force: true })));
+});
 beforeEach(async () => {
   store.closeStore();
   dir = await mkdtemp(join(tmpdir(), "sb-resources-"));
@@ -46,8 +51,7 @@ test("ownerResources is ordered by kind then name", () => {
   store.createResource("user-1", "r2", "bravo");
   store.createResource("user-1", "kv", "zulu");
   store.createResource("user-1", "kv", "alpha");
-  expect(store.ownerResources("user-1").map((r) => `${r.kind}/${r.name}`))
-    .toEqual(["kv/alpha", "kv/zulu", "r2/bravo"]);
+  expect(store.ownerResources("user-1").map((r) => `${r.kind}/${r.name}`)).toEqual(["kv/alpha", "kv/zulu", "r2/bravo"]);
 });
 
 test("rename changes the name, keeps the id, and is owner-scoped", () => {
@@ -80,9 +84,15 @@ async function deploy(project: string, id: string, resourceIds: string[]): Promi
   await mkdir(artifactDir, { recursive: true });
   await writeFile(join(artifactDir, "sprout"), "binary");
   store.recordDeployment({
-    id, ownerId: "user-1", project, username: "alice",
-    hostname: `${project}.alice.test`, artifact: id, sproutPath: join(artifactDir, "sprout"),
-    deployedAt: new Date().toISOString(), resourceIds,
+    id,
+    ownerId: "user-1",
+    project,
+    username: "alice",
+    hostname: `${project}.alice.test`,
+    artifact: id,
+    sproutPath: join(artifactDir, "sprout"),
+    deployedAt: new Date().toISOString(),
+    resourceIds,
   });
 }
 
@@ -112,19 +122,33 @@ test("#77 — ownerResourceProjects groups bindings by resource in one pass", as
   await mkdir(join(dir, "artifacts", digest), { recursive: true });
   await writeFile(join(dir, "artifacts", digest, "sprout"), "binary");
   const base = {
-    ownerId: "acct", username: "acct", artifact: digest,
-    sproutPath: join(dir, "artifacts", digest, "sprout"), deployedAt: new Date().toISOString(),
+    ownerId: "acct",
+    username: "acct",
+    artifact: digest,
+    sproutPath: join(dir, "artifacts", digest, "sprout"),
+    deployedAt: new Date().toISOString(),
   };
-  store.recordDeployment({ ...base, id: "d-blog", project: "blog", hostname: "blog.acct.test", resourceIds: [kv.id, r2.id] });
+  store.recordDeployment({
+    ...base,
+    id: "d-blog",
+    project: "blog",
+    hostname: "blog.acct.test",
+    resourceIds: [kv.id, r2.id],
+  });
   store.recordDeployment({ ...base, id: "d-api", project: "api", hostname: "api.acct.test", resourceIds: [kv.id] });
   store.recordDeployment({
-    ...base, id: "d-them", ownerId: "stranger", username: "stranger", project: "theirs",
-    hostname: "theirs.stranger.test", resourceIds: [other.id],
+    ...base,
+    id: "d-them",
+    ownerId: "stranger",
+    username: "stranger",
+    project: "theirs",
+    hostname: "theirs.stranger.test",
+    resourceIds: [other.id],
   });
 
   const bound = store.ownerResourceProjects("acct");
   expect(bound.get(kv.id)).toEqual(["api", "blog"]); // both projects, deduped and ordered
   expect(bound.get(r2.id)).toEqual(["blog"]);
-  expect(bound.has(unused.id)).toBe(false);          // never bound -> absent, so a list shows "—"
-  expect(bound.has(other.id)).toBe(false);           // another owner's binding never leaks in
+  expect(bound.has(unused.id)).toBe(false); // never bound -> absent, so a list shows "—"
+  expect(bound.has(other.id)).toBe(false); // another owner's binding never leaks in
 });

@@ -31,7 +31,11 @@ const probeDir = await mkdtemp(resolve(tmpdir(), "sproutboat-sandbox-"));
 // Probes run /bin/sh *inside* the same sandbox via the launcher's trailing-args form.
 async function sandboxed(script: string): Promise<{ code: number; out: string; err: string }> {
   const child = Bun.spawn([launcher, "/bin/sh", "-c", script], { stdout: "pipe", stderr: "pipe" });
-  const [code, out, err] = await Promise.all([child.exited, new Response(child.stdout).text(), new Response(child.stderr).text()]);
+  const [code, out, err] = await Promise.all([
+    child.exited,
+    new Response(child.stdout).text(),
+    new Response(child.stderr).text(),
+  ]);
   return { code, out: out.trim(), err: err.trim() };
 }
 
@@ -86,9 +90,15 @@ check("loopback is reachable inside the sandbox", loopback.out.includes("lo-ok")
 // Host has hundreds of PIDs; the sandbox's private PID namespace shows only the
 // current probe pipeline (a handful).
 const countPids = "ls -1 /proc | grep -c '^[0-9][0-9]*$'";
-const hostProcs = Number((await new Response(Bun.spawn(["sh", "-c", countPids], { stdout: "pipe" }).stdout).text()).trim());
+const hostProcs = Number(
+  (await new Response(Bun.spawn(["sh", "-c", countPids], { stdout: "pipe" }).stdout).text()).trim(),
+);
 const inSandbox = Number((await sandboxed(`${countPids} || true`)).out);
-check("PID namespace hides host processes", inSandbox > 0 && inSandbox < 12 && inSandbox < hostProcs, `sandbox sees ${inSandbox} pids, host has ${hostProcs}`);
+check(
+  "PID namespace hides host processes",
+  inSandbox > 0 && inSandbox < 12 && inSandbox < hostProcs,
+  `sandbox sees ${inSandbox} pids, host has ${hostProcs}`,
+);
 
 const uid = await sandboxed("id -u");
 check("runs as an unprivileged uid", uid.out.trim() !== "0", `uid ${uid.out.trim()}`);

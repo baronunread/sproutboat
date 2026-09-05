@@ -12,8 +12,7 @@ import { LIMITS } from "./limits";
 import { deleteSecret, projectDeployments, secretCount, secretNames, setSecret, syncRoutes } from "./store";
 
 type JsonInput = string | number | boolean | null | undefined | JsonInput[] | { readonly [key: string]: JsonInput };
-const asText = (value: JsonInput): string =>
-  Object(value) !== value && value === String(value) ? String(value) : "";
+const asText = (value: JsonInput): string => (Object(value) !== value && value === String(value) ? String(value) : "");
 
 const NAME = /^[A-Z][A-Z0-9_]*$/;
 const MAX_VALUE_BYTES = 8 * 1024;
@@ -21,9 +20,14 @@ const MAX_VALUE_BYTES = 8 * 1024;
 async function authorized(request: Request): Promise<Actor | Response> {
   try {
     const actor = await actorFor(request);
-    return actor || Response.json({ error: "sign in and reserve a username before using this endpoint" }, { status: 401 });
+    return (
+      actor || Response.json({ error: "sign in and reserve a username before using this endpoint" }, { status: 401 })
+    );
   } catch (error) {
-    return Response.json({ error: error instanceof Error ? error.message : "authentication is unavailable" }, { status: 503 });
+    return Response.json(
+      { error: error instanceof Error ? error.message : "authentication is unavailable" },
+      { status: 503 },
+    );
   }
 }
 
@@ -44,10 +48,14 @@ export async function putSecret(request: Request, project: string, name: string)
   const body: { readonly [key: string]: JsonInput } = await request.json().catch(() => ({}));
   const value = asText(body.value);
   if (!value) return Response.json({ error: "a non-empty string `value` is required" }, { status: 400 });
-  if (Buffer.byteLength(value, "utf8") > MAX_VALUE_BYTES) return Response.json({ error: `value exceeds ${MAX_VALUE_BYTES} bytes` }, { status: 413 });
+  if (Buffer.byteLength(value, "utf8") > MAX_VALUE_BYTES)
+    return Response.json({ error: `value exceeds ${MAX_VALUE_BYTES} bytes` }, { status: 413 });
   const isNew = !secretNames(actor.id, project).includes(name);
   if (isNew && secretCount(actor.id, project) >= LIMITS.secretsPerProject()) {
-    return Response.json({ error: `a project may hold at most ${LIMITS.secretsPerProject()} secrets` }, { status: 429 });
+    return Response.json(
+      { error: `a project may hold at most ${LIMITS.secretsPerProject()} secrets` },
+      { status: 429 },
+    );
   }
 
   setSecret(actor.id, project, name, value);

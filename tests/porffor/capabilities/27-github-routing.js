@@ -5,5 +5,5 @@ export default {
     if (event === "pull_request") return new Response("preview");
     if (event === "ping") return new Response("pong");
     return new Response("ignored", { status: 202 });
-  }
+  },
 };
