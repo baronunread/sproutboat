@@ -2,7 +2,7 @@ import { afterEach, expect, test } from "bun:test";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { SproutPool, spawnSprout, startupFilePath } from "./run";
+import { SproutPool, brokerArgs, spawnSprout, startupFilePath } from "./run";
 import { sproutCommand } from "./sandbox";
 import type { SproutChild, SproutFactory } from "./run";
 
@@ -259,4 +259,42 @@ test("#freePort skips a port another process already holds (#flaky-ci)", async (
   } finally {
     squatter.stop(true);
   }
+});
+
+test("the broker is told where its sprout is, so cron and queues actually run (#81, #82)", () => {
+  const args = brokerArgs({
+    entry: "/opt/sproutboat/broker.ts",
+    brokerPort: 14_321,
+    token: "deadbeef",
+    stateDir: "/var/lib/sproutboat/brokers/abc",
+    resourceDir: "/var/lib/sproutboat/resources",
+    bindingsPath: "/var/lib/sproutboat/artifacts/abc/bindings.json",
+    sproutPort: 4321,
+  });
+  // The broker starts its cron scheduler and queue consumer only when it knows
+  // its sprout's URL. Lose this pair and requests keep serving while every
+  // scheduled and queued job silently stops — the failure nothing alerts on.
+  const flag = args.indexOf("--sprout-url");
+  expect(flag).toBeGreaterThan(-1);
+  expect(args[flag + 1]).toBe("http://127.0.0.1:4321/");
+  expect(args).toContain("--bindings");
+  expect(args).toContain("--resource-dir");
+});
+
+test("brokerArgs adds secrets and assets only when there are any", () => {
+  const base = {
+    entry: "/broker.ts",
+    brokerPort: 1,
+    token: "t",
+    stateDir: "/state",
+    resourceDir: "/resources",
+    bindingsPath: "/bindings.json",
+    sproutPort: 2,
+  };
+  expect(brokerArgs(base)).not.toContain("--secrets");
+  expect(brokerArgs(base)).not.toContain("--assets-dir");
+
+  const full = brokerArgs({ ...base, secretsPath: "/secrets/app.json", assetsDir: "/artifact/assets" });
+  expect(full[full.indexOf("--secrets") + 1]).toBe("/secrets/app.json");
+  expect(full[full.indexOf("--assets-dir") + 1]).toBe("/artifact/assets");
 });

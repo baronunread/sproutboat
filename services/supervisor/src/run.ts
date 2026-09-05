@@ -84,6 +84,58 @@ function portBindable(port: number): boolean {
 }
 
 /**
+ * The broker's argv, as a pure function so it can be asserted on.
+ *
+ * `--sprout-url` is the whole reason this is exported: the broker only starts
+ * its cron scheduler and queue consumer when it is told where its sprout is, so
+ * dropping or renaming this flag silently costs every deployed project its
+ * scheduled and queued work while requests keep serving normally. That rename
+ * has already happened once — `--worker-url` -> `--sprout-url` — and that time
+ * it was loud, because the broker's parseArgs threw and nothing started. The
+ * quiet direction is the dangerous one.
+ */
+export function brokerArgs(opts: {
+  entry: string;
+  brokerPort: number;
+  token: string;
+  stateDir: string;
+  resourceDir: string;
+  bindingsPath: string;
+  sproutPort: number;
+  secretsPath?: string | null;
+  assetsDir?: string | null;
+}): string[] {
+  const args = [
+    // `process.execPath`, not "bun": sproutboat-edge.service runs with a
+    // hardened PATH that doesn't include the pinned /opt/sproutboat/bun, so a
+    // bare "bun" is ENOENT and every sprout with bindings fails to launch.
+    // `--smol`: the broker is near-idle and one per deployment — trade GC CPU
+    // (idle here) for a smaller JSC heap.
+    process.execPath,
+    "--smol",
+    opts.entry,
+    "--port",
+    String(opts.brokerPort),
+    "--token",
+    opts.token,
+    "--db",
+    resolve(opts.stateDir, "state.sqlite"),
+    "--data-dir",
+    resolve(opts.stateDir, "d1"),
+    "--resource-dir",
+    opts.resourceDir,
+    "--bindings",
+    opts.bindingsPath,
+    "--sprout-url",
+    `http://127.0.0.1:${opts.sproutPort}/`,
+  ];
+  if (opts.secretsPath) args.push("--secrets", opts.secretsPath);
+  // Static assets published beside the artifact back `env.<ASSETS>.fetch()`.
+  if (opts.assetsDir) args.push("--assets-dir", opts.assetsDir);
+  return args;
+}
+
+/**
  * Bindings broker sidecar. Spawned only when the artifact ships a `bindings.json`
  * (KV / D1 / R2 / queues / secrets / cron / Durable Objects). The worker reaches
  * it on `SB_BROKER_PORT`; the broker delivers cron + queue triggers back to the
@@ -144,37 +196,20 @@ function spawnWithBroker(sproutPath: string, port: number, secretsPath?: string 
         ? resolve(dirname(process.env.SPROUTBOAT_LOG_PATH), "resources")
         : resolve(stateBase, "..", "resources"));
     mkdirSync(resourceDir, { recursive: true });
-    const args = [
-      // `process.execPath`, not "bun": sproutboat-edge.service runs with a
-      // hardened PATH that doesn't include the pinned /opt/sproutboat/bun, so a
-      // bare "bun" is ENOENT and every sprout with bindings fails to launch.
-      // `--smol`: the broker is near-idle and one per deployment — trade GC CPU
-      // (idle here) for a smaller JSC heap.
-      process.execPath,
-      "--smol",
-      brokerEntry,
-      "--port",
-      String(brokerPort),
-      "--token",
+    const assetsDir = existsSync(resolve(workerDir, "assets.json")) ? resolve(workerDir, "assets") : null;
+    const args = brokerArgs({
+      entry: brokerEntry,
+      brokerPort,
       token,
-      "--db",
-      resolve(stateDir, "state.sqlite"),
-      "--data-dir",
-      resolve(stateDir, "d1"),
-      "--resource-dir",
+      stateDir,
       resourceDir,
-      "--bindings",
       bindingsPath,
-      // The broker's flag is `--sprout-url` (worker->sprout rename); passing the
-      // old `--worker-url` makes its parseArgs throw and the broker never starts.
-      "--sprout-url",
-      `http://127.0.0.1:${port}/`,
-    ];
-    // #2 — secrets come from a per-project file the control plane writes outside
-    // the shared artifact dir; the path rides in on the route snapshot.
-    if (secretsPath && existsSync(secretsPath)) args.push("--secrets", secretsPath);
-    // Static assets published beside the artifact back `env.<ASSETS>.fetch()`.
-    if (existsSync(resolve(workerDir, "assets.json"))) args.push("--assets-dir", resolve(workerDir, "assets"));
+      sproutPort: port,
+      // #2 — secrets come from a per-project file the control plane writes
+      // outside the shared artifact dir; the path rides in on the route snapshot.
+      secretsPath: secretsPath && existsSync(secretsPath) ? secretsPath : null,
+      assetsDir,
+    });
     const brokerFd = openLog("w");
     broker = Bun.spawn(args, { ...withLog(brokerFd), env: process.env });
     closeLog(brokerFd);
