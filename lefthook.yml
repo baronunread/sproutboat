@@ -28,7 +28,7 @@ pre-commit:
     # much to pay on every commit, and a finding in a file you did not touch is
     # not yours to fix mid-commit. Blocking at `warning` because the tree is
     # clean at the time of writing: the rules we do not intend to follow are
-    # turned off in react-doctor.config.json, with the reason recorded there, so
+    # turned off in doctor.config.json, with the reason recorded there, so
     # anything that fires here is something we said we cared about.
     #
     # Scanned from the repo root, not apps/web. Every dependency is declared at

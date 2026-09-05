@@ -3,11 +3,13 @@
   "//only-export-components": "shadcn ships buttonVariants beside Button, and this repo keeps NAV_GROUP_ROUTES beside the nav that consumes it. The rule guards react-refresh granularity; splitting files to satisfy it costs more than the refresh it buys.",
   "//no-fetch-in-effect": "Deliberate, and documented at dashboard-data.tsx: this is a prerendered SPA whose shell is built with the API offline, so auth cannot come from a router loader without baking a logged-out state into the one static file served for every route.",
   "//no-multi-component-file": "A route file with its own two small subcomponents is easier to read than three files. Revisit if one grows a third.",
+  "//no-high-complexity-react-function": "Arrived with react-doctor 0.9.13, firing on ten route components. It counts branches in a component that fetches, guards on loading/error/empty, and then renders — which is what a route component in this app is. Splitting each into a wrapper plus a body would move the branches, not remove them. Revisit if a single route grows past what one screen can hold.",
   "//prefer-useReducer": "The settings form's useStates are independent fields, not one transition. A reducer would add ceremony without removing a bug.",
   "rules": {
     "react-doctor/only-export-components": "off",
     "react-doctor/no-fetch-in-effect": "off",
     "react-doctor/no-multi-component-file": "off",
-    "react-doctor/prefer-useReducer": "off"
+    "react-doctor/prefer-useReducer": "off",
+    "react-doctor/no-high-complexity-react-function": "off"
   }
 }
