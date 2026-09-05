@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from "react";
-import { Button, ConfirmButton, Panel, PanelHeading, StatusMessage, TextField } from "./components";
+import { Button, ConfirmButton, FORM, FORM_ACTIONS, Panel, PanelHeading, StatusMessage, TextField } from "./components";
 import { mutate, relativeTime, useJson } from "./dashboard-data";
 
 type Credential = {
@@ -163,7 +163,7 @@ export function DeleteAccount({ username }: { username?: string }) {
         title="Delete account"
         description="This permanently removes your namespace, every project and deployment, all routed hostnames, and every issued API token. Active routes stop serving immediately and you are signed out. This cannot be undone."
       />
-      <form className="mt-5 grid max-w-[36rem] gap-5 [&>[data-slot=form-actions]]:col-span-full" onSubmit={submit}>
+      <form className={FORM} onSubmit={submit}>
         <TextField
           label={`Type ${expected || "your username"} to confirm`}
           value={confirm}
@@ -177,7 +177,7 @@ export function DeleteAccount({ username }: { username?: string }) {
           disabled={!expected}
           error={mismatch ? "That does not match your username." : error || null}
         />
-        <div data-slot="form-actions" className="mt-1 flex flex-wrap items-center gap-2.5">
+        <div data-slot="form-actions" className={FORM_ACTIONS}>
           <Button
             type="submit"
             variant="danger"

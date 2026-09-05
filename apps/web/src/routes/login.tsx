@@ -1,6 +1,6 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
-import { Button, SproutboatMark, TextField } from "../components";
+import { Button, FORM, FORM_ACTIONS, SproutboatMark, TextField } from "../components";
 
 export const Route = createFileRoute("/login")({
   component: Login,
@@ -80,7 +80,7 @@ function Login() {
         <SproutboatMark />
         <span>Sproutboat</span>
       </Link>
-      <section className="w-full max-w-[27rem] rounded-xl border border-border bg-card p-8 [&>h1]:m-0 [&>h1]:max-w-[12ch] [&>h1]:text-[2rem] [&>h1]:leading-none [&>h1]:font-bold [&>h1]:tracking-[-0.035em] [&>p]:mb-6 [&>p]:text-[0.875rem] [&>p]:leading-relaxed [&>p]:text-muted-foreground">
+      <section className="w-full max-w-[27rem] rounded-xl border border-border bg-card p-8 [&>h1]:m-0 [&>h1]:max-w-[12ch] [&>h1]:text-[2rem] [&>h1]:leading-none [&>h1]:font-bold [&>h1]:tracking-[-0.035em] [&>p]:mt-3 [&>p]:mb-6 [&>p]:text-[0.875rem] [&>p]:leading-relaxed [&>p]:text-muted-foreground">
         <h1>Sign in to your workspace.</h1>
         <p>Accounts are created by the admin — there is no self-service sign-up.</p>
         {config?.githubSignIn && (
@@ -93,10 +93,7 @@ function Login() {
             </p>
           </>
         )}
-        <form
-          className="mt-5 grid max-w-[36rem] gap-5 [&>[data-slot=form-actions]]:col-span-full"
-          onSubmit={signInWithPassword}
-        >
+        <form className={FORM} onSubmit={signInWithPassword}>
           <TextField
             label="Email"
             id="signin-email"
@@ -131,7 +128,7 @@ function Login() {
             }
             error={error ?? null}
           />
-          <div data-slot="form-actions" className="mt-1 flex flex-wrap items-center gap-2.5">
+          <div data-slot="form-actions" className={FORM_ACTIONS}>
             <Button
               type="submit"
               className="w-full"

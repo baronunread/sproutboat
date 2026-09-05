@@ -6,6 +6,9 @@ import {
   Copy,
   DataTable,
   EmptyState,
+  FILTER_SEARCH,
+  FORM,
+  FORM_ACTIONS,
   Panel,
   PanelHeading,
   StatusMessage,
@@ -119,12 +122,12 @@ export function ResourceList({ product }: { product: Product }) {
       <div className="grid items-start gap-6 grid-cols-[minmax(0,1fr)_18rem] max-[1000px]:grid-cols-1 [&_table]:min-w-0">
         <div>
           <Panel variant="bare">
-            <div className="flex items-end gap-2.5 px-5 py-[1.1rem] [&>div:first-child]:flex-1">
+            <div className="flex flex-wrap items-end gap-2.5 px-5 py-[1.1rem]">
               <TextField
                 label={`Search ${product.title}`}
                 hideLabel
                 type="search"
-                fieldClassName="min-w-0 flex-[1_1_16rem]"
+                fieldClassName={FILTER_SEARCH}
                 placeholder={`Search ${product.title}…`}
                 value={query}
                 onChange={(event) => setQuery(event.target.value)}
@@ -241,6 +244,7 @@ function Row({
             <TextField
               label={`New name for ${resource.name}`}
               hideLabel
+              fieldClassName={FILTER_SEARCH}
               value={name}
               autoComplete="off"
               spellCheck={false}
@@ -250,9 +254,6 @@ function Row({
                 setError(null);
               }}
             />
-            <Button type="submit" variant="primary" busy={busy} busyLabel="Saving…">
-              Save
-            </Button>
             <Button
               onClick={() => {
                 setRenaming(false);
@@ -261,6 +262,9 @@ function Row({
               }}
             >
               Cancel
+            </Button>
+            <Button type="submit" variant="primary" busy={busy} busyLabel="Saving…">
+              Save
             </Button>
           </form>
         </td>
@@ -392,10 +396,7 @@ export function CreateResource({ product }: { product: Product }) {
       </section>
 
       <Panel>
-        <form
-          className="mt-5 grid max-w-[36rem] gap-5 [&>[data-slot=form-actions]]:col-span-full"
-          onSubmit={(event) => void submit(event)}
-        >
+        <form className={FORM} onSubmit={(event) => void submit(event)}>
           <TextField
             label={`${product.noun[0].toUpperCase()}${product.noun.slice(1)} name`}
             value={name}
@@ -411,7 +412,15 @@ export function CreateResource({ product }: { product: Product }) {
             hint="2–63 characters: lowercase letters, digits and hyphens. The id is generated for you."
             error={invalid ? "Use lowercase letters, digits and hyphens only." : error}
           />
-          <div data-slot="form-actions" className="mt-1 flex flex-wrap items-center gap-2.5">
+          {/* Cancel first, primary last — the order the confirm dialogs already
+              use, so "the rightmost button commits" holds everywhere. */}
+          <div data-slot="form-actions" className={FORM_ACTIONS}>
+            <Link
+              className={buttonVariants({ variant: "outline", className: "text-[0.82rem]" })}
+              to={`/${product.segment}`}
+            >
+              Cancel
+            </Link>
             <Button
               type="submit"
               variant="primary"
@@ -421,12 +430,6 @@ export function CreateResource({ product }: { product: Product }) {
             >
               Create {product.noun}
             </Button>
-            <Link
-              className={buttonVariants({ variant: "outline", className: "text-[0.82rem]" })}
-              to={`/${product.segment}`}
-            >
-              Cancel
-            </Link>
           </div>
         </form>
       </Panel>

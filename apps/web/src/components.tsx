@@ -80,7 +80,10 @@ function FieldShell({
   children,
 }: FieldProps & { fieldId: string; hintId: string; errorId: string; children: ReactNode }) {
   return (
-    <div className={cn("grid min-w-0 gap-1.5", fieldClassName)}>
+    // content-start matters in multi-column forms: a grid item is stretched to
+    // the tallest column, and without it the leftover height is shared out
+    // between label, control and hint, so neighbouring fields stop lining up.
+    <div className={cn("grid min-w-0 content-start gap-1.5", fieldClassName)}>
       <Label className={cn("text-[0.78rem] font-medium", hideLabel && "sr-only")} htmlFor={fieldId}>
         {label}
       </Label>
@@ -92,7 +95,7 @@ function FieldShell({
       )}
       {footer && <div className="text-xs text-muted-foreground">{footer}</div>}
       {error && (
-        <p className="flex items-center gap-1.5 text-xs text-destructive" id={errorId} role="alert">
+        <p className="flex items-center gap-1.5 text-xs font-medium text-destructive" id={errorId} role="alert">
           <span
             aria-hidden="true"
             className="grid size-3.5 shrink-0 place-items-center rounded-full border border-current text-[0.6rem] font-bold"
@@ -203,6 +206,30 @@ export function SelectField({
     </FieldShell>
   );
 }
+
+/* ---------------------------------------------------------------------------
+ * Form and filter-bar layout
+ *
+ * These were spelled out at every call site, which is how the dashboard ended
+ * up with three different form measures and four different filter-bar gaps.
+ * One measure for a stack of fields, one gap between fields, and a visibly
+ * larger gap before the action row so the primary action reads as the end of
+ * the form rather than as one more field.
+ * ------------------------------------------------------------------------- */
+
+/** A single-column stack of fields. Action rows span it whatever the columns. */
+export const FORM = "mt-6 grid max-w-[36rem] gap-5 [&>[data-slot=form-actions]]:col-span-full";
+/** The row a form ends on. Wants `data-slot="form-actions"` on the same element. */
+export const FORM_ACTIONS = "mt-3 flex flex-wrap items-center gap-2.5";
+
+/**
+ * A row of filters over a list. Fixed-width selects so the row is not ragged,
+ * the search field taking whatever slack is left, and a taller row gap so a
+ * wrapped control reads as a new line rather than as part of the one above.
+ */
+export const FILTER_BAR = "mt-5 mb-4 flex flex-wrap items-end gap-x-2.5 gap-y-4";
+export const FILTER_FIELD = "w-[9.75rem] max-w-full";
+export const FILTER_SEARCH = "min-w-0 flex-[1_1_18rem]";
 
 /**
  * A button that owns its own pending state: `busy` disables it, marks it
@@ -1023,21 +1050,26 @@ export function DeleteProject({
 
   const mismatch = confirm !== "" && confirm !== name;
   return (
+    // The field takes its own line rather than sharing one with the buttons:
+    // the consequence belongs under the input as a hint, and a hint inside a
+    // baseline-aligned row would push the buttons off the input's baseline.
     <form className="col-span-full grid gap-3 pt-1 pb-2" onSubmit={submit}>
-      <div className="flex flex-wrap items-end gap-2.5">
-        <TextField
-          id={fieldId}
-          label={`Type ${name} to permanently delete this project, every deployed version, and its route`}
-          value={confirm}
-          autoComplete="off"
-          spellCheck={false}
-          placeholder={name}
-          onChange={(event) => {
-            setConfirm(event.target.value);
-            setError("");
-          }}
-          error={mismatch ? "That does not match the project name." : error || null}
-        />
+      <TextField
+        id={fieldId}
+        label={`Type ${name} to confirm`}
+        fieldClassName="max-w-[26rem]"
+        value={confirm}
+        autoComplete="off"
+        spellCheck={false}
+        placeholder={name}
+        hint="This deletes the project, every deployed version, and its route. It cannot be undone."
+        onChange={(event) => {
+          setConfirm(event.target.value);
+          setError("");
+        }}
+        error={mismatch ? "That does not match the project name." : error || null}
+      />
+      <div data-slot="form-actions" className={FORM_ACTIONS}>
         <Button variant="quiet" onClick={reset} disabled={busy}>
           Cancel
         </Button>

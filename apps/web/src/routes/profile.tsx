@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { Avatar, Button, Panel, PanelHeading, TextField } from "../components";
+import { Avatar, Button, FORM, FORM_ACTIONS, Panel, PanelHeading, TextField } from "../components";
 import { USERNAME_RULE, useAccount } from "../dashboard-data";
 
 export const Route = createFileRoute("/profile")({
@@ -92,10 +92,7 @@ function Profile() {
                 </>
               }
             />
-            <form
-              className="mt-5 grid max-w-[36rem] gap-5 [&>[data-slot=form-actions]]:col-span-full"
-              onSubmit={(event) => void reserve(event)}
-            >
+            <form className={FORM} onSubmit={(event) => void reserve(event)}>
               <TextField
                 label="Namespace"
                 value={username}
@@ -110,7 +107,7 @@ function Profile() {
                 hint="3–32 characters: lowercase letters, digits and hyphens."
                 error={invalid ? "Use 3–32 lowercase letters, digits or hyphens." : error}
               />
-              <div data-slot="form-actions" className="mt-1 flex flex-wrap items-center gap-2.5">
+              <div data-slot="form-actions" className={FORM_ACTIONS}>
                 <Button
                   type="submit"
                   variant="primary"
@@ -124,7 +121,7 @@ function Profile() {
             </form>
           </>
         )}
-        <p>
+        <p className="mt-8">
           <Link className="text-[0.8rem] text-sky underline-offset-2 hover:underline" to="/settings">
             Appearance settings
           </Link>

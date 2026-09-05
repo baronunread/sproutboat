@@ -2,6 +2,9 @@ import { useState } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import {
   Button,
+  FILTER_BAR,
+  FILTER_FIELD,
+  FILTER_SEARCH,
   Panel,
   PanelHeading,
   RECORD_TITLE,
@@ -12,6 +15,7 @@ import {
   TextField,
 } from "../components";
 import { relativeTime, useProject } from "../dashboard-data";
+import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/projects_/$name/deployments")({ component: ProjectDeployments });
 
@@ -44,9 +48,10 @@ function ProjectDeployments() {
         description={`${deployments.length} immutable version${deployments.length === 1 ? "" : "s"}, newest first.`}
       />
 
-      <div className="mt-5 mb-3 flex flex-wrap items-end gap-2.5">
+      <div className={cn(FILTER_BAR, "px-5")}>
         <SelectField
           label="State"
+          fieldClassName={FILTER_FIELD}
           value={status}
           options={STATE_OPTIONS}
           onValueChange={(value) => {
@@ -57,7 +62,7 @@ function ProjectDeployments() {
         <TextField
           label="Search"
           type="search"
-          fieldClassName="min-w-0 flex-[1_1_16rem]"
+          fieldClassName={FILTER_SEARCH}
           placeholder="Match version id, artifact digest or hostname"
           value={query}
           onChange={(event) => {
@@ -93,7 +98,7 @@ function ProjectDeployments() {
             ))}
           </RecordList>
           {matching.length > visible.length && (
-            <div data-slot="form-actions" className="m-4 mx-5 flex flex-wrap items-center gap-2.5">
+            <div className="mx-5 my-4">
               <Button variant="quiet" onClick={() => setShown((current) => current + PAGE)}>
                 Show more ({matching.length - visible.length} left)
               </Button>
