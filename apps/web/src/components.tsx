@@ -12,6 +12,7 @@ import {
 } from "react";
 import type * as React from "react";
 import { useAccount } from "./dashboard-data";
+import { resolveTheme, type Theme } from "./theme";
 import { Button as UiButton } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -684,13 +685,58 @@ async function logout() {
   location.assign("/login");
 }
 
+/* ---------------------------------------------------------------------------
+ * Theme
+ *
+ * The boot script stamps two attributes on <html> before first paint:
+ * `data-theme`, always light or dark, which the CSS keys off, and
+ * `data-theme-pref`, which is what the reader chose and can also be
+ * "system". They differ only under "system", where the painted theme comes
+ * from the OS. React needs the preference, not the painted theme, so the menu
+ * can name the state it is in — read during render for the same reason the
+ * rail's is: an effect would render the first paint with the wrong label.
+ * ------------------------------------------------------------------------- */
+
+const themeListeners = new Set<() => void>();
+
+function subscribeTheme(listener: () => void) {
+  themeListeners.add(listener);
+  return () => {
+    themeListeners.delete(listener);
+  };
+}
+
+function themePref(): Theme {
+  const pref = document.documentElement.dataset.themePref;
+  return pref === "light" || pref === "system" ? pref : "dark";
+}
+
+/** The prerendered shell is built with no reader, so it renders the default. */
+function themePrefOnServer(): Theme {
+  return "dark";
+}
+
+/** The running app's half of what the boot script does before first paint.
+ *  Both stamp the same two attributes; theme.ts holds the shared rule and the
+ *  test that keeps the boot script's inlined copy of it honest. */
+function setTheme(pref: Theme) {
+  localStorage.setItem("sproutboat-theme", pref);
+  document.documentElement.dataset.themePref = pref;
+  document.documentElement.dataset.theme = resolveTheme(pref, matchMedia("(prefers-color-scheme: light)").matches);
+  for (const listener of themeListeners) listener();
+}
+
+/** One menu row rather than three: the label names the current state, so the
+ *  button says what it is as well as what it will do, and the order below is
+ *  the cycle. Dark first because that is where a reader with nothing stored
+ *  already is. */
+const NEXT_THEME = { dark: "light", light: "system", system: "dark" } satisfies Record<Theme, Theme>;
+const THEME_LABEL = { dark: "Dark", light: "Light", system: "System" } satisfies Record<Theme, string>;
+
+const cycleTheme = () => setTheme(NEXT_THEME[themePref()]);
+
 /** Last path segment as the topbar location: section names get a capital, a
  *  project slug is left as-is (it's a name, not a word). */
-function toggleTheme() {
-  const theme = document.documentElement.dataset.theme === "light" ? "dark" : "light";
-  document.documentElement.dataset.theme = theme;
-  localStorage.setItem("sproutboat-theme", theme);
-}
 
 const NAV_ACTIVE = { "aria-current": "page" as const };
 
@@ -887,6 +933,7 @@ export function Shell({ children }: { children: ReactNode }) {
   const computeOpen = inGroup(pathname, "compute");
   const storageOpen = inGroup(pathname, "storage");
   const collapsed = useSyncExternalStore(subscribeNav, navCollapsed, navCollapsedOnServer);
+  const theme = useSyncExternalStore(subscribeTheme, themePref, themePrefOnServer);
   const username = account?.profile?.username;
   const displayName = username || account?.user?.name || "account";
   const subLink = cn(NAV_LINK, "ps-[2.3rem] nav-collapsed:ps-0");
@@ -1009,8 +1056,8 @@ export function Shell({ children }: { children: ReactNode }) {
                     <Link className={MENU_ITEM} to="/settings">
                       Settings
                     </Link>
-                    <button type="button" className={MENU_ITEM} onClick={toggleTheme}>
-                      Toggle theme
+                    <button type="button" className={MENU_ITEM} onClick={cycleTheme}>
+                      Theme: {THEME_LABEL[theme]}
                     </button>
                     <button type="button" className={MENU_ITEM} onClick={logout}>
                       Log out

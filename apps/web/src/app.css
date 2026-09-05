@@ -8,6 +8,12 @@
  * is the inverse of shadcn's :root-is-light / .dark convention, so rather than
  * rewrite the no-flash boot script we keep the inversion and teach Tailwind
  * about it: tokens flip themselves, and the `dark:` variant means "not light".
+ *
+ * The attribute is always light or dark, never "system". A reader who picks
+ * "system" has that stored, and the boot script resolves it against
+ * prefers-color-scheme before stamping — which is what lets the light palette
+ * below stay defined in one place instead of once per selector and once per
+ * media query.
  * ------------------------------------------------------------------------- */
 @custom-variant dark (&:where(:root:not([data-theme="light"]), :root:not([data-theme="light"]) *));
 
@@ -69,6 +75,7 @@
   --color-sky: var(--sky);
   --color-coral: var(--coral);
   --color-success: var(--green);
+  --color-warn: var(--amber);
 
   --radius-sm: calc(var(--radius) - 2px);
   --radius-md: var(--radius);
@@ -103,13 +110,16 @@
     --sky: #60a5fa;
     --coral: #ff6b6b;
     --green: #4ade80;
+    --amber: #f6c344;
   }
 
   /* Light theme restates the accent hues too, not just the greys: every one of
      them is picked for legibility against #0a0a0a, and each is used as text
      somewhere, where on white they land at 1.7–2.6:1. These are the 700-weight
      equivalents, which clear 4.5:1 on every surface they appear on — including
-     the tightest case, a status message's own 12% tint of itself. */
+     the tightest case, a status message's own 12% tint of itself. --amber is
+     here for the same reason: the usage bar's warn tone was a bare #f6c344,
+     which is a fine fill on #0a0a0a and nearly invisible on #f4f4f5. */
   html[data-theme="light"] {
     color-scheme: light;
     --ink: #fafafa;
@@ -123,6 +133,7 @@
     --sky: #1d4ed8;
     --coral: #b91c1c;
     --green: #166534;
+    --amber: #a16207;
   }
 
   body {

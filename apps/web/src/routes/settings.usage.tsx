@@ -42,7 +42,7 @@ function Meter({ label, used, cap, detail }: { label: string; used: number; cap:
         <div
           className={cn(
             "h-full min-w-0.5 rounded-[inherit] transition-[width] duration-200",
-            tone === "danger" ? "bg-coral" : tone === "warn" ? "bg-[#f6c344]" : "bg-sky",
+            tone === "danger" ? "bg-coral" : tone === "warn" ? "bg-warn" : "bg-sky",
           )}
           style={{ width: `${percent}%` }}
         />

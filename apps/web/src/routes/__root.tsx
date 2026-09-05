@@ -2,6 +2,7 @@ import { HeadContent, Outlet, Scripts, createRootRoute, useNavigate, useRouterSt
 import { useEffect } from "react";
 import { NAV_GROUP_ROUTES, Shell } from "../components";
 import { AccountProvider, useAccount } from "../dashboard-data";
+import { THEME_BOOT } from "../theme";
 import "../app.css";
 
 export const Route = createRootRoute({ component: Root });
@@ -12,7 +13,7 @@ export const Route = createRootRoute({ component: Root });
  * has always used; the nav rail joins it because collapsing it moves layout.
  */
 const BOOT = `
-document.documentElement.dataset.theme = localStorage.getItem('sproutboat-theme') || 'dark';
+${THEME_BOOT}
 // No stored preference: expanded on a desktop rail, closed on a phone, where
 // the nav is a full-width block above the content and would otherwise push
 // every page down by its own height before the reader saw anything.
