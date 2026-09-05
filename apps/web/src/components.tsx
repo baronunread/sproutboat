@@ -241,6 +241,8 @@ async function logout() {
   location.assign("/login");
 }
 
+/** Last path segment as the topbar location: section names get a capital, a
+ *  project slug is left as-is (it's a name, not a word). */
 function toggleTheme() {
   const theme = document.documentElement.dataset.theme === "light" ? "dark" : "light";
   document.documentElement.dataset.theme = theme;
