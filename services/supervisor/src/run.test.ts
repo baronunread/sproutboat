@@ -245,3 +245,18 @@ test("an unexecutable artifact fails its own request, it does not throw", async 
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test("#freePort skips a port another process already holds (#flaky-ci)", async () => {
+  // Stand in for the "second supervisor / stray test server" case that made CI
+  // fail with "Failed to start server. Is port N in use?": occupy one port and
+  // pin the range to it, so the allocator has no other choice but to reject it.
+  const squatter = Bun.listen({ hostname: "127.0.0.1", port: 0, socket: { data() {} } });
+  const taken = squatter.port;
+  try {
+    const { spawn } = fakeSpawn();
+    const pool = new SproutPool({ spawn, portRange: [taken, taken] });
+    await expect(pool.endpoint("/tmp/app/sprout")).rejects.toThrow(/no free sprout port available/);
+  } finally {
+    squatter.stop(true);
+  }
+});

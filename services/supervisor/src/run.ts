@@ -69,6 +69,21 @@ const defaultPortRange: readonly [number, number] = [40_000, 49_999];
 const brokerEntry = fileURLToPath(import.meta.resolve("sproutboat/runtime/broker"));
 
 /**
+ * Whether the OS will let us bind this port on the loopback right now. Bun
+ * throws from `Bun.listen` when the port is taken, which is the check; the
+ * listener is stopped immediately either way.
+ */
+function portBindable(port: number): boolean {
+  try {
+    const probe = Bun.listen({ hostname: "127.0.0.1", port, socket: { data() {} } });
+    probe.stop(true);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Bindings broker sidecar. Spawned only when the artifact ships a `bindings.json`
  * (KV / D1 / R2 / queues / secrets / cron / Durable Objects). The worker reaches
  * it on `SB_BROKER_PORT`; the broker delivers cron + queue triggers back to the
@@ -368,11 +383,25 @@ export class SproutPool {
     this.#portRange = portRange;
   }
 
+  /**
+   * A port this pool has not handed out *and* that nothing else on the box is
+   * holding. Checking only #usedPorts made the pool the sole authority on a
+   * range it does not own: another process — a second supervisor, a test
+   * server, anything with an ephemeral bind — could already have it, and the
+   * sprout then died on "Failed to start server. Is port N in use?" with no
+   * retry. Binding it briefly is the only way to ask the OS.
+   *
+   * The bind is a probe, not a reservation: the port is released before the
+   * sprout claims it, so a racing process can still win. That window is
+   * microseconds against a range of thousands, where before the collision
+   * window was the whole life of the other listener.
+   */
   #freePort(): number {
     const [lo, hi] = this.#portRange;
     for (let attempt = 0; attempt < 10_000; attempt++) {
       const port = lo + Math.floor(Math.random() * (hi - lo + 1));
-      if (!this.#usedPorts.has(port)) return port;
+      if (this.#usedPorts.has(port)) continue;
+      if (portBindable(port)) return port;
     }
     throw new Error("no free sprout port available");
   }
