@@ -24,3 +24,26 @@ pre-commit:
     lint:
       glob: "*.{js,jsx,ts,tsx}"
       run: bun run lint
+    # react-doctor on the staged files only — a full scan is ~1.5s, which is too
+    # much to pay on every commit, and a finding in a file you did not touch is
+    # not yours to fix mid-commit. Blocking at `warning` because the tree is
+    # clean at the time of writing: the rules we do not intend to follow are
+    # turned off in react-doctor.config.json, with the reason recorded there, so
+    # anything that fires here is something we said we cared about.
+    #
+    # Scanned from the repo root, not apps/web. Every dependency is declared at
+    # the root, so apps/web/package.json lists none — and in --staged mode
+    # react-doctor reads that as "no framework here" and gates every React rule
+    # off, reporting a clean run while checking almost nothing. Verified with a
+    # deliberate unstable-context-value: caught from the root, missed from
+    # apps/web.
+    react-doctor:
+      glob: "*.{js,jsx,ts,tsx}"
+      run: bun run doctor:staged
+    # Prose, on staged files only. Advisory on purpose: passive voice and hedging
+    # are judgement calls a linter cannot make for you, and the docs carry ~97
+    # pre-existing findings that are not worth a mass rewrite. It reports on what
+    # you are actually touching and never blocks the commit.
+    prose:
+      glob: "*.{md,mdx,txt,tsx,astro,html}"
+      run: bunx style-doctor --quiet --blocking none {staged_files}

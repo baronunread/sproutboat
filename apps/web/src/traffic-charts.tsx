@@ -506,14 +506,14 @@ function RequestBars({ buckets, tickLabel }: { buckets: Bucket[]; tickLabel: (is
   // "1 set, 1 set, 1 set". Thinning only prevents overlap, not repetition.
   const tickValues = useMemo(() => {
     const seen = new Set<string>();
-    return buckets
-      .filter((bucket) => {
-        const label = tickLabel(bucket.start);
-        if (seen.has(label)) return false;
-        seen.add(label);
-        return true;
-      })
-      .map((bucket) => bucket.start);
+    const values: string[] = [];
+    for (const bucket of buckets) {
+      const label = tickLabel(bucket.start);
+      if (seen.has(label)) continue;
+      seen.add(label);
+      values.push(bucket.start);
+    }
+    return values;
   }, [buckets, tickLabel]);
 
   const definition = useMemo(
