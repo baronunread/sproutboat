@@ -42,7 +42,16 @@ function readBootMs(file: string, spawnedAt: number, startupMs: number): number 
 export type SproutChild = { readonly exited: Promise<number>; kill(signal?: number): void };
 /** `secretsPath` (#2) points at the project's decrypted `secrets.json`, written
  *  outside the content-addressed artifact dir; null when the project has none. */
-export type SproutFactory = (sproutPath: string, port: number, secretsPath?: string | null) => SproutChild;
+export type SproutFactory = (
+  sproutPath: string,
+  port: number,
+  secretsPath?: string | null,
+  /** #48 — binding -> target hostname, resolved by control and carried on the
+   *  route snapshot. Positional like `secretsPath` on purpose: #120 replaces
+   *  this whole argv path with one `register` frame, so an options-object
+   *  refactor here is work that gets thrown away. */
+  services?: Record<string, string> | null,
+) => SproutChild;
 
 /**
  * What `endpoint()` resolved to. `coldStart` is true when this call had to spawn
@@ -104,6 +113,8 @@ export function brokerArgs(opts: {
   sproutPort: number;
   secretsPath?: string | null;
   assetsDir?: string | null;
+  services?: Record<string, string> | null;
+  edgeUrl?: string | null;
 }): string[] {
   const args = [
     // `process.execPath`, not "bun": sproutboat-edge.service runs with a
@@ -130,6 +141,12 @@ export function brokerArgs(opts: {
     `http://127.0.0.1:${opts.sproutPort}/`,
   ];
   if (opts.secretsPath) args.push("--secrets", opts.secretsPath);
+  // #48 — service bindings only work when the broker knows both where to send a
+  // call (the node's edge, on loopback) and which hostname each binding means.
+  // Passing one without the other is a misconfiguration, not a partial feature.
+  if (opts.services && Object.keys(opts.services).length > 0 && opts.edgeUrl) {
+    args.push("--services", JSON.stringify(opts.services), "--edge-url", opts.edgeUrl);
+  }
   // Static assets published beside the artifact back `env.<ASSETS>.fetch()`.
   if (opts.assetsDir) args.push("--assets-dir", opts.assetsDir);
   return args;
@@ -145,7 +162,12 @@ export function brokerArgs(opts: {
  * ephemeral range, no second allocator. Give the broker its own port pool if two
  * live sprouts ever land exactly 10000 apart.
  */
-function spawnWithBroker(sproutPath: string, port: number, secretsPath?: string | null): SproutChild {
+function spawnWithBroker(
+  sproutPath: string,
+  port: number,
+  secretsPath?: string | null,
+  services?: Record<string, string> | null,
+): SproutChild {
   const workerDir = dirname(sproutPath);
   const bindingsPath = resolve(workerDir, "bindings.json");
   let broker: Bun.Subprocess | null = null;
@@ -209,6 +231,9 @@ function spawnWithBroker(sproutPath: string, port: number, secretsPath?: string 
       // outside the shared artifact dir; the path rides in on the route snapshot.
       secretsPath: secretsPath && existsSync(secretsPath) ? secretsPath : null,
       assetsDir,
+      services,
+      // The edge is the process spawning us, so it tells us its own address.
+      edgeUrl: process.env.SPROUTBOAT_EDGE_URL || null,
     });
     const brokerFd = openLog("w");
     broker = Bun.spawn(args, { ...withLog(brokerFd), env: process.env });
@@ -281,8 +306,13 @@ function spawnWithBroker(sproutPath: string, port: number, secretsPath?: string 
 
 /** The real spawn behind the default pool. Exported so the unexecutable-artifact
  *  path can be covered — it used to throw and take the whole edge down. */
-export function spawnSprout(sproutPath: string, port: number, secretsPath?: string | null): SproutChild {
-  return spawnWithBroker(sproutPath, port, secretsPath);
+export function spawnSprout(
+  sproutPath: string,
+  port: number,
+  secretsPath?: string | null,
+  services?: Record<string, string> | null,
+): SproutChild {
+  return spawnWithBroker(sproutPath, port, secretsPath, services);
 }
 
 async function listens(port: number): Promise<boolean> {
@@ -327,12 +357,13 @@ class SproutServer {
     now: () => number,
     private readonly onExit: (server: SproutServer) => void,
     secretsPath?: string | null,
+    services?: Record<string, string> | null,
   ) {
     this.port = port;
     this.url = `http://127.0.0.1:${port}`;
     this.lastUsedAt = now();
     const spawnedAt = Date.now();
-    this.#child = spawn(sproutPath, port, secretsPath);
+    this.#child = spawn(sproutPath, port, secretsPath, services);
     this.#ready = this.#awaitListening(readyTimeoutMs).then(() => {
       this.startupMs = Date.now() - spawnedAt;
       this.bootMs = readBootMs(startupFilePath(sproutPath, port), spawnedAt, this.startupMs);
@@ -442,7 +473,11 @@ export class SproutPool {
   }
 
   /** Base URL of the deployment's server, starting and awaiting it if needed. */
-  async endpoint(sproutPath: string, secretsPath?: string | null): Promise<Endpoint> {
+  async endpoint(
+    sproutPath: string,
+    secretsPath?: string | null,
+    services?: Record<string, string> | null,
+  ): Promise<Endpoint> {
     const key = resolve(sproutPath);
     let server = this.#servers.get(key);
     let coldStart = false;
@@ -464,6 +499,7 @@ export class SproutPool {
           this.#usedPorts.delete(dead.port);
         },
         secretsPath,
+        services,
       );
       this.#servers.set(key, server);
     }

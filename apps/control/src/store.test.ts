@@ -227,3 +227,46 @@ test("#76 — deploymentResources returns the version's bound resources, owner-s
   store.deleteResource("res-owner", r2.id);
   store.deleteResource("other-owner", other.id);
 });
+
+test("#48 — service bindings resolve to the target's hostname, same owner only", async () => {
+  const api = "c".repeat(64);
+  const caller = "d".repeat(64);
+  const stranger = "e".repeat(64);
+  await makeArtifact(api);
+  const callerSprout = await makeArtifact(caller);
+  await makeArtifact(stranger);
+  // The caller declares two service bindings: one to a project its owner has
+  // deployed, one to a project owned by somebody else.
+  await writeFile(
+    join(dir, "artifacts", caller, "bindings.json"),
+    JSON.stringify({
+      services: [
+        { binding: "API", service: "api" },
+        { binding: "THEIRS", service: "secret-svc" },
+      ],
+    }),
+  );
+
+  store.recordDeployment(D({ id: "s1", artifact: api, project: "api" }));
+  store.recordDeployment(D({ id: "s2", artifact: caller, project: "web", sproutPath: callerSprout }));
+  store.recordDeployment(
+    D({
+      id: "s3",
+      artifact: stranger,
+      project: "secret-svc",
+      ownerId: "user-2",
+      username: "bob",
+      hostname: "secret-svc.bob.test",
+    }),
+  );
+  await store.syncRoutes();
+
+  const snapshot: Array<{ hostname: string; services?: Record<string, string> }> = await routes();
+  const web = snapshot.find((route) => route.hostname === "web.alice.test");
+  expect(web?.services).toEqual({ API: "api.alice.test" });
+  // Naming another owner's project must not be a way to reach it: the binding
+  // resolves to nothing, and the broker reports it as undeployed.
+  expect(web?.services?.THEIRS).toBeUndefined();
+  // A project with no service bindings carries no services key at all.
+  expect(snapshot.find((route) => route.hostname === "api.alice.test")?.services).toBeUndefined();
+});

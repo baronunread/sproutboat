@@ -298,3 +298,25 @@ test("brokerArgs adds secrets and assets only when there are any", () => {
   expect(full[full.indexOf("--secrets") + 1]).toBe("/secrets/app.json");
   expect(full[full.indexOf("--assets-dir") + 1]).toBe("/artifact/assets");
 });
+
+test("brokerArgs carries service bindings only when it also knows the edge (#48)", () => {
+  const base = {
+    entry: "/opt/sproutboat/broker.ts",
+    brokerPort: 14_321,
+    token: "deadbeef",
+    stateDir: "/var/lib/sproutboat/brokers/abc",
+    resourceDir: "/var/lib/sproutboat/resources",
+    bindingsPath: "/var/lib/sproutboat/artifacts/abc/bindings.json",
+    sproutPort: 4321,
+  };
+  const full = brokerArgs({ ...base, services: { API: "api.alice.test" }, edgeUrl: "http://127.0.0.1:8080/" });
+  expect(full).toContain("--services");
+  expect(full[full.indexOf("--services") + 1]).toBe('{"API":"api.alice.test"}');
+  expect(full[full.indexOf("--edge-url") + 1]).toBe("http://127.0.0.1:8080/");
+
+  // Half the pair is a misconfiguration, not a partial feature: a broker told
+  // about bindings but not where to send them would fail every call at runtime.
+  expect(brokerArgs({ ...base, services: { API: "api.alice.test" } })).not.toContain("--services");
+  expect(brokerArgs({ ...base, edgeUrl: "http://127.0.0.1:8080/" })).not.toContain("--edge-url");
+  expect(brokerArgs({ ...base, services: {}, edgeUrl: "http://127.0.0.1:8080/" })).not.toContain("--services");
+});

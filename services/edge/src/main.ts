@@ -47,8 +47,15 @@ function isString(value: EdgeInput): value is string {
   return Object(value) !== value && value === String(value);
 }
 
-/** `secretsPath` / `secretsHash` are present when the project has ≥1 secret (#2). */
-type Route = { sproutPath: string; secretsPath: string | null; secretsHash: string | null };
+/** `secretsPath` / `secretsHash` are present when the project has ≥1 secret (#2).
+ *  `services` (#48) maps a service binding to the hostname it calls, resolved by
+ *  the control plane at activation. */
+type Route = {
+  sproutPath: string;
+  secretsPath: string | null;
+  secretsHash: string | null;
+  services: Record<string, string> | null;
+};
 
 async function loadRoutes(path: string): Promise<Map<string, Route>> {
   const routes: EdgeInput = JSON.parse(await readFile(path, "utf8"));
@@ -64,10 +71,21 @@ async function loadRoutes(path: string): Promise<Map<string, Route>> {
     )
       throw new TypeError("invalid route snapshot");
     const secretsPath = isString(route.secretsPath) && route.secretsPath.startsWith("/") ? route.secretsPath : null;
+    // Only well-formed binding -> hostname pairs survive; a bad entry drops that
+    // one binding rather than the whole route.
+    let services: Record<string, string> | null = null;
+    if (isObject(route.services)) {
+      const pairs: Record<string, string> = {};
+      for (const [binding, host] of Object.entries(route.services)) {
+        if (/^[A-Z][A-Z0-9_]*$/.test(binding) && isString(host) && /^[a-z0-9.-]+$/.test(host)) pairs[binding] = host;
+      }
+      if (Object.keys(pairs).length > 0) services = pairs;
+    }
     result.set(route.hostname, {
       sproutPath: route.sproutPath,
       secretsPath,
       secretsHash: isString(route.secretsHash) ? route.secretsHash : null,
+      services,
     });
   }
   return result;
@@ -335,7 +353,7 @@ const server = Bun.serve({
     let startupMs: number | null = null;
     let bootMs: number | null = null;
     try {
-      const endpoint = await pool.endpoint(sproutPath, route.secretsPath);
+      const endpoint = await pool.endpoint(sproutPath, route.secretsPath, route.services);
       base = endpoint.url;
       coldStart = endpoint.coldStart;
       startupMs = endpoint.coldStart ? endpoint.startupMs : null;
@@ -463,6 +481,10 @@ const server = Bun.serve({
     }
   },
 });
+
+// #48 — service bindings are forwarded back through this server, so every
+// broker we spawn from here needs our own address. Set before any sprout starts.
+process.env.SPROUTBOAT_EDGE_URL ||= `http://127.0.0.1:${server.port}/`;
 
 console.log(`Sproutboat edge router listening on http://${bindHost}:${server.port}`);
 

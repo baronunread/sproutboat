@@ -755,6 +755,39 @@ const secretsDir = () => resolve(dirname(routesPath()), "secrets");
 const secretsFile = (ownerId: string, project: string) =>
   resolve(secretsDir(), `${ownerId}__${project}`.replace(/[^A-Za-z0-9_-]/g, "_") + ".json");
 
+/**
+ * #48 — the service bindings a deployment declares, read from the artifact
+ * beside its sprout.
+ *
+ * Bindings are a sidecar of the immutable artifact rather than a database
+ * column, and this snapshot is rewritten on deploy/rollback/delete rather than
+ * per request, so reading the file here is cheaper than a schema migration.
+ * Anything unreadable or malformed yields []: the project still routes, its
+ * service calls just report the target as undeployed.
+ */
+type BindingsJson = null | boolean | number | string | BindingsJson[] | { readonly [key: string]: BindingsJson };
+const isJsonObj = (value: BindingsJson | undefined): value is { readonly [key: string]: BindingsJson } =>
+  value !== null && Object(value) === value && !Array.isArray(value) && !(value instanceof Function);
+const isJsonStr = (value: BindingsJson | undefined): value is string =>
+  Object(value) !== value && value === String(value);
+
+function declaredServices(sproutPath: string): Array<{ binding: string; service: string }> {
+  let parsed: BindingsJson;
+  try {
+    // SAFETY: bindings.json was validated by artifact.ts before this deployment
+    // could be stored; every field below is still read through a guard.
+    parsed = JSON.parse(readFileSync(resolve(dirname(sproutPath), "bindings.json"), "utf8")) as BindingsJson;
+  } catch {
+    return []; // no sidecar, unreadable, or not JSON
+  }
+  if (!isJsonObj(parsed) || !Array.isArray(parsed.services)) return [];
+  return parsed.services.flatMap((entry) =>
+    isJsonObj(entry) && isJsonStr(entry.binding) && isJsonStr(entry.service)
+      ? [{ binding: entry.binding, service: entry.service }]
+      : [],
+  );
+}
+
 async function writeRouteSnapshot(): Promise<void> {
   // Generated `<project>.<user>.<domain>` hosts, plus every verified custom
   // domain (#2) pointed at whatever version of its project is active right now.
@@ -773,9 +806,26 @@ async function writeRouteSnapshot(): Promise<void> {
      ORDER BY hostname`,
   );
 
+  // #48 — canonical hostname of every active deployment, keyed by owner and
+  // project, so a service binding can be resolved to something the edge routes.
+  // Same-owner only: on a multi-user box, naming another user's project must not
+  // be a way to call it.
+  const activeHosts = new Map<string, string>();
+  for (const row of q<{ owner_id: string; project: string; hostname: string }>(
+    "SELECT owner_id, project, hostname FROM deployments WHERE active = 1",
+  )) {
+    activeHosts.set(`${row.owner_id}\0${row.project}`, row.hostname);
+  }
+
   await mkdir(secretsDir(), { recursive: true, mode: 0o700 });
   const written = new Map<string, { secretsPath: string; secretsHash: string } | null>(); // "<owner>\0<project>" -> file info
-  const routes: Array<{ hostname: string; sproutPath: string; secretsPath?: string; secretsHash?: string }> = [];
+  const routes: Array<{
+    hostname: string;
+    sproutPath: string;
+    secretsPath?: string;
+    secretsHash?: string;
+    services?: Record<string, string>;
+  }> = [];
   for (const row of rows) {
     const key = `${row.owner_id}\0${row.project}`;
     if (!written.has(key)) {
@@ -795,11 +845,18 @@ async function writeRouteSnapshot(): Promise<void> {
       }
     }
     const info = written.get(key);
-    routes.push(
-      info
-        ? { hostname: row.hostname, sproutPath: row.sprout_path, ...info }
-        : { hostname: row.hostname, sproutPath: row.sprout_path },
-    );
+    // Resolve each declared service to the target's hostname. An entry that
+    // resolves to nothing is left out on purpose: the broker then reports the
+    // target as undeployed, which is what it is.
+    const services: Record<string, string> = {};
+    for (const entry of declaredServices(row.sprout_path)) {
+      const host = activeHosts.get(`${row.owner_id}\0${entry.service}`);
+      if (host) services[entry.binding] = host;
+    }
+    const route = info
+      ? { hostname: row.hostname, sproutPath: row.sprout_path, ...info }
+      : { hostname: row.hostname, sproutPath: row.sprout_path };
+    routes.push(Object.keys(services).length > 0 ? { ...route, services } : route);
   }
 
   await mkdir(dirname(routesPath()), { recursive: true });
