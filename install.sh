@@ -191,6 +191,20 @@ else
 fi
 
 # --- firewall: default-deny, only SSH + Caddy -----------------------------
+# --- move binding data out of logs/ (idempotent) ------------------
+# Older installs derived broker state from the log path, so KV / R2 / D1 / queue
+# data lived under $STATE/logs/. The units now name $STATE/brokers and
+# $STATE/resources. Move before anything starts: a running broker holds the
+# SQLite files open.
+for _d in brokers resources; do
+  if [ -d "$STATE/logs/$_d" ] && [ ! -e "$STATE/$_d" ]; then
+    say "Moving $_d out of logs/ (binding data)"
+    systemctl stop sproutboat-edge >/dev/null 2>&1 || true
+    mv "$STATE/logs/$_d" "$STATE/$_d"
+    ok "$STATE/$_d"
+  fi
+done
+
 if [ "$SKIP_SERVICES" = 1 ]; then
   say "Firewall — skipped (SB_SKIP_SERVICES)"
 else
@@ -393,6 +407,20 @@ say "Migrating the auth database"
     BETTER_AUTH_SECRET="$BETTER_AUTH_SECRET" BETTER_AUTH_URL="$DASH_URL" \
     "$BUN" x --bun auth@1.7.1 migrate --config apps/control/src/auth.migrate.ts --yes >/dev/null ) && ok "auth schema up to date"
 chown sproutboat-control:sproutboat "$STATE"/sproutboat.sqlite* 2>/dev/null || true
+
+# --- move binding data out of logs/ (idempotent) ------------------
+# Older installs derived broker state from the log path, so KV / R2 / D1 / queue
+# data lived under $STATE/logs/. The units now name $STATE/brokers and
+# $STATE/resources. Move before anything starts: a running broker holds the
+# SQLite files open.
+for _d in brokers resources; do
+  if [ -d "$STATE/logs/$_d" ] && [ ! -e "$STATE/$_d" ]; then
+    say "Moving $_d out of logs/ (binding data)"
+    systemctl stop sproutboat-edge >/dev/null 2>&1 || true
+    mv "$STATE/logs/$_d" "$STATE/$_d"
+    ok "$STATE/$_d"
+  fi
+done
 
 if [ "$SKIP_SERVICES" = 1 ]; then
   say "Services — skipped (SB_SKIP_SERVICES)"

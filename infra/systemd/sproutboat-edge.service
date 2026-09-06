@@ -11,6 +11,11 @@ WorkingDirectory=/opt/sproutboat
 Environment=PORT=8080
 Environment=SPROUTBOAT_ROUTE_SNAPSHOT=/var/lib/sproutboat/routes.json
 Environment=SPROUTBOAT_LOG_PATH=/var/lib/sproutboat/logs/requests.ndjson
+# Durable binding data. Named explicitly because the fallback derives these from
+# the log path, which put every project's KV/R2/D1/queue data under logs/ — one
+# log-rotation rule or cleanup script away from deleting it.
+Environment=SPROUTBOAT_BROKER_STATE_DIR=/var/lib/sproutboat/brokers
+Environment=SPROUTBOAT_RESOURCE_DIR=/var/lib/sproutboat/resources
 # Deployment domain + dashboard URL, written by install.sh.
 EnvironmentFile=-/etc/sproutboat/sproutboat.env
 # Platform-wide request caps (issue #27). Per-project overrides still tracked there.
