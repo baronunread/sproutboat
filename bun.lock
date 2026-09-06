@@ -16,7 +16,7 @@
         "radix-ui": "^1.6.7",
         "react": "19",
         "react-dom": "19",
-        "sproutboat": "github:baronunread/sproutboat-cli#main",
+        "sproutboat": "github:baronunread/sproutboat-cli#v0.7.0",
         "tailwind-merge": "^3.6.0",
       },
       "devDependencies": {
@@ -1141,7 +1141,7 @@
 
     "source-map-js": ["source-map-js@1.2.1", "", {}, "sha512-UXWMKhLOwVKb728IUtQPXxfYU+usdybtUrK/8uGE8CQMvrhOpwvzDBwj0QhSL7MQc7vIsISBG8VQ8+IDQxpfQA=="],
 
-    "sproutboat": ["sproutboat@github:baronunread/sproutboat-cli#add4198", { "dependencies": { "esbuild": "^0.28.2", "porffor": "github:CanadaHonk/porffor#alpha-4" }, "bin": { "sproutboat": "src/main.ts" } }, "baronunread-sproutboat-cli-add4198", "sha512-US8HUbABTFdsxTzVSrIDwmvM9pHWvtXWH/8siNYUNADrQXoT4lwog5LAlDByMYhS+j/jck6BtrkPoY/LRiclOg=="],
+    "sproutboat": ["sproutboat@github:baronunread/sproutboat-cli#ec44b20", { "dependencies": { "esbuild": "^0.28.2", "porffor": "github:CanadaHonk/porffor#alpha-4" }, "bin": { "sproutboat": "src/main.ts" } }, "baronunread-sproutboat-cli-ec44b20", "sha512-3M+PPwIq5+O6tFKSUPYsDPNYVMnA8uixD5KgnU/jqP7g99RRtQC0Y0vQgcxWXm5LdhkMcLim8MPX2VY4PNIuLg=="],
 
     "srvx": ["srvx@0.11.22", "", { "bin": { "srvx": "bin/srvx.mjs" } }, "sha512-LqZxxBDMKuMAZzFzJnDCkFOrs9MZQZr0LvHiO/SuSZVdQaXD7xQ5UWTUxheJrQPve1qk9MG2B/yttUvJxw8egQ=="],
 
@@ -1266,6 +1266,8 @@
     "react-doctor/oxlint": ["oxlint@1.79.0", "", { "optionalDependencies": { "@oxlint/binding-android-arm-eabi": "1.79.0", "@oxlint/binding-android-arm64": "1.79.0", "@oxlint/binding-darwin-arm64": "1.79.0", "@oxlint/binding-darwin-x64": "1.79.0", "@oxlint/binding-freebsd-x64": "1.79.0", "@oxlint/binding-linux-arm-gnueabihf": "1.79.0", "@oxlint/binding-linux-arm-musleabihf": "1.79.0", "@oxlint/binding-linux-arm64-gnu": "1.79.0", "@oxlint/binding-linux-arm64-musl": "1.79.0", "@oxlint/binding-linux-ppc64-gnu": "1.79.0", "@oxlint/binding-linux-riscv64-gnu": "1.79.0", "@oxlint/binding-linux-riscv64-musl": "1.79.0", "@oxlint/binding-linux-s390x-gnu": "1.79.0", "@oxlint/binding-linux-x64-gnu": "1.79.0", "@oxlint/binding-linux-x64-musl": "1.79.0", "@oxlint/binding-openharmony-arm64": "1.79.0", "@oxlint/binding-win32-arm64-msvc": "1.79.0", "@oxlint/binding-win32-ia32-msvc": "1.79.0", "@oxlint/binding-win32-x64-msvc": "1.79.0" }, "peerDependencies": { "oxlint-tsgolint": ">=7.0.2001", "vite-plus": "*" }, "optionalPeers": ["oxlint-tsgolint", "vite-plus"], "bin": { "oxlint": "bin/oxlint" } }, "sha512-hVJ9hq9m2unPS+Of4eJJgCPdIeCC+3DHEUX3tkmrPJr3OK2hz7PhXwgC+ZP71ZcYu8cCDEtQrqLxWNvxBppBVg=="],
 
     "react-doctor/typescript": ["typescript@5.9.3", "", { "bin": { "tsc": "bin/tsc", "tsserver": "bin/tsserver" } }, "sha512-jl1vZzPDinLr9eUt3J/t7V6FgNEw9QjvBPdysz9KfQDD41fQrC2Y4vKQdiaUpFT4bXlb1RHhLpp8wtm6M5TgSw=="],
+
+    "sproutboat/porffor": ["porffor@github:CanadaHonk/porffor#a415d19", {}, "CanadaHonk-porffor-a415d19", "sha512-B/4TsihYIFLzl9AeK46cvARj3bfQ9XF4EXUKatpw/BuIzQjs3c1BSk1oRip4Zv+qCABHjLsGf6mRvV48ki0hSw=="],
 
     "@tailwindcss/node/lightningcss/lightningcss-android-arm64": ["lightningcss-android-arm64@1.32.0", "", { "os": "android", "cpu": "arm64" }, "sha512-YK7/ClTt4kAK0vo6w3X+Pnm0D2cf2vPHbhOXdoNti1Ga0al1P4TBZhwjATvjNwLEBCnKvjJc2jQgHXH0NEwlAg=="],
 
