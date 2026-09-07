@@ -242,6 +242,9 @@ rsync -a --delete \
   --exclude .git --exclude node_modules --exclude .phase0 --exclude .sproutboat --exclude .local \
   --exclude /bun --exclude /apps/web/dist --exclude /apps/web/.tanstack \
   "$SRC"/ "$ROOT"/
+# A staged updater keeps its source private. rsync preserves that source
+# directory mode, so restore the service-visible application root explicitly.
+install -d -m 0755 -o root -g root "$ROOT"
 
 # --- Bun (pinned) -----------------------------------------------------
 if [ ! -x "$ROOT/bun/bin/bun" ]; then

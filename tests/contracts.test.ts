@@ -197,5 +197,6 @@ describe("Phase A contracts", () => {
     expect(updater).toContain("checkout -q --detach FETCH_HEAD");
     expect(updater).toContain("SB_PULL=0 SB_SKIP_DNS_CHECK=1 SB_UPDATE=1");
     expect(sbctl).toContain('exec "$UPDATER" "$@"');
+    expect(install).toContain('install -d -m 0755 -o root -g root "$ROOT"');
   });
 });
