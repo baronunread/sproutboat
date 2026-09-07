@@ -57,6 +57,11 @@ git init -q "$stage"
 git -C "$stage" remote add origin "$REPO"
 git -C "$stage" fetch -q --depth 1 origin "$REF"
 git -C "$stage" checkout -q --detach FETCH_HEAD
+# Keep the staging parent private, but make the checked-out application tree
+# readable and traversable. rsync preserves source modes when it installs the
+# release, and the edge service must be able to load this code after cutover.
+find "$stage" -mindepth 1 -type d -exec chmod 0755 {} +
+find "$stage" -mindepth 1 -type f -exec chmod a+r {} +
 
 COMMIT=$(git -C "$stage" rev-parse HEAD)
 [ -x "$stage/install.sh" ] || die "release $REF ($COMMIT) has no executable install.sh"

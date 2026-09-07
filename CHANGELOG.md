@@ -5,6 +5,13 @@ Changes to the self-hosted Sproutboat platform are recorded here. Read the
 
 ## [Unreleased]
 
+## [0.2.3] - 2026-09-08
+
+### Fixed
+
+- Staged updates now normalize checked-out application file and directory modes
+  before synchronizing them, so services can read the new release.
+
 ## [0.2.2] - 2026-09-08
 
 ### Fixed
@@ -65,7 +72,8 @@ Changes to the self-hosted Sproutboat platform are recorded here. Read the
 
 First tagged self-hosted platform checkpoint.
 
-[Unreleased]: https://github.com/baronunread/sproutboat/compare/v0.2.2...HEAD
+[Unreleased]: https://github.com/baronunread/sproutboat/compare/v0.2.3...HEAD
+[0.2.3]: https://github.com/baronunread/sproutboat/compare/v0.2.2...v0.2.3
 [0.2.2]: https://github.com/baronunread/sproutboat/compare/v0.2.1...v0.2.2
 [0.2.1]: https://github.com/baronunread/sproutboat/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/baronunread/sproutboat/compare/v0.1.0...v0.2.0
