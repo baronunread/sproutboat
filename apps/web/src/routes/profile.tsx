@@ -21,7 +21,7 @@ function Profile() {
   const reserve = async (event: React.FormEvent) => {
     event.preventDefault();
     if (!USERNAME_RULE.test(trimmed)) {
-      setError("Use 3–32 lowercase letters, digits or hyphens.");
+      setError("Use 3-32 lowercase letters, digits or hyphens.");
       return;
     }
     setBusy(true);
@@ -36,7 +36,7 @@ function Profile() {
       if (!response.ok) {
         // SAFETY: an error body from this endpoint is { error: string }.
         const body = (await response.json().catch(() => ({}))) as { error?: string };
-        setError(body.error ?? "Choose an available 3–32 character lowercase namespace.");
+        setError(body.error ?? "Choose an available 3-32 character lowercase namespace.");
         return;
       }
       // SAFETY: successful namespace reservation returns the updated profile contract.
@@ -104,8 +104,8 @@ function Profile() {
                 autoComplete="off"
                 spellCheck={false}
                 required
-                hint="3–32 characters: lowercase letters, digits and hyphens."
-                error={invalid ? "Use 3–32 lowercase letters, digits or hyphens." : error}
+                hint="3-32 characters: lowercase letters, digits and hyphens."
+                error={invalid ? "Use 3-32 lowercase letters, digits or hyphens." : error}
               />
               <div data-slot="form-actions" className={FORM_ACTIONS}>
                 <Button

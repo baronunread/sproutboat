@@ -3,7 +3,7 @@ import { DataTable, Panel, PanelHeading, RecordList, RecordRow, StatusMessage } 
 import { useJson, useProject } from "../dashboard-data";
 
 /**
- * #76 — what the active version can actually reach: the bindings baked into its
+ * #76 - what the active version can actually reach: the bindings baked into its
  * artifact, the account resources they resolve to, and the secret names set for
  * the project. Bindings are immutable per version (they come from the artifact),
  * so this view is read-only by construction; secrets are managed in Settings.
@@ -45,7 +45,7 @@ const KIND_LABEL = new Map([
 
 type Row = { binding: string; kind: string; target: string; resourceId: string | null };
 
-/** #77 — each kind now has its own product page to link a bound resource to. */
+/** #77 - each kind now has its own product page to link a bound resource to. */
 const KIND_PAGE = new Map([
   ["kv", "/kv"],
   ["d1", "/d1"],
@@ -93,7 +93,7 @@ function rowsFor(bindings: Bindings, resources: Resource[]): Row[] {
       ? [{ binding: bindings.assets, kind: "assets", target: "Files served from the artifact", resourceId: null }]
       : []),
     ...bindings.outbound.map((host) => ({ binding: "fetch", kind: "outbound", target: host, resourceId: null })),
-    // Plain baked config, shown with its value — unlike a secret, whose value
+    // Plain baked config, shown with its value - unlike a secret, whose value
     // the API never returns.
     ...Object.entries(bindings.vars ?? {}).map(([binding, value]) => ({
       binding,

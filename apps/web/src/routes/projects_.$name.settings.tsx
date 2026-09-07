@@ -46,7 +46,7 @@ function Value({ label, value, copy }: { label: string; value: string; copy?: bo
 }
 
 /**
- * #2/#76 — project secrets. The API never returns a value, only the name, so
+ * #2/#76 - project secrets. The API never returns a value, only the name, so
  * this panel lists names, sets or replaces a value, and deletes. A running
  * worker keeps the secrets it started with; a change lands on the next deploy
  * or sprout restart, which the panel says out loud.
@@ -159,7 +159,7 @@ function Secrets({ name, hasVersions }: { name: string; hasVersions: boolean }) 
           one field's hint where it reads as guidance rather than a blocker. */}
       {!hasVersions && (
         <StatusMessage>
-          Deploy this project once before setting secrets — a secret is handed to a running version.
+          Deploy this project once before setting secrets - a secret is handed to a running version.
         </StatusMessage>
       )}
 
@@ -180,7 +180,7 @@ function Secrets({ name, hasVersions }: { name: string; hasVersions: boolean }) 
           disabled={!hasVersions}
           hint="UPPER_SNAKE_CASE. Setting an existing name replaces its value."
           error={invalidName ? "Use UPPER_SNAKE_CASE, starting with a letter." : null}
-          footer={replacing ? `${trimmedName} already exists — saving replaces its value.` : undefined}
+          footer={replacing ? `${trimmedName} already exists - saving replaces its value.` : undefined}
         />
         <TextField
           label="Value"
@@ -229,7 +229,7 @@ function ProjectSettings() {
           title="Active artifact"
           description={
             <>
-              Immutable. These are baked into the deployed artifact — change your local config and run{" "}
+              Immutable. These are baked into the deployed artifact - change your local config and run{" "}
               <code>sproutboat deploy</code> to produce a new version.
             </>
           }
@@ -246,7 +246,7 @@ function ProjectSettings() {
           <StatusMessage tone="error">Could not load the active artifact. Refresh and try again.</StatusMessage>
         ) : manifest ? (
           <dl className="mt-5 grid grid-cols-[repeat(auto-fit,minmax(16rem,1fr))] gap-x-8 gap-y-4 [&_code]:text-[0.78rem] [&_dd]:mt-1 [&_dd]:text-[0.85rem] [&_dd]:[overflow-wrap:anywhere] [&_dt]:text-[0.72rem] [&_dt]:tracking-wide [&_dt]:text-muted-foreground [&_dt]:uppercase">
-            <Value label="Deployment ID" value={detail?.id ?? "—"} copy />
+            <Value label="Deployment ID" value={detail?.id ?? "-"} copy />
             <Value label="Target ABI" value={manifest.target} />
             <Value label="Runtime" value={manifest.runtime} />
             <Value label="Compatibility profile" value={manifest.capabilityProfile} />

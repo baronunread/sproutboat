@@ -115,7 +115,7 @@ function ProjectLogs() {
   );
 
   // The live tail is unfiltered on the wire, so the same predicate is applied
-  // client-side to incoming frames — otherwise a filtered view would fill with
+  // client-side to incoming frames - otherwise a filtered view would fill with
   // rows that the history call would never have returned.
   const matches = useCallback(
     (record: LogRecord) => {
@@ -228,7 +228,7 @@ function ProjectLogs() {
         />
 
         {!active && (
-          <StatusMessage>This project has no active route right now — only past traffic is shown.</StatusMessage>
+          <StatusMessage>This project has no active route right now - only past traffic is shown.</StatusMessage>
         )}
 
         <search className={FILTER_BAR}>
@@ -310,13 +310,13 @@ function ProjectLogs() {
               {rows.map(({ key, record, title }) => (
                 <tr key={key}>
                   <td title={title}>{relativeTime(record.at)}</td>
-                  <td>{record.method ?? "—"}</td>
+                  <td>{record.method ?? "-"}</td>
                   <td className={cn("text-end font-semibold tabular-nums", LOG_STATUS[record.statusClass])}>
                     {record.status}
                   </td>
                   <td className="text-end tabular-nums">{record.durationMs} ms</td>
                   <td>{record.coldStart ? <span className="badge">Cold</span> : "Warm"}</td>
-                  <td>{record.failure ?? "—"}</td>
+                  <td>{record.failure ?? "-"}</td>
                 </tr>
               ))}
             </DataTable>
@@ -337,7 +337,7 @@ function ProjectLogs() {
 }
 
 /**
- * #76 — stdout/stderr of the running sprout + its binding broker. This is where
+ * #76 - stdout/stderr of the running sprout + its binding broker. This is where
  * a handler's console output and its crash traces land; before this panel the
  * only way to read them was `sproutboat tail --sprout`.
  */

@@ -122,22 +122,22 @@ function Overview() {
           >
             <Metric
               label="Active projects"
-              value={metrics ? String(metrics.activeProjects) : "—"}
+              value={metrics ? String(metrics.activeProjects) : "-"}
               detail="Routes currently serving"
             />
             <Metric
               label="Deployments"
-              value={metrics ? String(metrics.deployments) : "—"}
+              value={metrics ? String(metrics.deployments) : "-"}
               detail="Immutable versions"
             />
             <Metric
               label="Requests"
-              value={metrics ? String(metrics.requestsLast24Hours) : "—"}
+              value={metrics ? String(metrics.requestsLast24Hours) : "-"}
               detail="Last 24 hours"
             />
             <Metric
               label="Success rate"
-              value={metrics ? (metrics.successRate === null ? "—" : `${metrics.successRate}%`) : "—"}
+              value={metrics ? (metrics.successRate === null ? "-" : `${metrics.successRate}%`) : "-"}
               detail={metrics?.successRate === null ? "No requests yet" : "Last 24 hours"}
             />
           </section>
@@ -177,7 +177,7 @@ function Overview() {
 }
 
 /**
- * #76 — the account-wide traffic trend Cloudflare puts on its Workers home:
+ * #76 - the account-wide traffic trend Cloudflare puts on its Workers home:
  * 24 hourly buckets across every route this account owns, from the same scan
  * that produces the request/success metrics.
  */

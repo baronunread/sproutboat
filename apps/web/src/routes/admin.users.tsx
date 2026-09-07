@@ -110,7 +110,7 @@ function AdminUsers() {
     <Panel variant="wide">
       <PanelHeading
         title="Users"
-        description="Accounts are created here — there is no self-service sign-up. Banning an account stops its routes immediately."
+        description="Accounts are created here - there is no self-service sign-up. Banning an account stops its routes immediately."
         action={
           !creating && (
             <Button variant="primary" onClick={() => setCreating(true)}>
@@ -159,7 +159,7 @@ function AdminUsers() {
               Previous
             </Button>
             <span>
-              {offset + 1}–{Math.min(offset + page.users.length, page.total)} of {page.total}
+              {offset + 1}-{Math.min(offset + page.users.length, page.total)} of {page.total}
             </span>
             <Button disabled={offset + PAGE >= page.total} onClick={() => setOffset(offset + PAGE)}>
               Next
@@ -220,7 +220,7 @@ function CreateUserForm({ onCreated, onClose }: { onCreated: () => void; onClose
     return (
       <StatusMessage tone="success">
         Created <code>{done.username}</code> ({done.email}). Starting password: <code>{done.password}</code>
-        <Copy value={done.password} /> — copy it now, it isn&apos;t shown again.
+        <Copy value={done.password} /> - copy it now, it isn&apos;t shown again.
       </StatusMessage>
     );
   }
@@ -252,9 +252,9 @@ function CreateUserForm({ onCreated, onClose }: { onCreated: () => void; onClose
             setUsername(event.target.value.toLowerCase());
             setError("");
           }}
-          hint="3–32 lowercase letters, digits and hyphens. It appears in every route they deploy."
+          hint="3-32 lowercase letters, digits and hyphens. It appears in every route they deploy."
           error={
-            username !== "" && !USERNAME_RULE.test(username) ? "Use 3–32 lowercase letters, digits or hyphens." : null
+            username !== "" && !USERNAME_RULE.test(username) ? "Use 3-32 lowercase letters, digits or hyphens." : null
           }
         />
         <TextField
@@ -356,7 +356,7 @@ function UserItem({
           {user.email}
         </button>
         <small>
-          {user.name ?? "—"} · {user.role} · joined {relativeTime(user.createdAt)}
+          {user.name ?? "-"} · {user.role} · joined {relativeTime(user.createdAt)}
         </small>
         <span>
           {user.projects} proj · {user.deployments} dep

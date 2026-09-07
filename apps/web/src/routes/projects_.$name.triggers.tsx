@@ -19,7 +19,7 @@ import { mutate, useJson, useProject } from "../dashboard-data";
 import { cn } from "@/lib/utils";
 
 /**
- * #76 — Triggers: every way a request reaches this project. The generated
+ * #76 - Triggers: every way a request reaches this project. The generated
  * hostname is managed for you; custom domains are attached here, verified by a
  * TXT record, and then serve whichever version is active.
  */
@@ -55,7 +55,7 @@ function ProjectTriggers() {
           </div>
           <div>
             <dt>State</dt>
-            <dd>{active ? "Serving the active version" : "Not serving — deploy a version or roll one back"}</dd>
+            <dd>{active ? "Serving the active version" : "Not serving - deploy a version or roll one back"}</dd>
           </div>
         </dl>
       </Panel>
@@ -217,7 +217,7 @@ function CustomDomains({ name, hasActive }: { name: string; hasActive: boolean }
 
       {!hasActive && (
         <StatusMessage>
-          Deploy a version before attaching a domain — there is nothing for it to serve yet.
+          Deploy a version before attaching a domain - there is nothing for it to serve yet.
         </StatusMessage>
       )}
 

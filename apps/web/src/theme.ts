@@ -27,8 +27,8 @@ export function resolveTheme(pref: Theme, prefersLight: boolean): "dark" | "ligh
  *
  * Nothing stored means "system": a reader who has never touched the control
  * gets the theme their machine asks for. The prerendered shell still paints
- * dark before the boot script runs — no data-theme attribute is the dark
- * branch of the CSS — so a light-OS reader's first paint is corrected here,
+ * dark before the boot script runs - no data-theme attribute is the dark
+ * branch of the CSS - so a light-OS reader's first paint is corrected here,
  * before it reaches the screen, rather than flashing after hydration.
  */
 export const THEME_BOOT = `

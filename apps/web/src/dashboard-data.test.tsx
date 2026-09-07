@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import { USERNAME_RULE } from "./dashboard-data";
 
-/** The forms promise "3–32 lowercase letters, digits or hyphens". Pin the ends:
+/** The forms promise "3-32 lowercase letters, digits or hyphens". Pin the ends:
  *  an earlier optional middle run also matched a single character, so the form
  *  accepted "a" and the API rejected it. */
 test("USERNAME_RULE matches exactly what the forms say it does", () => {

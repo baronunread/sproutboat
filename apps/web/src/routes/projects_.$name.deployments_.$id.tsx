@@ -190,7 +190,7 @@ function DeploymentDetail() {
               </div>
               <div>
                 <dt>Deployed by</dt>
-                <dd>{detail.deployedBy ?? "—"}</dd>
+                <dd>{detail.deployedBy ?? "-"}</dd>
               </div>
               <div>
                 <dt>Deployed</dt>
@@ -274,7 +274,7 @@ type BindingRow = { binding: string; kind: string };
 
 const bindingRow = (binding: string, kind: string): BindingRow => ({ binding, kind });
 
-/** #76 — what this version was built to reach, alongside its manifest. */
+/** #76 - what this version was built to reach, alongside its manifest. */
 function BindingsSummary({ bindings, resources }: { bindings: Bindings | null; resources: Resource[] }) {
   if (!bindings) return null;
   const rows: BindingRow[] = [
@@ -323,7 +323,7 @@ function BindingsSummary({ bindings, resources }: { bindings: Bindings | null; r
 }
 
 /**
- * #76 — compare two versions the way Cloudflare's version diff does. Both
+ * #76 - compare two versions the way Cloudflare's version diff does. Both
  * manifests are already served by the detail endpoint, so the diff is computed
  * here from a second fetch rather than adding a compare endpoint.
  */
@@ -395,7 +395,7 @@ function Compare({
         description="Which build inputs changed between two versions of this project."
       />
       <div className={FILTER_BAR}>
-        {/* A version id is short — the picker is sized to its content rather
+        {/* A version id is short - the picker is sized to its content rather
             than stretched across the panel like a search field. */}
         <SelectField
           label="Compare against"
@@ -417,7 +417,7 @@ function Compare({
           <StatusMessage>One of these versions has no readable manifest, so there is nothing to compare.</StatusMessage>
         ) : differences.length === 0 ? (
           <StatusMessage tone="success">
-            Identical build inputs — these versions differ only by when they were deployed.
+            Identical build inputs - these versions differ only by when they were deployed.
           </StatusMessage>
         ) : (
           <DataTable

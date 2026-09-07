@@ -51,7 +51,7 @@ export function useAccount(): AccountState {
 export type LoadState = "loading" | "ready" | "error";
 
 /**
- * #76 — one GET, its loading state, and a refresh, for the panels that read a
+ * #76 - one GET, its loading state, and a refresh, for the panels that read a
  * single JSON endpoint. Every new dashboard view fetches through this instead
  * of repeating the same useEffect/try/catch/setState block.
  *
@@ -94,7 +94,7 @@ export function useJson<T>(url: string | null) {
           setState("error");
           return;
         }
-        // SAFETY: as above — a 2xx body only, typed by the calling view.
+        // SAFETY: as above - a 2xx body only, typed by the calling view.
         const body = (await response.json()) as T;
         if (ignore) return;
         setData(body);
@@ -129,7 +129,7 @@ export async function mutate(url: string, init: RequestInit = {}): Promise<strin
 /**
  * The namespace rule, shared by the profile claim form and admin user creation
  * so the two cannot drift. The middle run is what sets the length: a first and
- * last character plus {1,30} between them is 3–32, which is what both forms say.
+ * last character plus {1,30} between them is 3-32, which is what both forms say.
  * Making that run optional (as it once was) silently also admitted a single
  * character, so the server rejected names the form had accepted.
  */
@@ -148,7 +148,7 @@ export type Overview = {
     hostname: string;
     activeDeploymentId: string;
     deployedAt: string;
-    // #78 — served by a current control plane; optional so an older one degrades
+    // #78 - served by a current control plane; optional so an older one degrades
     // to dashes instead of throwing in the middle of the list.
     versions?: number;
     domains?: number;
@@ -195,7 +195,7 @@ export function useOverview() {
  * State shared across the `/projects/:name` control-room sections (#5). The
  * layout route provides it; each section reads it instead of fetching again.
  *
- * #76 — `deployments` is the project's *complete* version list from
+ * #76 - `deployments` is the project's *complete* version list from
  * `/api/projects/:name/deployments`, not the 20-newest-across-all-projects
  * slice `/api/overview` carries, which silently truncated this view.
  */

@@ -25,7 +25,7 @@ const TABS = [
 function ProjectLayout() {
   const { name } = Route.useParams();
   const { data: overview, state, refresh: refreshOverview } = useOverview();
-  // #76 — the project's own version list, so Deployments is complete and paged
+  // #76 - the project's own version list, so Deployments is complete and paged
   // here rather than cut to whatever fit in the account-wide overview.
   const versions = useJson<ProjectDeployment[]>(`/api/projects/${encodeURIComponent(name)}/deployments`);
   const deployments = versions.data ?? [];
@@ -45,7 +45,7 @@ function ProjectLayout() {
             <Link to="/projects">Sprouts</Link> <span>/</span> {name}
           </p>
           <h1>{name}</h1>
-          {!loading && (active ? <p>{active.hostname}</p> : <p>No active route — every version is inactive.</p>)}
+          {!loading && (active ? <p>{active.hostname}</p> : <p>No active route - every version is inactive.</p>)}
         </div>
         {active && (
           <a

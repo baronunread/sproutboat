@@ -131,7 +131,7 @@ function Sparkline({ values }: { values: number[] }) {
   );
 }
 
-/** #37: KPI card — value, delta chip vs the previous same-length window, sparkline. */
+/** #37: KPI card - value, delta chip vs the previous same-length window, sparkline. */
 function MetricCard({
   title,
   value,
@@ -159,7 +159,7 @@ function MetricCard({
           tone === "flat" && "text-muted-foreground",
         )}
       >
-        {delta === null ? "— no prior data" : `${delta > 0 ? "↑" : delta < 0 ? "↓" : ""} ${formatDelta(delta)} vs prev`}
+        {delta === null ? "- no prior data" : `${delta > 0 ? "↑" : delta < 0 ? "↓" : ""} ${formatDelta(delta)} vs prev`}
       </span>
       {spark && spark.length > 1 && <Sparkline values={spark} />}
     </div>
@@ -198,13 +198,13 @@ function KpiCards({ metrics }: { metrics: Metrics }) {
         title="Latency p50"
         goodWhen="down"
         delta={latencyDelta}
-        value={metrics.latencyMs ? `${group(metrics.latencyMs.p50)} ms` : "—"}
+        value={metrics.latencyMs ? `${group(metrics.latencyMs.p50)} ms` : "-"}
       />
       <MetricCard
         title="Cache hit rate"
         goodWhen="up"
         delta={null}
-        value={metrics.cacheHitRate === null ? "—" : `${metrics.cacheHitRate.toFixed(1)}%`}
+        value={metrics.cacheHitRate === null ? "-" : `${metrics.cacheHitRate.toFixed(1)}%`}
       />
       <MetricCard
         title="Cold starts"
@@ -251,7 +251,7 @@ export function TrafficCharts({ name }: { name: string }) {
     <Panel variant="wide">
       <PanelHeading
         title="Traffic"
-        description="Aggregated from edge request logs. Coarse buckets over a bounded scan — not a metrics platform."
+        description="Aggregated from edge request logs. Coarse buckets over a bounded scan - not a metrics platform."
         action={
           <SelectField
             label="Time range"
@@ -389,27 +389,27 @@ export function TrafficCharts({ name }: { name: string }) {
               </li>
               <li>
                 <strong>
-                  {metrics.sampleCount ? `${Math.round((metrics.coldStarts / metrics.sampleCount) * 100)}%` : "—"}
+                  {metrics.sampleCount ? `${Math.round((metrics.coldStarts / metrics.sampleCount) * 100)}%` : "-"}
                 </strong>
                 <span>of requests</span>
               </li>
               <li>
-                <strong>{metrics.startupMs ? `${group(metrics.startupMs.p50)} ms` : "—"}</strong>
+                <strong>{metrics.startupMs ? `${group(metrics.startupMs.p50)} ms` : "-"}</strong>
                 <span>startup p50</span>
               </li>
               <li>
-                <strong>{metrics.startupMs ? `${group(metrics.startupMs.p90)} ms` : "—"}</strong>
+                <strong>{metrics.startupMs ? `${group(metrics.startupMs.p90)} ms` : "-"}</strong>
                 <span>startup p90</span>
               </li>
               <li>
-                <strong>{metrics.bootMs ? `${group(metrics.bootMs.p50)} ms` : "—"}</strong>
+                <strong>{metrics.bootMs ? `${group(metrics.bootMs.p50)} ms` : "-"}</strong>
                 <span>boot p50</span>
               </li>
               <li>
                 <strong>
                   {metrics.startupMs && metrics.bootMs
                     ? `${group(Math.max(0, metrics.startupMs.p50 - metrics.bootMs.p50))} ms`
-                    : "—"}
+                    : "-"}
                 </strong>
                 <span>eval p50</span>
               </li>

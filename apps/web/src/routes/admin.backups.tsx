@@ -122,7 +122,7 @@ function AdminBackups() {
               </td>
               <td className="text-end tabular-nums">{humanSize(backup.sizeBytes)}</td>
               <td>{relativeTime(backup.createdAt)}</td>
-              <td>{backup.offsite ? "Uploaded" : "—"}</td>
+              <td>{backup.offsite ? "Uploaded" : "-"}</td>
               <td className="flex items-center justify-end gap-2 [&_button]:h-8 [&_button]:px-2.5">
                 <a
                   className={buttonVariants({ variant: "outline", className: "text-[0.82rem]" })}

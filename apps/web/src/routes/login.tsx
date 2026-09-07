@@ -82,7 +82,7 @@ function Login() {
       </Link>
       <section className="w-full max-w-[27rem] rounded-xl border border-border bg-card p-8 [&>h1]:m-0 [&>h1]:max-w-[12ch] [&>h1]:text-[2rem] [&>h1]:leading-none [&>h1]:font-bold [&>h1]:tracking-[-0.035em] [&>p]:mt-3 [&>p]:mb-6 [&>p]:text-[0.875rem] [&>p]:leading-relaxed [&>p]:text-muted-foreground">
         <h1>Sign in to your workspace.</h1>
-        <p>Accounts are created by the admin — there is no self-service sign-up.</p>
+        <p>Accounts are created by the admin - there is no self-service sign-up.</p>
         {config?.githubSignIn && (
           <>
             <Button variant="primary" className="w-full" onClick={() => void signInWithGithub()}>

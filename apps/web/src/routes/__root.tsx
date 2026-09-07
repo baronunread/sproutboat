@@ -24,7 +24,7 @@ document.documentElement.dataset.nav =
 /**
  * The nav groups are <details> in the prerendered markup, all open. This runs
  * after that markup is parsed and before it is painted, closing the ones this
- * reader collapsed — the group state cannot ride on <html> like the theme
+ * reader collapsed - the group state cannot ride on <html> like the theme
  * does, because `open` is a property of each element rather than something CSS
  * can express.
  */

@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from "react";
+import { useState } from "react";
 import { Link, useNavigate } from "@tanstack/react-router";
 import {
   Button,
@@ -7,8 +7,6 @@ import {
   DataTable,
   EmptyState,
   FILTER_SEARCH,
-  FORM,
-  FORM_ACTIONS,
   Panel,
   PanelHeading,
   StatusMessage,
@@ -16,9 +14,10 @@ import {
 } from "./components";
 import { mutate, relativeTime, useJson } from "./dashboard-data";
 import { buttonVariants } from "@/components/ui/button";
+import { ArrowLeft, Box, Database, KeyRound, ListTodo } from "lucide-react";
 
 /**
- * #77 — one product surface per resource kind, the way Cloudflare gives R2, KV,
+ * #77 - one product surface per resource kind, the way Cloudflare gives R2, KV,
  * D1 and Queues their own pages: a product header with its own description and
  * primary action, a searchable list, and a usage rail. Each kind is a separate
  * page over its own `/api/<kind>` collection; this module is the shared
@@ -32,6 +31,10 @@ export type Product = {
   /** What one of them is called, for buttons and empty states. */
   noun: string;
   description: string;
+  exampleName: string;
+  nameHint: string;
+  nextStep: string;
+  idPrefix: "kv" | "d1" | "r2" | "queue";
   /** The binding shape to paste into sproutboat.jsonc. */
   bindingExample: string;
   icon: "kv" | "d1" | "r2" | "queues";
@@ -39,53 +42,15 @@ export type Product = {
 
 type Resource = { id: string; kind: string; name: string; createdAt: string; projects?: string[] };
 
-/** 2–63: a first and last character with up to 61 between them. Not an optional
- *  middle run — that also matches a single character, which the API rejects. */
+/** 2-63: a first and last character with up to 61 between them. Not an optional
+ *  middle run - that also matches a single character, which the API rejects. */
 const NAME_RULE = /^[a-z0-9][a-z0-9-]{0,61}[a-z0-9]$/;
 
-const ICONS = {
-  kv: (
-    <>
-      <rect x="2.5" y="4.5" width="11" height="7" rx="1.5" />
-      <path d="M5.5 8h5" />
-    </>
-  ),
-  d1: (
-    <>
-      <ellipse cx="8" cy="4" rx="5" ry="1.8" />
-      <path d="M3 4v8c0 1 2.2 1.8 5 1.8s5-.8 5-1.8V4" />
-      <path d="M3 8c0 1 2.2 1.8 5 1.8s5-.8 5-1.8" />
-    </>
-  ),
-  r2: (
-    <>
-      <path d="M2.5 5.2 8 2.5l5.5 2.7v5.6L8 13.5 2.5 11.1z" />
-      <path d="M2.5 5.2 8 8l5.5-2.8M8 8v5.5" />
-    </>
-  ),
-  queues: (
-    <>
-      <rect x="2.5" y="3.5" width="11" height="3" rx="1" />
-      <rect x="2.5" y="9.5" width="11" height="3" rx="1" />
-    </>
-  ),
-} satisfies Record<Product["icon"], ReactNode>;
+const ICONS = { kv: KeyRound, d1: Database, r2: Box, queues: ListTodo };
 
 function ProductIcon({ icon }: { icon: Product["icon"] }) {
-  return (
-    <svg
-      className="size-[1.6rem] shrink-0 text-brand"
-      viewBox="0 0 16 16"
-      aria-hidden="true"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.25"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      {ICONS[icon]}
-    </svg>
-  );
+  const Icon = ICONS[icon];
+  return <Icon className="size-[1.6rem] shrink-0 text-brand" aria-hidden="true" strokeWidth={1.5} />;
 }
 
 export function ResourceList({ product }: { product: Product }) {
@@ -212,7 +177,7 @@ function Row({
     event.preventDefault();
     const trimmed = name.trim();
     if (!NAME_RULE.test(trimmed)) {
-      setError("Use 2–63 lowercase letters, digits or hyphens.");
+      setError("Use 2-63 lowercase letters, digits or hyphens.");
       return;
     }
     setBusy(true);
@@ -281,7 +246,7 @@ function Row({
         <code title={resource.id}>{resource.id.slice(0, 14)}…</code>
         <Copy value={resource.id} />
       </td>
-      <td>{resource.projects?.length ? resource.projects.join(", ") : "—"}</td>
+      <td>{resource.projects?.length ? resource.projects.join(", ") : "-"}</td>
       <td>{relativeTime(resource.createdAt)}</td>
       <td className="flex items-center justify-end gap-2 [&_button]:h-8 [&_button]:px-2.5">
         <Button onClick={() => setRenaming(true)}>Rename</Button>
@@ -293,7 +258,7 @@ function Row({
           description={
             <>
               This removes the {product.noun} <code>{resource.id}</code> and the data it holds. One still bound by a
-              deployed version cannot be deleted — redeploy those projects without it first. This cannot be undone.
+              deployed version cannot be deleted - redeploy those projects without it first. This cannot be undone.
             </>
           }
           confirmLabel={`Delete ${product.noun}`}
@@ -365,7 +330,8 @@ export function CreateResource({ product }: { product: Product }) {
     event.preventDefault();
     const trimmed = name.trim();
     if (!NAME_RULE.test(trimmed)) {
-      setError("Use 2–63 lowercase letters, digits or hyphens.");
+      setError("Use 2-63 lowercase letters, digits or hyphens.");
+      document.getElementById("resource-name")?.focus();
       return;
     }
     setBusy(true);
@@ -383,56 +349,94 @@ export function CreateResource({ product }: { product: Product }) {
     void navigate({ to: `/${product.segment}` });
   };
 
-  return (
-    <>
-      <section className="mb-8 flex items-center justify-between gap-8 border-b border-border pb-7 max-[800px]:mb-10 max-[800px]:flex-col max-[800px]:items-start [&_h1]:m-0 [&_h1]:text-[1.85rem] [&_h1]:font-bold [&_h1]:tracking-[-0.035em] [&_h1]:max-[480px]:text-[1.6rem] [&_p]:mt-1.5 [&_p]:max-w-[38rem] [&_p]:text-[0.875rem] [&_p]:leading-normal [&_p]:text-muted-foreground">
-        <div>
-          <p className="m-0 mb-2 text-[0.78rem] text-muted-foreground [&_a]:underline-offset-2 [&_a:hover]:underline [&>span]:mx-1.5">
-            <Link to={`/${product.segment}`}>{product.title}</Link> <span>/</span> Create
-          </p>
-          <h1>Create {product.noun}</h1>
-          <p>{product.description}</p>
-        </div>
-      </section>
+  const generatedId = `${product.idPrefix}_<24 hex characters>`;
 
-      <Panel>
-        <form className={FORM} onSubmit={(event) => void submit(event)}>
-          <TextField
-            label={`${product.noun[0].toUpperCase()}${product.noun.slice(1)} name`}
-            value={name}
-            onChange={(event) => {
-              setName(event.target.value);
-              setError(null);
-            }}
-            placeholder="my-resource"
-            autoComplete="off"
-            spellCheck={false}
-            required
-            autoFocus
-            hint="2–63 characters: lowercase letters, digits and hyphens. The id is generated for you."
-            error={invalid ? "Use lowercase letters, digits and hyphens only." : error}
-          />
-          {/* Cancel first, primary last — the order the confirm dialogs already
-              use, so "the rightmost button commits" holds everywhere. */}
-          <div data-slot="form-actions" className={FORM_ACTIONS}>
+  return (
+    <div className="mx-auto max-w-[64rem]">
+      <Link
+        className="mb-7 inline-flex min-h-10 items-center gap-2 rounded-lg px-2 text-[0.82rem] font-medium text-muted-foreground no-underline transition-colors hover:bg-accent hover:text-foreground"
+        to={`/${product.segment}`}
+      >
+        <ArrowLeft className="size-4" aria-hidden="true" strokeWidth={1.5} />
+        Back to {product.title.toLowerCase()}
+      </Link>
+
+      <header className="mb-8 flex items-start gap-4">
+        <div className="grid size-12 shrink-0 place-items-center rounded-xl bg-brand/12 ring-1 ring-brand/25 [&_svg]:size-6">
+          <ProductIcon icon={product.icon} />
+        </div>
+        <div>
+          <h1 className="m-0 text-[2rem] leading-tight font-bold tracking-[-0.04em] max-[480px]:text-[1.7rem]">
+            Create {product.noun}
+          </h1>
+          <p className="mt-2 max-w-[42rem] text-[0.9rem] leading-relaxed text-muted-foreground">
+            {product.description}
+          </p>
+        </div>
+      </header>
+
+      <Panel variant="bare" className="overflow-hidden">
+        <form onSubmit={(event) => void submit(event)}>
+          <div className="grid grid-cols-[minmax(0,1.35fr)_minmax(17rem,0.65fr)] max-[760px]:grid-cols-1">
+            <div className="p-7 max-[480px]:p-5">
+              <div className="mb-7">
+                <h2 className="m-0 text-base font-semibold">Choose a name</h2>
+                <p className="mt-1.5 max-w-[36rem] text-[0.82rem] leading-relaxed text-muted-foreground">
+                  {product.nameHint}
+                </p>
+              </div>
+              <TextField
+                id="resource-name"
+                label={`${product.noun[0].toUpperCase()}${product.noun.slice(1)} name`}
+                value={name}
+                onChange={(event) => {
+                  setName(event.target.value);
+                  setError(null);
+                }}
+                className="h-11 rounded-lg bg-background px-3.5 font-mono text-[0.9rem]"
+                placeholder={product.exampleName}
+                autoComplete="off"
+                spellCheck={false}
+                required
+                autoFocus
+                hint="2-63 characters. Use lowercase letters, numbers, and hyphens."
+                error={invalid ? "Use lowercase letters, numbers, and hyphens only." : error}
+              />
+            </div>
+
+            <aside className="border-s border-border bg-[color-mix(in_srgb,var(--color-brand)_5%,var(--color-card))] p-7 max-[760px]:border-t max-[760px]:border-s-0 max-[480px]:p-5">
+              <h2 className="m-0 text-[0.8rem] font-semibold tracking-wide text-muted-foreground uppercase">
+                After creation
+              </h2>
+              <p className="mt-3 text-[0.84rem] leading-relaxed text-foreground">{product.nextStep}</p>
+              <dl className="mt-6 grid gap-4 text-[0.78rem]">
+                <div>
+                  <dt className="text-muted-foreground">Generated ID preview</dt>
+                  <dd className="mt-1.5 m-0 overflow-hidden rounded-lg border border-border bg-background px-3 py-2.5 font-mono text-[0.76rem] text-foreground">
+                    <span className="block truncate">{generatedId}</span>
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-muted-foreground">Availability</dt>
+                  <dd className="mt-1 m-0">Ready immediately after creation</dd>
+                </div>
+              </dl>
+            </aside>
+          </div>
+
+          <div className="flex flex-wrap items-center justify-end gap-3 border-t border-border bg-card px-7 py-5 max-[480px]:px-5 [&>*]:max-[480px]:w-full">
             <Link
-              className={buttonVariants({ variant: "outline", className: "text-[0.82rem]" })}
+              className={buttonVariants({ variant: "outline", size: "lg", className: "text-[0.84rem]" })}
               to={`/${product.segment}`}
             >
               Cancel
             </Link>
-            <Button
-              type="submit"
-              variant="primary"
-              busy={busy}
-              busyLabel="Creating…"
-              disabled={!name.trim() || invalid}
-            >
+            <Button type="submit" variant="primary" busy={busy} busyLabel="Creating…" className="h-10 px-6">
               Create {product.noun}
             </Button>
           </div>
         </form>
       </Panel>
-    </>
+    </div>
   );
 }

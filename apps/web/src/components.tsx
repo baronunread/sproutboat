@@ -31,6 +31,7 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { cn } from "@/lib/utils";
+import { ArrowRight, ChevronRight, Cpu, Database, LayoutGrid, PanelLeft, Settings2, Shield } from "lucide-react";
 
 /* ---------------------------------------------------------------------------
  * Form primitives (#76)
@@ -39,7 +40,7 @@ import { cn } from "@/lib/utils";
  * cannot ship without a real <label>, its hint and error wired up via
  * aria-describedby, aria-invalid on failure, and one shared visual language.
  * Passing `hideLabel` keeps the label in the accessibility tree and hides it
- * visually — a placeholder is never a label.
+ * visually - a placeholder is never a label.
  *
  * The insides are shadcn/Radix; this wrapper is the part shadcn does not give
  * you. Its <Input> is a bare styled input: the label/hint/error association is
@@ -403,7 +404,7 @@ export function Status({ live, children }: { live?: boolean; children: ReactNode
  * 1.25rem; a padded panel already insets, so its children must not inset again.
  * ------------------------------------------------------------------------- */
 const PANEL_BASE =
-  "group/panel overflow-hidden rounded-lg border border-border bg-card [&+&]:mt-6 max-[480px]:rounded-[7px]";
+  "group/panel overflow-hidden rounded-xl border border-border bg-card shadow-[0_18px_50px_-42px_color-mix(in_srgb,var(--color-brand)_35%,transparent)] [&+&]:mt-6";
 
 export function Panel({
   variant = "form",
@@ -436,7 +437,7 @@ export function Panel({
  *
  * The inset comes from the panel, not from here: a bare panel's heading owns
  * the 1.25rem, a padded one's must not add to the padding the panel already
- * has. Reading that off the parent is what the old CSS got wrong — it inset
+ * has. Reading that off the parent is what the old CSS got wrong - it inset
  * twice in .settings-panel, so the title sat 1.25rem right of its own rule.
  */
 export function PanelHeading({
@@ -494,7 +495,7 @@ export function EmptyState({
 /**
  * Destructive confirmation, on Radix's AlertDialog: focus is trapped, Escape
  * closes, the trigger regains focus on close, and the dialog is portalled so a
- * row's overflow cannot clip it — the last of which the previous native
+ * row's overflow cannot clip it - the last of which the previous native
  * <dialog> in a table cell did not guarantee.
  */
 export function ConfirmButton({
@@ -577,7 +578,7 @@ export function ConfirmButton({
   );
 }
 
-/** The sprout from sproutboat.com — same geometry as the site's logo.svg and
+/** The sprout from sproutboat.com - same geometry as the site's logo.svg and
  *  favicon, so the dashboard, the site and the tab icon are one mark. */
 export function SproutboatMark() {
   return (
@@ -596,88 +597,21 @@ export function SproutboatMark() {
   );
 }
 
-const NAV_ICON_PATHS = {
-  overview: (
-    <>
-      <rect x="2.5" y="2.5" width="4" height="4" rx=".75" />
-      <rect x="9.5" y="2.5" width="4" height="4" rx=".75" />
-      <rect x="2.5" y="9.5" width="4" height="4" rx=".75" />
-      <rect x="9.5" y="9.5" width="4" height="4" rx=".75" />
-    </>
-  ),
-  // Compute: a processor die, the way every console draws "runs your code".
-  compute: (
-    <>
-      <rect x="4.5" y="4.5" width="7" height="7" rx="1" />
-      <path d="M6.5 2.5v2M9.5 2.5v2M6.5 11.5v2M9.5 11.5v2M2.5 6.5h2M2.5 9.5h2M11.5 6.5h2M11.5 9.5h2" />
-    </>
-  ),
-  // A sprout, for the unit that actually serves requests.
-  sprouts: (
-    <>
-      <path d="M8 13.5V7" />
-      <path d="M8 7C8 4.8 6.2 3 4 3c0 2.2 1.8 4 4 4Z" />
-      <path d="M8 8.5c0-1.9 1.5-3.4 3.4-3.4 0 1.9-1.5 3.4-3.4 3.4Z" />
-    </>
-  ),
-  deployments: (
-    <>
-      <path d="M8 2.5v7" />
-      <path d="m5.5 7 2.5 2.5L10.5 7" />
-      <path d="M3 11.5v2h10v-2" />
-    </>
-  ),
-  storage: (
-    <>
-      <ellipse cx="8" cy="4" rx="5" ry="1.8" />
-      <path d="M3 4v8c0 1 2.2 1.8 5 1.8s5-.8 5-1.8V4" />
-      <path d="M3 8c0 1 2.2 1.8 5 1.8s5-.8 5-1.8" />
-    </>
-  ),
-  // Sliders, not a sun: settings are things you adjust.
-  settings: (
-    <>
-      <path d="M2.5 5h6M11 5h2.5M2.5 11h2.5M7.5 11h6" />
-      <circle cx="9.75" cy="5" r="1.6" />
-      <circle cx="6.25" cy="11" r="1.6" />
-    </>
-  ),
-  // A shield reads as "privileged area" where a second gear reads as "more settings".
-  admin: (
-    <>
-      <path d="M8 2.5 3.5 4.2v3.5c0 3 1.9 5 4.5 5.8 2.6-.8 4.5-2.8 4.5-5.8V4.2z" />
-    </>
-  ),
+const NAV_ICONS = {
+  overview: LayoutGrid,
+  compute: Cpu,
+  sprouts: Cpu,
+  deployments: ArrowRight,
+  storage: Database,
+  settings: Settings2,
+  admin: Shield,
 };
-function NavIcon({ name }: { name: keyof typeof NAV_ICON_PATHS }) {
-  return (
-    <svg
-      className="size-4 shrink-0"
-      viewBox="0 0 16 16"
-      aria-hidden="true"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.25"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      {NAV_ICON_PATHS[name]}
-    </svg>
-  );
+function NavIcon({ name }: { name: keyof typeof NAV_ICONS }) {
+  const Icon = NAV_ICONS[name];
+  return <Icon className="size-4 shrink-0" aria-hidden="true" strokeWidth={1.5} />;
 }
 export function Arrow() {
-  return (
-    <svg aria-hidden="true" viewBox="0 0 16 16">
-      <path
-        d="M3 8h9M8.5 3.5 13 8l-4.5 4.5"
-        fill="none"
-        stroke="currentColor"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        strokeWidth="1.5"
-      />
-    </svg>
-  );
+  return <ArrowRight aria-hidden="true" strokeWidth={1.5} />;
 }
 
 async function logout() {
@@ -693,7 +627,7 @@ async function logout() {
  * `data-theme-pref`, which is what the reader chose and can also be
  * "system". They differ only under "system", where the painted theme comes
  * from the OS. React needs the preference, not the painted theme, so the menu
- * can name the state it is in — read during render for the same reason the
+ * can name the state it is in - read during render for the same reason the
  * rail's is: an effect would render the first paint with the wrong label.
  * ------------------------------------------------------------------------- */
 
@@ -772,8 +706,8 @@ function breadcrumb(pathname: string): string {
 const EXACT = { exact: true } as const;
 
 /**
- * A collapsible nav section. `<details>` is the platform's disclosure widget —
- * keyboard operable and expandable without script — and `open` starts the group
+ * A collapsible nav section. `<details>` is the platform's disclosure widget -
+ * keyboard operable and expandable without script - and `open` starts the group
  * expanded whenever the current route lives inside it.
  */
 /** One nav row. Shared by links and by a group's <summary>, so they line up. */
@@ -797,8 +731,8 @@ export const BADGE = "inline-block rounded-full border border-border px-1.5 py-0
 const NAV_LABEL = "min-w-0 truncate nav-collapsed:hidden";
 
 /**
- * A collapsible nav section. `<details>` is the platform's disclosure widget —
- * keyboard operable and expandable without script — and `open` starts the group
+ * A collapsible nav section. `<details>` is the platform's disclosure widget -
+ * keyboard operable and expandable without script - and `open` starts the group
  * expanded whenever the current route lives inside it.
  */
 function NavGroup({
@@ -813,7 +747,7 @@ function NavGroup({
   label: string;
   /** Stable key for the pre-paint script and the stored preference. */
   groupKey: string;
-  icon: keyof typeof NAV_ICON_PATHS;
+  icon: keyof typeof NAV_ICONS;
   /** True when the current route lives in this group. */
   routeOpen: boolean;
   /** True while the rail is an icon strip. */
@@ -827,7 +761,7 @@ function NavGroup({
 
   // `open` is deliberately a constant here, never React state. The static shell
   // ships every group open, and the boot script closes the ones this reader
-  // stored as closed *before first paint* — so a reload never shows a group
+  // stored as closed *before first paint* - so a reload never shows a group
   // opening or closing after the fact. Because the prop never changes, React
   // never patches the attribute back and the element stays the reader's.
   useEffect(() => {
@@ -866,21 +800,14 @@ function NavGroup({
       >
         <NavIcon name={icon} />
         <span className={cn("flex-1", NAV_LABEL)}>{label}</span>
-        <svg
+        <ChevronRight
           className={cn(
             "size-3.5 shrink-0 transition-[rotate] duration-150 group-open/nav:rotate-90 motion-reduce:transition-none",
             NAV_LABEL,
           )}
-          viewBox="0 0 16 16"
           aria-hidden="true"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="1.25"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        >
-          <path d="m6 4 4 4-4 4" />
-        </svg>
+          strokeWidth={1.5}
+        />
       </summary>
       <div className="mt-0.5 mb-1.5 grid gap-0.5 nav-collapsed:hidden">{children}</div>
     </details>
@@ -894,7 +821,7 @@ function NavGroup({
  * paint, because CSS keys off the attribute and collapsing moves layout. React
  * needs its own copy for aria-expanded and for the group summaries, and reading
  * it in an effect meant the first paint claimed "expanded" whatever the reader
- * had stored — a stale aria-expanded, and a group click that toggled a hidden
+ * had stored - a stale aria-expanded, and a group click that toggled a hidden
  * disclosure instead of opening the rail. useSyncExternalStore reads it during
  * render instead, with a server snapshot so hydration still matches.
  * ------------------------------------------------------------------------- */
@@ -941,7 +868,7 @@ export function Shell({ children }: { children: ReactNode }) {
     <div className="grid min-h-screen grid-cols-[15rem_minmax(0,1fr)] transition-[grid-template-columns] duration-200 ease-out motion-reduce:transition-none nav-collapsed:grid-cols-[4rem_minmax(0,1fr)] max-[800px]:grid-cols-1 max-[800px]:content-start max-[800px]:nav-collapsed:grid-cols-1">
       <aside className="sticky top-0 flex h-screen flex-col overflow-hidden border-r border-border bg-card px-3 py-[1.15rem] transition-[padding] duration-200 ease-out motion-reduce:transition-none nav-collapsed:px-2 max-[800px]:static max-[800px]:h-auto max-[800px]:border-r-0 max-[800px]:border-b">
         {/* One row tall in both states. Collapsed, the rail is 4rem wide and only
-            the toggle stays — the old flex-col stacked it under the mark, which
+            the toggle stays - the old flex-col stacked it under the mark, which
             made the header ~40px taller and pushed every nav item below it down.
             The toggle centres on the same axis as the nav icons, and is always
             visible: it is the only way back to the expanded rail. */}
@@ -962,18 +889,7 @@ export function Shell({ children }: { children: ReactNode }) {
             aria-expanded={!collapsed}
             aria-label={collapsed ? "Expand navigation" : "Collapse navigation"}
           >
-            <svg
-              viewBox="0 0 16 16"
-              aria-hidden="true"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="1.25"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            >
-              <rect x="2" y="3" width="12" height="10" rx="1.5" />
-              <path d="M6.5 3v10" />
-            </svg>
+            <PanelLeft aria-hidden="true" strokeWidth={1.5} />
           </button>
         </div>
         <nav
@@ -1097,7 +1013,7 @@ export function Shell({ children }: { children: ReactNode }) {
  * #1 danger-zone project deletion: a text trigger that expands into a
  * typed-name confirmation. The API needs `?confirm=<exact name>`, and the
  * Delete button stays disabled until the field matches. `onDeleted` is the
- * caller's list refresh — the row unmounts this component on success.
+ * caller's list refresh - the row unmounts this component on success.
  */
 export function DeleteProject({
   name,
@@ -1143,7 +1059,7 @@ export function DeleteProject({
         setBusy(false);
         setError(
           response.status === 404
-            ? "This project no longer exists — it may already be deleted."
+            ? "This project no longer exists - it may already be deleted."
             : "Could not delete this project. Try again.",
         );
         return;

@@ -22,7 +22,7 @@ function ProjectOverview() {
                 {active.hostname}
               </a>
             ) : (
-              "Not serving — every version is inactive"
+              "Not serving - every version is inactive"
             )}
           </dd>
         </div>
@@ -32,11 +32,11 @@ function ProjectOverview() {
         </div>
         <div>
           <dt>Artifact digest</dt>
-          <dd>{activeVersion ? <code>{activeVersion.artifact}</code> : "—"}</dd>
+          <dd>{activeVersion ? <code>{activeVersion.artifact}</code> : "-"}</dd>
         </div>
         <div>
           <dt>Deployed</dt>
-          <dd>{activeVersion ? relativeTime(activeVersion.deployedAt) : "—"}</dd>
+          <dd>{activeVersion ? relativeTime(activeVersion.deployedAt) : "-"}</dd>
         </div>
         <div>
           <dt>Total versions</dt>

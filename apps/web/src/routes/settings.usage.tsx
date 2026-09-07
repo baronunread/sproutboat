@@ -4,7 +4,7 @@ import { useJson } from "../dashboard-data";
 import { cn } from "@/lib/utils";
 
 /**
- * #76 — the caps this box enforces, and how close the account is to each. They
+ * #76 - the caps this box enforces, and how close the account is to each. They
  * were previously invisible until a request came back 429.
  */
 export const Route = createFileRoute("/settings/usage")({ component: Usage });
@@ -91,7 +91,7 @@ function Usage() {
           </div>
           <div>
             <dt>Retained versions</dt>
-            <dd>{limits.versionsPerProject} per project — older inactive versions are pruned automatically</dd>
+            <dd>{limits.versionsPerProject} per project - older inactive versions are pruned automatically</dd>
           </div>
         </dl>
       </Panel>

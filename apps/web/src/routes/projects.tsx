@@ -5,7 +5,7 @@ import { relativeTime, useOverview } from "../dashboard-data";
 import { EmptyDeployment } from "./index";
 
 /**
- * #78 — the Sprouts list, the way Cloudflare's Workers & Pages lists
+ * #78 - the Sprouts list, the way Cloudflare's Workers & Pages lists
  * applications: one row per sprout carrying its route, its traffic and a way
  * into its own deployments. The account-wide deployments page is gone; a
  * version list only makes sense inside the sprout it belongs to.
@@ -117,7 +117,7 @@ function Projects() {
                         {project.versions ?? 0} version{project.versions === 1 ? "" : "s"}
                       </span>
                       <span>{(project.requests24h ?? 0).toLocaleString()} requests</span>
-                      <span>{project.latencyP50 ? `${project.latencyP50} ms` : "—"} p50</span>
+                      <span>{project.latencyP50 ? `${project.latencyP50} ms` : "-"} p50</span>
                       {(project.errors24h ?? 0) > 0 && <span className="text-coral">{project.errors24h} errors</span>}
                     </div>
                   </div>
