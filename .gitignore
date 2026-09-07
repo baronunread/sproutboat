@@ -8,7 +8,7 @@ apps/web/.tanstack/
 # tool-local, not project files
 .codex/
 .impeccable/
-.agents/skills/impeccable/
+/.agents/skills/
 codex-session-*.md
 
 # playwright e2e
