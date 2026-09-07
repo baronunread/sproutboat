@@ -238,12 +238,11 @@ install -d -m 0750 -o root -g sproutboat "$ETC"
 # --delete keeps $ROOT a clean mirror of the checkout, but must NOT touch the
 # things provisioned INTO $ROOT afterwards (Bun, deps, the built dashboard).
 say "Syncing $SRC -> $ROOT"
-rsync -a --delete \
+rsync -a --delete --chmod=Du=rwx,Dgo=rx,Fu=rwX,Fgo=rX \
   --exclude .git --exclude node_modules --exclude .phase0 --exclude .sproutboat --exclude .local \
   --exclude /bun --exclude /apps/web/dist --exclude /apps/web/.tanstack \
   "$SRC"/ "$ROOT"/
-# A staged updater keeps its source private. rsync preserves that source
-# directory mode, so restore the service-visible application root explicitly.
+# Keep the service-visible application root traversable after a staged update.
 install -d -m 0755 -o root -g root "$ROOT"
 
 # --- Bun (pinned) -----------------------------------------------------

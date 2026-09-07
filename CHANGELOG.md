@@ -5,20 +5,6 @@ Changes to the self-hosted Sproutboat platform are recorded here. Read the
 
 ## [Unreleased]
 
-## [0.2.3] - 2026-09-08
-
-### Fixed
-
-- Staged updates now normalize checked-out application file and directory modes
-  before synchronizing them, so services can read the new release.
-
-## [0.2.2] - 2026-09-08
-
-### Fixed
-
-- Staged updates restore the service-visible `/opt/sproutboat` directory mode
-  after synchronizing a private staging tree, so the edge can execute Bun.
-
 ## [0.2.1] - 2026-09-08
 
 ### Breaking and operator actions
@@ -31,6 +17,8 @@ Changes to the self-hosted Sproutboat platform are recorded here. Read the
 - Upgrades now create and normalize both `brokers` and `resources` state
   directories before restarting the edge, so binding-backed Sprouts can start.
 - Existing admin tokens are no longer printed during an upgrade.
+- Staged updates normalize destination modes before synchronizing code, so the
+  edge can traverse the application tree and execute Bun.
 
 ### Added
 
@@ -72,9 +60,7 @@ Changes to the self-hosted Sproutboat platform are recorded here. Read the
 
 First tagged self-hosted platform checkpoint.
 
-[Unreleased]: https://github.com/baronunread/sproutboat/compare/v0.2.3...HEAD
-[0.2.3]: https://github.com/baronunread/sproutboat/compare/v0.2.2...v0.2.3
-[0.2.2]: https://github.com/baronunread/sproutboat/compare/v0.2.1...v0.2.2
+[Unreleased]: https://github.com/baronunread/sproutboat/compare/v0.2.1...HEAD
 [0.2.1]: https://github.com/baronunread/sproutboat/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/baronunread/sproutboat/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/baronunread/sproutboat/releases/tag/v0.1.0
