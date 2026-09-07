@@ -7,7 +7,6 @@ apps/web/.tanstack/
 
 # tool-local, not project files
 .codex/
-.impeccable/
 /.agents/skills/
 codex-session-*.md
 
