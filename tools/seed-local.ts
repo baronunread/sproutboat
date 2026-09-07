@@ -57,8 +57,8 @@ type DemoUser = { login: string; namespace: string; admin?: boolean; projects: D
 
 const DEMO: DemoUser[] = [
   {
-    login: "andrea",
-    namespace: "andrea",
+    login: "test-admin",
+    namespace: "test-admin",
     admin: true,
     projects: [
       {
@@ -87,8 +87,8 @@ const DEMO: DemoUser[] = [
     ],
   },
   {
-    login: "sofia",
-    namespace: "sofia",
+    login: "member",
+    namespace: "member",
     projects: [
       { project: "shop", versions: 2, active: true, resources: [{ kind: "kv", name: "carts", binding: "CARTS" }] },
     ],
@@ -397,7 +397,7 @@ async function main(): Promise<void> {
     console.log(`  wrote e2e/.auth/*.json for ${authStates.map((a) => a.login).join(", ")}`);
   }
 
-  console.log(`\nSeed complete. Sign in as andrea (admin) or paste a cookie:\n`);
+  console.log(`\nSeed complete. Sign in as test-admin or paste a cookie:\n`);
   for (const { login, cookie } of authStates) console.log(`  ${login}:  ${cookie}`);
   store.closeStore();
 }

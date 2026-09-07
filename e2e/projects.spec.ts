@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 import { authFile, openProject } from "./helpers";
 
-test.use({ storageState: authFile("andrea") });
+test.use({ storageState: authFile("test-admin") });
 
 test("projects list links into the control room", async ({ page }) => {
   await page.goto("/projects");

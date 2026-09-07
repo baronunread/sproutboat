@@ -224,6 +224,10 @@ done
 install -d -m 0755 -o root "$ROOT"
 install -d -m 0750 -o sproutboat-control -g sproutboat "$STATE" "$STATE/artifacts"
 install -d -m 0770 -o sproutboat-edge   -g sproutboat "$STATE/logs"
+install -d -m 2770 -o sproutboat-edge   -g sproutboat "$STATE/resources"
+# Older resource files may predate shared control-plane administration.
+chgrp -R sproutboat "$STATE/resources"
+chmod -R g+rwX "$STATE/resources"
 install -d -m 0750 -o root -g sproutboat "$ETC"
 
 # --- sync the tree ------------------------------------------------------

@@ -169,4 +169,16 @@ describe("Phase A contracts", () => {
     expect(body.verificationUri).toContain(body.userCode);
     expect((await exchangeCliAuthorization(body.deviceCode)).status).toBe(428);
   });
+
+  test("upgrades make existing resource databases writable by control and edge", async () => {
+    const install = await Bun.file("install.sh").text();
+    const controlUnit = await Bun.file("infra/systemd/sproutboat-control.service").text();
+    const edgeUnit = await Bun.file("infra/systemd/sproutboat-edge.service").text();
+
+    expect(install).toContain('install -d -m 2770 -o sproutboat-edge   -g sproutboat "$STATE/resources"');
+    expect(install).toContain('chgrp -R sproutboat "$STATE/resources"');
+    expect(install).toContain('chmod -R g+rwX "$STATE/resources"');
+    expect(controlUnit).toContain("UMask=0007");
+    expect(edgeUnit).toContain("UMask=0007");
+  });
 });

@@ -8,7 +8,7 @@ const rowsOf = (page: Page, caption: RegExp) => page.getByRole("table", { name: 
  * #76 — the surfaces that existed only in the CLI until now: account storage
  * resources, project secrets, and the usage-against-limits view.
  */
-test.use({ storageState: authFile("andrea") });
+test.use({ storageState: authFile("test-admin") });
 
 test("#77 — KV has its own page: create, rename and delete a namespace", async ({ page }) => {
   await page.goto("/kv");

@@ -5,7 +5,7 @@ import { authFile, chooseOption } from "./helpers";
 // semantics rather than class names, which are free to change with the styling.
 const logRows = (page: Page) => page.getByRole("table", { name: /request log/i }).locator("tbody tr");
 
-test.use({ storageState: authFile("andrea") });
+test.use({ storageState: authFile("test-admin") });
 
 test("traffic charts render from seeded edge logs", async ({ page }) => {
   await page.goto("/projects/blog/metrics");

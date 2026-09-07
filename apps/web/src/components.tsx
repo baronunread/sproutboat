@@ -1000,9 +1000,6 @@ export function Shell({ children }: { children: ReactNode }) {
         <footer className="mt-auto flex flex-wrap items-center justify-center gap-x-6 gap-y-2 border-t border-border px-8 py-5 text-center text-[0.7rem] text-muted-foreground max-[800px]:px-5">
           <span>Sproutboat experimental VPS platform</span>
           <span>© {new Date().getFullYear()} Sproutboat</span>
-          <a className="text-inherit underline-offset-2" href="mailto:hello@sproutboat.com">
-            Contact
-          </a>
         </footer>
       </div>
     </div>

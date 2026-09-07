@@ -53,6 +53,7 @@ import {
   revokeUserSessions,
   unbanUser,
 } from "./admin";
+import { kvBulk, kvKey, listKvKeys } from "./kv";
 
 type Route = { hostname: string; sproutPath: string };
 const routesPath = resolve(process.env.SPROUTBOAT_ROUTE_SNAPSHOT || "/var/lib/sproutboat/routes.json");
@@ -281,6 +282,23 @@ async function handle(request: Request): Promise<Response> {
         ? updateResourceHandler(request, kindRecord[2])
         : deleteResourceHandler(request, kindRecord[2]);
     }
+  }
+  const kvKeys = /^\/api\/kv\/(kv_[0-9a-f]{24})\/keys$/.exec(url.pathname);
+  if (request.method === "GET" && kvKeys) return listKvKeys(request, kvKeys[1]);
+  const kvKeyRecord = /^\/api\/kv\/(kv_[0-9a-f]{24})\/keys\/(.+)$/.exec(url.pathname);
+  if (kvKeyRecord && ["GET", "PUT", "DELETE"].includes(request.method)) {
+    let key: string;
+    try {
+      key = decodeURIComponent(kvKeyRecord[2]);
+    } catch {
+      return Response.json({ error: "invalid key encoding" }, { status: 400 });
+    }
+    return kvKey(request, kvKeyRecord[1], key);
+  }
+  const kvBulkRecord = /^\/api\/kv\/(kv_[0-9a-f]{24})\/bulk\/(get|put|delete)$/.exec(url.pathname);
+  if (request.method === "POST" && kvBulkRecord) {
+    // SAFETY: the final regex capture is restricted to the three operation literals.
+    return kvBulk(request, kvBulkRecord[1], kvBulkRecord[2] as "get" | "put" | "delete");
   }
   if (request.method === "GET" && url.pathname === "/api/resources") return listResources(request);
   if (request.method === "POST" && url.pathname === "/api/resources") return createResourceHandler(request);

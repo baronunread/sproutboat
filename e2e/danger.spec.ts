@@ -2,7 +2,7 @@ import { expect, test } from "@playwright/test";
 import { authFile } from "./helpers";
 
 test("project deletion requires the exact typed name", async ({ browser }) => {
-  const context = await browser.newContext({ storageState: authFile("andrea") });
+  const context = await browser.newContext({ storageState: authFile("test-admin") });
   const page = await context.newPage();
   await page.goto("/projects");
 

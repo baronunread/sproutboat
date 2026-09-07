@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 import { authFile } from "./helpers";
 
-test.use({ storageState: authFile("andrea") });
+test.use({ storageState: authFile("test-admin") });
 
 test("deployment detail shows the immutable record and manifest", async ({ page }) => {
   await page.goto("/projects/blog/deployments");

@@ -36,8 +36,11 @@ curl -fsSL https://raw.githubusercontent.com/baronunread/sproutboat/main/install
 ```
 
 That installs the newest released version. Set `SB_REF` to pin one
-(`SB_REF=v0.1.0`) or to track development (`SB_REF=main`); `sbctl update` moves
+(`SB_REF=v0.2.0`) or to track development (`SB_REF=main`); `sbctl update` moves
 to the newest release unless you say otherwise.
+
+Before upgrading, read [CHANGELOG.md](CHANGELOG.md). The public compatibility
+policy and release checklist are in [docs/versioning.md](docs/versioning.md).
 
 It asks three or four questions — domain, ACME email, admin name — then runs
 unattended: unprivileged user namespaces, Caddy and bubblewrap, a default-deny

@@ -16,7 +16,7 @@
         "radix-ui": "^1.6.7",
         "react": "19",
         "react-dom": "19",
-        "sproutboat": "github:baronunread/sproutboat-cli#v0.8.0",
+        "sproutboat": "github:baronunread/sproutboat-cli#v0.9.0",
         "tailwind-merge": "^3.6.0",
       },
       "devDependencies": {
@@ -1141,7 +1141,7 @@
 
     "source-map-js": ["source-map-js@1.2.1", "", {}, "sha512-UXWMKhLOwVKb728IUtQPXxfYU+usdybtUrK/8uGE8CQMvrhOpwvzDBwj0QhSL7MQc7vIsISBG8VQ8+IDQxpfQA=="],
 
-    "sproutboat": ["sproutboat@github:baronunread/sproutboat-cli#2049a53", { "dependencies": { "esbuild": "^0.28.2", "porffor": "github:CanadaHonk/porffor#alpha-4" }, "bin": { "sproutboat": "src/main.ts" } }, "baronunread-sproutboat-cli-2049a53", "sha512-K6mxPTRnCfUYe82Lc0dGd5VwZHCjW0Fkk2IgZV/feHhauy2xZPYXG//loMSPjC2ChhQHkAolIlRyRjKNHUE8lw=="],
+    "sproutboat": ["sproutboat@github:baronunread/sproutboat-cli#8b92177", { "dependencies": { "esbuild": "^0.28.2", "porffor": "github:CanadaHonk/porffor#alpha-4" }, "bin": { "sproutboat": "src/main.ts" } }, "baronunread-sproutboat-cli-8b92177", "sha512-+z5jPhaMM6DNRVdPogQ69XXhvZPxaUKCCPRlftWPNywT8mxMCGmCYNUDqlTCf6HxXw3Mumm1ZIEHJArIS4GOng=="],
 
     "srvx": ["srvx@0.11.22", "", { "bin": { "srvx": "bin/srvx.mjs" } }, "sha512-LqZxxBDMKuMAZzFzJnDCkFOrs9MZQZr0LvHiO/SuSZVdQaXD7xQ5UWTUxheJrQPve1qk9MG2B/yttUvJxw8egQ=="],
 

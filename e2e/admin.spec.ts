@@ -1,10 +1,10 @@
 import { expect, test } from "@playwright/test";
 import { authFile, chooseOption } from "./helpers";
 
-test.use({ storageState: authFile("andrea") });
+test.use({ storageState: authFile("test-admin") });
 
 test("non-admins never see the admin area", async ({ browser }) => {
-  const context = await browser.newContext({ storageState: authFile("sofia") });
+  const context = await browser.newContext({ storageState: authFile("member") });
   const page = await context.newPage();
   await page.goto("/admin");
   await expect(page).toHaveURL(/\/$/); // redirected home
@@ -21,20 +21,20 @@ test("admin overview shows platform stats", async ({ page }) => {
 
 test("ban an account, verify it, then unban", async ({ page }) => {
   await page.goto("/admin/users");
-  const sofiaRow = page
+  const memberRow = page
     .getByRole("list", { name: "User accounts" })
     .getByRole("listitem")
-    .filter({ hasText: "sofia@example.test" });
-  await expect(sofiaRow).toContainText("Active");
+    .filter({ hasText: "member@example.test" });
+  await expect(memberRow).toContainText("Active");
 
-  await sofiaRow.getByRole("button", { name: /^ban$/i }).click();
-  await sofiaRow.getByLabel("Ban reason").fill("e2e abuse");
-  await chooseOption(page, sofiaRow.getByRole("combobox", { name: "Duration" }), "7 days");
-  await sofiaRow.getByRole("button", { name: /ban account/i }).click();
+  await memberRow.getByRole("button", { name: /^ban$/i }).click();
+  await memberRow.getByLabel("Ban reason").fill("e2e abuse");
+  await chooseOption(page, memberRow.getByRole("combobox", { name: "Duration" }), "7 days");
+  await memberRow.getByRole("button", { name: /ban account/i }).click();
 
-  await expect(sofiaRow).toContainText("Banned");
-  await expect(sofiaRow).toContainText(/e2e abuse/);
+  await expect(memberRow).toContainText("Banned");
+  await expect(memberRow).toContainText(/e2e abuse/);
 
-  await sofiaRow.getByRole("button", { name: /unban/i }).click();
-  await expect(sofiaRow).toContainText("Active");
+  await memberRow.getByRole("button", { name: /unban/i }).click();
+  await expect(memberRow).toContainText("Active");
 });

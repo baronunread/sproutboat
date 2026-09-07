@@ -42,6 +42,7 @@ PrivateTmp=true
 ProtectHome=true
 ProtectSystem=strict
 ReadWritePaths=/var/lib/sproutboat
+UMask=0007
 # Aggregate cap for the edge plus every sprout + broker it spawns. This is the
 # node's density wall, not the VPS: at ~10 MB per (sprout + broker + bwrap) the
 # old 1G OOM'd the node around 80-100 deployments while RAM sat unused. Raise it
