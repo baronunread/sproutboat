@@ -39,6 +39,13 @@ That installs the newest released version. Set `SB_REF` to pin one
 (`SB_REF=v0.2.0`) or to track development (`SB_REF=main`); `sbctl update` moves
 to the newest release unless you say otherwise.
 
+`sbctl update` is safe to run through `sudo` from a normal operator account.
+Its root-owned bootstrapper stages the target release outside the active
+installation and then runs that staged release's installer. This lets an
+installer fix apply during the same update rather than waiting for another
+upgrade. The bootstrapper records the installed commit in
+`/etc/sproutboat/update.env` and serializes concurrent updates.
+
 Before upgrading, read [CHANGELOG.md](CHANGELOG.md). The public compatibility
 policy and release checklist are in [docs/versioning.md](docs/versioning.md).
 

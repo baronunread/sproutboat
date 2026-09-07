@@ -170,15 +170,32 @@ describe("Phase A contracts", () => {
     expect((await exchangeCliAuthorization(body.deviceCode)).status).toBe(428);
   });
 
-  test("upgrades make existing resource databases writable by control and edge", async () => {
+  test("upgrades make existing binding databases writable by control and edge", async () => {
     const install = await Bun.file("install.sh").text();
     const controlUnit = await Bun.file("infra/systemd/sproutboat-control.service").text();
     const edgeUnit = await Bun.file("infra/systemd/sproutboat-edge.service").text();
 
+    expect(install).toContain('install -d -m 2770 -o sproutboat-edge   -g sproutboat "$STATE/brokers"');
     expect(install).toContain('install -d -m 2770 -o sproutboat-edge   -g sproutboat "$STATE/resources"');
-    expect(install).toContain('chgrp -R sproutboat "$STATE/resources"');
-    expect(install).toContain('chmod -R g+rwX "$STATE/resources"');
+    expect(install).toContain("for _d in brokers resources; do");
+    expect(install).toContain('chgrp -R sproutboat "$STATE/$_d"');
+    expect(install).toContain('chmod -R g+rwX "$STATE/$_d"');
     expect(controlUnit).toContain("UMask=0007");
     expect(edgeUnit).toContain("UMask=0007");
+  });
+
+  test("updates stage a new installer outside the active release", async () => {
+    const install = await Bun.file("install.sh").text();
+    const updater = await Bun.file("infra/sb-update").text();
+    const sbctl = await Bun.file("infra/sbctl").text();
+
+    expect(install).toContain('install -m 0755 "$ROOT/infra/sb-update" /usr/local/lib/sproutboat/update');
+    expect(install).toContain("SPROUTBOAT_UPDATE_COMMIT=");
+    expect(install).toContain("UPDATE_COMMIT=${UPDATE_COMMIT:-unknown}");
+    expect(updater).toContain('stage=$(mktemp -d "$UPDATES/stage.XXXXXXXX")');
+    expect(updater).toContain("flock -n 9");
+    expect(updater).toContain("checkout -q --detach FETCH_HEAD");
+    expect(updater).toContain("SB_PULL=0 SB_SKIP_DNS_CHECK=1 SB_UPDATE=1");
+    expect(sbctl).toContain('exec "$UPDATER" "$@"');
   });
 });

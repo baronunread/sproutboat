@@ -1,0 +1,70 @@
+#!/usr/bin/env bash
+#
+# Root-owned update bootstrapper. This deliberately lives outside the release
+# tree: it stages a fresh checkout, then runs that checkout's installer. An
+# installer bug can therefore be fixed by the very update that fetches it.
+set -euo pipefail
+
+ROOT=/opt/sproutboat
+ETC=/etc/sproutboat
+UPDATES=/opt/sproutboat-updates
+LOCK=/run/lock/sproutboat-update.lock
+CONFIG="$ETC/update.env"
+
+die() { printf '✗ %s\n' "$*" >&2; exit 1; }
+[ "$(id -u)" = 0 ] || die "run as root (sudo sbctl update)"
+[ -f "$CONFIG" ] || die "$CONFIG not found: run the installer once before updating"
+
+# update.env is root-owned installer output, never a user-editable config. Do
+# not source it: parse only the three fixed keys so shell syntax cannot become
+# root code execution.
+config_value() {
+  local key=$1 value
+  value=$(sed -n "s/^${key}=//p" "$CONFIG" | tail -1)
+  printf '%s' "$value"
+}
+
+REPO=$(config_value SPROUTBOAT_UPDATE_REPO)
+PINNED_REF=$(config_value SPROUTBOAT_UPDATE_REF)
+[ -n "$REPO" ] || die "SPROUTBOAT_UPDATE_REPO is missing from $CONFIG"
+
+# An explicit SB_REF is useful for an operator-approved pin. Otherwise honour
+# the persistent installation pin; an empty pin follows the latest stable tag.
+REF=${SB_REF:-${PINNED_REF:-}}
+PERSISTED_REF=${SB_REF:-${PINNED_REF:-}}
+case "$REF" in
+  -*|*' '*|*$'\t'*|*'..'*|*'~'*|*'^'*|*':'*|*'?'*|*'['*|*'\\'*) die "invalid update ref" ;;
+esac
+
+umask 077
+install -d -m 0700 -o root -g root "$UPDATES"
+install -d -m 0755 -o root -g root "$(dirname "$LOCK")"
+exec 9>"$LOCK"
+flock -n 9 || die "another Sproutboat update is already running"
+
+stage=$(mktemp -d "$UPDATES/stage.XXXXXXXX")
+cleanup() { rm -rf "$stage"; }
+trap cleanup EXIT
+
+if [ -z "$REF" ]; then
+  REF=$(git ls-remote --tags --refs --sort=-v:refname "$REPO" 'v*' 2>/dev/null |
+    grep -E 'refs/tags/v[0-9]+\.[0-9]+\.[0-9]+$' | head -1 | sed 's#.*refs/tags/##')
+  [ -n "$REF" ] || die "no stable release tag found for $REPO"
+fi
+
+printf '▸ Staging Sproutboat (%s)\n' "$REF"
+git init -q "$stage"
+git -C "$stage" remote add origin "$REPO"
+git -C "$stage" fetch -q --depth 1 origin "$REF"
+git -C "$stage" checkout -q --detach FETCH_HEAD
+
+COMMIT=$(git -C "$stage" rev-parse HEAD)
+[ -x "$stage/install.sh" ] || die "release $REF ($COMMIT) has no executable install.sh"
+[ -f "$stage/package.json" ] && [ -d "$stage/apps/control" ] || die "release $REF ($COMMIT) is not a Sproutboat source tree"
+printf '  ✓ staged %s\n' "$COMMIT"
+
+# The staged script finds itself through BASH_SOURCE, so SB_PULL must remain
+# off. Its normal idempotent installer owns service restart and health checks.
+# Keep this bootstrapper alive for its EXIT trap so the private staging tree is
+# removed after the new installer returns.
+env SB_PULL=0 SB_SKIP_DNS_CHECK=1 SB_UPDATE=1 SB_UPDATE_PINNED_REF="$PERSISTED_REF" SB_REF="$REF" SB_UPDATE_COMMIT="$COMMIT" "$stage/install.sh" --upgrade

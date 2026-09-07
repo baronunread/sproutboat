@@ -5,6 +5,25 @@ Changes to the self-hosted Sproutboat platform are recorded here. Read the
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-09-08
+
+### Breaking and operator actions
+
+- No known breaking API or runtime changes. Upgrade once with `sudo sbctl update`.
+  Later updates stage a fresh release before running its installer.
+
+### Fixed
+
+- Upgrades now create and normalize both `brokers` and `resources` state
+  directories before restarting the edge, so binding-backed Sprouts can start.
+- Existing admin tokens are no longer printed during an upgrade.
+
+### Added
+
+- A root-owned update bootstrapper stages a fresh source tree outside the
+  active installation, serializes concurrent updates, and records the target
+  commit and update pin in `/etc/sproutboat/update.env`.
+
 ## [0.2.0] - 2026-09-07
 
 ### Breaking and operator actions
@@ -39,6 +58,7 @@ Changes to the self-hosted Sproutboat platform are recorded here. Read the
 
 First tagged self-hosted platform checkpoint.
 
-[Unreleased]: https://github.com/baronunread/sproutboat/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/baronunread/sproutboat/compare/v0.2.1...HEAD
+[0.2.1]: https://github.com/baronunread/sproutboat/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/baronunread/sproutboat/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/baronunread/sproutboat/releases/tag/v0.1.0

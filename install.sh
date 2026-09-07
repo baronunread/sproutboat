@@ -29,6 +29,7 @@ CADDY_BIN=/usr/local/bin/caddy-sproutboat
 SB_REPO=${SB_REPO:-https://github.com/baronunread/sproutboat.git}
 # Empty means "newest release"; resolved once git exists (see: locate the source).
 SB_REF=${SB_REF:-}
+if [ "${SB_UPDATE:-0}" = 1 ]; then SB_REF_PINNED=${SB_UPDATE_PINNED_REF-}; else SB_REF_PINNED=$SB_REF; fi
 
 # Colours only when stdout is a terminal (never in CI logs / pipes).
 if [ -t 1 ]; then
@@ -114,9 +115,9 @@ esac
 say "Host: ${PRETTY_NAME:-$ID} ($PKG)"
 
 # --- locate (or fetch) the source tree ------------------------------------
-# SB_PULL=1 (set by `sbctl update`) forces a git refresh even when the script
-# is run from inside an already-provisioned $ROOT, which would otherwise be
-# treated as the source and rebuilt as-is.
+# SB_PULL=1 remains available for recovery runs that need a git refresh even
+# when the script runs from inside an already-provisioned $ROOT. Normal
+# `sbctl update` uses its staged source tree instead.
 SRC=$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" 2>/dev/null && pwd || true)
 if [ "${SB_PULL:-0}" = 1 ] || [ -z "$SRC" ] || [ ! -f "$SRC/package.json" ] || [ ! -d "$SRC/apps/control" ]; then
   command -v git >/dev/null || { [ "$PKG" = apt ] && apt-get install -y -qq git || dnf install -y -q git; }
@@ -224,10 +225,13 @@ done
 install -d -m 0755 -o root "$ROOT"
 install -d -m 0750 -o sproutboat-control -g sproutboat "$STATE" "$STATE/artifacts"
 install -d -m 0770 -o sproutboat-edge   -g sproutboat "$STATE/logs"
+install -d -m 2770 -o sproutboat-edge   -g sproutboat "$STATE/brokers"
 install -d -m 2770 -o sproutboat-edge   -g sproutboat "$STATE/resources"
-# Older resource files may predate shared control-plane administration.
-chgrp -R sproutboat "$STATE/resources"
-chmod -R g+rwX "$STATE/resources"
+# Older binding files may predate shared control-plane administration.
+for _d in brokers resources; do
+  chgrp -R sproutboat "$STATE/$_d"
+  chmod -R g+rwX "$STATE/$_d"
+done
 install -d -m 0750 -o root -g sproutboat "$ETC"
 
 # --- sync the tree ------------------------------------------------------
@@ -263,8 +267,8 @@ fi
 
 say "Installing application dependencies"
 # The runtime CLI is a moving git ref (sproutboat-cli#main); a frozen lockfile
-# would keep an `sbctl update` pinned to whatever commit bun.lock last recorded.
-# On a pull, re-resolve it first so `update` actually pulls the new broker/CLI.
+# would keep an explicit recovery pull pinned to whatever commit bun.lock last
+# recorded. Normal staged updates use the release's frozen lockfile.
 if [ "${SB_PULL:-0}" = "1" ]; then
   ( cd "$ROOT" && "$BUN" update --silent sproutboat ) && ok "runtime CLI re-resolved"
 fi
@@ -404,6 +408,8 @@ done
 install -m 0644 "$ROOT/infra/systemd/sproutboat-backup.service" /etc/systemd/system/sproutboat-backup.service
 install -m 0644 "$ROOT/infra/systemd/sproutboat-backup.timer"   /etc/systemd/system/sproutboat-backup.timer
 install -m 0755 "$ROOT/infra/sbctl" /usr/local/bin/sbctl
+install -d -m 0755 -o root -g root /usr/local/lib/sproutboat
+install -m 0755 "$ROOT/infra/sb-update" /usr/local/lib/sproutboat/update
 
 # --- Better Auth schema (dashboard + admin token login) ---------------
 say "Migrating the auth database"
@@ -449,17 +455,28 @@ fi
 # Keep the token retrievable — the SSH scrollback is not a safe home for it.
 printf 'SPROUTBOAT_API_URL=https://control.%s\nSPROUTBOAT_TOKEN=%s\n' "$SB_DOMAIN" "$ADMIN_TOKEN" > /root/sproutboat-admin.env
 chmod 0600 /root/sproutboat-admin.env
+UPDATE_COMMIT=${SB_UPDATE_COMMIT:-$(git -C "$SRC" rev-parse HEAD 2>/dev/null || true)}
+UPDATE_COMMIT=${UPDATE_COMMIT:-unknown}
+{
+  printf 'SPROUTBOAT_UPDATE_REPO=%s\n' "$SB_REPO"
+  printf 'SPROUTBOAT_UPDATE_REF=%s\n' "$SB_REF_PINNED"
+  printf 'SPROUTBOAT_UPDATE_COMMIT=%s\n' "$UPDATE_COMMIT"
+} > "$ETC/update.env"
+chown root:root "$ETC/update.env"; chmod 0600 "$ETC/update.env"
 
 printf '\n%s▸ Sproutboat is up%s\n' "$C_OK" "$C_0"
 rule
-if [ "$TOKEN_IS_NEW" = 1 ]; then note "admin credentials (saved to /root/sproutboat-admin.env)"
-else note "admin credentials (unchanged from your last install)"; fi
+if [ "$TOKEN_IS_NEW" = 1 ]; then
+  note "admin credentials (saved to /root/sproutboat-admin.env)"
+else
+  note "admin credentials unchanged; token remains in /root/sproutboat-admin.env"
+fi
 printf '    SPROUTBOAT_API_URL  %shttps://control.%s%s\n' "$C_HEAD" "$SB_DOMAIN" "$C_0"
-printf '    SPROUTBOAT_TOKEN    %s%s%s\n' "$C_HEAD" "$ADMIN_TOKEN" "$C_0"
+[ "$TOKEN_IS_NEW" = 1 ] && printf '    SPROUTBOAT_TOKEN    %s%s%s\n' "$C_HEAD" "$ADMIN_TOKEN" "$C_0"
 rule
 
 say "Dashboard  $DASH_URL"
-note "sign in with email $SB_ACME_EMAIL + the token above as the password"
+note "sign in with email $SB_ACME_EMAIL and the admin token as the password"
 if [ -n "$SB_GITHUB_CLIENT_ID" ] && [ -n "$SB_GITHUB_CLIENT_SECRET" ]; then
   note "GitHub sign-in enabled — OAuth callback: $DASH_URL/api/auth/callback/github"
 fi
@@ -472,7 +489,7 @@ say "Operate  (sudo sbctl <cmd>)"
 note "sbctl status            health of every unit"
 note "sbctl logs [control|edge|caddy]   follow logs"
 note "sbctl down / sbctl up   pause / resume everything"
-note "sbctl update            re-run installer, then restart"
+note "sbctl update            stage a fresh release, then run its installer"
 note "sbctl uninstall         remove everything (--keep-state to keep the db)"
 
 say "Backups"

@@ -9,6 +9,7 @@ set -euo pipefail
 
 ROOT=/opt/sproutboat
 TOKEN_FILE=/root/sproutboat-admin.env
+UPDATER=/usr/local/lib/sproutboat/update
 SERVICES=(sproutboat-control sproutboat-edge caddy)
 UNITS=("${SERVICES[@]}" sproutboat-backup.timer)
 
@@ -28,7 +29,7 @@ sbctl — Sproutboat single-VPS control
   sbctl logs [name] [-n N] follow logs (name: control|edge|caddy|backup; default: all three)
   sbctl token              print the admin API URL + token
   sbctl preflight          re-run the runtime sandbox checks
-  sbctl update             re-run the installer (idempotent), then restart
+  sbctl update             stage a fresh release, then run its installer
   sbctl uninstall [args]   hand off to install.sh --uninstall
 EOF
 }
@@ -64,12 +65,8 @@ case "$cmd" in
     cat "$TOKEN_FILE" ;;
   preflight) exec sh -c "cd '$ROOT' && '$ROOT/bun/bin/bun' run runtime:preflight" ;;
   update)
-    [ -x "$ROOT/install.sh" ] || die "$ROOT/install.sh missing"
-    # SB_PULL=1: refresh the checkout from git (the script is run from inside
-    # $ROOT, which it would otherwise rebuild as-is). Backfill makes it
-    # unattended; DNS is already live so don't re-wait.
-    SB_PULL=1 SB_SKIP_DNS_CHECK=1 "$ROOT/install.sh"
-    systemctl restart "${SERVICES[@]}" ;;
+    [ -x "$UPDATER" ] || die "$UPDATER missing: re-run the installer once"
+    exec "$UPDATER" "$@" ;;
   uninstall)
     [ -x "$ROOT/install.sh" ] || die "$ROOT/install.sh missing"
     exec "$ROOT/install.sh" --uninstall "$@" ;;
