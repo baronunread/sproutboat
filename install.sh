@@ -440,9 +440,15 @@ else
   systemctl daemon-reload
 
   # --- start (control first — its env now exists) ----------------
+  # `enable --now` starts an inactive unit but deliberately leaves an active
+  # one alone. An upgrade has just replaced the source beneath active Bun
+  # processes, so explicitly restart them or they keep running the old code.
   say "Starting services"
   units=(sproutboat-control sproutboat-edge caddy sproutboat-backup.timer)
-  systemctl enable --now "${units[@]}" >/dev/null 2>&1
+  systemctl enable sproutboat-control sproutboat-edge caddy sproutboat-backup.timer >/dev/null 2>&1
+  systemctl restart sproutboat-control sproutboat-edge
+  systemctl reload-or-restart caddy
+  systemctl start sproutboat-backup.timer
   for u in "${units[@]}"; do
     systemctl is-active --quiet "$u" && ok "$u" || warn "$u is not active — check: journalctl -u $u"
   done
