@@ -386,8 +386,9 @@ const server = Bun.serve({
         signal: AbortSignal.timeout(requestTimeoutMs),
       });
       const ttfbMs = elapsed();
-      // #28 — per-invocation CPU time the sprout self-reports; read it here and
-      // strip it from every copy of the headers that leaves the edge below.
+      // #28 — per-invocation CPU time the sprout self-reports. Cache entries
+      // omit it because it is specific to one invocation; uncached responses
+      // retain it so a caller can show its own request's CPU time.
       const cpuHeader = upstream.headers.get("x-sb-cpu-ms");
       const cpuMs = cpuHeader != null && Number.isFinite(Number(cpuHeader)) ? Number(cpuHeader) : null;
       // `Number(null)` is 0, not NaN — so a missing content-length would read as
@@ -456,6 +457,7 @@ const server = Bun.serve({
       });
       const headers = new Headers(upstream.headers);
       headers.delete("x-sb-cpu-ms");
+      if (cpuMs !== null) headers.set("x-sb-cpu-ms", cpuMs.toFixed(3));
       if (cacheStatus) headers.set("sb-cache", cacheStatus === "dynamic" ? "DYNAMIC" : "MISS");
       return new Response(body, { status: upstream.status, headers });
     } catch (error) {
