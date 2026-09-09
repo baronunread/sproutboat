@@ -15,17 +15,67 @@ export type CachedResponse = {
   headers: [string, string][];
   body: ArrayBuffer;
   expiresAt: number;
+  storedAt: number;
+  ageAtStore: number;
 };
+
+/**
+ * The deliberately small shared-cache policy used by the edge. It is not a
+ * general HTTP cache: only anonymous GETs without a request revalidation
+ * directive may read or fill it. Cookie-bearing traffic is a product-policy
+ * bypass even when a particular response could technically be shared.
+ */
+export function cacheRequestEligible(request: Request): boolean {
+  if (request.method !== "GET") return false;
+  if (request.headers.has("authorization") || request.headers.has("cookie")) return false;
+  // We do not implement request directives, validators, or ranges. Bypass all
+  // of them rather than partly interpreting an RFC 9111 request.
+  return ![
+    "cache-control",
+    "pragma",
+    "if-match",
+    "if-modified-since",
+    "if-none-match",
+    "if-unmodified-since",
+    "range",
+  ].some((name) => request.headers.has(name));
+}
 
 /** Seconds a response may be cached, or null if it must not be. */
 export function cacheableForSeconds(cacheControl: string | null): number | null {
   if (!cacheControl) return null; // no directive → treat as dynamic, don't cache
   const cc = cacheControl.toLowerCase();
-  if (/(^|,)\s*(no-store|private|no-cache)\s*(,|$)/.test(cc)) return null;
-  const sMaxAge = /(^|,)\s*s-maxage\s*=\s*(\d+)/.exec(cc);
-  const maxAge = /(^|,)\s*max-age\s*=\s*(\d+)/.exec(cc);
-  const seconds = Number(sMaxAge?.[2] ?? maxAge?.[2] ?? NaN);
+  if (/(^|,)\s*(no-store|private|no-cache)(?:\s*=\s*(?:\"[^\"]*\"|[^,]+))?\s*(,|$)/.test(cc)) return null;
+  const directive = (name: string): number | null | undefined => {
+    const values = [...cc.matchAll(new RegExp(`(?:^|,)\\s*${name}\\s*=\\s*([^,]+)\\s*(?=,|$)`, "g"))];
+    if (values.length === 0) return undefined;
+    if (values.length !== 1 || !/^\d+$/.test(values[0]![1]!)) return null;
+    return Number(values[0]![1]);
+  };
+  const sMaxAge = directive("s-maxage");
+  const maxAge = directive("max-age");
+  if (sMaxAge === null || maxAge === null) return null;
+  const seconds = sMaxAge ?? maxAge ?? NaN;
   return Number.isFinite(seconds) && seconds > 0 ? seconds : null;
+}
+
+/** A response must opt into our narrow shared-cache subset explicitly. */
+export function cacheResponseEligible(
+  headers: Headers,
+  now = Date.now(),
+): { expiresAt: number; responseDateMs: number } | null {
+  const control = headers.get("cache-control");
+  if (!control || !/(^|,)\s*public\s*(?:,|$)/i.test(control)) return null;
+  // We do not key variants yet. A Vary field therefore always bypasses rather
+  // than risking a representation being served to the wrong request.
+  if (headers.has("vary") || headers.has("set-cookie") || headers.has("age")) return null;
+  const seconds = cacheableForSeconds(control);
+  if (seconds === null) return null;
+  const date = headers.get("date");
+  const dateMs = date ? Date.parse(date) : now;
+  if (!Number.isFinite(dateMs) || dateMs > now) return null;
+  const expiresAt = dateMs + seconds * 1000;
+  return now < expiresAt ? { expiresAt, responseDateMs: dateMs } : null;
 }
 
 const CACHEABLE_STATUS = new Set([200, 203, 301, 404, 410]);
@@ -57,11 +107,20 @@ export class EdgeCache {
   }
 
   /** Store if the status is cacheable and the body fits one entry. Returns stored?. */
-  set(key: string, status: number, headers: [string, string][], body: ArrayBuffer, seconds: number): boolean {
+  set(
+    key: string,
+    status: number,
+    headers: [string, string][],
+    body: ArrayBuffer,
+    seconds: number,
+    ageAtStore = 0,
+    expiresAt = this.now() + seconds * 1000,
+  ): boolean {
     if (!CACHEABLE_STATUS.has(status) || body.byteLength > this.maxEntryBytes) return false;
     const existing = this.#entries.get(key);
     if (existing) this.#bytes -= existing.body.byteLength;
-    this.#entries.set(key, { status, headers, body, expiresAt: this.now() + seconds * 1000 });
+    const storedAt = this.now();
+    this.#entries.set(key, { status, headers, body, expiresAt, storedAt, ageAtStore });
     this.#bytes += body.byteLength;
     while (this.#entries.size > this.maxEntries || this.#bytes > this.maxBytes) {
       const oldest = this.#entries.keys().next().value;

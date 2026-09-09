@@ -3,7 +3,7 @@ import { createWriteStream, existsSync, mkdirSync, readFileSync, type WriteStrea
 import { dirname, join, resolve } from "node:path";
 import { pool } from "../../supervisor/src/run";
 import { isSproutFirst, resolveAssetKey, type AssetManifest } from "sproutboat/runtime/assets";
-import { EdgeCache, cacheableForSeconds } from "./cache";
+import { EdgeCache, cacheRequestEligible, cacheResponseEligible } from "./cache";
 
 type JsonValue = string | number | boolean | null | EdgeJsonObject | JsonValue[];
 
@@ -139,6 +139,50 @@ const responseMaxBytes = Number(process.env.SPROUTBOAT_RESPONSE_MAX_BYTES) || 10
 // #38: per-node edge cache. Set SPROUTBOAT_EDGE_CACHE=off to disable.
 const cache = process.env.SPROUTBOAT_EDGE_CACHE === "off" ? null : new EdgeCache();
 const MAX_CACHE_ENTRY_BYTES = 512 * 1024;
+
+/**
+ * Pass a response through while retaining at most one cache entry's actual
+ * bytes. Content-Length is only an early rejection: a lying origin cannot
+ * make us allocate an unbounded buffer.
+ */
+function cacheFillBody(
+  body: ReadableStream<Uint8Array> | null,
+  put: (body: ArrayBuffer) => void,
+): ReadableStream<Uint8Array> | null {
+  if (!body) {
+    put(new ArrayBuffer(0));
+    return null;
+  }
+  const parts: Uint8Array[] = [];
+  let bytes = 0;
+  let fits = true;
+  return body.pipeThrough(
+    new TransformStream<Uint8Array, Uint8Array>({
+      transform(chunk, controller) {
+        if (fits && bytes + chunk.byteLength <= MAX_CACHE_ENTRY_BYTES) {
+          parts.push(chunk.slice());
+          bytes += chunk.byteLength;
+        } else {
+          fits = false;
+          // Drop retained chunks as soon as this no longer fits. The response
+          // still streams to the client, but no oversized fill remains in RAM.
+          parts.length = 0;
+        }
+        controller.enqueue(chunk);
+      },
+      flush() {
+        if (!fits) return;
+        const buffered = new Uint8Array(bytes);
+        let offset = 0;
+        for (const part of parts) {
+          buffered.set(part, offset);
+          offset += part.byteLength;
+        }
+        put(buffered.buffer);
+      },
+    }),
+  );
+}
 
 /** Fail the stream (and log) if the sprout's response body runs past the cap. */
 /**
@@ -371,8 +415,11 @@ const server = Bun.serve({
       }
     }
 
-    const cacheKey =
-      cache && request.method === "GET" ? EdgeCache.key(host, "GET", target.pathname + target.search) : null;
+    // Decide before lookup as well as insertion. A credentialed request must
+    // never consume an anonymous shared entry, even if the origin later sends
+    // public Cache-Control by mistake.
+    const cacheEligibleRequest = cache !== null && cacheRequestEligible(request);
+    const cacheKey = cacheEligibleRequest ? EdgeCache.key(host, "GET", target.pathname + target.search) : null;
     if (cacheKey) {
       const hit = cache!.get(cacheKey);
       if (hit) {
@@ -385,7 +432,10 @@ const server = Bun.serve({
           resBytes: hit.body.byteLength,
           cacheStatus: "hit",
         });
-        return new Response(hit.body, { status: hit.status, headers: [...hit.headers, ["sb-cache", "HIT"]] });
+        const headers = new Headers(hit.headers);
+        headers.set("age", String(hit.ageAtStore + Math.floor((Date.now() - hit.storedAt) / 1000)));
+        headers.set("sb-cache", "HIT");
+        return new Response(hit.body, { status: hit.status, headers });
       }
     }
 
@@ -454,32 +504,37 @@ const server = Bun.serve({
         return new Response("response too large", { status: 502 });
       }
 
-      const ttl = cacheKey ? cacheableForSeconds(upstream.headers.get("cache-control")) : null;
-      if (cacheKey && ttl !== null && Number.isFinite(declared) && declared <= MAX_CACHE_ENTRY_BYTES) {
-        const buffered = await upstream.arrayBuffer();
-        const headers: [string, string][] = [...upstream.headers.entries()].filter(([name]) => name !== "x-sb-cpu-ms");
-        cache!.set(cacheKey, upstream.status, headers, buffered, ttl);
-        log({
-          hostname: host,
-          method: "GET",
-          status: upstream.status,
-          durationMs: elapsed(),
-          ttfbMs,
-          reqBytes,
-          resBytes: buffered.byteLength,
-          coldStart,
-          startupMs,
-          bootMs,
-          cpuMs,
-          cacheStatus: "miss",
-        });
-        return new Response(buffered, { status: upstream.status, headers: [...headers, ["sb-cache", "MISS"]] });
-      }
-
-      const cacheStatus = request.method === "GET" ? (ttl === null ? "dynamic" : "miss") : undefined;
+      const cachePolicy = cacheKey ? cacheResponseEligible(upstream.headers) : null;
+      const cacheStatus =
+        request.method === "GET" ? (cacheKey ? (cachePolicy === null ? "dynamic" : "miss") : "bypass") : undefined;
       // #31 — log once the response body has actually finished streaming, so
       // durationMs is the full request duration and resBytes is the real count.
-      const body = cappedBody(upstream.body, host, (bytes) => {
+      const headers = new Headers(upstream.headers);
+      headers.delete("x-sb-cpu-ms");
+      if (cpuMs !== null) headers.set("x-sb-cpu-ms", cpuMs.toFixed(3));
+      if (cacheStatus) headers.set("sb-cache", cacheStatus === "dynamic" ? "DYNAMIC" : cacheStatus.toUpperCase());
+      const cacheHeaders: [string, string][] = [...headers.entries()].filter(
+        ([name]) => name !== "sb-cache" && name !== "x-sb-cpu-ms",
+      );
+      const cacheFill =
+        cacheKey && cachePolicy !== null && (!Number.isFinite(declared) || declared <= MAX_CACHE_ENTRY_BYTES)
+          ? cacheFillBody(upstream.body, (buffered) =>
+              // A route reload purges before it swaps. Do not let an old,
+              // in-flight response repopulate that new deployment's cache.
+              routes.get(host) === route && Date.now() < cachePolicy.expiresAt
+                ? cache!.set(
+                    cacheKey,
+                    upstream.status,
+                    cacheHeaders,
+                    buffered,
+                    Math.ceil((cachePolicy.expiresAt - Date.now()) / 1000),
+                    Math.floor((Date.now() - cachePolicy.responseDateMs) / 1000),
+                    cachePolicy.expiresAt,
+                  )
+                : false,
+            )
+          : upstream.body;
+      const body = cappedBody(cacheFill, host, (bytes) => {
         log({
           hostname: host,
           method: request.method,
@@ -496,10 +551,6 @@ const server = Bun.serve({
           cacheStatus,
         });
       });
-      const headers = new Headers(upstream.headers);
-      headers.delete("x-sb-cpu-ms");
-      if (cpuMs !== null) headers.set("x-sb-cpu-ms", cpuMs.toFixed(3));
-      if (cacheStatus) headers.set("sb-cache", cacheStatus === "dynamic" ? "DYNAMIC" : "MISS");
       return new Response(body, { status: upstream.status, headers });
     } catch (error) {
       const timedOut = error instanceof Error && (error.name === "TimeoutError" || error.name === "AbortError");

@@ -52,6 +52,12 @@ SPROUTBOAT_RESPONSE_MAX_BYTES=10485760
 # SPROUTBOAT_EDGE_CACHE=off
 ```
 
+The response cache deliberately serves a narrow shared subset: anonymous GET
+requests only, and only responses marked `Cache-Control: public` with a finite
+`max-age` or `s-maxage`. Requests with `Authorization`, `Cookie`, or a
+revalidation directive bypass it. Responses with `Set-Cookie` or any `Vary`
+field also bypass it. This is a safety boundary, not a general HTTP cache.
+
 Control and edge bind `127.0.0.1` by default (`SPROUTBOAT_BIND_HOST`). Keep it
 that way — Caddy is the only listener that should face the internet.
 
