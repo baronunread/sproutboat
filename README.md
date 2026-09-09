@@ -118,6 +118,16 @@ outbound `fetch`, which is what keeps the sprout itself free of disk and
 egress. A handler reaches the outside world only through the
 broker, and only for hosts in the config's `outbound` allowlist.
 
+Cron, queue consumers and Durable Object alarms are different from HTTP-only
+handlers: their active route generation is started by the edge even with no
+incoming request and remains resident with its broker. The edge notices route
+snapshot changes without traffic, wakes at most two timed generations at once,
+and retries a failed timed wake with capped backoff. HTTP-only sprouts remain
+lazy and are still evicted after the normal idle window. This is a single-node
+lifecycle guarantee, not a durable scheduler: missed cron ticks during a node
+outage are not replayed, and queue delivery keeps the broker's existing retry
+and acknowledgement semantics.
+
 ## Building
 
 Use [Bun](https://bun.sh), not npm.

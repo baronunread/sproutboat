@@ -57,6 +57,46 @@ type Route = {
   services: Record<string, string> | null;
 };
 
+type TimedBindings = {
+  queues?: unknown;
+  crons?: unknown;
+  do?: unknown;
+};
+
+/**
+ * Timed work is broker-originated, so its sprout must be woken independently
+ * of HTTP traffic. A malformed or missing bindings file is intentionally not a
+ * reason to pin an app: the broker would have no timer to dispatch either.
+ */
+function hasTimedBindings(sproutPath: string): boolean {
+  try {
+    // SAFETY: this is only an optional capability hint from the artifact's
+    // generated bindings.json. Every property is checked as an array below.
+    const bindings = JSON.parse(readFileSync(join(dirname(sproutPath), "bindings.json"), "utf8")) as TimedBindings;
+    return [bindings.queues, bindings.crons, bindings.do].some((value) => Array.isArray(value) && value.length > 0);
+  } catch {
+    return false;
+  }
+}
+
+function timedSprouts(current: Map<string, Route>) {
+  const result: Array<{ sproutPath: string; secretsPath: string | null; services: Record<string, string> | null }> = [];
+  for (const route of current.values()) {
+    if (!hasTimedBindings(route.sproutPath)) continue;
+    // The pool de-duplicates identical runtime contexts. Keep different secret
+    // and service snapshots separate even if a content-addressed artifact is
+    // attached to more than one custom hostname.
+    result.push({ sproutPath: route.sproutPath, secretsPath: route.secretsPath, services: route.services });
+  }
+  return result;
+}
+
+function reconcileTimed(current: Map<string, Route>): void {
+  void pool.reconcileTimed(timedSprouts(current)).catch((error) => {
+    console.error(`timed route reconcile failed: ${error instanceof Error ? error.message : String(error)}`);
+  });
+}
+
 async function loadRoutes(path: string): Promise<Map<string, Route>> {
   const routes: EdgeInput = JSON.parse(await readFile(path, "utf8"));
   if (!Array.isArray(routes)) throw new TypeError("invalid route snapshot");
@@ -214,10 +254,10 @@ function assetManifestFor(sproutPath: string): AssetManifest | null {
 
 /**
  * Swap in a new route snapshot: dispose sprouts whose route changed or was
- * removed. Newly-routed sprouts are NOT pre-spawned — that stampeded the node
- * on startup (every route at once) and pinned idle deployments resident. A
- * fresh deploy's first request cold-starts (~1ms + broker wait), and
- * `sproutboat deploy` already warms it with its post-upload health check.
+ * removed. HTTP-only sprouts are not pre-spawned: they cold-start on their
+ * first request and remain eligible for idle eviction. The bounded timed-route
+ * reconciliation below is the exception for active cron, queue and alarm
+ * dispatch, which otherwise has no request to wake it.
  */
 function swapRoutes(nextRoutes: Map<string, Route>, nextMtimeMs: number): void {
   for (const [hostname, route] of routes) {
@@ -232,6 +272,7 @@ function swapRoutes(nextRoutes: Map<string, Route>, nextMtimeMs: number): void {
   }
   routes = nextRoutes;
   routesMtimeMs = nextMtimeMs;
+  reconcileTimed(routes);
 }
 
 // Belt-and-braces reload: SIGHUP (below) is the authoritative path. Throttle the
@@ -488,15 +529,30 @@ const server = Bun.serve({
 // broker we spawn from here needs our own address. Set before any sprout starts.
 process.env.SPROUTBOAT_EDGE_URL ||= `http://127.0.0.1:${server.port}/`;
 
+// Start only active timer-driven routes after the edge can accept broker
+// callbacks. `reconcileTimed` wakes two at once, so an edge restart does not
+// stampede every deployment in a large snapshot.
+reconcileTimed(routes);
+
 console.log(`Sproutboat edge router listening on http://${bindHost}:${server.port}`);
 
 // Reap any sprout with no traffic for the idle window (default 10 min), routed
 // or not. Hot deployments keep themselves warm; cold ones free their sprout +
 // broker and pay a ~1ms cold start on the next request.
 const evictionTimer = setInterval(() => pool.evictIdle(), 60_000);
+// Deployments update routes.json atomically. HTTP requests and SIGHUP reload it
+// promptly already, but timer-only deployments may have neither, so keep a
+// cheap mtime poll independent of traffic. It only spawns work after a route
+// generation actually changes.
+const routeRefreshTimer = setInterval(() => {
+  void refreshRoutes().catch((error) => {
+    console.error(`route snapshot reload failed: ${error instanceof Error ? error.message : String(error)}`);
+  });
+}, 1_000);
 
 function shutdown(): void {
   clearInterval(evictionTimer);
+  clearInterval(routeRefreshTimer);
   logStream?.end();
   pool.disposeAll();
   server.stop();

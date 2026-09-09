@@ -154,6 +154,62 @@ test("evictIdle reaps any idle sprout; a still-hot one survives", async () => {
   expect((await fetch(hot.url)).ok).toBe(true);
 });
 
+test("active timed routes start without HTTP traffic and survive HTTP idle eviction (#142)", async () => {
+  const { spawn, servers } = fakeSpawn();
+  let now = 0;
+  const pool = makePool(spawn, { idleMs: 100, now: () => now });
+
+  // This models edge boot: only the active route snapshot selects timer-driven
+  // deployments, so there has been no request to this sprout.
+  await pool.reconcileTimed([{ sproutPath: "/tmp/timer/sprout" }]);
+  expect(servers.size).toBe(1);
+  now = 10_000;
+  expect(pool.evictIdle()).toBe(0);
+  expect(pool.stats().live).toBe(1);
+});
+
+test("a timed route generation switch stops the old dispatcher and starts only the active one (#142)", async () => {
+  const { spawn, servers } = fakeSpawn();
+  const pool = makePool(spawn);
+  await pool.reconcileTimed([{ sproutPath: "/tmp/old/sprout" }]);
+  expect(servers.size).toBe(1);
+
+  // This models an atomic routes.json promotion while the node receives no HTTP.
+  await pool.reconcileTimed([{ sproutPath: "/tmp/new/sprout" }]);
+  expect(servers.size).toBe(1);
+  expect(pool.stats().portsInUse).toBe(1);
+  const active = await pool.endpoint("/tmp/new/sprout");
+  expect((await fetch(active.url)).ok).toBe(true);
+});
+
+test("a timed sprout crash is restarted without needing an HTTP request (#142)", async () => {
+  const { spawn, servers, crash } = fakeSpawn();
+  const pool = makePool(spawn);
+  await pool.reconcileTimed([{ sproutPath: "/tmp/timer/sprout" }]);
+  const first = await pool.endpoint("/tmp/timer/sprout");
+  crash(Number(new URL(first.url).port));
+
+  // The timed lifecycle retries after a short capped backoff rather than
+  // waiting for traffic that might never arrive.
+  await Bun.sleep(350);
+  expect(servers.size).toBe(1);
+  expect(pool.stats().spawns).toBe(2);
+});
+
+test("runtime contexts do not share a sprout and removal releases every port (#142)", async () => {
+  const { spawn, servers } = fakeSpawn();
+  const pool = makePool(spawn);
+  await pool.reconcileTimed([
+    { sproutPath: "/tmp/shared/sprout", secretsPath: "/tmp/secrets/a.json", services: { API: "a.test" } },
+    { sproutPath: "/tmp/shared/sprout", secretsPath: "/tmp/secrets/b.json", services: { API: "b.test" } },
+  ]);
+  expect(servers.size).toBe(2);
+  expect(pool.stats().portsInUse).toBe(2);
+  pool.dispose("/tmp/shared/sprout");
+  expect(servers.size).toBe(0);
+  expect(pool.stats().portsInUse).toBe(0);
+});
+
 test("sproutCommand wraps the sprout in the bwrap launcher on Linux, runs it directly off Linux", () => {
   const saved = process.platform;
   const set = (v: string) => Object.defineProperty(process, "platform", { value: v, configurable: true });

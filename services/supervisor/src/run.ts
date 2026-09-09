@@ -61,6 +61,17 @@ export type SproutFactory = (
  */
 export type Endpoint = { url: string; coldStart: boolean; startupMs: number; bootMs: number };
 
+/**
+ * A route whose broker must keep its paired sprout available without an HTTP
+ * request. Cron, queue and Durable Object alarm dispatch all originate in the
+ * broker, then POST back to that sprout.
+ */
+export type TimedSprout = {
+  sproutPath: string;
+  secretsPath?: string | null;
+  services?: Record<string, string> | null;
+};
+
 export type SproutPoolOptions = {
   readonly spawn?: SproutFactory;
   readonly readyTimeoutMs?: number;
@@ -72,6 +83,14 @@ export type SproutPoolOptions = {
 const defaultReadyTimeoutMs = 10_000;
 const defaultIdleMs = 600_000;
 const defaultPortRange: readonly [number, number] = [40_000, 49_999];
+
+/** A process embeds its secret file and service-routing snapshot at spawn, so
+ * those values are part of its identity. Sharing just by artifact path could
+ * send one hostname's calls through another hostname's runtime context. */
+function runtimeKey(sproutPath: string, secretsPath?: string | null, services?: Record<string, string> | null): string {
+  const servicePairs = services ? Object.entries(services).sort(([a], [b]) => a.localeCompare(b)) : [];
+  return `${resolve(sproutPath)}\0${secretsPath ?? ""}\0${JSON.stringify(servicePairs)}`;
+}
 
 // The broker runs as a subprocess (not an import): resolve the CLI package's
 // `runtime/broker` export to a path Bun can spawn.
@@ -419,6 +438,12 @@ export type PoolStats = {
   idleEvictions: number;
   portsInUse: number;
   portPoolSize: number;
+  /** Active route generations retained for cron, queue or alarm dispatch. */
+  timedConfigured: number;
+  /** Retained generations whose sprout is currently listening. */
+  timedLive: number;
+  /** Failed timed wakes. Retried with capped exponential backoff. */
+  timedWakeFailures: number;
 };
 
 export class SproutPool {
@@ -430,10 +455,18 @@ export class SproutPool {
   readonly #now: () => number;
   readonly #portRange: readonly [number, number];
   readonly #seenKeys = new Set<string>();
+  /** Active generations with broker-driven work. These are deliberately a
+   * small subset of routes: ordinary HTTP sprouts remain eligible for idle
+   * eviction. */
+  readonly #timed = new Map<string, TimedSprout>();
+  readonly #timedWakeups = new Map<string, ReturnType<typeof setTimeout>>();
+  readonly #timedWakeAttempts = new Map<string, number>();
+  #timedReconcile: Promise<void> = Promise.resolve();
   #spawns = 0;
   #restarts = 0;
   #readyFailures = 0;
   #idleEvictions = 0;
+  #timedWakeFailures = 0;
 
   constructor({
     spawn = spawnSprout,
@@ -478,7 +511,7 @@ export class SproutPool {
     secretsPath?: string | null,
     services?: Record<string, string> | null,
   ): Promise<Endpoint> {
-    const key = resolve(sproutPath);
+    const key = runtimeKey(sproutPath, secretsPath, services);
     let server = this.#servers.get(key);
     let coldStart = false;
     if (!server || server.closed) {
@@ -489,7 +522,7 @@ export class SproutPool {
       this.#usedPorts.add(port);
       this.#spawns += 1;
       server = new SproutServer(
-        key,
+        resolve(sproutPath),
         port,
         this.#spawn,
         this.#readyTimeoutMs,
@@ -497,6 +530,12 @@ export class SproutPool {
         (dead) => {
           if (this.#servers.get(key) === dead) this.#servers.delete(key);
           this.#usedPorts.delete(dead.port);
+          // A broker-driven route has no incoming HTTP request to bring a
+          // crashed pair back. Retry it with a bounded backoff while it remains
+          // the active route generation. This is lifecycle recovery only: it
+          // does not make queue delivery crash-safe beyond the broker's own
+          // existing acknowledgement policy.
+          if (this.#timed.has(key)) this.#scheduleTimedWake(key);
         },
         secretsPath,
         services,
@@ -522,12 +561,28 @@ export class SproutPool {
   }
 
   dispose(sproutPath: string): void {
-    const key = resolve(sproutPath);
-    this.#servers.get(key)?.dispose();
-    this.#servers.delete(key);
+    const path = resolve(sproutPath);
+    // `dispose(path)` is intentionally broad: route removal must stop every
+    // runtime context that was spawned for this artifact, including aliases on
+    // custom domains with different secrets or service snapshots.
+    for (const [key, server] of Array.from(this.#servers.entries())) {
+      if (server.sproutPath !== path) continue;
+      this.#timed.delete(key);
+      this.#cancelTimedWake(key);
+      server.dispose();
+      this.#servers.delete(key);
+      this.#usedPorts.delete(server.port);
+    }
+    for (const [key, timed] of Array.from(this.#timed.entries())) {
+      if (resolve(timed.sproutPath) !== path) continue;
+      this.#timed.delete(key);
+      this.#cancelTimedWake(key);
+    }
   }
 
   disposeAll(): void {
+    for (const key of this.#timedWakeups.keys()) this.#cancelTimedWake(key);
+    this.#timed.clear();
     for (const server of Array.from(this.#servers.values())) server.dispose();
     this.#servers.clear();
     this.#usedPorts.clear();
@@ -546,6 +601,7 @@ export class SproutPool {
   evictIdle(now = this.#now()): number {
     let evicted = 0;
     for (const [key, server] of Array.from(this.#servers.entries())) {
+      if (this.#timed.has(key)) continue;
       if (now - server.lastUsedAt >= this.#idleMs) {
         server.dispose();
         this.#servers.delete(key);
@@ -557,8 +613,92 @@ export class SproutPool {
     return evicted;
   }
 
+  /**
+   * Reconcile the active route snapshot's timer-driven deployments. This is
+   * called at edge boot and on each route swap, so a cron/queue/alarm starts
+   * even if nobody has ever made an HTTP request. Wakes are capped at two at a
+   * time: a large route file cannot stampede the node's compiler/runtime just
+   * because the edge restarted.
+   */
+  reconcileTimed(sprouts: readonly TimedSprout[]): Promise<void> {
+    // Route mtime polling and SIGHUP can overlap. Serialize the whole
+    // reconciliation so the two-worker start budget is node-wide, not merely
+    // per notification.
+    const run = this.#timedReconcile.then(() => this.#reconcileTimed(sprouts));
+    this.#timedReconcile = run.catch(() => {});
+    return run;
+  }
+
+  async #reconcileTimed(sprouts: readonly TimedSprout[]): Promise<void> {
+    const next = new Map<string, TimedSprout>();
+    for (const sprout of sprouts) next.set(runtimeKey(sprout.sproutPath, sprout.secretsPath, sprout.services), sprout);
+
+    for (const key of Array.from(this.#timed.keys())) {
+      if (next.has(key)) continue;
+      this.#timed.delete(key);
+      this.#cancelTimedWake(key);
+      const server = this.#servers.get(key);
+      server?.dispose();
+      this.#servers.delete(key);
+      if (server) this.#usedPorts.delete(server.port);
+    }
+    for (const [key, sprout] of next) this.#timed.set(key, sprout);
+
+    const pending = Array.from(next.keys());
+    const wakeNext = async (): Promise<void> => {
+      const key = pending.pop();
+      if (!key) return;
+      await this.#wakeTimed(key);
+      return wakeNext();
+    };
+    const workers = Array.from({ length: Math.min(2, pending.length) }, wakeNext);
+    await Promise.all(workers);
+  }
+
+  #cancelTimedWake(key: string): void {
+    this.#clearTimedWakeTimer(key);
+    this.#timedWakeAttempts.delete(key);
+  }
+
+  #clearTimedWakeTimer(key: string): void {
+    const timer = this.#timedWakeups.get(key);
+    if (timer) clearTimeout(timer);
+    this.#timedWakeups.delete(key);
+  }
+
+  async #wakeTimed(key: string): Promise<void> {
+    const timed = this.#timed.get(key);
+    if (!timed) return;
+    this.#clearTimedWakeTimer(key);
+    try {
+      await this.endpoint(timed.sproutPath, timed.secretsPath, timed.services);
+      this.#timedWakeAttempts.delete(key);
+    } catch (error) {
+      this.#timedWakeFailures += 1;
+      console.error(
+        `timed sprout ${timed.sproutPath} did not start:`,
+        error instanceof Error ? error.message : String(error),
+      );
+      if (this.#timed.has(key)) this.#scheduleTimedWake(key);
+    }
+  }
+
+  #scheduleTimedWake(key: string): void {
+    if (this.#timedWakeups.has(key) || !this.#timed.has(key)) return;
+    const attempt = (this.#timedWakeAttempts.get(key) ?? 0) + 1;
+    this.#timedWakeAttempts.set(key, attempt);
+    const delay = Math.min(30_000, 250 * 2 ** Math.min(attempt - 1, 7));
+    const timer = setTimeout(() => {
+      this.#timedWakeups.delete(key);
+      void this.#wakeTimed(key);
+    }, delay);
+    this.#timedWakeups.set(key, timer);
+  }
+
   stats(): PoolStats {
     const [lo, hi] = this.#portRange;
+    let timedLive = 0;
+    for (const key of this.#timed.keys()) if (this.#servers.has(key)) timedLive++;
     return {
       live: this.#servers.size,
       spawns: this.#spawns,
@@ -567,6 +707,9 @@ export class SproutPool {
       idleEvictions: this.#idleEvictions,
       portsInUse: this.#usedPorts.size,
       portPoolSize: hi - lo + 1,
+      timedConfigured: this.#timed.size,
+      timedLive,
+      timedWakeFailures: this.#timedWakeFailures,
     };
   }
 }
