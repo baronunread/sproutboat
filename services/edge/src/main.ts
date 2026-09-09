@@ -139,7 +139,20 @@ const requestTimeoutMs = Number(process.env.SPROUTBOAT_REQUEST_TIMEOUT_MS) || 30
 const responseMaxBytes = Number(process.env.SPROUTBOAT_RESPONSE_MAX_BYTES) || 10 * 1024 * 1024;
 // #38: per-node edge cache. Set SPROUTBOAT_EDGE_CACHE=off to disable.
 const cache = process.env.SPROUTBOAT_EDGE_CACHE === "off" ? null : new EdgeCache();
-const activationSpool = new ActivationSpool(pool);
+const serviceSignature = (services: Record<string, string> | null | undefined): string =>
+  JSON.stringify(Object.entries(services ?? {}).sort(([left], [right]) => left.localeCompare(right)));
+const activationSpool = new ActivationSpool(pool, undefined, async (candidate) => {
+  await refreshRoutes(true);
+  const route = routes.get(candidate.hostname);
+  if (
+    !route ||
+    route.sproutPath !== candidate.sproutPath ||
+    route.secretsPath !== candidate.secretsPath ||
+    route.secretsHash !== candidate.secretsHash ||
+    serviceSignature(route.services) !== serviceSignature(candidate.services)
+  )
+    throw new Error("edge has not loaded the candidate route generation");
+});
 const MAX_CACHE_ENTRY_BYTES = 512 * 1024;
 
 /**
@@ -325,11 +338,19 @@ function swapRoutes(nextRoutes: Map<string, Route>, nextMtimeMs: number): void {
 // stat() so a hot node isn't calling it thousands of times a second for a file
 // that changes on deploy; 250ms is well inside the staleness people already tolerate.
 let lastRouteCheck = 0;
-async function refreshRoutes(): Promise<void> {
+async function refreshRoutes(force = false): Promise<void> {
   const now = Date.now();
-  if (now - lastRouteCheck < 250) return;
+  if (!force && now - lastRouteCheck < 250) return;
   lastRouteCheck = now;
   const currentMtimeMs = await snapshotMtime(routesPath);
+  // Promotion is a generation barrier, not a cache invalidation hint. Force a
+  // fresh parse even when filesystem timestamp precision makes the just-written
+  // snapshot look unchanged, then validate the exact context before timers can
+  // be enabled on the candidate.
+  if (force) {
+    swapRoutes(currentMtimeMs > 0 ? await loadRoutes(routesPath) : new Map<string, Route>(), currentMtimeMs);
+    return;
+  }
   if (currentMtimeMs > routesMtimeMs) swapRoutes(await loadRoutes(routesPath), currentMtimeMs);
 }
 

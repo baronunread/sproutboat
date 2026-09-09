@@ -76,6 +76,8 @@ export type Endpoint = { url: string; coldStart: boolean; startupMs: number; boo
 export type TimedSprout = {
   sproutPath: string;
   secretsPath?: string | null;
+  /** Content generation of secretsPath, when the route carries one. */
+  secretsHash?: string | null;
   services?: Record<string, string> | null;
 };
 
@@ -96,9 +98,14 @@ const defaultPortRange: readonly [number, number] = [40_000, 49_999];
 /** A process embeds its secret file and service-routing snapshot at spawn, so
  * those values are part of its identity. Sharing just by artifact path could
  * send one hostname's calls through another hostname's runtime context. */
-function runtimeKey(sproutPath: string, secretsPath?: string | null, services?: Record<string, string> | null): string {
+function runtimeKey(
+  sproutPath: string,
+  secretsPath?: string | null,
+  services?: Record<string, string> | null,
+  secretsHash?: string | null,
+): string {
   const servicePairs = services ? Object.entries(services).sort(([a], [b]) => a.localeCompare(b)) : [];
-  return `${resolve(sproutPath)}\0${secretsPath ?? ""}\0${JSON.stringify(servicePairs)}`;
+  return `${resolve(sproutPath)}\0${secretsPath ?? ""}\0${secretsHash ?? ""}\0${JSON.stringify(servicePairs)}`;
 }
 
 // The broker runs as a subprocess (not an import): resolve the CLI package's
@@ -336,6 +343,8 @@ function spawnWithBroker(
   return {
     exited,
     kill: stop,
+    // SAFETY: Bun's signal type omits SIGUSR1, which the CLI broker uses only
+    // as its explicit dispatch-enable control signal.
     enableDispatch: () => capturedBroker?.kill("SIGUSR1" as never),
   };
 }
@@ -536,8 +545,9 @@ export class SproutPool {
     secretsPath?: string | null,
     services?: Record<string, string> | null,
     dispatchDisabled = false,
+    secretsHash?: string | null,
   ): Promise<Endpoint> {
-    const key = runtimeKey(sproutPath, secretsPath, services);
+    const key = runtimeKey(sproutPath, secretsPath, services, secretsHash);
     let server = this.#servers.get(key);
     let coldStart = false;
     if (!server || server.closed) {
@@ -591,10 +601,16 @@ export class SproutPool {
   /** Start only the candidate's listener. No request reaches user code. */
   async stageCandidate(candidate: CandidateSprout): Promise<Endpoint> {
     if (!/^[a-f0-9-]{36}$/i.test(candidate.id)) throw new Error("invalid candidate id");
-    const key = runtimeKey(candidate.sproutPath, candidate.secretsPath, candidate.services);
+    const key = runtimeKey(candidate.sproutPath, candidate.secretsPath, candidate.services, candidate.secretsHash);
     const existing = this.#candidates.get(candidate.id);
     if (existing && existing !== key) throw new Error("candidate id belongs to another runtime");
-    const endpoint = await this.endpoint(candidate.sproutPath, candidate.secretsPath, candidate.services, true);
+    const endpoint = await this.endpoint(
+      candidate.sproutPath,
+      candidate.secretsPath,
+      candidate.services,
+      true,
+      candidate.secretsHash,
+    );
     this.#candidates.set(candidate.id, key);
     return endpoint;
   }
@@ -624,7 +640,7 @@ export class SproutPool {
     // runtime context that was spawned for this artifact, including aliases on
     // custom domains with different secrets or service snapshots.
     for (const [key, server] of Array.from(this.#servers.entries())) {
-      if ([...this.#candidates.values()].includes(key)) continue;
+      if (this.#isCandidateKey(key)) continue;
       if (server.sproutPath !== path) continue;
       this.#timed.delete(key);
       this.#cancelTimedWake(key);
@@ -637,6 +653,11 @@ export class SproutPool {
       this.#timed.delete(key);
       this.#cancelTimedWake(key);
     }
+  }
+
+  #isCandidateKey(key: string): boolean {
+    for (const candidateKey of this.#candidates.values()) if (candidateKey === key) return true;
+    return false;
   }
 
   disposeAll(): void {

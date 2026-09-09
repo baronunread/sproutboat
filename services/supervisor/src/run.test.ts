@@ -61,6 +61,17 @@ test("staged candidate is listener-ready without broker dispatch until promotion
   expect(dispatchEnabled).toBe(1);
 });
 
+test("staged candidates with a rotated secrets generation never reuse a stale runtime (#141)", async () => {
+  const { spawn, servers } = fakeSpawn();
+  const pool = makePool(spawn);
+  const common = { sproutPath: "/tmp/candidate/sprout", secretsPath: "/tmp/secrets/app.json" };
+  await pool.stageCandidate({ id: "55555555-5555-4555-8555-555555555555", ...common, secretsHash: "old" });
+  await pool.stageCandidate({ id: "66666666-6666-4666-8666-666666666666", ...common, secretsHash: "new" });
+  expect(servers.size).toBe(2);
+  pool.discardCandidate("55555555-5555-4555-8555-555555555555");
+  pool.discardCandidate("66666666-6666-4666-8666-666666666666");
+});
+
 test("endpoint reports the cold start and its startup time, then warm hits", async () => {
   const { spawn } = fakeSpawn();
   const pool = makePool(spawn);

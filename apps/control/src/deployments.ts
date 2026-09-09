@@ -27,7 +27,7 @@ import {
   resourceById,
   syncRoutes,
 } from "./store";
-import { discardCandidate, promoteCandidate, stageCandidate } from "./activation";
+import { confirmRoute, discardCandidate, promoteCandidate, stageCandidate } from "./activation";
 
 export type { Deployment, ProjectSummary } from "./store";
 
@@ -244,17 +244,24 @@ export async function activateCandidate(ownerId: string, project: string, candid
     const active = storeActivate(ownerId, project, candidate.id);
     if (!active) throw new Error("candidate disappeared during activation");
     await syncRoutes();
-    await promoteCandidate(candidate.id);
+    await promoteCandidate(candidate);
   } catch (error) {
     // If the route DB switched but edge promotion failed, restore the previous
     // healthy row and snapshot before reporting failure. A first deploy simply
     // remains unrouted.
+    let rollbackFailure: Error | null = null;
     if (previous) {
       storeActivate(ownerId, project, previous.id);
       await syncRoutes();
+      try {
+        await confirmRoute(previous);
+      } catch (cause) {
+        rollbackFailure = new Error(cause instanceof Error ? cause.message : "edge rollback confirmation failed");
+      }
     }
     setDeploymentLifecycle(candidate.id, "failed");
     await discardCandidate(candidate.id);
+    if (rollbackFailure) throw rollbackFailure;
     throw error;
   }
 }
@@ -398,13 +405,15 @@ function resolveResourceBindings(refs: ResourceBindingRef[], ownerId: string): s
 export async function artifactDigest(dir: string, binaryHash: string): Promise<string> {
   const hash = createHash("sha256");
   hash.update(binaryHash);
-  for (const sidecar of ["bindings.json", "assets.json"]) {
-    hash.update(`\n${sidecar}\n`);
-    try {
-      hash.update(await readFile(resolve(dir, sidecar)));
-    } catch {
-      /* sidecar absent for this project */
-    }
+  const sidecars = await Promise.all(
+    ["bindings.json", "assets.json"].map(async (sidecar) => ({
+      name: sidecar,
+      body: await readFile(resolve(dir, sidecar)).catch(() => null),
+    })),
+  );
+  for (const sidecar of sidecars) {
+    hash.update(`\n${sidecar.name}\n`);
+    if (sidecar.body) hash.update(sidecar.body);
   }
   return hash.digest("hex");
 }

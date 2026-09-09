@@ -48,22 +48,27 @@ type DeploymentRow = {
   lifecycle: string;
 };
 
-const toDeployment = (row: DeploymentRow): Deployment => ({
-  id: row.id,
-  project: row.project,
-  ownerId: row.owner_id,
-  username: row.username,
-  hostname: row.hostname,
-  artifact: row.artifact_digest,
-  sproutPath: row.sprout_path,
-  deployedAt: row.deployed_at,
-  active: row.active === 1,
-  lifecycle: ["staged", "starting", "ready", "active", "failed"].includes(row.lifecycle)
+const toDeployment = (row: DeploymentRow): Deployment => {
+  // SAFETY: membership in the literal lifecycle list narrows this SQLite value
+  // to Deployment's lifecycle union.
+  const lifecycle = ["staged", "starting", "ready", "active", "failed"].includes(row.lifecycle)
     ? (row.lifecycle as Deployment["lifecycle"])
     : row.active === 1
       ? "active"
-      : "failed",
-});
+      : "failed";
+  return {
+    id: row.id,
+    project: row.project,
+    ownerId: row.owner_id,
+    username: row.username,
+    hostname: row.hostname,
+    artifact: row.artifact_digest,
+    sproutPath: row.sprout_path,
+    deployedAt: row.deployed_at,
+    active: row.active === 1,
+    lifecycle,
+  };
+};
 
 let db: Database | undefined;
 let dbConnectedPath: string | undefined;

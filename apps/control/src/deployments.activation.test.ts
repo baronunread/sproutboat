@@ -41,15 +41,20 @@ test("promotion happens only after a staged candidate is ready and the route sna
   const candidate = store.stageDeployment(deployment("candidate", "b".repeat(64)));
   const calls: string[] = [];
   setActivationClientForTest({
-    stage: async () => calls.push("stage"),
+    stage: async () => {
+      calls.push("stage");
+    },
     promote: async () => {
       calls.push("promote");
       expect(store.projectDeployments("owner", "app").find((row) => row.active)?.id).toBe(candidate.id);
+      // SAFETY: syncRoutes writes route records with a string sproutPath.
       expect(
         (JSON.parse(await readFile(join(dir, "routes.json"), "utf8")) as Array<{ sproutPath: string }>)[0]?.sproutPath,
       ).toBe(candidate.sproutPath);
     },
-    discard: async () => calls.push("discard"),
+    discard: async () => {
+      calls.push("discard");
+    },
   });
   await activateCandidate("owner", "app", candidate);
   expect(calls).toEqual(["stage", "promote"]);
@@ -70,6 +75,7 @@ test("failed stage or promotion restores the old active route (#141)", async () 
   await expect(activateCandidate("owner", "app", candidate)).rejects.toThrow("candidate died");
   expect(store.projectDeployments("owner", "app").find((row) => row.active)?.id).toBe(old.id);
   expect(store.projectDeployment("owner", "app", candidate.id)?.lifecycle).toBe("failed");
+  // SAFETY: syncRoutes writes route records with a string sproutPath.
   expect(
     (JSON.parse(await readFile(join(dir, "routes.json"), "utf8")) as Array<{ sproutPath: string }>)[0]?.sproutPath,
   ).toBe(old.sproutPath);
@@ -87,7 +93,9 @@ test("same-project activations are serialized, leaving one deterministic active 
       calls.push(`stage:${candidate.id}`);
       if (candidate.id === first.id) await held;
     },
-    promote: async (id) => calls.push(`promote:${id}`),
+    promote: async (id) => {
+      calls.push(`promote:${id}`);
+    },
     discard: async () => {},
   });
   const one = activateCandidateSerialized("owner", "app", first);
