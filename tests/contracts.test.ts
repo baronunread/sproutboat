@@ -180,8 +180,12 @@ describe("Phase A contracts", () => {
     expect(install).toContain("for _d in brokers resources; do");
     expect(install).toContain('chgrp -R sproutboat "$STATE/$_d"');
     expect(install).toContain('chmod -R g+rwX "$STATE/$_d"');
+    expect(install).toContain('install -d -m 0750 -o sproutboat-control -g sproutboat "$STATE/activation/requests"');
+    expect(install).toContain('install -d -m 0750 -o sproutboat-edge -g sproutboat "$STATE/activation/responses"');
     expect(controlUnit).toContain("UMask=0007");
     expect(edgeUnit).toContain("UMask=0007");
+    expect(controlUnit).toContain("SPROUTBOAT_ACTIVATION_DIR=/var/lib/sproutboat/activation");
+    expect(edgeUnit).toContain("SPROUTBOAT_ACTIVATION_DIR=/var/lib/sproutboat/activation");
   });
 
   test("updates stage a new installer outside the active release", async () => {

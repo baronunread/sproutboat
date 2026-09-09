@@ -17,6 +17,7 @@ import {
   projectLogTail,
   projectMetrics,
   projectSproutLog,
+  recoverInterruptedActivations,
 } from "./deployments";
 import { addDomain, deleteDomain, listDomains, verifyDomain } from "./domains";
 import { listSecrets, putSecret, removeSecret } from "./secrets";
@@ -92,6 +93,8 @@ async function activeHostnames(): Promise<Set<string>> {
     return new Set();
   }
 }
+
+await recoverInterruptedActivations();
 
 const server = Bun.serve({
   port,

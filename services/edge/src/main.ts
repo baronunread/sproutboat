@@ -4,6 +4,7 @@ import { dirname, join, resolve } from "node:path";
 import { pool } from "../../supervisor/src/run";
 import { isSproutFirst, resolveAssetKey, type AssetManifest } from "sproutboat/runtime/assets";
 import { EdgeCache, cacheRequestEligible, cacheResponseEligible } from "./cache";
+import { ActivationSpool } from "./activation";
 
 type JsonValue = string | number | boolean | null | EdgeJsonObject | JsonValue[];
 
@@ -138,6 +139,7 @@ const requestTimeoutMs = Number(process.env.SPROUTBOAT_REQUEST_TIMEOUT_MS) || 30
 const responseMaxBytes = Number(process.env.SPROUTBOAT_RESPONSE_MAX_BYTES) || 10 * 1024 * 1024;
 // #38: per-node edge cache. Set SPROUTBOAT_EDGE_CACHE=off to disable.
 const cache = process.env.SPROUTBOAT_EDGE_CACHE === "off" ? null : new EdgeCache();
+const activationSpool = new ActivationSpool(pool);
 const MAX_CACHE_ENTRY_BYTES = 512 * 1024;
 
 /**
@@ -584,6 +586,7 @@ process.env.SPROUTBOAT_EDGE_URL ||= `http://127.0.0.1:${server.port}/`;
 // callbacks. `reconcileTimed` wakes two at once, so an edge restart does not
 // stampede every deployment in a large snapshot.
 reconcileTimed(routes);
+void activationSpool.poll();
 
 console.log(`Sproutboat edge router listening on http://${bindHost}:${server.port}`);
 
@@ -600,10 +603,16 @@ const routeRefreshTimer = setInterval(() => {
     console.error(`route snapshot reload failed: ${error instanceof Error ? error.message : String(error)}`);
   });
 }, 1_000);
+const activationTimer = setInterval(() => {
+  void activationSpool.poll().catch((error) => {
+    console.error(`activation command poll failed: ${error instanceof Error ? error.message : String(error)}`);
+  });
+}, 100);
 
 function shutdown(): void {
   clearInterval(evictionTimer);
   clearInterval(routeRefreshTimer);
+  clearInterval(activationTimer);
   logStream?.end();
   pool.disposeAll();
   server.stop();

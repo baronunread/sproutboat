@@ -39,7 +39,12 @@ function readBootMs(file: string, spawnedAt: number, startupMs: number): number 
  * working memory management (verified flat RSS over 500k requests).
  */
 
-export type SproutChild = { readonly exited: Promise<number>; kill(signal?: number): void };
+export type SproutChild = {
+  readonly exited: Promise<number>;
+  kill(signal?: number): void;
+  /** Enables a broker launched with --dispatch-disabled. */
+  enableDispatch?(): void;
+};
 /** `secretsPath` (#2) points at the project's decrypted `secrets.json`, written
  *  outside the content-addressed artifact dir; null when the project has none. */
 export type SproutFactory = (
@@ -51,6 +56,8 @@ export type SproutFactory = (
    *  this whole argv path with one `register` frame, so an options-object
    *  refactor here is work that gets thrown away. */
   services?: Record<string, string> | null,
+  /** A staged candidate listens but its broker must not dispatch timed work. */
+  dispatchDisabled?: boolean,
 ) => SproutChild;
 
 /**
@@ -71,6 +78,8 @@ export type TimedSprout = {
   secretsPath?: string | null;
   services?: Record<string, string> | null;
 };
+
+export type CandidateSprout = TimedSprout & { id: string };
 
 export type SproutPoolOptions = {
   readonly spawn?: SproutFactory;
@@ -134,6 +143,7 @@ export function brokerArgs(opts: {
   assetsDir?: string | null;
   services?: Record<string, string> | null;
   edgeUrl?: string | null;
+  dispatchDisabled?: boolean;
 }): string[] {
   const args = [
     // `process.execPath`, not "bun": sproutboat-edge.service runs with a
@@ -168,6 +178,7 @@ export function brokerArgs(opts: {
   }
   // Static assets published beside the artifact back `env.<ASSETS>.fetch()`.
   if (opts.assetsDir) args.push("--assets-dir", opts.assetsDir);
+  if (opts.dispatchDisabled) args.push("--dispatch-disabled");
   return args;
 }
 
@@ -186,6 +197,7 @@ function spawnWithBroker(
   port: number,
   secretsPath?: string | null,
   services?: Record<string, string> | null,
+  dispatchDisabled?: boolean,
 ): SproutChild {
   const workerDir = dirname(sproutPath);
   const bindingsPath = resolve(workerDir, "bindings.json");
@@ -253,6 +265,7 @@ function spawnWithBroker(
       services,
       // The edge is the process spawning us, so it tells us its own address.
       edgeUrl: process.env.SPROUTBOAT_EDGE_URL || null,
+      dispatchDisabled,
     });
     const brokerFd = openLog("w");
     broker = Bun.spawn(args, { ...withLog(brokerFd), env: process.env });
@@ -320,7 +333,11 @@ function spawnWithBroker(
     return sprout.exited;
   })();
 
-  return { exited, kill: stop };
+  return {
+    exited,
+    kill: stop,
+    enableDispatch: () => capturedBroker?.kill("SIGUSR1" as never),
+  };
 }
 
 /** The real spawn behind the default pool. Exported so the unexecutable-artifact
@@ -330,8 +347,9 @@ export function spawnSprout(
   port: number,
   secretsPath?: string | null,
   services?: Record<string, string> | null,
+  dispatchDisabled?: boolean,
 ): SproutChild {
-  return spawnWithBroker(sproutPath, port, secretsPath, services);
+  return spawnWithBroker(sproutPath, port, secretsPath, services, dispatchDisabled);
 }
 
 async function listens(port: number): Promise<boolean> {
@@ -377,12 +395,13 @@ class SproutServer {
     private readonly onExit: (server: SproutServer) => void,
     secretsPath?: string | null,
     services?: Record<string, string> | null,
+    dispatchDisabled?: boolean,
   ) {
     this.port = port;
     this.url = `http://127.0.0.1:${port}`;
     this.lastUsedAt = now();
     const spawnedAt = Date.now();
-    this.#child = spawn(sproutPath, port, secretsPath, services);
+    this.#child = spawn(sproutPath, port, secretsPath, services, dispatchDisabled);
     this.#ready = this.#awaitListening(readyTimeoutMs).then(() => {
       this.startupMs = Date.now() - spawnedAt;
       this.bootMs = readBootMs(startupFilePath(sproutPath, port), spawnedAt, this.startupMs);
@@ -409,6 +428,10 @@ class SproutServer {
     // SIGKILL: the bwrap launcher does not forward SIGTERM to the payload;
     // killing bwrap hard triggers --die-with-parent teardown of the namespace.
     this.#child.kill(9);
+  }
+
+  enableDispatch(): void {
+    this.#child.enableDispatch?.();
   }
 
   async #awaitListening(timeoutMs: number): Promise<void> {
@@ -461,6 +484,8 @@ export class SproutPool {
   readonly #timed = new Map<string, TimedSprout>();
   readonly #timedWakeups = new Map<string, ReturnType<typeof setTimeout>>();
   readonly #timedWakeAttempts = new Map<string, number>();
+  /** Listener-ready, dispatch-disabled candidates keyed by control deployment id. */
+  readonly #candidates = new Map<string, string>();
   #timedReconcile: Promise<void> = Promise.resolve();
   #spawns = 0;
   #restarts = 0;
@@ -510,6 +535,7 @@ export class SproutPool {
     sproutPath: string,
     secretsPath?: string | null,
     services?: Record<string, string> | null,
+    dispatchDisabled = false,
   ): Promise<Endpoint> {
     const key = runtimeKey(sproutPath, secretsPath, services);
     let server = this.#servers.get(key);
@@ -530,6 +556,7 @@ export class SproutPool {
         (dead) => {
           if (this.#servers.get(key) === dead) this.#servers.delete(key);
           this.#usedPorts.delete(dead.port);
+          for (const [id, candidateKey] of this.#candidates) if (candidateKey === key) this.#candidates.delete(id);
           // A broker-driven route has no incoming HTTP request to bring a
           // crashed pair back. Retry it with a bounded backoff while it remains
           // the active route generation. This is lifecycle recovery only: it
@@ -539,6 +566,7 @@ export class SproutPool {
         },
         secretsPath,
         services,
+        dispatchDisabled,
       );
       this.#servers.set(key, server);
     }
@@ -560,12 +588,43 @@ export class SproutPool {
     };
   }
 
+  /** Start only the candidate's listener. No request reaches user code. */
+  async stageCandidate(candidate: CandidateSprout): Promise<Endpoint> {
+    if (!/^[a-f0-9-]{36}$/i.test(candidate.id)) throw new Error("invalid candidate id");
+    const key = runtimeKey(candidate.sproutPath, candidate.secretsPath, candidate.services);
+    const existing = this.#candidates.get(candidate.id);
+    if (existing && existing !== key) throw new Error("candidate id belongs to another runtime");
+    const endpoint = await this.endpoint(candidate.sproutPath, candidate.secretsPath, candidate.services, true);
+    this.#candidates.set(candidate.id, key);
+    return endpoint;
+  }
+
+  /** The route has switched: allow this already-listening broker to dispatch. */
+  promoteCandidate(id: string): void {
+    const key = this.#candidates.get(id);
+    const server = key && this.#servers.get(key);
+    if (!key || !server || server.closed) throw new Error("candidate is no longer ready");
+    server.enableDispatch();
+    this.#candidates.delete(id);
+  }
+
+  discardCandidate(id: string): void {
+    const key = this.#candidates.get(id);
+    this.#candidates.delete(id);
+    if (!key || this.#timed.has(key)) return;
+    const server = this.#servers.get(key);
+    server?.dispose();
+    this.#servers.delete(key);
+    if (server) this.#usedPorts.delete(server.port);
+  }
+
   dispose(sproutPath: string): void {
     const path = resolve(sproutPath);
     // `dispose(path)` is intentionally broad: route removal must stop every
     // runtime context that was spawned for this artifact, including aliases on
     // custom domains with different secrets or service snapshots.
     for (const [key, server] of Array.from(this.#servers.entries())) {
+      if ([...this.#candidates.values()].includes(key)) continue;
       if (server.sproutPath !== path) continue;
       this.#timed.delete(key);
       this.#cancelTimedWake(key);

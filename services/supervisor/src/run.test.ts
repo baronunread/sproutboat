@@ -45,6 +45,22 @@ test("endpoint starts one server per deployment and reuses it", async () => {
   expect(await (await fetch(a.url)).text()).toContain("/tmp/app/sprout");
 });
 
+test("staged candidate is listener-ready without broker dispatch until promotion (#141)", async () => {
+  const { spawn } = fakeSpawn();
+  let dispatchEnabled = 0;
+  const stagedSpawn: SproutFactory = (path, port, secrets, services, dispatchDisabled) => {
+    expect(dispatchDisabled).toBe(true);
+    return { ...spawn(path, port, secrets, services), enableDispatch: () => dispatchEnabled++ };
+  };
+  const pool = makePool(stagedSpawn);
+  const id = "11111111-1111-4111-8111-111111111111";
+  const endpoint = await pool.stageCandidate({ id, sproutPath: "/tmp/candidate/sprout" });
+  expect((await fetch(endpoint.url)).ok).toBe(true); // TCP/listener proof only
+  expect(dispatchEnabled).toBe(0);
+  pool.promoteCandidate(id);
+  expect(dispatchEnabled).toBe(1);
+});
+
 test("endpoint reports the cold start and its startup time, then warm hits", async () => {
   const { spawn } = fakeSpawn();
   const pool = makePool(spawn);

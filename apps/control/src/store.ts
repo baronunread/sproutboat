@@ -31,6 +31,7 @@ export type Deployment = {
   sproutPath: string;
   deployedAt: string;
   active: boolean;
+  lifecycle: "staged" | "starting" | "ready" | "active" | "failed";
 };
 export type ProjectSummary = { name: string; hostname: string; activeDeploymentId: string; deployedAt: string };
 
@@ -44,6 +45,7 @@ type DeploymentRow = {
   sprout_path: string;
   deployed_at: string;
   active: number;
+  lifecycle: string;
 };
 
 const toDeployment = (row: DeploymentRow): Deployment => ({
@@ -56,6 +58,11 @@ const toDeployment = (row: DeploymentRow): Deployment => ({
   sproutPath: row.sprout_path,
   deployedAt: row.deployed_at,
   active: row.active === 1,
+  lifecycle: ["staged", "starting", "ready", "active", "failed"].includes(row.lifecycle)
+    ? (row.lifecycle as Deployment["lifecycle"])
+    : row.active === 1
+      ? "active"
+      : "failed",
 });
 
 let db: Database | undefined;
@@ -125,6 +132,7 @@ function connection(): Database {
       sprout_path TEXT NOT NULL,
       deployed_at TEXT NOT NULL,
       active INTEGER NOT NULL DEFAULT 0,
+      lifecycle TEXT NOT NULL DEFAULT 'staged',
       FOREIGN KEY (owner_id, project) REFERENCES projects(owner_id, name) ON DELETE CASCADE
     );
     CREATE UNIQUE INDEX IF NOT EXISTS one_active_deployment_per_project
@@ -173,6 +181,10 @@ function connection(): Database {
   // worker -> sprout rename: bring a pre-rename DB's column name forward.
   // SAFETY: PRAGMA table_info rows always expose a string `name` column.
   const cols = database.query("PRAGMA table_info(deployments)").all() as Array<{ name: string }>;
+  if (!cols.some((column) => column.name === "lifecycle")) {
+    database.run("ALTER TABLE deployments ADD COLUMN lifecycle TEXT NOT NULL DEFAULT 'staged'");
+    database.run("UPDATE deployments SET lifecycle = CASE WHEN active = 1 THEN 'active' ELSE 'failed' END");
+  }
   if (cols.some((column) => column.name === "worker_path") && !cols.some((column) => column.name === "sprout_path")) {
     database.run("ALTER TABLE deployments RENAME COLUMN worker_path TO sprout_path");
   }
@@ -218,8 +230,8 @@ function importLegacyDeployments(): void {
       );
       run("INSERT OR IGNORE INTO artifacts (digest, created_at) VALUES (?, ?)", d.artifact, at);
       run(
-        `INSERT OR IGNORE INTO deployments (id, owner_id, project, username, hostname, artifact_digest, sprout_path, deployed_at, active)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT OR IGNORE INTO deployments (id, owner_id, project, username, hostname, artifact_digest, sprout_path, deployed_at, active, lifecycle)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         d.id,
         d.ownerId,
         d.project,
@@ -229,6 +241,7 @@ function importLegacyDeployments(): void {
         d.sproutPath,
         at,
         d.active === true ? 1 : 0,
+        d.active === true ? "active" : "failed",
       );
     }
   })();
@@ -365,7 +378,9 @@ export function ownerRollups(): OwnerRollup[] {
 
 // --- mutations (each its own transaction) ---------------------------------
 
-export function recordDeployment(input: Omit<Deployment, "active"> & { resourceIds?: string[] }): Deployment {
+export function recordDeployment(
+  input: Omit<Deployment, "active" | "lifecycle"> & { resourceIds?: string[] },
+): Deployment {
   const { resourceIds = [], ...deployment } = input;
   return connection().transaction(() => {
     run(
@@ -382,8 +397,8 @@ export function recordDeployment(input: Omit<Deployment, "active"> & { resourceI
     );
     run("UPDATE deployments SET active = 0 WHERE owner_id = ? AND project = ?", deployment.ownerId, deployment.project);
     run(
-      `INSERT INTO deployments (id, owner_id, project, username, hostname, artifact_digest, sprout_path, deployed_at, active)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1)`,
+      `INSERT INTO deployments (id, owner_id, project, username, hostname, artifact_digest, sprout_path, deployed_at, active, lifecycle)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, 'active')`,
       deployment.id,
       deployment.ownerId,
       deployment.project,
@@ -400,7 +415,63 @@ export function recordDeployment(input: Omit<Deployment, "active"> & { resourceI
         resourceId,
       );
     }
-    return { ...deployment, active: true };
+    return { ...deployment, active: true, lifecycle: "active" as const };
+  })();
+}
+
+/** Persist an uploaded version without changing the route-visible active row. */
+export function stageDeployment(
+  input: Omit<Deployment, "active" | "lifecycle"> & { resourceIds?: string[] },
+): Deployment {
+  const { resourceIds = [], ...deployment } = input;
+  return connection().transaction(() => {
+    run(
+      "INSERT OR IGNORE INTO projects (owner_id, name, username, created_at) VALUES (?, ?, ?, ?)",
+      deployment.ownerId,
+      deployment.project,
+      deployment.username,
+      deployment.deployedAt,
+    );
+    run(
+      "INSERT OR IGNORE INTO artifacts (digest, created_at) VALUES (?, ?)",
+      deployment.artifact,
+      deployment.deployedAt,
+    );
+    run(
+      `INSERT INTO deployments (id, owner_id, project, username, hostname, artifact_digest, sprout_path, deployed_at, active, lifecycle)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, 'staged')`,
+      deployment.id,
+      deployment.ownerId,
+      deployment.project,
+      deployment.username,
+      deployment.hostname,
+      deployment.artifact,
+      deployment.sproutPath,
+      deployment.deployedAt,
+    );
+    for (const resourceId of new Set(resourceIds))
+      run(
+        "INSERT OR IGNORE INTO deployment_resources (deployment_id, resource_id) VALUES (?, ?)",
+        deployment.id,
+        resourceId,
+      );
+    return { ...deployment, active: false, lifecycle: "staged" as const };
+  })();
+}
+
+export function setDeploymentLifecycle(id: string, lifecycle: Deployment["lifecycle"]): void {
+  run("UPDATE deployments SET lifecycle = ? WHERE id = ?", lifecycle, id);
+}
+
+/** A control restart cannot know whether an in-flight edge candidate survived.
+ * Keep the last active row routed and make every unfinished candidate retryable. */
+export function failInterruptedActivations(): Deployment[] {
+  return connection().transaction(() => {
+    const pending = q<DeploymentRow>(
+      "SELECT * FROM deployments WHERE active = 0 AND lifecycle IN ('starting', 'ready')",
+    );
+    run("UPDATE deployments SET lifecycle = 'failed' WHERE active = 0 AND lifecycle IN ('starting', 'ready')");
+    return pending.map(toDeployment);
   })();
 }
 
@@ -475,9 +546,9 @@ export function activateDeployment(ownerId: string, project: string, id: string)
       project,
     );
     if (!target) return undefined;
-    run("UPDATE deployments SET active = 0 WHERE owner_id = ? AND project = ?", ownerId, project);
-    run("UPDATE deployments SET active = 1 WHERE id = ?", id);
-    return toDeployment({ ...target, active: 1 });
+    run("UPDATE deployments SET active = 0, lifecycle = 'failed' WHERE owner_id = ? AND project = ?", ownerId, project);
+    run("UPDATE deployments SET active = 1, lifecycle = 'active' WHERE id = ?", id);
+    return toDeployment({ ...target, active: 1, lifecycle: "active" });
   })();
 }
 
@@ -788,6 +859,64 @@ function declaredServices(sproutPath: string): Array<{ binding: string; service:
   );
 }
 
+export type DeploymentRouteContext = {
+  secretsPath: string | null;
+  secretsHash: string | null;
+  services: Record<string, string> | null;
+};
+
+type SecretInfo = { secretsPath: string; secretsHash: string } | null;
+
+function activeRouteHosts(): Map<string, string> {
+  const hosts = new Map<string, string>();
+  for (const row of q<{ owner_id: string; project: string; hostname: string }>(
+    "SELECT owner_id, project, hostname FROM deployments WHERE active = 1",
+  )) {
+    hosts.set(`${row.owner_id}\0${row.project}`, row.hostname);
+  }
+  return hosts;
+}
+
+async function secretInfo(ownerId: string, project: string): Promise<SecretInfo> {
+  await mkdir(secretsDir(), { recursive: true, mode: 0o700 });
+  const values = projectSecretValues(ownerId, project);
+  const path = secretsFile(ownerId, project);
+  if (Object.keys(values).length === 0) {
+    await rm(path, { force: true });
+    return null;
+  }
+  const content = JSON.stringify(values, Object.keys(values).sort());
+  await writeFile(path, content, { mode: 0o600 });
+  return { secretsPath: path, secretsHash: createHash("sha256").update(content).digest("hex").slice(0, 16) };
+}
+
+async function routeContext(
+  ownerId: string,
+  project: string,
+  sproutPath: string,
+  hosts: Map<string, string>,
+  secrets: Map<string, SecretInfo>,
+): Promise<DeploymentRouteContext> {
+  const key = `${ownerId}\0${project}`;
+  if (!secrets.has(key)) secrets.set(key, await secretInfo(ownerId, project));
+  const info = secrets.get(key)!;
+  const services: Record<string, string> = {};
+  for (const entry of declaredServices(sproutPath)) {
+    const host = hosts.get(`${ownerId}\0${entry.service}`);
+    if (host) services[entry.binding] = host;
+  }
+  return {
+    secretsPath: info?.secretsPath ?? null,
+    secretsHash: info?.secretsHash ?? null,
+    services: Object.keys(services).length ? services : null,
+  };
+}
+
+/** The exact runtime context used by both a staged candidate and routes.json. */
+export async function deploymentRouteContext(deployment: Deployment): Promise<DeploymentRouteContext> {
+  return routeContext(deployment.ownerId, deployment.project, deployment.sproutPath, activeRouteHosts(), new Map());
+}
+
 async function writeRouteSnapshot(): Promise<void> {
   // Generated `<project>.<user>.<domain>` hosts, plus every verified custom
   // domain (#2) pointed at whatever version of its project is active right now.
@@ -810,15 +939,8 @@ async function writeRouteSnapshot(): Promise<void> {
   // project, so a service binding can be resolved to something the edge routes.
   // Same-owner only: on a multi-user box, naming another user's project must not
   // be a way to call it.
-  const activeHosts = new Map<string, string>();
-  for (const row of q<{ owner_id: string; project: string; hostname: string }>(
-    "SELECT owner_id, project, hostname FROM deployments WHERE active = 1",
-  )) {
-    activeHosts.set(`${row.owner_id}\0${row.project}`, row.hostname);
-  }
-
-  await mkdir(secretsDir(), { recursive: true, mode: 0o700 });
-  const written = new Map<string, { secretsPath: string; secretsHash: string } | null>(); // "<owner>\0<project>" -> file info
+  const activeHosts = activeRouteHosts();
+  const written = new Map<string, SecretInfo>();
   const routes: Array<{
     hostname: string;
     sproutPath: string;
@@ -827,36 +949,16 @@ async function writeRouteSnapshot(): Promise<void> {
     services?: Record<string, string>;
   }> = [];
   for (const row of rows) {
-    const key = `${row.owner_id}\0${row.project}`;
-    if (!written.has(key)) {
-      const values = projectSecretValues(row.owner_id, row.project);
-      const path = secretsFile(row.owner_id, row.project);
-      if (Object.keys(values).length > 0) {
-        // Deterministic bytes so the hash only moves when a value actually changes.
-        const content = JSON.stringify(values, Object.keys(values).sort());
-        await writeFile(path, content, { mode: 0o600 });
-        written.set(key, {
-          secretsPath: path,
-          secretsHash: createHash("sha256").update(content).digest("hex").slice(0, 16),
-        });
-      } else {
-        await rm(path, { force: true });
-        written.set(key, null);
-      }
-    }
-    const info = written.get(key);
-    // Resolve each declared service to the target's hostname. An entry that
-    // resolves to nothing is left out on purpose: the broker then reports the
-    // target as undeployed, which is what it is.
-    const services: Record<string, string> = {};
-    for (const entry of declaredServices(row.sprout_path)) {
-      const host = activeHosts.get(`${row.owner_id}\0${entry.service}`);
-      if (host) services[entry.binding] = host;
-    }
-    const route = info
-      ? { hostname: row.hostname, sproutPath: row.sprout_path, ...info }
+    const context = await routeContext(row.owner_id, row.project, row.sprout_path, activeHosts, written);
+    const route = context.secretsPath
+      ? {
+          hostname: row.hostname,
+          sproutPath: row.sprout_path,
+          secretsPath: context.secretsPath,
+          secretsHash: context.secretsHash!,
+        }
       : { hostname: row.hostname, sproutPath: row.sprout_path };
-    routes.push(Object.keys(services).length > 0 ? { ...route, services } : route);
+    routes.push(context.services ? { ...route, services: context.services } : route);
   }
 
   await mkdir(dirname(routesPath()), { recursive: true });

@@ -54,6 +54,25 @@ test("recordDeployment keeps exactly one active version per project", async () =
   expect(await routes()).toEqual([{ hostname: "app.alice.test", sproutPath: join(dir, "artifacts", b, "sprout") }]);
 });
 
+test("staging and interrupted recovery leave the prior active version routable (#141)", async () => {
+  const active = "7".repeat(64),
+    candidate = "8".repeat(64);
+  await makeArtifact(active);
+  await makeArtifact(candidate);
+  store.recordDeployment(D({ id: "stable", project: "staged", artifact: active }));
+  const staged = store.stageDeployment(D({ id: "candidate", project: "staged", artifact: candidate }));
+  expect(staged).toMatchObject({ active: false, lifecycle: "staged" });
+  store.setDeploymentLifecycle(staged.id, "ready");
+  expect(store.failInterruptedActivations().map((deployment) => deployment.id)).toEqual(["candidate"]);
+  expect(store.projectDeployments("user-1", "staged").find((deployment) => deployment.active)?.id).toBe("stable");
+  expect(store.projectDeployment("user-1", "staged", "candidate")?.lifecycle).toBe("failed");
+  await store.syncRoutes();
+  expect((await routes()).find((route) => route.hostname === "staged.alice.test")?.sproutPath).toBe(
+    join(dir, "artifacts", active, "sprout"),
+  );
+  store.deleteProject("user-1", "staged");
+});
+
 test("activateDeployment rolls back to an older version without a second active row", () => {
   const back = store.activateDeployment("user-1", "app", "d1");
   expect(back?.id).toBe("d1");
@@ -259,11 +278,14 @@ test("#48 — service bindings resolve to the target's hostname, same owner only
       hostname: "secret-svc.bob.test",
     }),
   );
+  const candidateContext = await store.deploymentRouteContext(store.projectDeployment("user-1", "web", "s2")!);
   await store.syncRoutes();
 
-  const snapshot: Array<{ hostname: string; services?: Record<string, string> }> = await routes();
+  const snapshot: Array<{ hostname: string; services?: Record<string, string>; secretsPath?: string }> = await routes();
   const web = snapshot.find((route) => route.hostname === "web.alice.test");
   expect(web?.services).toEqual({ API: "api.alice.test" });
+  expect(candidateContext.services).toEqual(web?.services ?? null);
+  expect(candidateContext.secretsPath).toBe(web?.secretsPath ?? null);
   // Naming another owner's project must not be a way to reach it: the binding
   // resolves to nothing, and the broker reports it as undeployed.
   expect(web?.services?.THEIRS).toBeUndefined();
