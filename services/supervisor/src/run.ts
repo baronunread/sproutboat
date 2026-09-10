@@ -30,12 +30,13 @@ function readBootMs(file: string, spawnedAt: number, startupMs: number): number 
 /**
  * One long-lived native-fetch HTTP server per deployment.
  *
- * alpha-3 Porffor compiles `export default { fetch }` into a uWebSockets server
- * binary. The supervisor assigns it a loopback port ($PORT — see
- * patches/porffor-render.patch), starts it, waits for it to listen, and restarts
- * it if it exits. The edge reverse-proxies each request to `endpoint()`.
+ * Porffor compiles `export default { fetch }` into a uWebSockets server
+ * binary. The supervisor assigns it a loopback port ($PORT — honoured by the
+ * render.js patch in @sproutboat/toolchain), starts it, waits for it to listen,
+ * and restarts it if it exits. The edge reverse-proxies each request to
+ * `endpoint()`.
  *
- * No stdin/stdout framing, no per-request process, no recycle: alpha-3 has
+ * No stdin/stdout framing, no per-request process, no recycle: Porffor has
  * working memory management (verified flat RSS over 500k requests).
  */
 

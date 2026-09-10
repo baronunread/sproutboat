@@ -9,8 +9,8 @@ runtime parses the request and calls `fetch`; the handler returns a `Response`.
 
 - The supervisor (`services/supervisor/src/run.ts`, `WorkerPool`) assigns each
   deployment a loopback port, starts the sprout with `PORT` in its environment
-  (honoured by `patches/porffor-render.patch`), waits for it to accept a TCP
-  connection, and restarts it if it exits.
+  (honoured by the render.js patch in `@sproutboat/toolchain`), waits for it to
+  accept a TCP connection, and restarts it if it exits.
 - One process serves the deployment for its whole life. alpha-3 has working
   memory management — RSS stays flat over hundreds of thousands of requests — so
   there is no per-request recycle.

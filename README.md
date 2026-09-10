@@ -149,13 +149,13 @@ stop it and remove `.local/sproutboat` and `~/.config/sproutboat`.
 
 The capability harness answers one question: does the installed Porffor run
 enough real webhook-style handlers to justify the capability profile the
-platform supports? Compilation alone does not count — behavior has to match
+platform supports? Compilation alone does not count; behavior has to match
 Bun's on every probe.
 
 `bun run validate` rebuilds [COMPAT.md](COMPAT.md), which opens with the
 compiler version, compile and match counts, median binary size, and a GO/NO-GO
-decision. Porffor alpha-4 is currently 31/31 compile, 29/31 match; both misses
-are `Date` parsing.
+decision. Porffor alpha-5 is currently 32/32 compile, 29/32 match; all three
+misses are non-ISO `Date` string parsing (#90).
 
 ## Repository layout
 
@@ -166,7 +166,7 @@ services/edge         public request path, metrics, logs
 services/supervisor   per-deployment sprout and broker processes
 install.sh, infra/    single-VPS provisioner, systemd units, sandbox launcher
 tools/                capability harness and the local dev stack
-tests/porffor/        the 31-handler Porffor capability suite
+tests/porffor/        the 32-handler Porffor capability suite
 docs/                 artifact, bindings, runtime and self-hosted design notes
 ```
 

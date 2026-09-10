@@ -19,15 +19,10 @@ if (!Bun.which("c++") && !Bun.which("clang++") && !Bun.which("g++"))
 if (!(await Bun.file(resolve(root, "node_modules/.bin/esbuild")).exists()) && !Bun.which("esbuild")) {
   problems.push("esbuild is not installed (native-fetch auto-bundles handlers with it)");
 }
-if (!(await Bun.file(resolve(root, "node_modules/porffor/runtime/index.js")).exists()))
-  problems.push("Porffor is not installed (run bun install)");
-if (
-  !(await readFile(resolve(root, "node_modules/porffor/compiler/render.js"), "utf8").catch(() => "")).includes(
-    'getenv("PORT")',
-  )
-) {
-  problems.push("Porffor $PORT patch not applied (run: bun run tools/patch-porffor.ts)");
-}
+// Porffor is fetched, verified and patched on the first compile by
+// @sproutboat/toolchain (ensurePorffor + ensurePorfforPatched, into
+// ~/.cache/sproutboat). Nothing to check here — a stale or hand-edited cache
+// file is re-patched on the next build.
 
 for (const file of files) {
   const path = resolve(capabilitiesDir, file);

@@ -1,12 +1,15 @@
-# Porffor: local patch + upstream notes
+# Porffor: upstream notes
 
-**Local state:** one patch, `patches/porffor-render.patch` — 11 lines, honours
-`$PORT` at runtime in the generated native-fetch server. Missing WHATWG surface
-is handled in our own prepended prelude (`tools/native-fetch-prelude.js`), not by
-patching Porffor: `URLSearchParams` (read + write), `URL.prototype.searchParams`
-and the `protocol`/`host`/`hostname`/`port`/`hash` accessors, static
-`Response.json`, `crypto.randomUUID` / `crypto.getRandomValues` (Math.random —
-NOT crypto-strong), and `structuredClone` (JSON round-trip).
+**Local patching moved out.** The pin and every Porffor source patch now live in
+`@sproutboat/toolchain` (`ensurePorffor` + `ensurePorfforPatched`), shared with
+`sproutboat-cli`; its `patches/UPSTREAM.md` is the current, complete list ($PORT,
+request-body limit, status lines, console sink, remote address). The WHATWG
+surface shims moved to `@sproutboat/runtime`'s prelude
+(`URLSearchParams`, `URL` accessors, static `Response.json`, `crypto.randomUUID`
+/ `getRandomValues`, `structuredClone`).
+
+The drafts below are Porffor findings this repo raised that are **not** yet
+covered there; keep them until filed.
 
 **Upstream plan** (see issue #25): file the two `fetch-globals.js` gaps as **one
 issue**, not PRs — the maintainer may want `URL`/`URLSearchParams` as real
@@ -17,22 +20,20 @@ delete the corresponding lines from `native-fetch-prelude.js`.
 Porffor's AI_POLICY: **disclose AI use** (name the tool), and **do not paste
 LLM-written prose** — rewrite the drafts below in your own words before filing.
 
-**alpha-4 checked (2026-08-29, `a415d19`).** Nothing relevant changed:
+**alpha-5 checked (2026-09-10, `1f4ae4a`).** Nothing relevant changed:
 
-| Gap                                                       | alpha-4                                                        | Action                                                         |
-| --------------------------------------------------------- | -------------------------------------------------------------- | -------------------------------------------------------------- |
-| `URLSearchParams` / `URL.prototype.searchParams`          | still missing (`runtime/fetch-globals.js:204`)                 | keep prelude; Draft A stands                                   |
-| static `Response.json(data, init)`                        | still missing (`fetch-globals.js:326`, instance `json()` only) | keep prelude; Draft A stands                                   |
-| class declaration not hoisted into scope                  | still throws in interpreter **and** native                     | Draft B stands                                                 |
-| env access / `$PORT`                                      | no `Porffor.env`; `porf_native_fetch_get_port` unchanged       | keep `patches/porffor-render.patch` (applied clean to alpha-4) |
-| compat suite                                              | 30/30 compile, 28/30 match — identical to alpha-3              | GO holds                                                       |
-| `Date` string parse (`15-date-iso`, `16-date-parts`)      | non-ISO strings mis-parsed                                     | **real Porffor bug — file it** (see Draft D)                   |
-| `URL` accessors / `crypto.randomUUID` / `structuredClone` | absent                                                         | shimmed in the prelude (this session); fold into Draft A       |
+| Gap                                                          | alpha-5                                                                 | Action              |
+| ------------------------------------------------------------ | ----------------------------------------------------------------------- | ------------------- |
+| `URLSearchParams` / `URL.prototype.searchParams`             | still missing (shimmed in `@sproutboat/runtime`)                        | Draft A stands      |
+| static `Response.json(data, init)`                           | still missing (instance `json()` only; shimmed)                         | Draft A stands      |
+| class declaration not hoisted into scope                     | still throws in interpreter and native                                  | Draft B stands      |
+| `Date` non-ISO string parse (`15-date-iso`, `16-date-parts`) | parses positionally, unlike V8: implementation-defined but a divergence | Draft D             |
+| `Date` timezone offsets (`32-date-offset`)                   | ignored, folded into ms: a real bug on valid ISO 8601 input             | Draft E (issue #90) |
+| compat suite                                                 | 32/32 compile, 29/32 match; the 3 misses are the Date rows above        | GO holds            |
 
-So the drafts below are still accurate — bump their version line from
-`alpha-3 (03b6b54)` to `alpha-4 (a415d19)` before filing. Re-check on the next
-release; the pin is now `#alpha-4` (still a moving tag — bun.lock records
-`a415d19`).
+The `$PORT` and remaining patches now live in `@sproutboat/toolchain`
+(`ensurePorfforPatched`), not this repo. The drafts below still apply. Bump
+their version line to `alpha-5 (1f4ae4a)` and rewrite the prose before filing.
 
 ---
 

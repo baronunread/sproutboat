@@ -9,6 +9,7 @@ import {
   wrapNativeFetchHandler,
   type Bindings,
 } from "@sproutboat/runtime";
+import { ensurePorffor, ensurePorfforPatched } from "@sproutboat/toolchain";
 
 // The wrapper, the Bindings shape and the SPROUTBOAT_*_JSON readers now live
 // in @sproutboat/runtime; re-export them so the existing `../tools/compile`
@@ -26,12 +27,12 @@ export type CompileResult = {
 };
 
 const root = resolve(import.meta.dir, "..");
-const porfEntry = resolve(root, "node_modules/porffor/runtime/index.js");
 export const preludePath = fileURLToPath(preludeUrl);
 // First compile builds uWebSockets from source; later ones are ~4-8s.
 const compileTimeoutMs = Number(process.env.PORFFOR_COMPILE_TIMEOUT_MS || 300_000);
-// The supervisor overrides this per worker via $PORT (patches/porffor-render.patch);
-// the baked value is only a fallback for a directly-run binary.
+// The supervisor overrides this per worker via $PORT (the render.js patch in
+// @sproutboat/toolchain); the baked value is only a fallback for a directly-run
+// binary.
 const defaultPort = Number(process.env.PORFFOR_BENCH_PORT || 8080);
 
 export async function compileHandler(input: string, output?: string): Promise<CompileResult> {
@@ -43,7 +44,17 @@ export async function compileHandler(input: string, output?: string): Promise<Co
   try {
     await mkdir(dirname(outputPath), { recursive: true });
     await mkdir(dirname(generatedPath), { recursive: true });
-    const [source, prelude] = await Promise.all([readFile(inputPath, "utf8"), readFile(preludePath, "utf8")]);
+    const [source, prelude, porfforRoot] = await Promise.all([
+      readFile(inputPath, "utf8"),
+      readFile(preludePath, "utf8"),
+      // Fetch + verify + patch the pinned Porffor into ~/.cache/sproutboat
+      // (shared with the CLI). ensurePorffor already patches the fresh
+      // checkout; ensurePorfforPatched is a cheap no-op on a warm cache and the
+      // guarantee that a hand-cleared file is re-patched.
+      ensurePorffor(),
+    ]);
+    await ensurePorfforPatched(porfforRoot);
+    const porfEntry = resolve(porfforRoot, "runtime/index.js");
     await writeFile(
       generatedPath,
       wrapNativeFetchHandler(source, prelude, readVarsFromEnv(), readBindingsFromEnv(), defaultPort),
