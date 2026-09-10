@@ -72,4 +72,10 @@ printf '  ✓ staged %s\n' "$COMMIT"
 # off. Its normal idempotent installer owns service restart and health checks.
 # Keep this bootstrapper alive for its EXIT trap so the private staging tree is
 # removed after the new installer returns.
+#
+# Reset the umask before handing off: the 077 above protects the private
+# staging parent, but install.sh creates $ROOT/node_modules and the built
+# dashboard, which the service users must read, and it sets its own restrictive
+# umask around the secret env files it writes.
+umask 022
 env SB_PULL=0 SB_SKIP_DNS_CHECK=1 SB_UPDATE=1 SB_UPDATE_PINNED_REF="$PERSISTED_REF" SB_REF="$REF" SB_UPDATE_COMMIT="$COMMIT" "$stage/install.sh" --upgrade

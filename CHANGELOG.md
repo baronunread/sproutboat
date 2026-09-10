@@ -5,6 +5,15 @@ Changes to the self-hosted Sproutboat platform are recorded here. Read the
 
 ## [Unreleased]
 
+### Fixed
+
+- `sbctl update` no longer installs `node_modules` and the built dashboard
+  root-only. The bootstrapper kept a restrictive umask while running the
+  release installer, so a dependency change left the service users unable to
+  read `@sproutboat/*` and both control and edge crash-looped
+  (`Cannot find module`). The installer now normalises those trees to
+  world-readable, and the bootstrapper resets its umask before the handoff.
+
 ## [0.3.0] - 2026-09-11
 
 ### Added

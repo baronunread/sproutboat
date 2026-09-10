@@ -275,9 +275,14 @@ if [ "${SB_PULL:-0}" = "1" ]; then
   ( cd "$ROOT" && "$BUN" update --silent sproutboat ) && ok "runtime CLI re-resolved"
 fi
 ( cd "$ROOT" && "$BUN" install --frozen-lockfile --silent ) && ok "dependencies ready"
+# bun install and the dashboard build inherit the caller's umask (the updater
+# runs with a restrictive one to keep its staging tree private). The service
+# users must be able to read and traverse both, regardless of how we were run.
+[ -d "$ROOT/node_modules" ] && chmod -R a+rX "$ROOT/node_modules"
 
 say "Building the dashboard"
 ( cd "$ROOT" && "$BUN" run --silent web:build >/dev/null ) && ok "dashboard built -> $ROOT/apps/web/dist"
+[ -d "$ROOT/apps/web/dist" ] && chmod -R a+rX "$ROOT/apps/web/dist"
 
 # --- write env BEFORE starting services -----------------------------
 say "Writing $ETC/{sproutboat,control}.env"
