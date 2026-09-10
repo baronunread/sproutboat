@@ -5,6 +5,8 @@ Changes to the self-hosted Sproutboat platform are recorded here. Read the
 
 ## [Unreleased]
 
+## [0.3.1] - 2026-09-11
+
 ### Fixed
 
 - `sbctl update` no longer installs `node_modules` and the built dashboard
@@ -13,6 +15,12 @@ Changes to the self-hosted Sproutboat platform are recorded here. Read the
   read `@sproutboat/*` and both control and edge crash-looped
   (`Cannot find module`). The installer now normalises those trees to
   world-readable, and the bootstrapper resets its umask before the handoff.
+
+### Breaking and operator actions
+
+- None. If a `sudo sbctl update` to 0.3.0 left control or edge failing, this
+  release fixes it; re-run `sudo sbctl update` (or
+  `chmod -R a+rX /opt/sproutboat/node_modules && sudo sbctl restart`).
 
 ## [0.3.0] - 2026-09-11
 
@@ -125,7 +133,8 @@ Changes to the self-hosted Sproutboat platform are recorded here. Read the
 
 First tagged self-hosted platform checkpoint.
 
-[Unreleased]: https://github.com/baronunread/sproutboat/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/baronunread/sproutboat/compare/v0.3.1...HEAD
+[0.3.1]: https://github.com/baronunread/sproutboat/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/baronunread/sproutboat/compare/v0.2.1...v0.3.0
 [0.2.1]: https://github.com/baronunread/sproutboat/compare/v0.2.0...v0.2.1
 [0.2.2]: https://github.com/baronunread/sproutboat/compare/v0.2.1...v0.2.2
