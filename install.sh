@@ -227,6 +227,11 @@ install -d -m 0750 -o sproutboat-control -g sproutboat "$STATE" "$STATE/artifact
 install -d -m 0770 -o sproutboat-edge   -g sproutboat "$STATE/logs"
 install -d -m 2770 -o sproutboat-edge   -g sproutboat "$STATE/brokers"
 install -d -m 2770 -o sproutboat-edge   -g sproutboat "$STATE/resources"
+# #141: control may create immutable activation requests; edge may only read
+# them and writes replies in its own directory. Neither service can forge the
+# other direction even though both share the sproutboat group.
+install -d -m 0750 -o sproutboat-control -g sproutboat "$STATE/activation/requests"
+install -d -m 0750 -o sproutboat-edge -g sproutboat "$STATE/activation/responses"
 # Older binding files may predate shared control-plane administration.
 for _d in brokers resources; do
   chgrp -R sproutboat "$STATE/$_d"

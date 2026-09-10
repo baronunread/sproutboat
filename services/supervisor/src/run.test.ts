@@ -45,6 +45,33 @@ test("endpoint starts one server per deployment and reuses it", async () => {
   expect(await (await fetch(a.url)).text()).toContain("/tmp/app/sprout");
 });
 
+test("staged candidate is listener-ready without broker dispatch until promotion (#141)", async () => {
+  const { spawn } = fakeSpawn();
+  let dispatchEnabled = 0;
+  const stagedSpawn: SproutFactory = (path, port, secrets, services, dispatchDisabled) => {
+    expect(dispatchDisabled).toBe(true);
+    return { ...spawn(path, port, secrets, services), enableDispatch: () => dispatchEnabled++ };
+  };
+  const pool = makePool(stagedSpawn);
+  const id = "11111111-1111-4111-8111-111111111111";
+  const endpoint = await pool.stageCandidate({ id, sproutPath: "/tmp/candidate/sprout" });
+  expect((await fetch(endpoint.url)).ok).toBe(true); // TCP/listener proof only
+  expect(dispatchEnabled).toBe(0);
+  pool.promoteCandidate(id);
+  expect(dispatchEnabled).toBe(1);
+});
+
+test("staged candidates with a rotated secrets generation never reuse a stale runtime (#141)", async () => {
+  const { spawn, servers } = fakeSpawn();
+  const pool = makePool(spawn);
+  const common = { sproutPath: "/tmp/candidate/sprout", secretsPath: "/tmp/secrets/app.json" };
+  await pool.stageCandidate({ id: "55555555-5555-4555-8555-555555555555", ...common, secretsHash: "old" });
+  await pool.stageCandidate({ id: "66666666-6666-4666-8666-666666666666", ...common, secretsHash: "new" });
+  expect(servers.size).toBe(2);
+  pool.discardCandidate("55555555-5555-4555-8555-555555555555");
+  pool.discardCandidate("66666666-6666-4666-8666-666666666666");
+});
+
 test("endpoint reports the cold start and its startup time, then warm hits", async () => {
   const { spawn } = fakeSpawn();
   const pool = makePool(spawn);

@@ -21,12 +21,20 @@ import {
   projectDeployment,
   projectDeployments,
   pruneProjectDeployments,
-  recordDeployment,
+  stageDeployment,
+  setDeploymentLifecycle,
+  failInterruptedActivations,
   resourceById,
   syncRoutes,
 } from "./store";
+import { confirmRoute, discardCandidate, promoteCandidate, stageCandidate } from "./activation";
 
 export type { Deployment, ProjectSummary } from "./store";
+
+/** Called once at control boot. Single-control-host deployment is intentional. */
+export async function recoverInterruptedActivations(): Promise<void> {
+  for (const deployment of failInterruptedActivations()) void discardCandidate(deployment.id);
+}
 
 const artifactRoot = resolve(process.env.SPROUTBOAT_ARTIFACTS_DIR || "/var/lib/sproutboat/artifacts");
 
@@ -179,6 +187,7 @@ export async function deploymentDetail(request: Request, project: string, id: st
     sproutPath: found.sproutPath,
     deployedAt: found.deployedAt,
     active: found.active,
+    lifecycle: found.lifecycle,
     // #76 — the dashboard's version + bindings views: who shipped it, what the
     // artifact declares, and which owned resources it was recorded against.
     deployedBy: found.username,
@@ -210,13 +219,68 @@ export async function deleteDeployment(request: Request, project: string, id: st
   );
 }
 
+const activationLocks = new Map<string, Promise<void>>();
+async function serialized<T>(key: string, work: () => Promise<T>): Promise<T> {
+  const previous = activationLocks.get(key) ?? Promise.resolve();
+  let release!: () => void;
+  const mine = new Promise<void>((resolve) => (release = resolve));
+  const queued = previous.then(() => mine);
+  activationLocks.set(key, queued);
+  await previous;
+  try {
+    return await work();
+  } finally {
+    release();
+    if (activationLocks.get(key) === queued) activationLocks.delete(key);
+  }
+}
+
+export async function activateCandidate(ownerId: string, project: string, candidate: Deployment): Promise<void> {
+  const previous = projectDeployments(ownerId, project).find((deployment) => deployment.active);
+  setDeploymentLifecycle(candidate.id, "starting");
+  try {
+    await stageCandidate(candidate);
+    setDeploymentLifecycle(candidate.id, "ready");
+    const active = storeActivate(ownerId, project, candidate.id);
+    if (!active) throw new Error("candidate disappeared during activation");
+    await syncRoutes();
+    await promoteCandidate(candidate);
+  } catch (error) {
+    // If the route DB switched but edge promotion failed, restore the previous
+    // healthy row and snapshot before reporting failure. A first deploy simply
+    // remains unrouted.
+    let rollbackFailure: Error | null = null;
+    if (previous) {
+      storeActivate(ownerId, project, previous.id);
+      await syncRoutes();
+      try {
+        await confirmRoute(previous);
+      } catch (cause) {
+        rollbackFailure = new Error(cause instanceof Error ? cause.message : "edge rollback confirmation failed");
+      }
+    }
+    setDeploymentLifecycle(candidate.id, "failed");
+    await discardCandidate(candidate.id);
+    if (rollbackFailure) throw rollbackFailure;
+    throw error;
+  }
+}
+
+export function activateCandidateSerialized(ownerId: string, project: string, candidate: Deployment): Promise<void> {
+  return serialized(`${ownerId}\0${project}`, () => activateCandidate(ownerId, project, candidate));
+}
+
 export async function activateDeployment(request: Request, project: string, id: string): Promise<Response> {
   const actor = await authorized(request);
   if (actor instanceof Response) return actor;
-  const deployment = storeActivate(actor.id, project, id);
-  if (!deployment) return Response.json({ error: "deployment not found" }, { status: 404 });
-  await syncRoutes();
-  return Response.json({ id, project, active: true, url: `https://${deployment.hostname}` });
+  const candidate = projectDeployment(actor.id, project, id);
+  if (!candidate) return Response.json({ error: "deployment not found" }, { status: 404 });
+  try {
+    await activateCandidateSerialized(actor.id, project, candidate);
+    return Response.json({ id, project, active: true, url: `https://${candidate.hostname}` });
+  } catch (error) {
+    return Response.json({ error: error instanceof Error ? error.message : "activation failed" }, { status: 409 });
+  }
 }
 
 /** CLI `tail`: chronological last 100 records as NDJSON (bounded tail read). */
@@ -341,13 +405,15 @@ function resolveResourceBindings(refs: ResourceBindingRef[], ownerId: string): s
 export async function artifactDigest(dir: string, binaryHash: string): Promise<string> {
   const hash = createHash("sha256");
   hash.update(binaryHash);
-  for (const sidecar of ["bindings.json", "assets.json"]) {
-    hash.update(`\n${sidecar}\n`);
-    try {
-      hash.update(await readFile(resolve(dir, sidecar)));
-    } catch {
-      /* sidecar absent for this project */
-    }
+  const sidecars = await Promise.all(
+    ["bindings.json", "assets.json"].map(async (sidecar) => ({
+      name: sidecar,
+      body: await readFile(resolve(dir, sidecar)).catch(() => null),
+    })),
+  );
+  for (const sidecar of sidecars) {
+    hash.update(`\n${sidecar.name}\n`);
+    if (sidecar.body) hash.update(sidecar.body);
   }
   return hash.digest("hex");
 }
@@ -461,7 +527,7 @@ export async function deployArtifact(request: Request, project: string): Promise
     if (resolvedResources instanceof Response) return resolvedResources;
 
     const hostname = deploymentHostname(project, actor.username);
-    const deployment = recordDeployment({
+    const deployment = stageDeployment({
       id: randomUUID(),
       project,
       ownerId: actor.id,
@@ -472,7 +538,20 @@ export async function deployArtifact(request: Request, project: string): Promise
       deployedAt: new Date().toISOString(),
       resourceIds: resolvedResources,
     });
-    await syncRoutes();
+    try {
+      await activateCandidateSerialized(actor.id, project, deployment);
+    } catch (error) {
+      return Response.json(
+        {
+          id: deployment.id,
+          hostname,
+          artifact: digest,
+          activated: false,
+          error: error instanceof Error ? error.message : "activation failed",
+        },
+        { status: 409 },
+      );
+    }
     // #25 — keep the retained-versions cap; GC any artifact it orphans.
     const orphaned = pruneProjectDeployments(actor.id, project, LIMITS.versionsPerProject());
     if (orphaned.length > 0) await collectArtifacts(orphaned);

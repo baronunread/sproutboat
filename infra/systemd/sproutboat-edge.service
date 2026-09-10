@@ -16,6 +16,7 @@ Environment=SPROUTBOAT_LOG_PATH=/var/lib/sproutboat/logs/requests.ndjson
 # log-rotation rule or cleanup script away from deleting it.
 Environment=SPROUTBOAT_BROKER_STATE_DIR=/var/lib/sproutboat/brokers
 Environment=SPROUTBOAT_RESOURCE_DIR=/var/lib/sproutboat/resources
+Environment=SPROUTBOAT_ACTIVATION_DIR=/var/lib/sproutboat/activation
 # Deployment domain + dashboard URL, written by install.sh.
 EnvironmentFile=-/etc/sproutboat/sproutboat.env
 # Platform-wide request caps (issue #27). Per-project overrides still tracked there.
