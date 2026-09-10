@@ -8,10 +8,10 @@
         "@better-auth/api-key": "^1.7.1",
         "@sproutboat/artifact": "^0.2.0",
         "@sproutboat/assets": "^0.2.0",
-        "@sproutboat/config": "^0.2.0",
-        "@sproutboat/runtime": "^0.3.0",
+        "@sproutboat/config": "^0.3.0",
+        "@sproutboat/runtime": "^0.4.0",
         "@sproutboat/toolchain": "^0.3.0",
-        "@sproutboat/wire": "^0.3.0",
+        "@sproutboat/wire": "^0.4.0",
         "@tanstack/charts": "^0.16.0",
         "@tanstack/react-router": "^1.170.32",
         "@tanstack/react-start": "^1.168.49",
@@ -567,13 +567,13 @@
 
     "@sproutboat/assets": ["@sproutboat/assets@0.2.0", "", {}, "sha512-jxY3oJ1P8Z8j6rumJHxFDmHFXMHfOmO9+lIpiNjIA9NQ0cna4hPAfWCp8fcd/QcXR+vtoBk1PGWeR+zJYBkgYg=="],
 
-    "@sproutboat/config": ["@sproutboat/config@0.2.0", "", {}, "sha512-8GFMRF+ESr9d3wVFR43A2sLiJGYYoIxdUhLYagOh4F0vXJFLIvts+PbzZFH4VJhLfsgY1RHiypNVsQgVuJwJYA=="],
+    "@sproutboat/config": ["@sproutboat/config@0.3.0", "", {}, "sha512-7RFDvMlmLxGKvLPbvrBtVDJHXsj3FhwpmttxxsSy4t9pvn4PnmtzEvX9RFEwokdVamVzzBvxXqQcN1jDK70BYw=="],
 
-    "@sproutboat/runtime": ["@sproutboat/runtime@0.3.0", "", {}, "sha512-njw+6ZytzkO/Vh7D/0SOsn6AfojBL4ZoEbY2uEb+L6X0h8snMjiSVhWjdVL9FcA+ussqdfYpEq5d5NgB8o2qoQ=="],
+    "@sproutboat/runtime": ["@sproutboat/runtime@0.4.0", "", {}, "sha512-5aKRhnMJzstQV+gXvZMOEUvpUqi0kRemOX+DI7sZBMYQtB7XQbI71uEwXL2PRjuKT8cPEY++504GOcd/gsQJzQ=="],
 
     "@sproutboat/toolchain": ["@sproutboat/toolchain@0.3.0", "", {}, "sha512-vYDiaA1yDtDgbqtUodCJWCs0s/QrFp3w70zAVyBjmJXzNKgMO+WkEkeI5vRaWO+vvTH5A9vw5BoSPZRnU+iZVg=="],
 
-    "@sproutboat/wire": ["@sproutboat/wire@0.3.0", "", { "dependencies": { "@sproutboat/assets": "^0.2.0" } }, "sha512-ZBx4qNwt1dY6dZb751w1P8z2PPwfWw7nZDAFeuCZDpi/ZV81ZXzBBJHwE/kPmHia7vx5W0/dU54WSIzARPsmdw=="],
+    "@sproutboat/wire": ["@sproutboat/wire@0.4.0", "", { "dependencies": { "@sproutboat/assets": "^0.2.0" } }, "sha512-FULMLf5THNgDw9Oqt5qvX0sgEx4vZqkevYeTN+BwA11+sLCPeuqK7yzI9yF2+SmuQBocryjDz1g2lqmLSkOjDA=="],
 
     "@standard-schema/spec": ["@standard-schema/spec@1.1.0", "", {}, "sha512-l2aFy5jALhniG5HgqrD6jXLi/rUWrKvqN/qJx6yoJsgKhblVd+iqqU4RCXavm/jPityDo5TCvKMnpjKnOriy0w=="],
 
