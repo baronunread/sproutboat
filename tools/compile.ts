@@ -8,11 +8,11 @@ import {
   readVarsFromEnv,
   wrapNativeFetchHandler,
   type Bindings,
-} from "sproutboat/runtime/wrap";
+} from "@sproutboat/runtime";
 
-// The wrapper, the Bindings shape and the SPROUTBOAT_*_JSON readers now live in
-// the CLI package (`sproutboat/runtime/wrap`); re-export them so the existing
-// `../tools/compile` import sites keep working. Only `compileHandler` below —
+// The wrapper, the Bindings shape and the SPROUTBOAT_*_JSON readers now live
+// in @sproutboat/runtime; re-export them so the existing `../tools/compile`
+// import sites keep working. Only `compileHandler` below —
 // the host-native, non-musl compile that drives the Porffor compat suite and
 // coldstart bench — is monorepo-specific.
 export { EMPTY_BINDINGS, readBindingsFromEnv, readVarsFromEnv, wrapNativeFetchHandler, type Bindings };

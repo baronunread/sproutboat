@@ -7,7 +7,10 @@
       "dependencies": {
         "@better-auth/api-key": "^1.7.1",
         "@sproutboat/artifact": "file:../sproutboat-packages/packages/artifact",
+        "@sproutboat/assets": "file:../sproutboat-packages/packages/assets",
         "@sproutboat/config": "file:../sproutboat-packages/packages/config",
+        "@sproutboat/runtime": "file:../sproutboat-packages/packages/runtime",
+        "@sproutboat/wire": "file:../sproutboat-packages/packages/wire",
         "@tanstack/charts": "^0.16.0",
         "@tanstack/react-router": "^1.170.32",
         "@tanstack/react-start": "^1.168.49",
@@ -563,7 +566,13 @@
 
     "@sproutboat/artifact": ["@sproutboat/artifact@file:../sproutboat-packages/packages/artifact", {}],
 
+    "@sproutboat/assets": ["@sproutboat/assets@file:../sproutboat-packages/packages/assets", {}],
+
     "@sproutboat/config": ["@sproutboat/config@file:../sproutboat-packages/packages/config", {}],
+
+    "@sproutboat/runtime": ["@sproutboat/runtime@file:../sproutboat-packages/packages/runtime", {}],
+
+    "@sproutboat/wire": ["@sproutboat/wire@file:../sproutboat-packages/packages/wire", {}],
 
     "@standard-schema/spec": ["@standard-schema/spec@1.1.0", "", {}, "sha512-l2aFy5jALhniG5HgqrD6jXLi/rUWrKvqN/qJx6yoJsgKhblVd+iqqU4RCXavm/jPityDo5TCvKMnpjKnOriy0w=="],
 

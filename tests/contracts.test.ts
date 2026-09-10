@@ -3,7 +3,7 @@ import { mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { parseConfig } from "@sproutboat/config";
-import { validateHttpSyncSource } from "sproutboat/runtime/source";
+import { validateHttpSyncSource } from "@sproutboat/runtime";
 import { validateManifest } from "@sproutboat/artifact";
 import { validateArtifactDirectory } from "../apps/control/src/artifact";
 import { artifactDigest, deploymentHostname } from "../apps/control/src/deployments";

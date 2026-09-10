@@ -2,8 +2,8 @@ import { expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { createBroker, type Frame } from "sproutboat/runtime/broker";
-import { walkAssets, type AssetManifest } from "sproutboat/runtime/assets";
+import { createBroker, type Frame } from "@sproutboat/wire";
+import { walkAssets, type AssetManifest } from "@sproutboat/assets";
 
 /** A temp project dir with `assets/` + a sibling `assets.json`, returned resolved. */
 function fixture(files: Record<string, string>, notFound: AssetManifest["notFound"] = "none") {

@@ -92,9 +92,9 @@ function runtimeKey(sproutPath: string, secretsPath?: string | null, services?: 
   return `${resolve(sproutPath)}\0${secretsPath ?? ""}\0${JSON.stringify(servicePairs)}`;
 }
 
-// The broker runs as a subprocess (not an import): resolve the CLI package's
-// `runtime/broker` export to a path Bun can spawn.
-const brokerEntry = fileURLToPath(import.meta.resolve("sproutboat/runtime/broker"));
+// The broker runs as a subprocess (not an import): resolve the shared
+// package's broker module to a path Bun can spawn.
+const brokerEntry = fileURLToPath(import.meta.resolve("@sproutboat/wire/broker"));
 
 /**
  * Whether the OS will let us bind this port on the loopback right now. Bun
