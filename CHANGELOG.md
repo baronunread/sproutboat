@@ -5,6 +5,48 @@ Changes to the self-hosted Sproutboat platform are recorded here. Read the
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-09-11
+
+### Added
+
+- Deploys now compile against the `@sproutboat/{runtime,wire}` 0.4.0 surface, so
+  a handler gains:
+  - **Rate limiting**: `ratelimiters` in `sproutboat.jsonc` gives
+    `env.<NAME>.limit({ key }) -> { success }`, a fixed-window counter served by
+    the deployment's broker.
+  - A **`crypto.subtle`** subset: `digest` (SHA-256/384/512) and HMAC
+    `sign` / `verify`; plus `crypto.scryptVerify` for migrating password hashes.
+  - **`env.<D1>.backup()`**: an online, integrity-checked D1 snapshot via
+    `VACUUM INTO`.
+  - **`request.cf.clientIp`**: the connection's remote address.
+
+### Changed
+
+- Config parsing, the artifact manifest, the binding broker and the native-fetch
+  runtime now come from published `@sproutboat/*` packages instead of a
+  `github:` dependency on the CLI. The Porffor pin and its source patches moved
+  to `@sproutboat/toolchain`. No wire change beyond the two new broker ops
+  above.
+- Porffor pinned alpha-4 -> alpha-5 (`1f4ae4ae`) for the compile path. Deployed
+  artifacts are immutable and unaffected; new deploys pick it up. The Porffor
+  compatibility suite holds at 32/32 compile, 29/32 match.
+
+### Fixed
+
+- A completed `sbctl update` restarts the active control and edge processes
+  after replacing their source, so the new runtime actually activates.
+- The edge retains still-active timed dispatchers across a candidate handoff
+  instead of dropping them.
+- The shared edge response cache is tightened to anonymous `GET` requests whose
+  response is `Cache-Control: public` with a finite lifetime. Anything carrying
+  `Authorization`, `Cookie`, `Set-Cookie`, `Vary` or a revalidation directive
+  bypasses it, so one deployment's dynamic response can never be served for
+  another's request.
+
+### Breaking and operator actions
+
+- None. Upgrade once with `sudo sbctl update`.
+
 ## [0.2.1] - 2026-09-08
 
 ### Fixed
@@ -74,7 +116,8 @@ Changes to the self-hosted Sproutboat platform are recorded here. Read the
 
 First tagged self-hosted platform checkpoint.
 
-[Unreleased]: https://github.com/baronunread/sproutboat/compare/v0.2.1...HEAD
+[Unreleased]: https://github.com/baronunread/sproutboat/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/baronunread/sproutboat/compare/v0.2.1...v0.3.0
 [0.2.1]: https://github.com/baronunread/sproutboat/compare/v0.2.0...v0.2.1
 [0.2.2]: https://github.com/baronunread/sproutboat/compare/v0.2.1...v0.2.2
 [0.2.1]: https://github.com/baronunread/sproutboat/compare/v0.2.0...v0.2.1
