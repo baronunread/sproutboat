@@ -19,7 +19,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { connect } from "node:net";
 import { EMPTY_BINDINGS, preludePath, wrapNativeFetchHandler, type Bindings } from "./compile";
-import { parseConfig, resourceRefs } from "sproutboat/runtime/config";
+import { parseConfig, resourceRefs } from "@sproutboat/config";
 import { startupFilePath } from "../services/supervisor/src/run";
 
 const ROOT = join(import.meta.dir, "..");

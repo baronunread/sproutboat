@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { readFile, readdir, stat } from "node:fs/promises";
 import { resolve } from "node:path";
-import { validateManifest, type ArtifactManifest } from "sproutboat/runtime/manifest";
+import { validateManifest, type ArtifactManifest } from "@sproutboat/artifact";
 
 /** #74 — one `{ binding, id }` storage-binding entry from bindings.json.resources. */
 export type ResourceBindingRef = { binding: string; kind: "kv" | "d1" | "r2" | "queue"; id: string };
@@ -159,25 +159,26 @@ async function assetsErrors(directory: string): Promise<string[]> {
 
   const errors: string[] = [];
   let total = 0;
-  for (const [key, entry] of entries) {
-    if (!key.startsWith("/") || key.includes("..")) {
-      errors.push(`assets.json key "${key}" must be an absolute posix path`);
-      continue;
-    }
-    if (!isObj(entry) || !isStr(entry.hash) || !isNum(entry.size)) {
-      errors.push(`assets.json["${key}"] needs a string hash and numeric size`);
-      continue;
-    }
-    let bytes: Buffer;
-    try {
-      bytes = await readFile(resolve(directory, "assets", `.${key}`));
-    } catch {
-      errors.push(`assets/${key} is missing`);
-      continue;
-    }
-    if (createHash("sha256").update(bytes).digest("hex") !== entry.hash)
-      errors.push(`assets/${key} does not match its recorded hash`);
-    total += bytes.length;
+  const checks = await Promise.all(
+    entries.map(async ([key, entry]): Promise<{ error?: string; bytes?: number }> => {
+      if (!key.startsWith("/") || key.includes(".."))
+        return { error: `assets.json key "${key}" must be an absolute posix path` };
+      if (!isObj(entry) || !isStr(entry.hash) || !isNum(entry.size))
+        return { error: `assets.json["${key}"] needs a string hash and numeric size` };
+      let bytes: Buffer;
+      try {
+        bytes = await readFile(resolve(directory, "assets", `.${key}`));
+      } catch {
+        return { error: `assets/${key} is missing` };
+      }
+      if (createHash("sha256").update(bytes).digest("hex") !== entry.hash)
+        return { error: `assets/${key} does not match its recorded hash` };
+      return { bytes: bytes.length };
+    }),
+  );
+  for (const check of checks) {
+    if (check.error) errors.push(check.error);
+    total += check.bytes || 0;
   }
   if (total > MAX_ASSET_BYTES) errors.push(`assets total ${total} bytes exceeds the ${MAX_ASSET_BYTES} limit`);
   return errors;

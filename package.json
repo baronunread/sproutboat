@@ -33,6 +33,8 @@
   },
   "dependencies": {
     "@better-auth/api-key": "^1.7.1",
+    "@sproutboat/artifact": "file:../sproutboat-packages/packages/artifact",
+    "@sproutboat/config": "file:../sproutboat-packages/packages/config",
     "@tanstack/charts": "^0.16.0",
     "@tanstack/react-router": "^1.170.32",
     "@tanstack/react-start": "^1.168.49",
