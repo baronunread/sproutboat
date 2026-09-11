@@ -1,9 +1,10 @@
 # http-sync-v0
 
 `http-sync-v0` is the accepted local handler profile. A handler must
-default-export an object with `fetch(request)` and return a `Response`. It has
-no dynamic bindings, no outbound network access by default, and no Node or Bun
-API contract. The accepted fixtures live in `tests/porffor/capabilities/`.
+default-export an object with `fetch(request)` and return a `Response`, or a
+promise of one (see [Async handlers](#async-handlers)). It has no dynamic
+bindings, no outbound network access by default, and no Node or Bun API
+contract. The accepted fixtures live in `tests/porffor/capabilities/`.
 
 **Imports (#89).** The entry point may import: relative modules across the
 project, and bare specifiers resolved from the project's own `node_modules`.
@@ -16,6 +17,25 @@ not supported, since nothing can be resolved at build time.
 
 Unsupported syntax and API fixtures belong in `tests/porffor/rejected/`; they
 are validated by the CLI `check` command before a build can begin.
+
+## Async handlers
+
+`fetch(request)` may return a `Response` or a promise of one. The promise has
+to be the object the handler itself returns: a promise chained off it with
+`.then()` is never resolved by the runtime and the request hangs. So
+`return handle(request)`, where `handle` is `async`, works;
+`return handle(request).then(addHeader)` does not. A route that needs `await`
+stays isolated: keep `fetch` itself synchronous and `return` the async call
+for that one branch.
+
+An async response carries no `x-sb-cpu-ms` header. Per-invocation CPU time is
+measured only on the synchronous path, where the handler returns before the
+entry shim reads the clock.
+
+`crypto.subtle.digest`, `sign` and `verify` are async in signature only. Their
+bodies are synchronous inline C with no host round-trip, so hashing per request
+costs a promise allocation, not I/O: there is no reason to vendor a pure-JS
+SHA-256 to keep a handler synchronous.
 
 ## `env` — build-time variables (issue #8)
 
