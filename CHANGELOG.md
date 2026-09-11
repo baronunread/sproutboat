@@ -5,6 +5,30 @@ Changes to the self-hosted Sproutboat platform are recorded here. Read the
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-09-11
+
+### Added
+
+- Deploys compile against the `@sproutboat/{runtime,wire}` 0.5.0 surface:
+  `env.<NAME>.limit({ key })` now returns `{ success, resetAt }`. `resetAt` is
+  epoch milliseconds for when the fixed window rolls, so a throttled request
+  can be answered with an accurate `Retry-After`
+  (`Math.ceil((resetAt - Date.now()) / 1000)`). Handlers reading only
+  `success` are unaffected.
+
+### Changed
+
+- `@sproutboat/runtime` and `@sproutboat/wire` pinned to `^0.5.0`.
+- `docs/capability-http-sync-v0.md` documents async handlers: `fetch` may
+  return a promise the handler itself creates (a `.then()`-chained one hangs),
+  such a response omits `x-sb-cpu-ms`, and `crypto.subtle` digest/sign/verify
+  are async in signature only over synchronous inline C.
+
+### Breaking and operator actions
+
+- None. `sudo sbctl update` picks up the new runtime; existing deployments keep
+  working and gain the field on their next deploy.
+
 ## [0.3.1] - 2026-09-11
 
 ### Fixed
