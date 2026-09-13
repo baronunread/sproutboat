@@ -30,7 +30,7 @@ LLM-written prose** — rewrite the drafts below in your own words before filing
 | `Date` non-ISO string parse (`15-date-iso`, `16-date-parts`) | parses positionally, unlike V8: implementation-defined, needs a realistic (not synthetic) input before filing | Draft D — needs revision, not yet filable |
 | `Date` timezone offsets (`32-date-offset`)                   | ignored, folded into ms: a real bug on valid ISO 8601 input             | Draft E (issue #90) |
 | promise-resolve thenable probe can spin forever              | reproduced with lldb; missing prototype-walk termination guard          | Draft F             |
-| `Request`/`Response` accept no byte body (`Uint8Array`/`ArrayBuffer`) | `.text()`/`.json()` fall through to `String(bytes)`, garbage not a decode | Draft G             |
+| `Request`/`Response` accept no byte body (`Uint8Array`/`ArrayBuffer`) | `.text()`/`.json()` fall through to `String(bytes)`, garbage not a decode | Draft G — filed as [#386](https://github.com/CanadaHonk/porffor/issues/386) |
 
 This table is our own filing status, not a Porffor compat number — it doesn't
 belong to a "release readiness" metric and shouldn't grow one; see one below
@@ -345,6 +345,8 @@ internals (`compiler/builtins/promise.ts`, `compiler/builtins/_internal_object.t
 not something a userland polyfill can reach.
 
 ## Draft G — `Request`/`Response` accept no byte body (`Uint8Array`/`ArrayBuffer`)
+
+**Filed: [CanadaHonk/porffor#386](https://github.com/CanadaHonk/porffor/issues/386).**
 
 **Title:** native-fetch: `new Response(uint8Array)` / `new Request(..., {body: uint8Array})` don't work — the body is stored raw and `.text()`/`.json()` fall through to `String(bytes)`
 
