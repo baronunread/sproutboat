@@ -37,6 +37,41 @@ bodies are synchronous inline C with no host round-trip, so hashing per request
 costs a promise allocation, not I/O: there is no reason to vendor a pure-JS
 SHA-256 to keep a handler synchronous.
 
+## `ctx.waitUntil` (issue #57, #171)
+
+`fetch`, `scheduled`, and `queue` all take a second argument, `ctx`, with
+`waitUntil(promise)`: work that must run but that the handler's own return
+shouldn't wait on.
+
+```js
+export default {
+  fetch(request, ctx) {
+    ctx.waitUntil(env.LOG.put(requestId, "seen")); // not awaited
+    return new Response("ok");
+  },
+};
+```
+
+Registered promises are drained, in-process and sequentially, once the
+handler's own return value is ready — this still routes through the
+async-handler rules above, so a `fetch` response drained this way carries no
+`x-sb-cpu-ms`. The drain is capped at 25s for the whole batch (under the
+edge's own 30s `SPROUTBOAT_REQUEST_TIMEOUT_MS`, so the sprout still gets to
+answer); a task still running past the cap keeps running, it just stops
+holding up the response. A rejected task is swallowed rather than failing the
+response.
+
+`scheduled` and `queue` used to be fire-and-forget regardless of `ctx`: an
+async handler's own promise was dropped the moment the reply went out, so any
+`ack()`/`retry()` a `queue` handler made after its first `await` never counted
+— the default "everything not explicitly handled is acked" pass ran before
+that `await` finished. Both are now awaited properly, on every delivery path
+(broker-dispatched, and the embedded standalone binary's own local timers).
+
+`DurableObjectState.waitUntil` works the same way, scoped to the instance
+(drained after `fetch`/`alarm` returns) — including the embedded transport's
+own local alarm timer, which used to bypass this entirely.
+
 ## `env` — build-time variables (issue #8)
 
 Non-secret `vars` from `sproutboat.jsonc` are available as a module-scoped `env`

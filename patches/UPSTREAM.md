@@ -200,3 +200,136 @@ a call with the wrong arity (`too few arguments to function call, expected 3,
 have 1`) and the C build fails. It has to be fixed in `compiler/builtins`.
 
 Covered by `tests/porffor/capabilities/32-date-offset.js`.
+
+## Draft F — promise-resolve's thenable probe can loop forever, livelocking the process
+
+**Title:** resolving a promise with a plain object can infinite-loop in the `.then` duck-type check
+
+alpha-5 (`1f4ae4ae`), plain `porf native` — verified with no sproutboat, no
+CLI, no bindings involved, so this is squarely in shared promise/object
+runtime internals.
+
+### Repro (verified — no sproutboat-cli, no bindings)
+
+```js
+// src/index.js
+function readCookies(header) {
+  const out = {};
+  const parts = String(header || '').split(';');
+  for (let i = 0; i < parts.length; i++) {
+    const part = parts[i];
+    const index = part.indexOf('=');
+    if (index < 0) {
+      const name = part.trim();
+      if (name) out[name] = '';
+    } else {
+      const name = part.slice(0, index).trim();
+      if (name) out[name] = part.slice(index + 1).trim();
+    }
+  }
+  return out;
+}
+async function readSession(request) {
+  const cookies = readCookies(request.headers.get('cookie'));
+  const token = cookies['session'] || '';
+  if (!token) return null;
+  return { token };
+}
+function json(data, status) {
+  return new Response(JSON.stringify(data), { status: status || 200, headers: { 'content-type': 'application/json' } });
+}
+async function inner(request) {
+  const session = await readSession(request);
+  if (!session) return json({ error: 'sign in required' }, 401); // <- the branch that wedges
+  return json({ ok: true });
+}
+export default {
+  fetch(request) {
+    return inner(request); // no .then() chaining — the documented-safe pattern
+  },
+};
+```
+
+```sh
+porf native src/index.js -o dist/repro   # esbuild must be on PATH; auto-detects native-fetch shape
+PORT=8199 ./dist/repro &
+for i in $(seq 1 40); do curl -s -m 3 -o /dev/null -w '%{http_code} ' http://127.0.0.1:8199/; done
+# a handful of 401s, then every further connection times out; process pinned at 100% CPU forever
+```
+
+Confirmed the trigger is specifically the object-literal branch
+(`json({ error: ... }, 401)`, a fresh object each call): a version of this
+same repro that instead returns the *found-session* branch (`{ token }`, also
+a plain object, also promise-resolved) ran 60 requests clean in our testing —
+so onset depends on which allocation this particular object's bytes land on,
+not merely "any resolved plain object." Onset is nondeterministic anyway
+(6-8 requests in our runs, 2-6 in an earlier variant) — consistent with a
+stale byte surviving allocator/pool reuse rather than a fresh-heap value,
+which is also why a sync-only route (nothing ever resolves a promise) never
+wedges no matter how many times it's hit.
+
+### Root cause (debug build, lldb, symbols via `-d`)
+
+The wedge is `__Porffor_promise_resolve`'s duck-typing check for a `.then`
+(`compiler/builtins/promise.ts`), which walks the value's prototype chain:
+
+```ts
+let probe: any = value;
+while (Porffor.type(probe) == Porffor.TYPES.object) {
+  if (Porffor.object.lookup(probe, 'then', thenHash) != 0) break;
+  probe = __Porffor_object_getPrototype(probe);
+}
+```
+
+A breakpoint on `__Porffor_object_getPrototype` during the wedge fires
+continuously with the same argument every time: `val = 0`, `type = 7`
+(`TYPES.object`) — a jsval that reads as "a valid object living at address 0"
+rather than the `undefined`/`null` that should terminate the walk. The chain
+never bottoms out, so the loop spins forever recomputing the same fixed point.
+Full backtrace at the breakpoint:
+
+```
+__Porffor_object_getPrototype (val=0, type=7)
+__Porffor_promise_resolve + 704
+porf_async_call_sync + 256
+p67_inner (readSession's compiled body)
+porf_invoke
+porf_coro_call_thunk
+porf_coro_bootstrap
+porf_coro_enter
+porf_coro_call_step
+porf_coro_start
+p68_outer (inner's compiled body)
+... (call_dynamic / porf_invoke frames up through fetch and the native-fetch entry)
+handle_request -> on_request -> uWS event loop -> main
+```
+
+Same PC on repeated samples seconds apart, same call stack, same register
+values — this is a true spin, not slow forward progress.
+
+Best guess (not confirmed against the allocator): the object's prototype slot
+is read via `Porffor.IR.loadU8(obj, 5)` for its type tag and
+`Porffor.IR.loadI32(obj, 8)` for its value, and a plain object literal that
+never calls `__Porffor_object_setPrototype` relies on those bytes defaulting
+to zero (`TYPES.number`-ish/unset, not `TYPES.object` = `7`) to signal "no
+explicit prototype, fall back to the hidden one." If the allocator hands back
+reused memory without zeroing that byte, a stale `7` from a previous
+allocation's unrelated field turns "no prototype" into "prototype is the
+bogus object at address 0," which itself reads back the same way — a
+self-sustaining fixed point.
+
+### Impact
+
+Any handler whose `fetch` returns (directly or via `await`) a promise
+resolved with a plain object — the overwhelmingly common shape for a JSON API
+response — can wedge the whole process. `native-fetch` serves one request at
+a time on a single uWS loop, so once it spins, every other in-flight and
+future connection dies with it; only a process restart recovers. This is
+worse than a slow leak: it looks like an app bug (a specific route "just
+hangs"), the onset is allocator-dependent so it evades small test suites,
+and there's no error or log line — the process is burning 100% CPU and
+producing nothing.
+
+Not shimmable from a prelude — this is in the object/promise runtime
+internals (`compiler/builtins/promise.ts`, `compiler/builtins/_internal_object.ts`),
+not something a userland polyfill can reach.
