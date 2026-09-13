@@ -4,6 +4,7 @@ import { dirname, join, resolve } from "node:path";
 import { pool } from "../../supervisor/src/run";
 import { isSproutFirst, resolveAssetKey, type AssetManifest } from "@sproutboat/assets";
 import { EdgeCache, cacheRequestEligible, cacheResponseEligible } from "./cache";
+import { cacheControlFor } from "./asset-cache-control";
 
 type JsonValue = string | number | boolean | null | EdgeJsonObject | JsonValue[];
 
@@ -409,7 +410,7 @@ const server = Bun.serve({
             "content-type": entry.type,
             etag,
             "content-length": String(entry.size),
-            "cache-control": "public, max-age=0, must-revalidate",
+            "cache-control": cacheControlFor(assetKey),
           },
         });
       }
