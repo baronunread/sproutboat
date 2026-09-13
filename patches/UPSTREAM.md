@@ -27,13 +27,17 @@ LLM-written prose** — rewrite the drafts below in your own words before filing
 | `URLSearchParams` / `URL.prototype.searchParams`             | still missing (shimmed in `@sproutboat/runtime`)                        | Draft A stands      |
 | static `Response.json(data, init)`                           | still missing (instance `json()` only; shimmed)                         | Draft A stands      |
 | class declaration not hoisted into scope                     | still throws in interpreter and native                                  | Draft B stands      |
-| `Date` non-ISO string parse (`15-date-iso`, `16-date-parts`) | parses positionally, unlike V8: implementation-defined but a divergence | Draft D             |
+| `Date` non-ISO string parse (`15-date-iso`, `16-date-parts`) | parses positionally, unlike V8: implementation-defined, needs a realistic (not synthetic) input before filing | Draft D — needs revision, not yet filable |
 | `Date` timezone offsets (`32-date-offset`)                   | ignored, folded into ms: a real bug on valid ISO 8601 input             | Draft E (issue #90) |
-| compat suite                                                 | 32/32 compile, 29/32 match; the 3 misses are the Date rows above        | GO holds            |
+| promise-resolve thenable probe can spin forever              | reproduced with lldb; missing prototype-walk termination guard          | Draft F             |
+| `Request`/`Response` accept no byte body (`Uint8Array`/`ArrayBuffer`) | `.text()`/`.json()` fall through to `String(bytes)`, garbage not a decode | Draft G             |
 
-The `$PORT` and remaining patches now live in `@sproutboat/toolchain`
-(`ensurePorfforPatched`), not this repo. The drafts below still apply. Bump
-their version line to `alpha-5 (1f4ae4a)` and rewrite the prose before filing.
+This table is our own filing status, not a Porffor compat number — it doesn't
+belong to a "release readiness" metric and shouldn't grow one; see one below
+per draft instead. The `$PORT` and remaining patches now live in
+`@sproutboat/toolchain` (`ensurePorfforPatched`), not this repo. The drafts
+below still apply. Bump their version line to `alpha-5 (1f4ae4a)` and rewrite
+the prose before filing.
 
 ---
 
@@ -41,7 +45,7 @@ their version line to `alpha-5 (1f4ae4a)` and rewrite the prose before filing.
 
 **Title:** native-fetch: `URLSearchParams` and static `Response.json` missing
 
-alpha-3 (`03b6b54`), `porf native`, `export default { fetch }`.
+alpha-5 (`1f4ae4a`), `porf native`, `export default { fetch }`.
 
 ### 1. no `URLSearchParams` / `URL.prototype.searchParams`
 
@@ -94,7 +98,7 @@ export default {
 
 **Title:** class declaration is not visible before its position in source
 
-alpha-3 (`03b6b54`). Fails in both the interpreter and `native`.
+alpha-5 (`1f4ae4a`). Fails in both the interpreter and `native`.
 
 ```js
 class A {
@@ -122,45 +126,48 @@ move the class above `URL`.
 
 ---
 
-## Draft C — env access for handlers (hold ~a month, then raise)
-
-Not "please special-case `PORT`". The real gap: **native-fetch handler JS has no
-way to read the process environment.** With a `Porffor.env(name)` (or exposing
-`getenv`), the port case is solved in userland:
-
-```js
-export default { port: Number(Porffor.env("PORT")) || 3000, fetch() { … } };
-```
-
-and env-driven config works generally. Alternatives the maintainer may prefer: a
-`--port` compile flag, or a `--port` argv flag on the produced binary (workerd
-convention). Our local `patches/porffor-render.patch` hardcodes a `getenv("PORT")`
-branch in `porf_native_fetch_get_port()` — fine for us, not the right upstream shape.
+**Draft C, formerly here ("env access for handlers"), cut.** Its premise —
+"native-fetch handler JS has no way to read the process environment" — is
+false: handler code can already call `getenv` today via an inline `Porffor.c`
+block (the exact mechanism sproutboat's own bindings use), verified with a
+real `porf native` build (`getenv("SB_TEST_ENV")` from handler-level
+`Porffor.c` sees the process environment correctly). Not upstream's problem
+to solve; if a nicer surface than raw `Porffor.c` is ever wanted, that's a
+sproutboat-side helper, not a Porffor gap.
 
 ---
 
-## Draft D — non-ISO `Date` string parsing diverges from V8
+## Draft D — non-ISO `Date` string parsing diverges from V8 (web-compat, not a spec violation)
 
-**Title:** native-fetch: `new Date("<non-ISO string>")` parses positionally, unlike V8/JSC
+**Title:** native-fetch: `new Date("<legacy/non-ISO string>")` doesn't match the format every other engine converges on
 
-alpha-4 (`a415d19`), `porf native`.
+alpha-5 (`1f4ae4a`), `porf native`. Framing note: non-ISO date parsing is
+explicitly implementation-defined by spec, so this isn't a correctness bug —
+it's a web-compatibility gap, on the same footing as any other "every engine
+agrees on more than the spec requires" divergence.
 
-ISO 8601 strings parse correctly (`"2024-01-02T03:04:05Z"`, `"2008-03-04"`). But
-a lenient/legacy string is read as `year, month, day` in source order rather than
-the locale `month/day/year` V8, JSC (Bun) and Deno accept:
+Realistic inputs a handler plausibly receives (a form field, a header, a
+third-party API's date string), not a synthetic probe value:
 
 ```js
-new Date("3,5,8").toISOString();
-// V8 / Bun / Deno: "2008-03-04T23:00:00.000Z"  (M/D/YY, local tz)
-// Porffor native:  "0003-05-08T00:00:00.000Z"
+new Date("3/5/2008").toISOString();
+// V8 / Bun / Deno: "2008-03-04T23:00:00.000Z"  (M/D/YYYY, local tz)
+// Porffor native:  "0008-10-28T00:00:00.000Z"
+
+new Date("March 5, 2008").toISOString();
+// V8 / Bun / Deno: "2008-03-04T23:00:00.000Z"
+// Porffor native:  throws "Invalid time value" — RangeError, not a parse
 ```
 
-Impact: any handler doing `new Date(userSuppliedString)` on non-ISO input gets a
-silently wrong date rather than a matching one (or `Invalid Date`). Our harness
-sees this on `15-date-iso` / `16-date-parts` with a comma-separated probe value.
+Impact: a handler doing `new Date(userSuppliedString)` on anything but a
+strict ISO 8601 string either gets a silently wrong date or an unexpected
+throw, on input every other engine accepts identically. Verified against a
+real `porf native` build, not just the interpreter.
 
-Not shimmed locally — replicating V8's full lenient date grammar in a prelude is
-disproportionate. Filing so it can be fixed in `compiler/builtins`.
+Not shimmed locally — replicating V8's full lenient date grammar in a prelude
+is disproportionate. Filing as a web-compat gap so it can be addressed in
+`compiler/builtins` if the maintainer wants engine parity here (their call —
+this is a "here's the gap" report, not "this must be fixed").
 
 ## Draft E — `Date` ignores timezone offsets, and folds them into milliseconds
 
@@ -257,16 +264,10 @@ for i in $(seq 1 40); do curl -s -m 3 -o /dev/null -w '%{http_code} ' http://127
 # a handful of 401s, then every further connection times out; process pinned at 100% CPU forever
 ```
 
-Confirmed the trigger is specifically the object-literal branch
-(`json({ error: ... }, 401)`, a fresh object each call): a version of this
-same repro that instead returns the *found-session* branch (`{ token }`, also
-a plain object, also promise-resolved) ran 60 requests clean in our testing —
-so onset depends on which allocation this particular object's bytes land on,
-not merely "any resolved plain object." Onset is nondeterministic anyway
-(6-8 requests in our runs, 2-6 in an earlier variant) — consistent with a
-stale byte surviving allocator/pool reuse rather than a fresh-heap value,
-which is also why a sync-only route (nothing ever resolves a promise) never
-wedges no matter how many times it's hit.
+Onset is nondeterministic (6-8 requests in our runs, 2-6 in an earlier
+variant) — consistent with allocator/pool reuse rather than a fixed trigger.
+A sync-only route (nothing ever resolves a promise) never wedges no matter
+how many times it's hit.
 
 ### Root cause (debug build, lldb, symbols via `-d`)
 
@@ -307,16 +308,25 @@ handle_request -> on_request -> uWS event loop -> main
 Same PC on repeated samples seconds apart, same call stack, same register
 values — this is a true spin, not slow forward progress.
 
-Best guess (not confirmed against the allocator): the object's prototype slot
-is read via `Porffor.IR.loadU8(obj, 5)` for its type tag and
-`Porffor.IR.loadI32(obj, 8)` for its value, and a plain object literal that
-never calls `__Porffor_object_setPrototype` relies on those bytes defaulting
-to zero (`TYPES.number`-ish/unset, not `TYPES.object` = `7`) to signal "no
-explicit prototype, fall back to the hidden one." If the allocator hands back
-reused memory without zeroing that byte, a stale `7` from a previous
-allocation's unrelated field turns "no prototype" into "prototype is the
-bogus object at address 0," which itself reads back the same way — a
-self-sustaining fixed point.
+The fix shape is already in the codebase, just not applied here:
+`__Porffor_object_lookup`'s own prototype-chain walk in
+`compiler/builtins/_internal_object.ts` guards against exactly this failure
+mode — it tracks `lastProto` and breaks the loop once the "next" prototype
+pointer stops changing (`Porffor.IR.ptr(obj) == Porffor.IR.ptr(lastProto)`),
+terminating on a self-referential or fixed-point chain instead of spinning:
+
+```ts
+let lastProto: any = obj;
+while (true) {
+  if ((entryPtr = __Porffor_object_lookup(obj, key, hash)) != 0) break;
+  // ... advance obj to its prototype ...
+  if (Porffor.fastOr(obj == null, Porffor.IR.ptr(obj) == Porffor.IR.ptr(lastProto))) break;
+  lastProto = obj;
+}
+```
+
+`__Porffor_promise_resolve`'s `.then` probe (quoted above) has no equivalent
+guard — it's the same shape of walk with the termination check missing.
 
 ### Impact
 
@@ -333,3 +343,86 @@ producing nothing.
 Not shimmable from a prelude — this is in the object/promise runtime
 internals (`compiler/builtins/promise.ts`, `compiler/builtins/_internal_object.ts`),
 not something a userland polyfill can reach.
+
+## Draft G — `Request`/`Response` accept no byte body (`Uint8Array`/`ArrayBuffer`)
+
+**Title:** native-fetch: `new Response(uint8Array)` / `new Request(..., {body: uint8Array})` don't work — the body is stored raw and `.text()`/`.json()` fall through to `String(bytes)`
+
+alpha-5 (`1f4ae4a`), `porf native`. Disclosure: found while debugging live
+mojibake on sproutboat.com, with help from Claude Code (Anthropic) — including
+catching a wrong first draft of this same report (below) before it was filed.
+Repro and analysis are our own, written up by hand per the AI policy.
+
+### First draft was wrong — worth recording why
+
+An earlier version of this report claimed `Response.prototype.text()` failed
+to UTF-8-decode a body. The repro built a JS *string* holding raw UTF-8 bytes
+(one code unit per byte) and passed that string to `new Response(...)`. That
+is not a Porffor bug: per the Fetch spec, a *string* body is UTF-8-**encoded**
+at construction and decoded back by `.text()`, so encoding a string and then
+decoding it is a lossless round trip regardless of content — V8 reproduces
+the exact same "corruption" for that repro (checked in Node):
+
+```js
+const utf8 = new TextEncoder().encode("héllo · wörld");
+let raw = ''; for (const b of utf8) raw += String.fromCharCode(b);
+new Response(raw).text(); // -> "hÃ©llo Â· wÃ¶rld" in V8 too — not a bug, expected
+```
+
+The real gap is one level down: Porffor's `Response`/`Request` never accept a
+genuine **bytes** body (`Uint8Array`/`ArrayBuffer`) in the first place, which
+is a real, spec-mandated case with no workaround.
+
+### Repro
+
+```js
+export default {
+  port: 3000,
+  async fetch(request) {
+    const bytes = new TextEncoder().encode("héllo");
+    const r = new Response(bytes);
+    return new Response(JSON.stringify(await r.text()));
+  },
+};
+```
+
+```
+$ curl localhost:3000/
+"héllo"                      # V8 / Bun / Deno
+"onv, Bi,ber,rot,to ,a t"    # Porffor native — not even a stable/predictable
+                              # mangling; varies by build, reads like raw
+                              # memory reinterpreted as characters
+```
+
+### Root cause
+
+`runtime/fetch-globals.js`'s constructors store the body exactly as given
+(`this.body = body`) with no branch for a byte source, and every read method
+does `(Porffor.type(body) | 0b10000000) == Porffor.TYPES.bytestring ? body :
+String(body)` — a `Uint8Array` is never a `bytestring`, so it always falls to
+`String(body)`, which is undefined/garbage behavior for a typed array rather
+than a UTF-8 decode.
+
+### Impact
+
+Any handler that builds a `Request`/`Response` from real bytes — a hash
+digest, a file read as an `ArrayBuffer`, bytes from another binding — instead
+of a string gets silent, unpredictable garbage back from `.text()`/`.json()`,
+not an error. This also blocks a clean fix for a related, narrower internal
+issue we hit: sproutboat's own runtime passes already-decoded-off-disk bytes
+into `Response` as a `bytestring` string (Porffor's Latin-1-range string
+representation, one byte per code unit) to keep them wire-safe for `#176`,
+and has to work around `.text()`/`.json()` not decoding that case itself
+(`@sproutboat/runtime`, not Porffor — see `baronunread/sproutboat#181`)
+because Porffor has no real byte-body type to hand it instead. Real
+`Uint8Array`/`ArrayBuffer` support in `Request`/`Response` — UTF-8-encode a
+string body at construction (already correct), accept and store bytes
+as-is for a byte-typed body, and have `.text()`/`.json()` UTF-8-decode
+whichever kind is stored — would close both gaps at once, including the
+`Response.arrayBuffer()`/`.blob()` methods that currently call `this.text()`
+internally and would need to read the stored bytes directly instead once
+`text()` starts decoding.
+
+Not shimmable from a prelude: `Response.prototype.text`/the constructor
+aren't assignable the way `Date.parse` isn't (Draft E) — has to be fixed in
+`runtime/fetch-globals.js` itself.
