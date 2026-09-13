@@ -35,7 +35,7 @@
     "@sproutboat/artifact": "^0.2.0",
     "@sproutboat/assets": "^0.2.0",
     "@sproutboat/config": "^0.3.0",
-    "@sproutboat/runtime": "^0.6.1",
+    "@sproutboat/runtime": "^0.6.3",
     "@sproutboat/toolchain": "^0.3.2",
     "@sproutboat/wire": "^0.5.0",
     "@tanstack/charts": "^0.16.0",

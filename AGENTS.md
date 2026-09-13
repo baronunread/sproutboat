@@ -1,5 +1,17 @@
 # Agent instructions
 
+## Never file issues on CanadaHonk/porffor without explicit human approval
+
+Drafting a report in `patches/UPSTREAM.md`, even a finished one with a
+verified repro, is not authorization to open it on the real
+`CanadaHonk/porffor` tracker. Filing there is outward-facing and effectively
+irreversible (closing it after the fact still leaves the noise): always stop
+and ask a human first, immediately before the `gh issue create` call, even if
+asked earlier in the same conversation to "file it" or "write it up for
+upstream." An agent did this once without that final check
+(`baronunread/sproutboat`, 2026-09-13) and the issue had to be closed with an
+apology comment; don't repeat it.
+
 ## Writing: no em dashes
 
 Do not use em dashes (`—`) in anything you write here: site copy, docs,
