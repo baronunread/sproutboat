@@ -5,6 +5,25 @@ Changes to the self-hosted Sproutboat platform are recorded here. Read the
 
 ## [Unreleased]
 
+## [0.4.1] - 2026-09-14
+
+### Fixed
+
+- Static assets no longer force a network round trip on every request.
+  Fingerprinted build output (Vite, Astro, webpack/CRA, Next.js, Nuxt,
+  SvelteKit -- detected by filename shape, not a hardcoded framework
+  directory) is now cached for a year as immutable; everything else with a
+  stable name (fonts, favicon, OG images) gets a bounded day-long cache.
+  Previously every asset was sent `max-age=0, must-revalidate`, so nothing
+  was ever actually cached -- visible as content popping in a beat late
+  once page response times got fast enough to expose the round trip.
+- `@sproutboat/runtime` bumped to `^0.6.3`: a handler calling `.text()`/
+  `.json()` on a `Response` built from raw wire bytes (the assets binding,
+  outbound `fetch()`, service bindings) got the bytes back undecoded
+  instead of as real UTF-8 text (mojibake on any non-ASCII content), and
+  that same decode built its result with `O(n^2)` string concatenation,
+  making a ~43KB page take 2.6s+ of real CPU time per request.
+
 ## [0.4.0] - 2026-09-11
 
 ### Added
