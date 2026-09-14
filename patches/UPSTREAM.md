@@ -214,11 +214,11 @@ Covered by `tests/porffor/capabilities/32-date-offset.js`.
 
 **Title:** resolving a promise with a plain object can infinite-loop in the `.then` duck-type check
 
-alpha-5 (`1f4ae4ae`), plain `porf native` — verified with no sproutboat, no
-CLI, no bindings involved, so this is squarely in shared promise/object
-runtime internals.
+alpha-5 (`1f4ae4ae`), plain `porf native`, verified with no downstream
+framework, no CLI, no bindings involved: this is squarely in shared
+promise/object runtime internals.
 
-### Repro (verified — no sproutboat-cli, no bindings)
+### Repro (verified: no downstream framework, no bindings)
 
 ```js
 // src/index.js
@@ -314,12 +314,12 @@ values — this is a true spin, not slow forward progress.
 
 The fix shape is already in the codebase, just not applied here:
 `__Porffor_object_get`'s own prototype-chain walk in
-`compiler/builtins/_internal_object.ts:548-598` (the walk that calls
-`__Porffor_object_lookup`, `_internal_object.ts:496-523`, as its
-single-object probe — that function itself is a flat scan of one object's
-own entries, no loop, no `lastProto`) guards against exactly this failure
-mode — it tracks `lastProto` and breaks the loop once the "next" prototype
-pointer stops changing (`Porffor.IR.ptr(obj) == Porffor.IR.ptr(lastProto)`),
+`compiler/builtins/_internal_object.ts:548-598` guards against exactly this
+failure mode. It calls `__Porffor_object_lookup`
+(`_internal_object.ts:496-523`, a flat scan of one object's own entries, no
+loop, no `lastProto`) as its single-object probe, but the walk around that
+call tracks `lastProto` itself and breaks once the "next" prototype pointer
+stops changing (`Porffor.IR.ptr(obj) == Porffor.IR.ptr(lastProto)`),
 terminating on a self-referential or fixed-point chain instead of spinning:
 
 ```ts
