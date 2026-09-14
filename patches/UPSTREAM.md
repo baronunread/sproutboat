@@ -28,8 +28,8 @@ LLM-written prose** — rewrite the drafts below in your own words before filing
 | static `Response.json(data, init)`                                    | still missing (instance `json()` only; shimmed)                                                               | Draft A stands                                                              |
 | class declaration not hoisted into scope                              | still throws in interpreter and native                                                                        | Draft B stands                                                              |
 | `Date` non-ISO string parse (`15-date-iso`, `16-date-parts`)          | parses positionally, unlike V8: implementation-defined, needs a realistic (not synthetic) input before filing | Draft D — needs revision, not yet filable                                   |
-| `Date` timezone offsets (`32-date-offset`)                            | ignored, folded into ms: a real bug on valid ISO 8601 input                                                   | Draft E — tracked internally as `baronunread/sproutboat#90` (not a Porffor issue), not yet filed |
-| promise-resolve thenable probe can spin forever                       | reproduced with lldb; missing prototype-walk termination guard                                                | Draft F — not yet filed                                                     |
+| `Date` timezone offsets (`32-date-offset`)                            | ignored, folded into ms: a real bug on valid ISO 8601 input                                                   | Draft E — filed as [#387](https://github.com/CanadaHonk/porffor/issues/387) |
+| promise-resolve thenable probe can spin forever                       | reproduced with lldb; missing prototype-walk termination guard                                                | Draft F — filed as [#388](https://github.com/CanadaHonk/porffor/issues/388) |
 | `Request`/`Response` accept no byte body (`Uint8Array`/`ArrayBuffer`) | `.text()`/`.json()` fall through to `String(bytes)`, garbage not a decode                                     | Draft G — [#386](https://github.com/CanadaHonk/porffor/issues/386) was filed and then retracted (filed without review before the filing step); not currently open, re-file by hand if still worth raising |
 
 This table is our own filing status, not a Porffor compat number — it doesn't
@@ -171,6 +171,8 @@ this is a "here's the gap" report, not "this must be fixed").
 
 ## Draft E — `Date` ignores timezone offsets, and folds them into milliseconds
 
+**Filed: [CanadaHonk/porffor#387](https://github.com/CanadaHonk/porffor/issues/387).**
+
 **Title:** native-fetch: ISO 8601 timezone offsets are ignored (and leak into ms)
 
 alpha-5 (`1f4ae4a`), `porf native` and `porf run` alike — still reproduces
@@ -211,6 +213,8 @@ have 1`) and the C build fails. It has to be fixed in `compiler/builtins`.
 Covered by `tests/porffor/capabilities/32-date-offset.js`.
 
 ## Draft F — promise-resolve's thenable probe can loop forever, livelocking the process
+
+**Filed: [CanadaHonk/porffor#388](https://github.com/CanadaHonk/porffor/issues/388).**
 
 **Title:** resolving a promise with a plain object can infinite-loop in the `.then` duck-type check
 
