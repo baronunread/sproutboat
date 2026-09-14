@@ -379,6 +379,15 @@ export function DataTable({
   );
 }
 
+/** The trailing sr-only header cell over a row-actions column, shared by every `DataTable` that ends one. */
+export function ActionsTh() {
+  return (
+    <th scope="col" className="text-end">
+      <span className="sr-only">Actions</span>
+    </th>
+  );
+}
+
 /** Status pip + label. `live` is the good state. */
 export function Status({ live, children }: { live?: boolean; children: ReactNode }) {
   return (

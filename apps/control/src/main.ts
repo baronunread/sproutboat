@@ -54,6 +54,7 @@ import {
   unbanUser,
 } from "./admin";
 import { kvBulk, kvKey, listKvKeys } from "./kv";
+import { listR2Objects, r2Object } from "./r2";
 
 type Route = { hostname: string; sproutPath: string };
 const routesPath = resolve(process.env.SPROUTBOAT_ROUTE_SNAPSHOT || "/var/lib/sproutboat/routes.json");
@@ -299,6 +300,19 @@ async function handle(request: Request): Promise<Response> {
   if (request.method === "POST" && kvBulkRecord) {
     // SAFETY: the final regex capture is restricted to the three operation literals.
     return kvBulk(request, kvBulkRecord[1], kvBulkRecord[2] as "get" | "put" | "delete");
+  }
+  // #183 — read-only R2 object browsing, same posture as the KV routes above.
+  const r2Objects = /^\/api\/r2\/(r2_[0-9a-f]{24})\/objects$/.exec(url.pathname);
+  if (request.method === "GET" && r2Objects) return listR2Objects(request, r2Objects[1]);
+  const r2ObjectRecord = /^\/api\/r2\/(r2_[0-9a-f]{24})\/objects\/(.+)$/.exec(url.pathname);
+  if (request.method === "GET" && r2ObjectRecord) {
+    let key: string;
+    try {
+      key = decodeURIComponent(r2ObjectRecord[2]);
+    } catch {
+      return Response.json({ error: "invalid key encoding" }, { status: 400 });
+    }
+    return r2Object(request, r2ObjectRecord[1], key);
   }
   if (request.method === "GET" && url.pathname === "/api/resources") return listResources(request);
   if (request.method === "POST" && url.pathname === "/api/resources") return createResourceHandler(request);
