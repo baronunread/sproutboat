@@ -22,15 +22,15 @@ LLM-written prose** — rewrite the drafts below in your own words before filing
 
 **alpha-5 checked (2026-09-10, `1f4ae4a`).** Nothing relevant changed:
 
-| Gap                                                          | alpha-5                                                                 | Action              |
-| ------------------------------------------------------------ | ----------------------------------------------------------------------- | ------------------- |
-| `URLSearchParams` / `URL.prototype.searchParams`             | still missing (shimmed in `@sproutboat/runtime`)                        | Draft A stands      |
-| static `Response.json(data, init)`                           | still missing (instance `json()` only; shimmed)                         | Draft A stands      |
-| class declaration not hoisted into scope                     | still throws in interpreter and native                                  | Draft B stands      |
-| `Date` non-ISO string parse (`15-date-iso`, `16-date-parts`) | parses positionally, unlike V8: implementation-defined, needs a realistic (not synthetic) input before filing | Draft D — needs revision, not yet filable |
-| `Date` timezone offsets (`32-date-offset`)                   | ignored, folded into ms: a real bug on valid ISO 8601 input             | Draft E (issue #90) |
-| promise-resolve thenable probe can spin forever              | reproduced with lldb; missing prototype-walk termination guard          | Draft F             |
-| `Request`/`Response` accept no byte body (`Uint8Array`/`ArrayBuffer`) | `.text()`/`.json()` fall through to `String(bytes)`, garbage not a decode | Draft G — filed as [#386](https://github.com/CanadaHonk/porffor/issues/386) |
+| Gap                                                                   | alpha-5                                                                                                       | Action                                                                      |
+| --------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------- |
+| `URLSearchParams` / `URL.prototype.searchParams`                      | still missing (shimmed in `@sproutboat/runtime`)                                                              | Draft A stands                                                              |
+| static `Response.json(data, init)`                                    | still missing (instance `json()` only; shimmed)                                                               | Draft A stands                                                              |
+| class declaration not hoisted into scope                              | still throws in interpreter and native                                                                        | Draft B stands                                                              |
+| `Date` non-ISO string parse (`15-date-iso`, `16-date-parts`)          | parses positionally, unlike V8: implementation-defined, needs a realistic (not synthetic) input before filing | Draft D — needs revision, not yet filable                                   |
+| `Date` timezone offsets (`32-date-offset`)                            | ignored, folded into ms: a real bug on valid ISO 8601 input                                                   | Draft E (issue #90)                                                         |
+| promise-resolve thenable probe can spin forever                       | reproduced with lldb; missing prototype-walk termination guard                                                | Draft F                                                                     |
+| `Request`/`Response` accept no byte body (`Uint8Array`/`ArrayBuffer`) | `.text()`/`.json()` fall through to `String(bytes)`, garbage not a decode                                     | Draft G — filed as [#386](https://github.com/CanadaHonk/porffor/issues/386) |
 
 This table is our own filing status, not a Porffor compat number — it doesn't
 belong to a "release readiness" metric and shouldn't grow one; see one below
@@ -222,13 +222,13 @@ runtime internals.
 // src/index.js
 function readCookies(header) {
   const out = {};
-  const parts = String(header || '').split(';');
+  const parts = String(header || "").split(";");
   for (let i = 0; i < parts.length; i++) {
     const part = parts[i];
-    const index = part.indexOf('=');
+    const index = part.indexOf("=");
     if (index < 0) {
       const name = part.trim();
-      if (name) out[name] = '';
+      if (name) out[name] = "";
     } else {
       const name = part.slice(0, index).trim();
       if (name) out[name] = part.slice(index + 1).trim();
@@ -237,17 +237,17 @@ function readCookies(header) {
   return out;
 }
 async function readSession(request) {
-  const cookies = readCookies(request.headers.get('cookie'));
-  const token = cookies['session'] || '';
+  const cookies = readCookies(request.headers.get("cookie"));
+  const token = cookies["session"] || "";
   if (!token) return null;
   return { token };
 }
 function json(data, status) {
-  return new Response(JSON.stringify(data), { status: status || 200, headers: { 'content-type': 'application/json' } });
+  return new Response(JSON.stringify(data), { status: status || 200, headers: { "content-type": "application/json" } });
 }
 async function inner(request) {
   const session = await readSession(request);
-  if (!session) return json({ error: 'sign in required' }, 401); // <- the branch that wedges
+  if (!session) return json({ error: "sign in required" }, 401); // <- the branch that wedges
   return json({ ok: true });
 }
 export default {
@@ -277,7 +277,7 @@ The wedge is `__Porffor_promise_resolve`'s duck-typing check for a `.then`
 ```ts
 let probe: any = value;
 while (Porffor.type(probe) == Porffor.TYPES.object) {
-  if (Porffor.object.lookup(probe, 'then', thenHash) != 0) break;
+  if (Porffor.object.lookup(probe, "then", thenHash) != 0) break;
   probe = __Porffor_object_getPrototype(probe);
 }
 ```
@@ -358,16 +358,17 @@ Repro and analysis are our own, written up by hand per the AI policy.
 ### First draft was wrong — worth recording why
 
 An earlier version of this report claimed `Response.prototype.text()` failed
-to UTF-8-decode a body. The repro built a JS *string* holding raw UTF-8 bytes
+to UTF-8-decode a body. The repro built a JS _string_ holding raw UTF-8 bytes
 (one code unit per byte) and passed that string to `new Response(...)`. That
-is not a Porffor bug: per the Fetch spec, a *string* body is UTF-8-**encoded**
+is not a Porffor bug: per the Fetch spec, a _string_ body is UTF-8-**encoded**
 at construction and decoded back by `.text()`, so encoding a string and then
 decoding it is a lossless round trip regardless of content — V8 reproduces
 the exact same "corruption" for that repro (checked in Node):
 
 ```js
 const utf8 = new TextEncoder().encode("héllo · wörld");
-let raw = ''; for (const b of utf8) raw += String.fromCharCode(b);
+let raw = "";
+for (const b of utf8) raw += String.fromCharCode(b);
 new Response(raw).text(); // -> "hÃ©llo Â· wÃ¶rld" in V8 too — not a bug, expected
 ```
 
