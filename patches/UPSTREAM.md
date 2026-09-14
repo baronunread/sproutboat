@@ -214,11 +214,9 @@ Covered by `tests/porffor/capabilities/32-date-offset.js`.
 
 **Title:** resolving a promise with a plain object can infinite-loop in the `.then` duck-type check
 
-alpha-5 (`1f4ae4ae`), plain `porf native`. Reproduces with a bare handler,
-nothing else involved: this is squarely in shared promise/object runtime
-internals.
+Tested alpha-5 (`1f4ae4ae`), plain `porf native`.
 
-### Repro (bare handler, nothing else involved)
+### Repro
 
 ```js
 // src/index.js
@@ -249,7 +247,7 @@ function json(data, status) {
 }
 async function inner(request) {
   const session = await readSession(request);
-  if (!session) return json({ error: "sign in required" }, 401); // <- the branch that spins
+  if (!session) return json({ error: "sign in required" }, 401); // <- it hangs here
   return json({ ok: true });
 }
 export default {
@@ -274,8 +272,8 @@ how many times it's hit.
 ### Root cause (debug build, lldb, symbols via `-d`)
 
 The spin is `__Porffor_promise_resolve`'s duck-typing check for a `.then`
-(`compiler/builtins/promise.ts:166-187`, at the pinned commit), which walks
-the value's prototype chain:
+([compiler/builtins/promise.ts:166-187](https://github.com/CanadaHonk/porffor/blob/1f4ae4ae3e0a5f0a93b3bc084359e1a3a23391fd/compiler/builtins/promise.ts#L166-L187)),
+which walks the value's prototype chain:
 
 ```ts
 // compiler/builtins/promise.ts:183-187
@@ -313,14 +311,15 @@ Same PC on repeated samples seconds apart, same call stack, same register
 values — this is a true spin, not slow forward progress.
 
 The fix shape is already in the codebase, just not applied here:
-`__Porffor_object_get`'s own prototype-chain walk in
-`compiler/builtins/_internal_object.ts:548-598` guards against exactly this
-failure mode. It calls `__Porffor_object_lookup`
-(`_internal_object.ts:496-523`, a flat scan of one object's own entries, no
-loop, no `lastProto`) as its single-object probe, but the walk around that
-call tracks `lastProto` itself and breaks once the "next" prototype pointer
-stops changing (`Porffor.IR.ptr(obj) == Porffor.IR.ptr(lastProto)`),
-terminating on a self-referential or fixed-point chain instead of spinning:
+`__Porffor_object_get`'s own prototype-chain walk
+([compiler/builtins/_internal_object.ts:548-598](https://github.com/CanadaHonk/porffor/blob/1f4ae4ae3e0a5f0a93b3bc084359e1a3a23391fd/compiler/builtins/_internal_object.ts#L548-L598))
+guards against exactly this failure mode. It calls `__Porffor_object_lookup`
+([_internal_object.ts:496-523](https://github.com/CanadaHonk/porffor/blob/1f4ae4ae3e0a5f0a93b3bc084359e1a3a23391fd/compiler/builtins/_internal_object.ts#L496-L523),
+a flat scan of one object's own entries, no loop, no `lastProto`) as its
+single-object probe, but the walk around that call tracks `lastProto`
+itself and breaks once the "next" prototype pointer stops changing
+(`Porffor.IR.ptr(obj) == Porffor.IR.ptr(lastProto)`), terminating on a
+self-referential or fixed-point chain instead of spinning:
 
 ```ts
 // compiler/builtins/_internal_object.ts:585-598, inside __Porffor_object_get
@@ -334,11 +333,7 @@ while (true) {
 ```
 
 `__Porffor_promise_resolve`'s `.then` probe (quoted above) has no equivalent
-guard — it's the same shape of walk with the termination check missing.
-
-Line numbers above are against the pinned commit
-(`1f4ae4ae3e0a5f0a93b3bc084359e1a3a23391fd`); re-verify them against
-whatever commit is current before filing, they will drift.
+guard, it's the same shape of walk with the termination check missing.
 
 ### Impact
 
