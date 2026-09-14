@@ -5,6 +5,23 @@ Changes to the self-hosted Sproutboat platform are recorded here. Read the
 
 ## [Unreleased]
 
+## [0.4.2] - 2026-09-14
+
+### Fixed
+
+- `@sproutboat/runtime` bumped to `^0.6.5`, which windows the byte encoder
+  behind `crypto.subtle`. `0.6.4` fixed that encoder for large inputs and
+  regressed it badly for small ones: an app hashing ~150-byte values on every
+  request lost 64% of its throughput, tripled its p50 and grew 41% in RSS
+  (baronunread/sproutboat#181). `0.6.5` keeps the large-input fix from #180
+  without that cost, by only reaching for an array once 512 bytes have
+  accumulated. This platform never ran `0.6.4`; the pin moves straight from
+  `^0.6.3` to `^0.6.5`.
+
+### Breaking and operator actions
+
+- None. `sbctl update` is sufficient.
+
 ## [0.4.1] - 2026-09-14
 
 ### Fixed
@@ -176,7 +193,10 @@ Changes to the self-hosted Sproutboat platform are recorded here. Read the
 
 First tagged self-hosted platform checkpoint.
 
-[Unreleased]: https://github.com/baronunread/sproutboat/compare/v0.3.1...HEAD
+[Unreleased]: https://github.com/baronunread/sproutboat/compare/v0.4.2...HEAD
+[0.4.2]: https://github.com/baronunread/sproutboat/compare/v0.4.1...v0.4.2
+[0.4.1]: https://github.com/baronunread/sproutboat/compare/v0.4.0...v0.4.1
+[0.4.0]: https://github.com/baronunread/sproutboat/compare/v0.3.1...v0.4.0
 [0.3.1]: https://github.com/baronunread/sproutboat/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/baronunread/sproutboat/compare/v0.2.1...v0.3.0
 [0.2.1]: https://github.com/baronunread/sproutboat/compare/v0.2.0...v0.2.1
