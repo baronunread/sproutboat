@@ -5,6 +5,26 @@ Changes to the self-hosted Sproutboat platform are recorded here. Read the
 
 ## [Unreleased]
 
+## [0.4.3] - 2026-09-14
+
+### Fixed
+
+- `@sproutboat/runtime` bumped to `^0.6.6`. `__sbEntry` called
+  `handlers.fetch()` (and the `scheduled`/`queue`/`alarm` trigger paths)
+  with no try/catch at all: any synchronous throw, or a rejected async
+  handler promise, propagated all the way up and crashed the whole process,
+  taking down every other in-flight and future request on that sprout until
+  whatever supervised it restarted the binary (baronunread/sproutboat#179).
+  A throwing/rejecting `fetch()` now returns a 500 instead. `scheduled()`/
+  `alarm()` still reply 204 either way (no
+  failure signal existed before this either); a throwing `queue()` falls
+  through to the existing default-ack pass, same as a handler that never
+  calls `ack()`/`retry()` on every message.
+
+### Breaking and operator actions
+
+- None. `sbctl update` is sufficient.
+
 ## [0.4.2] - 2026-09-14
 
 ### Fixed
@@ -193,7 +213,8 @@ Changes to the self-hosted Sproutboat platform are recorded here. Read the
 
 First tagged self-hosted platform checkpoint.
 
-[Unreleased]: https://github.com/baronunread/sproutboat/compare/v0.4.2...HEAD
+[Unreleased]: https://github.com/baronunread/sproutboat/compare/v0.4.3...HEAD
+[0.4.3]: https://github.com/baronunread/sproutboat/compare/v0.4.2...v0.4.3
 [0.4.2]: https://github.com/baronunread/sproutboat/compare/v0.4.1...v0.4.2
 [0.4.1]: https://github.com/baronunread/sproutboat/compare/v0.4.0...v0.4.1
 [0.4.0]: https://github.com/baronunread/sproutboat/compare/v0.3.1...v0.4.0
