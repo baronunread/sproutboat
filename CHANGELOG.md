@@ -5,6 +5,28 @@ Changes to the self-hosted Sproutboat platform are recorded here. Read the
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-09-15
+
+### Added
+
+- R2 object browser in the dashboard (`/r2/:id`): read-only list, prefix
+  filter, download — same authenticated/resource-ownership/audit-logged
+  posture as the existing KV explorer (baronunread/sproutboat#183).
+
+### Fixed
+
+- The 100% CPU livelock on a `fetch` handler that resolves a promise with a
+  plain object (baronunread/sproutboat#168), and `new Response(r2Object.body)`
+  corrupting binary R2 content (baronunread/sproutboat#177) — both picked up
+  via `@sproutboat/toolchain` `^0.3.2` → `^0.4.1` and `@sproutboat/runtime`
+  `^0.6.5` → `^0.7.1`. The runtime bump also carries R2's file-backed blob
+  storage rework (baronunread/sproutboat#56) and a raw-bytes `put()` fix
+  (baronunread/sproutboat#184).
+
+### Breaking and operator actions
+
+- None. `sbctl update` is sufficient.
+
 ## [0.4.3] - 2026-09-14
 
 ### Fixed
