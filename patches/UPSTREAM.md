@@ -214,11 +214,11 @@ Covered by `tests/porffor/capabilities/32-date-offset.js`.
 
 **Title:** resolving a promise with a plain object can infinite-loop in the `.then` duck-type check
 
-alpha-5 (`1f4ae4ae`), plain `porf native`, verified with no downstream
-framework, no CLI, no bindings involved: this is squarely in shared
-promise/object runtime internals.
+alpha-5 (`1f4ae4ae`), plain `porf native`. Reproduces with a bare handler,
+nothing else involved: this is squarely in shared promise/object runtime
+internals.
 
-### Repro (verified: no downstream framework, no bindings)
+### Repro (bare handler, nothing else involved)
 
 ```js
 // src/index.js
@@ -249,7 +249,7 @@ function json(data, status) {
 }
 async function inner(request) {
   const session = await readSession(request);
-  if (!session) return json({ error: "sign in required" }, 401); // <- the branch that wedges
+  if (!session) return json({ error: "sign in required" }, 401); // <- the branch that spins
   return json({ ok: true });
 }
 export default {
@@ -268,12 +268,12 @@ for i in $(seq 1 40); do curl -s -m 3 -o /dev/null -w '%{http_code} ' http://127
 
 Onset is nondeterministic (6-8 requests in our runs, 2-6 in an earlier
 variant) — consistent with allocator/pool reuse rather than a fixed trigger.
-A sync-only route (nothing ever resolves a promise) never wedges no matter
+A sync-only route (nothing ever resolves a promise) never spins no matter
 how many times it's hit.
 
 ### Root cause (debug build, lldb, symbols via `-d`)
 
-The wedge is `__Porffor_promise_resolve`'s duck-typing check for a `.then`
+The spin is `__Porffor_promise_resolve`'s duck-typing check for a `.then`
 (`compiler/builtins/promise.ts:166-187`, at the pinned commit), which walks
 the value's prototype chain:
 
@@ -286,7 +286,7 @@ while (Porffor.type(probe) == Porffor.TYPES.object) {
 }
 ```
 
-A breakpoint on `__Porffor_object_getPrototype` during the wedge fires
+A breakpoint on `__Porffor_object_getPrototype` during the spin fires
 continuously with the same argument every time: `val = 0`, `type = 7`
 (`TYPES.object`) — a jsval that reads as "a valid object living at address 0"
 rather than the `undefined`/`null` that should terminate the walk. The chain
@@ -343,8 +343,8 @@ whatever commit is current before filing, they will drift.
 ### Impact
 
 Any handler whose `fetch` returns (directly or via `await`) a promise
-resolved with a plain object — the overwhelmingly common shape for a JSON API
-response — can wedge the whole process. `native-fetch` serves one request at
+resolved with a plain object, the overwhelmingly common shape for a JSON API
+response, can spin the whole process. `native-fetch` serves one request at
 a time on a single uWS loop, so once it spins, every other in-flight and
 future connection dies with it; only a process restart recovers. This is
 worse than a slow leak: it looks like an app bug (a specific route "just
