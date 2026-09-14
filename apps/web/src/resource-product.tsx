@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Link, useNavigate } from "@tanstack/react-router";
 import {
+  ActionsTh,
   Button,
   ConfirmButton,
   Copy,
@@ -130,9 +131,7 @@ export function ResourceList({ product }: { product: Product }) {
                     <th scope="col">ID</th>
                     <th scope="col">Bound to</th>
                     <th scope="col">Created</th>
-                    <th scope="col" className="text-end">
-                      <span className="sr-only">Actions</span>
-                    </th>
+                    <ActionsTh />
                   </tr>
                 }
               >
@@ -181,12 +180,16 @@ function Row({
       return;
     }
     setBusy(true);
-    const failure = await mutate(base, {
-      method: "PATCH",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ name: trimmed }),
-    });
-    setBusy(false);
+    let failure: string | null;
+    try {
+      failure = await mutate(base, {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ name: trimmed }),
+      });
+    } finally {
+      setBusy(false);
+    }
     if (failure) {
       setError(failure);
       return;
@@ -240,7 +243,19 @@ function Row({
   return (
     <tr>
       <td>
-        <strong>{resource.name}</strong>
+        {/* #183 — R2 is the only kind with a detail page (object browsing) so
+            far; KV/D1 get one once #136's shared explorer foundation lands. */}
+        {product.segment === "r2" ? (
+          <Link
+            to="/r2/$id"
+            params={{ id: resource.id }}
+            className="font-semibold text-inherit no-underline hover:underline"
+          >
+            {resource.name}
+          </Link>
+        ) : (
+          <strong>{resource.name}</strong>
+        )}
       </td>
       <td className="whitespace-nowrap">
         <code title={resource.id}>{resource.id.slice(0, 14)}…</code>
@@ -336,12 +351,16 @@ export function CreateResource({ product }: { product: Product }) {
     }
     setBusy(true);
     setError(null);
-    const failure = await mutate(`/api/${product.segment}`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ name: trimmed }),
-    });
-    setBusy(false);
+    let failure: string | null;
+    try {
+      failure = await mutate(`/api/${product.segment}`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ name: trimmed }),
+      });
+    } finally {
+      setBusy(false);
+    }
     if (failure) {
       setError(failure);
       return;

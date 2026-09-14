@@ -26,6 +26,7 @@ import { Route as D1NewRouteImport } from './routes/d1_.new'
 import { Route as KvNewRouteImport } from './routes/kv_.new'
 import { Route as ProjectsNameRouteImport } from './routes/projects_.$name'
 import { Route as QueuesNewRouteImport } from './routes/queues_.new'
+import { Route as R2IdRouteImport } from './routes/r2_.$id'
 import { Route as R2NewRouteImport } from './routes/r2_.new'
 import { Route as SettingsIndexRouteImport } from './routes/settings.index'
 import { Route as SettingsTokensRouteImport } from './routes/settings.tokens'
@@ -124,6 +125,11 @@ const QueuesNewRoute = QueuesNewRouteImport.update({
   path: '/queues/new',
   getParentRoute: () => rootRouteImport,
 } as any)
+const R2IdRoute = R2IdRouteImport.update({
+  id: '/r2_/$id',
+  path: '/r2/$id',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const R2NewRoute = R2NewRouteImport.update({
   id: '/r2_/new',
   path: '/r2/new',
@@ -203,6 +209,7 @@ export interface FileRoutesByFullPath {
   '/kv/new': typeof KvNewRoute
   '/projects/$name': typeof ProjectsNameRouteWithChildren
   '/queues/new': typeof QueuesNewRoute
+  '/r2/$id': typeof R2IdRoute
   '/r2/new': typeof R2NewRoute
   '/settings/tokens': typeof SettingsTokensRoute
   '/settings/usage': typeof SettingsUsageRoute
@@ -231,6 +238,7 @@ export interface FileRoutesByTo {
   '/d1/new': typeof D1NewRoute
   '/kv/new': typeof KvNewRoute
   '/queues/new': typeof QueuesNewRoute
+  '/r2/$id': typeof R2IdRoute
   '/r2/new': typeof R2NewRoute
   '/settings/tokens': typeof SettingsTokensRoute
   '/settings/usage': typeof SettingsUsageRoute
@@ -263,6 +271,7 @@ export interface FileRoutesById {
   '/kv_/new': typeof KvNewRoute
   '/projects_/$name': typeof ProjectsNameRouteWithChildren
   '/queues_/new': typeof QueuesNewRoute
+  '/r2_/$id': typeof R2IdRoute
   '/r2_/new': typeof R2NewRoute
   '/settings/tokens': typeof SettingsTokensRoute
   '/settings/usage': typeof SettingsUsageRoute
@@ -296,6 +305,7 @@ export interface FileRouteTypes {
     | '/kv/new'
     | '/projects/$name'
     | '/queues/new'
+    | '/r2/$id'
     | '/r2/new'
     | '/settings/tokens'
     | '/settings/usage'
@@ -324,6 +334,7 @@ export interface FileRouteTypes {
     | '/d1/new'
     | '/kv/new'
     | '/queues/new'
+    | '/r2/$id'
     | '/r2/new'
     | '/settings/tokens'
     | '/settings/usage'
@@ -355,6 +366,7 @@ export interface FileRouteTypes {
     | '/kv_/new'
     | '/projects_/$name'
     | '/queues_/new'
+    | '/r2_/$id'
     | '/r2_/new'
     | '/settings/tokens'
     | '/settings/usage'
@@ -385,6 +397,7 @@ export interface RootRouteChildren {
   KvNewRoute: typeof KvNewRoute
   ProjectsNameRoute: typeof ProjectsNameRouteWithChildren
   QueuesNewRoute: typeof QueuesNewRoute
+  R2IdRoute: typeof R2IdRoute
   R2NewRoute: typeof R2NewRoute
 }
 
@@ -507,6 +520,13 @@ declare module '@tanstack/react-router' {
       path: '/queues/new'
       fullPath: '/queues/new'
       preLoaderRoute: typeof QueuesNewRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/r2_/$id': {
+      id: '/r2_/$id'
+      path: '/r2/$id'
+      fullPath: '/r2/$id'
+      preLoaderRoute: typeof R2IdRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/r2_/new': {
@@ -667,6 +687,7 @@ const rootRouteChildren: RootRouteChildren = {
   KvNewRoute: KvNewRoute,
   ProjectsNameRoute: ProjectsNameRouteWithChildren,
   QueuesNewRoute: QueuesNewRoute,
+  R2IdRoute: R2IdRoute,
   R2NewRoute: R2NewRoute,
 }
 export const routeTree = rootRouteImport
