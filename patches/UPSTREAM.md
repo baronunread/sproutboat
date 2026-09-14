@@ -28,9 +28,9 @@ LLM-written prose** — rewrite the drafts below in your own words before filing
 | static `Response.json(data, init)`                                    | still missing (instance `json()` only; shimmed)                                                               | Draft A stands                                                              |
 | class declaration not hoisted into scope                              | still throws in interpreter and native                                                                        | Draft B stands                                                              |
 | `Date` non-ISO string parse (`15-date-iso`, `16-date-parts`)          | parses positionally, unlike V8: implementation-defined, needs a realistic (not synthetic) input before filing | Draft D — needs revision, not yet filable                                   |
-| `Date` timezone offsets (`32-date-offset`)                            | ignored, folded into ms: a real bug on valid ISO 8601 input                                                   | Draft E (issue #90)                                                         |
-| promise-resolve thenable probe can spin forever                       | reproduced with lldb; missing prototype-walk termination guard                                                | Draft F                                                                     |
-| `Request`/`Response` accept no byte body (`Uint8Array`/`ArrayBuffer`) | `.text()`/`.json()` fall through to `String(bytes)`, garbage not a decode                                     | Draft G — filed as [#386](https://github.com/CanadaHonk/porffor/issues/386) |
+| `Date` timezone offsets (`32-date-offset`)                            | ignored, folded into ms: a real bug on valid ISO 8601 input                                                   | Draft E — tracked internally as `baronunread/sproutboat#90` (not a Porffor issue), not yet filed |
+| promise-resolve thenable probe can spin forever                       | reproduced with lldb; missing prototype-walk termination guard                                                | Draft F — not yet filed                                                     |
+| `Request`/`Response` accept no byte body (`Uint8Array`/`ArrayBuffer`) | `.text()`/`.json()` fall through to `String(bytes)`, garbage not a decode                                     | Draft G — [#386](https://github.com/CanadaHonk/porffor/issues/386) was filed and then retracted (filed without review before the filing step); not currently open, re-file by hand if still worth raising |
 
 This table is our own filing status, not a Porffor compat number — it doesn't
 belong to a "release readiness" metric and shouldn't grow one; see one below
@@ -173,7 +173,9 @@ this is a "here's the gap" report, not "this must be fixed").
 
 **Title:** native-fetch: ISO 8601 timezone offsets are ignored (and leak into ms)
 
-alpha-4 (`a415d19`), `porf native` and `porf run` alike.
+alpha-5 (`1f4ae4a`), `porf native` and `porf run` alike — still reproduces
+identically (same three wrong outputs below), re-verified after the
+alpha-4 -> alpha-5 bump, not just carried over from the original filing.
 
 Distinct from Draft D: that one is about _non-ISO_ strings, where the grammar is
 implementation-defined. This is a fully ISO 8601 input with a numeric offset,
