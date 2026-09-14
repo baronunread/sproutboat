@@ -274,9 +274,11 @@ how many times it's hit.
 ### Root cause (debug build, lldb, symbols via `-d`)
 
 The wedge is `__Porffor_promise_resolve`'s duck-typing check for a `.then`
-(`compiler/builtins/promise.ts`), which walks the value's prototype chain:
+(`compiler/builtins/promise.ts:166-187`, at the pinned commit), which walks
+the value's prototype chain:
 
 ```ts
+// compiler/builtins/promise.ts:183-187
 let probe: any = value;
 while (Porffor.type(probe) == Porffor.TYPES.object) {
   if (Porffor.object.lookup(probe, "then", thenHash) != 0) break;
@@ -311,13 +313,17 @@ Same PC on repeated samples seconds apart, same call stack, same register
 values — this is a true spin, not slow forward progress.
 
 The fix shape is already in the codebase, just not applied here:
-`__Porffor_object_lookup`'s own prototype-chain walk in
-`compiler/builtins/_internal_object.ts` guards against exactly this failure
+`__Porffor_object_get`'s own prototype-chain walk in
+`compiler/builtins/_internal_object.ts:548-598` (the walk that calls
+`__Porffor_object_lookup`, `_internal_object.ts:496-523`, as its
+single-object probe — that function itself is a flat scan of one object's
+own entries, no loop, no `lastProto`) guards against exactly this failure
 mode — it tracks `lastProto` and breaks the loop once the "next" prototype
 pointer stops changing (`Porffor.IR.ptr(obj) == Porffor.IR.ptr(lastProto)`),
 terminating on a self-referential or fixed-point chain instead of spinning:
 
 ```ts
+// compiler/builtins/_internal_object.ts:585-598, inside __Porffor_object_get
 let lastProto: any = obj;
 while (true) {
   if ((entryPtr = __Porffor_object_lookup(obj, key, hash)) != 0) break;
@@ -329,6 +335,10 @@ while (true) {
 
 `__Porffor_promise_resolve`'s `.then` probe (quoted above) has no equivalent
 guard — it's the same shape of walk with the termination check missing.
+
+Line numbers above are against the pinned commit
+(`1f4ae4ae3e0a5f0a93b3bc084359e1a3a23391fd`); re-verify them against
+whatever commit is current before filing, they will drift.
 
 ### Impact
 
