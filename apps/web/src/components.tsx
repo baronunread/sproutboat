@@ -591,7 +591,7 @@ export function ConfirmButton({
  *  favicon, so the dashboard, the site and the tab icon are one mark. */
 export function SproutboatMark() {
   return (
-    <svg className="size-[1.65rem] shrink-0" viewBox="0 0 32 32" fill="none" aria-hidden="true">
+    <svg className="size-8 shrink-0" viewBox="3 6 24 25" fill="none" aria-hidden="true">
       <path d="M16 29V15" stroke="#5BD97A" strokeWidth="2.6" strokeLinecap="round" />
       <path
         d="M16 16.5c0-4.7-3.8-8.5-8.5-8.5C6.7 8 6 8.7 6 9.5 6 14.2 9.8 18 14.5 18c.8 0 1.5-.7 1.5-1.5Z"
@@ -881,28 +881,33 @@ export function Shell({ children }: { children: ReactNode }) {
             made the header ~40px taller and pushed every nav item below it down.
             The toggle centres on the same axis as the nav icons, and is always
             visible: it is the only way back to the expanded rail. */}
-        <div className="flex h-8 items-center justify-between gap-2 px-2 min-[801px]:nav-collapsed:justify-center min-[801px]:nav-collapsed:px-0">
+        <div className="flex h-12 items-center gap-2 px-2 min-[801px]:nav-collapsed:justify-center min-[801px]:nav-collapsed:px-0">
           <Link
-            className="inline-flex items-center gap-2.5 px-2 py-1 text-[0.95rem] font-extrabold tracking-tight no-underline min-[801px]:nav-collapsed:hidden"
+            className="inline-flex min-w-0 items-center gap-2 px-2 py-1 text-xl font-[650] tracking-tight no-underline min-[801px]:nav-collapsed:hidden"
             to="/"
           >
             <SproutboatMark />
             {/* Collapsed on a phone the rail is a full-width bar with room for the
                 word; only the 4rem desktop rail has to drop it. */}
-            <span className="min-[801px]:nav-collapsed:hidden">Sproutboat</span>
+            <span className="-translate-y-0.5 truncate min-[801px]:nav-collapsed:hidden">Sproutboat</span>
           </Link>
           <button
             type="button"
-            className="grid size-8 shrink-0 place-items-center rounded-md border-0 bg-transparent text-muted-foreground hover:bg-accent hover:text-foreground [&_svg]:size-4"
+            className={cn(
+              "grid size-8 shrink-0 place-items-center rounded-md border-0 bg-transparent text-muted-foreground hover:bg-accent hover:text-foreground",
+              !collapsed && "ms-auto",
+              collapsed ? "[&_svg]:size-7" : "[&_svg]:size-4",
+            )}
             onClick={toggleNav}
             aria-expanded={!collapsed}
             aria-label={collapsed ? "Expand navigation" : "Collapse navigation"}
+            title={collapsed ? "Expand navigation" : "Collapse navigation"}
           >
-            <PanelLeft aria-hidden="true" strokeWidth={1.5} />
+            {collapsed ? <SproutboatMark /> : <PanelLeft aria-hidden="true" strokeWidth={1.5} />}
           </button>
         </div>
         <nav
-          className="mt-8 grid gap-0.5 max-[800px]:mt-4 max-[800px]:nav-collapsed:hidden"
+          className="mt-8 grid gap-0.5 nav-collapsed:mt-5 max-[800px]:mt-4 max-[800px]:nav-collapsed:hidden"
           aria-label="Primary navigation"
         >
           <Link className={NAV_LINK} to="/" activeOptions={EXACT} activeProps={NAV_ACTIVE}>
