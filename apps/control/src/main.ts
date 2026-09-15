@@ -54,7 +54,7 @@ import {
   unbanUser,
 } from "./admin";
 import { kvBulk, kvKey, listKvKeys } from "./kv";
-import { listR2Objects, r2Object } from "./r2";
+import { listR2Objects, r2Object, r2Usage } from "./r2";
 
 type Route = { hostname: string; sproutPath: string };
 const routesPath = resolve(process.env.SPROUTBOAT_ROUTE_SNAPSHOT || "/var/lib/sproutboat/routes.json");
@@ -302,6 +302,7 @@ async function handle(request: Request): Promise<Response> {
     return kvBulk(request, kvBulkRecord[1], kvBulkRecord[2] as "get" | "put" | "delete");
   }
   // #183 — read-only R2 object browsing, same posture as the KV routes above.
+  if (request.method === "GET" && url.pathname === "/api/r2/usage") return r2Usage(request);
   const r2Objects = /^\/api\/r2\/(r2_[0-9a-f]{24})\/objects$/.exec(url.pathname);
   if (request.method === "GET" && r2Objects) return listR2Objects(request, r2Objects[1]);
   const r2ObjectRecord = /^\/api\/r2\/(r2_[0-9a-f]{24})\/objects\/(.+)$/.exec(url.pathname);

@@ -84,6 +84,35 @@ test("lists objects, paginates, filters by prefix, and is owner-scoped", async (
   process.env.SPROUTBOAT_BOOTSTRAP_USERNAME = "tester";
 });
 
+test("reports account R2 capacity and direct-transfer rejections", async () => {
+  const resourceDir = join(dir, "resources");
+  await seedObject(resourceDir, id, "usage.bin", new Uint8Array(7));
+  const quota = new Database(join(resourceDir, "r2-quota.sqlite"), { create: true });
+  try {
+    quota.exec(
+      "CREATE TABLE r2_account_quota (owner TEXT PRIMARY KEY, used_bytes INTEGER NOT NULL, reserved_bytes INTEGER NOT NULL)",
+    );
+    quota.exec(
+      "CREATE TABLE r2_transfer_metric (owner TEXT PRIMARY KEY, tickets_issued INTEGER NOT NULL, rejected_quota INTEGER NOT NULL, rejected_disk INTEGER NOT NULL, rejected_size INTEGER NOT NULL)",
+    );
+    quota.query("INSERT INTO r2_account_quota VALUES (?1, 0, 3)").run("bootstrap:tester");
+    quota.query("INSERT INTO r2_transfer_metric VALUES (?1, 4, 2, 1, 3)").run("bootstrap:tester");
+  } finally {
+    quota.close();
+  }
+  const response = await r2.r2Usage(request("/api/r2/usage"));
+  expect(response.status).toBe(200);
+  expect(await response.json()).toMatchObject({
+    resources: 1,
+    usedBytes: 18,
+    reservedBytes: 3,
+    ticketsIssued: 4,
+    rejectedQuota: 2,
+    rejectedDisk: 1,
+    rejectedSize: 3,
+  });
+});
+
 test("downloads an object's exact bytes with its content type, 404s a missing one", async () => {
   const resourceDir = join(dir, "resources");
   const bytes = new Uint8Array(256);

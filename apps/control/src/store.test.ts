@@ -7,7 +7,15 @@ let dir: string;
 let store: typeof import("./store");
 const deployedAt = () => new Date().toISOString();
 
-async function routes(): Promise<Array<{ hostname: string; sproutPath: string }>> {
+async function routes(): Promise<
+  Array<{
+    hostname: string;
+    sproutPath: string;
+    ownerId?: string;
+    r2ResourceIds?: string[];
+    services?: Record<string, string>;
+  }>
+> {
   return JSON.parse(await readFile(join(dir, "routes.json"), "utf8"));
 }
 async function makeArtifact(digest: string): Promise<string> {
@@ -51,7 +59,14 @@ test("recordDeployment keeps exactly one active version per project", async () =
   expect(versions.map((v) => v.active)).toEqual([true, false]); // newest first, only d2 active
   expect(store.activeProjects("user-1")).toHaveLength(1);
   await store.syncRoutes();
-  expect(await routes()).toEqual([{ hostname: "app.alice.test", sproutPath: join(dir, "artifacts", b, "sprout") }]);
+  expect(await routes()).toEqual([
+    {
+      hostname: "app.alice.test",
+      sproutPath: join(dir, "artifacts", b, "sprout"),
+      ownerId: "user-1",
+      r2ResourceIds: [],
+    },
+  ]);
 });
 
 test("activateDeployment rolls back to an older version without a second active row", () => {
@@ -221,6 +236,9 @@ test("#76 — deploymentResources returns the version's bound resources, owner-s
   ]);
   expect(store.deploymentResources("other-owner", "dr1")).toEqual([]); // another owner sees nothing
   expect(store.deploymentResources("res-owner", "missing")).toEqual([]);
+  await store.syncRoutes();
+  const snapshot = await routes();
+  expect(snapshot.find((route) => route.ownerId === "res-owner")?.r2ResourceIds).toEqual([r2.id]);
 
   store.deleteOwner("res-owner");
   store.deleteResource("res-owner", kv.id);

@@ -5,6 +5,11 @@ import { fileURLToPath } from "node:url";
 import { connect } from "node:net";
 import { sproutCommand } from "./sandbox";
 
+const positiveEnv = (name: string, fallback: number): number => {
+  const value = Number(process.env[name]);
+  return Number.isSafeInteger(value) && value > 0 ? value : fallback;
+};
+
 /**
  * Where the sprout writes the wall-clock ms at which its bundled JS began
  * running (#41). Diffed against the spawn time, it splits cold-start into
@@ -41,6 +46,11 @@ function readBootMs(file: string, spawnedAt: number, startupMs: number): number 
  */
 
 export type SproutChild = { readonly exited: Promise<number>; kill(signal?: number): void };
+/** Account context the broker needs to enforce shared R2 storage limits. */
+export type R2Runtime = {
+  ownerId: string;
+  resourceIds: string[];
+};
 /** `secretsPath` (#2) points at the project's decrypted `secrets.json`, written
  *  outside the content-addressed artifact dir; null when the project has none. */
 export type SproutFactory = (
@@ -52,6 +62,7 @@ export type SproutFactory = (
    *  this whole argv path with one `register` frame, so an options-object
    *  refactor here is work that gets thrown away. */
   services?: Record<string, string> | null,
+  r2?: R2Runtime | null,
 ) => SproutChild;
 
 /**
@@ -71,6 +82,7 @@ export type TimedSprout = {
   sproutPath: string;
   secretsPath?: string | null;
   services?: Record<string, string> | null;
+  r2?: R2Runtime | null;
 };
 
 export type SproutPoolOptions = {
@@ -88,9 +100,15 @@ const defaultPortRange: readonly [number, number] = [40_000, 49_999];
 /** A process embeds its secret file and service-routing snapshot at spawn, so
  * those values are part of its identity. Sharing just by artifact path could
  * send one hostname's calls through another hostname's runtime context. */
-function runtimeKey(sproutPath: string, secretsPath?: string | null, services?: Record<string, string> | null): string {
+function runtimeKey(
+  sproutPath: string,
+  secretsPath?: string | null,
+  services?: Record<string, string> | null,
+  r2?: R2Runtime | null,
+): string {
   const servicePairs = services ? Object.entries(services).sort(([a], [b]) => a.localeCompare(b)) : [];
-  return `${resolve(sproutPath)}\0${secretsPath ?? ""}\0${JSON.stringify(servicePairs)}`;
+  const r2Key = r2 ? `${r2.ownerId}\0${r2.resourceIds.slice().sort().join(",")}` : "";
+  return `${resolve(sproutPath)}\0${secretsPath ?? ""}\0${JSON.stringify(servicePairs)}\0${r2Key}`;
 }
 
 // The broker runs as a subprocess (not an import): resolve the shared
@@ -132,6 +150,9 @@ export function brokerArgs(opts: {
   resourceDir: string;
   bindingsPath: string;
   sproutPort: number;
+  r2?: R2Runtime | null;
+  r2QuotaBytes?: number;
+  r2MinFreeBytes?: number;
   secretsPath?: string | null;
   assetsDir?: string | null;
   services?: Record<string, string> | null;
@@ -162,6 +183,11 @@ export function brokerArgs(opts: {
     `http://127.0.0.1:${opts.sproutPort}/`,
   ];
   if (opts.transferPort) args.push("--transfer-port", String(opts.transferPort));
+  if (opts.r2) {
+    args.push("--owner-id", opts.r2.ownerId, "--r2-resource-ids", opts.r2.resourceIds.join(","));
+    if (opts.r2QuotaBytes) args.push("--r2-quota-bytes", String(opts.r2QuotaBytes));
+    if (opts.r2MinFreeBytes) args.push("--r2-min-free-bytes", String(opts.r2MinFreeBytes));
+  }
   if (opts.secretsPath) args.push("--secrets", opts.secretsPath);
   // #48 — service bindings only work when the broker knows both where to send a
   // call (the node's edge, on loopback) and which hostname each binding means.
@@ -189,6 +215,7 @@ function spawnWithBroker(
   port: number,
   secretsPath?: string | null,
   services?: Record<string, string> | null,
+  r2?: R2Runtime | null,
 ): SproutChild {
   const workerDir = dirname(sproutPath);
   const bindingsPath = resolve(workerDir, "bindings.json");
@@ -252,6 +279,9 @@ function spawnWithBroker(
       resourceDir,
       bindingsPath,
       sproutPort: port,
+      r2,
+      r2QuotaBytes: r2 ? positiveEnv("SPROUTBOAT_R2_QUOTA_BYTES", 10 * 1024 * 1024 * 1024) : undefined,
+      r2MinFreeBytes: r2 ? positiveEnv("SPROUTBOAT_R2_MIN_FREE_BYTES", 5 * 1024 * 1024 * 1024) : undefined,
       // #2 — secrets come from a per-project file the control plane writes
       // outside the shared artifact dir; the path rides in on the route snapshot.
       secretsPath: secretsPath && existsSync(secretsPath) ? secretsPath : null,
@@ -336,8 +366,9 @@ export function spawnSprout(
   port: number,
   secretsPath?: string | null,
   services?: Record<string, string> | null,
+  r2?: R2Runtime | null,
 ): SproutChild {
-  return spawnWithBroker(sproutPath, port, secretsPath, services);
+  return spawnWithBroker(sproutPath, port, secretsPath, services, r2);
 }
 
 async function listens(port: number): Promise<boolean> {
@@ -383,12 +414,13 @@ class SproutServer {
     private readonly onExit: (server: SproutServer) => void,
     secretsPath?: string | null,
     services?: Record<string, string> | null,
+    r2?: R2Runtime | null,
   ) {
     this.port = port;
     this.url = `http://127.0.0.1:${port}`;
     this.lastUsedAt = now();
     const spawnedAt = Date.now();
-    this.#child = spawn(sproutPath, port, secretsPath, services);
+    this.#child = spawn(sproutPath, port, secretsPath, services, r2);
     this.#ready = this.#awaitListening(readyTimeoutMs).then(() => {
       this.startupMs = Date.now() - spawnedAt;
       this.bootMs = readBootMs(startupFilePath(sproutPath, port), spawnedAt, this.startupMs);
@@ -522,8 +554,9 @@ export class SproutPool {
     sproutPath: string,
     secretsPath?: string | null,
     services?: Record<string, string> | null,
+    r2?: R2Runtime | null,
   ): Promise<Endpoint> {
-    const key = runtimeKey(sproutPath, secretsPath, services);
+    const key = runtimeKey(sproutPath, secretsPath, services, r2);
     let server = this.#servers.get(key);
     let coldStart = false;
     if (!server || server.closed) {
@@ -551,6 +584,7 @@ export class SproutPool {
         },
         secretsPath,
         services,
+        r2,
       );
       this.#servers.set(key, server);
     }
@@ -576,8 +610,13 @@ export class SproutPool {
   }
 
   /** Keep an in-flight direct transfer from being reaped as HTTP-idle. */
-  touch(sproutPath: string, secretsPath?: string | null, services?: Record<string, string> | null): void {
-    const server = this.#servers.get(runtimeKey(sproutPath, secretsPath, services));
+  touch(
+    sproutPath: string,
+    secretsPath?: string | null,
+    services?: Record<string, string> | null,
+    r2?: R2Runtime | null,
+  ): void {
+    const server = this.#servers.get(runtimeKey(sproutPath, secretsPath, services, r2));
     if (server && !server.closed) server.lastUsedAt = this.#now();
   }
 
@@ -652,7 +691,8 @@ export class SproutPool {
 
   async #reconcileTimed(sprouts: readonly TimedSprout[]): Promise<void> {
     const next = new Map<string, TimedSprout>();
-    for (const sprout of sprouts) next.set(runtimeKey(sprout.sproutPath, sprout.secretsPath, sprout.services), sprout);
+    for (const sprout of sprouts)
+      next.set(runtimeKey(sprout.sproutPath, sprout.secretsPath, sprout.services, sprout.r2), sprout);
 
     for (const key of Array.from(this.#timed.keys())) {
       if (next.has(key)) continue;
@@ -692,7 +732,7 @@ export class SproutPool {
     if (!timed) return;
     this.#clearTimedWakeTimer(key);
     try {
-      await this.endpoint(timed.sproutPath, timed.secretsPath, timed.services);
+      await this.endpoint(timed.sproutPath, timed.secretsPath, timed.services, timed.r2);
       this.#timedWakeAttempts.delete(key);
     } catch (error) {
       this.#timedWakeFailures += 1;

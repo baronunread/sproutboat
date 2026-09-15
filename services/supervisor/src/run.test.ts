@@ -390,3 +390,31 @@ test("brokerArgs carries service bindings only when it also knows the edge (#48)
   expect(brokerArgs({ ...base, edgeUrl: "http://127.0.0.1:8080/" })).not.toContain("--edge-url");
   expect(brokerArgs({ ...base, services: {}, edgeUrl: "http://127.0.0.1:8080/" })).not.toContain("--services");
 });
+
+test("brokerArgs passes the owner-wide R2 quota context to the broker", () => {
+  const args = brokerArgs({
+    entry: "/broker.ts",
+    brokerPort: 14_321,
+    token: "token",
+    stateDir: "/state",
+    resourceDir: "/resources",
+    bindingsPath: "/bindings.json",
+    sproutPort: 4321,
+    r2: { ownerId: "owner-1", resourceIds: ["r2_bbbbbbbbbbbbbbbbbbbbbbbb", "r2_aaaaaaaaaaaaaaaaaaaaaaaa"] },
+    r2QuotaBytes: 10,
+    r2MinFreeBytes: 5,
+  });
+  expect(args.slice(args.indexOf("--owner-id"), args.indexOf("--owner-id") + 2)).toEqual(["--owner-id", "owner-1"]);
+  expect(args.slice(args.indexOf("--r2-resource-ids"), args.indexOf("--r2-resource-ids") + 2)).toEqual([
+    "--r2-resource-ids",
+    "r2_bbbbbbbbbbbbbbbbbbbbbbbb,r2_aaaaaaaaaaaaaaaaaaaaaaaa",
+  ]);
+  expect(args.slice(args.indexOf("--r2-quota-bytes"), args.indexOf("--r2-quota-bytes") + 2)).toEqual([
+    "--r2-quota-bytes",
+    "10",
+  ]);
+  expect(args.slice(args.indexOf("--r2-min-free-bytes"), args.indexOf("--r2-min-free-bytes") + 2)).toEqual([
+    "--r2-min-free-bytes",
+    "5",
+  ]);
+});

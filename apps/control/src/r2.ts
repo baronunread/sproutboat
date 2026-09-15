@@ -16,10 +16,12 @@ import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, statSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { actorFor } from "./identity";
-import { resourceById } from "./store";
+import { ownerResources, resourceById } from "./store";
 
 const MAX_LIST_LIMIT = 1000;
 const MAX_DOWNLOAD_BYTES = 64 * 1024 * 1024;
+const DEFAULT_R2_QUOTA_BYTES = 10 * 1024 * 1024 * 1024;
+const DEFAULT_R2_MIN_FREE_BYTES = 5 * 1024 * 1024 * 1024;
 
 type OwnedR2 = { id: string; actorId: string; path: string };
 type R2Row = {
@@ -64,6 +66,62 @@ function openR2(path: string): Database {
       "PRIMARY KEY (bucket, key))",
   );
   return db;
+}
+
+const positiveEnv = (name: string, fallback: number): number => {
+  const value = Number(process.env[name]);
+  return Number.isSafeInteger(value) && value > 0 ? value : fallback;
+};
+
+/** Account-wide R2 capacity and direct-transfer rejection counters for the dashboard. */
+export async function r2Usage(request: Request): Promise<Response> {
+  const actor = await actorFor(request).catch(() => null);
+  if (!actor)
+    return Response.json({ error: "sign in and reserve a username before using this endpoint" }, { status: 401 });
+  const resources = ownerResources(actor.id).filter((resource) => resource.kind === "r2");
+  let usedBytes = 0;
+  for (const resource of resources) {
+    const path = resolve(resourceRoot(), `${resource.id}.sqlite`);
+    if (!existsSync(path)) continue;
+    const db = new Database(path, { readonly: true });
+    try {
+      usedBytes += db.query<{ bytes: number }, []>("SELECT COALESCE(SUM(size), 0) AS bytes FROM r2").get()?.bytes ?? 0;
+    } finally {
+      db.close();
+    }
+  }
+  const metrics = { reservedBytes: 0, ticketsIssued: 0, rejectedQuota: 0, rejectedDisk: 0, rejectedSize: 0 };
+  const quotaPath = resolve(resourceRoot(), "r2-quota.sqlite");
+  if (existsSync(quotaPath)) {
+    const db = new Database(quotaPath, { readonly: true });
+    try {
+      const quota = db
+        .query<{ reserved_bytes: number }, [string]>("SELECT reserved_bytes FROM r2_account_quota WHERE owner = ?")
+        .get(actor.id);
+      metrics.reservedBytes = quota?.reserved_bytes ?? 0;
+      const transfers = db
+        .query<
+          { tickets_issued: number; rejected_quota: number; rejected_disk: number; rejected_size: number },
+          [string]
+        >("SELECT tickets_issued, rejected_quota, rejected_disk, rejected_size FROM r2_transfer_metric WHERE owner = ?")
+        .get(actor.id);
+      metrics.ticketsIssued = transfers?.tickets_issued ?? 0;
+      metrics.rejectedQuota = transfers?.rejected_quota ?? 0;
+      metrics.rejectedDisk = transfers?.rejected_disk ?? 0;
+      metrics.rejectedSize = transfers?.rejected_size ?? 0;
+    } finally {
+      db.close();
+    }
+  }
+  const quotaBytes = positiveEnv("SPROUTBOAT_R2_QUOTA_BYTES", DEFAULT_R2_QUOTA_BYTES);
+  return Response.json({
+    resources: resources.length,
+    usedBytes,
+    quotaBytes,
+    availableBytes: Math.max(0, quotaBytes - usedBytes - metrics.reservedBytes),
+    minFreeBytes: positiveEnv("SPROUTBOAT_R2_MIN_FREE_BYTES", DEFAULT_R2_MIN_FREE_BYTES),
+    ...metrics,
+  });
 }
 
 /**

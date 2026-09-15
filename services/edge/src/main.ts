@@ -56,6 +56,7 @@ type Route = {
   secretsPath: string | null;
   secretsHash: string | null;
   services: Record<string, string> | null;
+  r2: { ownerId: string; resourceIds: string[] } | null;
 };
 
 type TimedBindings = {
@@ -81,13 +82,23 @@ function hasTimedBindings(sproutPath: string): boolean {
 }
 
 function timedSprouts(current: Map<string, Route>) {
-  const result: Array<{ sproutPath: string; secretsPath: string | null; services: Record<string, string> | null }> = [];
+  const result: Array<{
+    sproutPath: string;
+    secretsPath: string | null;
+    services: Record<string, string> | null;
+    r2: { ownerId: string; resourceIds: string[] } | null;
+  }> = [];
   for (const route of current.values()) {
     if (!hasTimedBindings(route.sproutPath)) continue;
     // The pool de-duplicates identical runtime contexts. Keep different secret
     // and service snapshots separate even if a content-addressed artifact is
     // attached to more than one custom hostname.
-    result.push({ sproutPath: route.sproutPath, secretsPath: route.secretsPath, services: route.services });
+    result.push({
+      sproutPath: route.sproutPath,
+      secretsPath: route.secretsPath,
+      services: route.services,
+      r2: route.r2,
+    });
   }
   return result;
 }
@@ -122,11 +133,20 @@ async function loadRoutes(path: string): Promise<Map<string, Route>> {
       }
       if (Object.keys(pairs).length > 0) services = pairs;
     }
+    // Better Auth ids are opaque, and bootstrap mode uses `bootstrap:<name>`.
+    // The snapshot is control-plane generated; reject only values that could
+    // corrupt the supervisor's NUL-delimited runtime key.
+    const ownerId =
+      isString(route.ownerId) && route.ownerId.length <= 256 && !route.ownerId.includes("\0") ? route.ownerId : null;
+    const resourceIds = Array.isArray(route.r2ResourceIds)
+      ? route.r2ResourceIds.filter((id): id is string => isString(id) && /^r2_[a-f0-9]{24}$/.test(id))
+      : [];
     result.set(route.hostname, {
       sproutPath: route.sproutPath,
       secretsPath,
       secretsHash: isString(route.secretsHash) ? route.secretsHash : null,
       services,
+      r2: ownerId ? { ownerId, resourceIds } : null,
     });
   }
   return result;
@@ -318,7 +338,12 @@ function swapRoutes(nextRoutes: Map<string, Route>, nextMtimeMs: number): void {
     const next = nextRoutes.get(hostname);
     // A changed sprout path OR a changed secrets hash (#2) means the running
     // worker is stale — dispose it so the next request respawns it fresh.
-    if (!next || next.sproutPath !== route.sproutPath || next.secretsHash !== route.secretsHash) {
+    if (
+      !next ||
+      next.sproutPath !== route.sproutPath ||
+      next.secretsHash !== route.secretsHash ||
+      JSON.stringify(next.r2) !== JSON.stringify(route.r2)
+    ) {
       pool.dispose(route.sproutPath);
       assetManifests.delete(route.sproutPath);
       cache?.purgeHost(hostname); // a new version must not serve the old one's cached responses
@@ -469,11 +494,14 @@ const server = Bun.serve({
       request.signal.removeEventListener("abort", stopTransferKeepAlive);
     };
     try {
-      const endpoint = await pool.endpoint(sproutPath, route.secretsPath, route.services);
+      const endpoint = await pool.endpoint(sproutPath, route.secretsPath, route.services, route.r2);
       if (directTransfer && !endpoint.transferUrl) return new Response("direct transfers unavailable", { status: 503 });
       base = directTransfer ? endpoint.transferUrl! : endpoint.url;
       if (directTransfer) {
-        transferKeepAlive = setInterval(() => pool.touch(sproutPath, route.secretsPath, route.services), 30_000);
+        transferKeepAlive = setInterval(
+          () => pool.touch(sproutPath, route.secretsPath, route.services, route.r2),
+          30_000,
+        );
         transferDeadline = setTimeout(stopTransferKeepAlive, transferTimeoutMs + 1_000);
         request.signal.addEventListener("abort", stopTransferKeepAlive, { once: true });
       }
