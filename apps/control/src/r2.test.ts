@@ -87,6 +87,15 @@ test("lists objects, paginates, filters by prefix, and is owner-scoped", async (
 test("reports account R2 capacity and direct-transfer rejections", async () => {
   const resourceDir = join(dir, "resources");
   await seedObject(resourceDir, id, "usage.bin", new Uint8Array(7));
+  const parts = new Database(join(resourceDir, `${id}.sqlite`));
+  try {
+    parts.exec(
+      "CREATE TABLE IF NOT EXISTS r2_part (bucket TEXT NOT NULL, key TEXT NOT NULL, upload_id TEXT NOT NULL, part_number INTEGER NOT NULL, size INTEGER NOT NULL, etag TEXT NOT NULL, PRIMARY KEY (bucket, key, upload_id, part_number))",
+    );
+    parts.query("INSERT INTO r2_part VALUES (?1, ?2, ?3, 1, 2, ?4)").run(id, "partial", "upload-1", "part");
+  } finally {
+    parts.close();
+  }
   const quota = new Database(join(resourceDir, "r2-quota.sqlite"), { create: true });
   try {
     quota.exec(
@@ -104,7 +113,7 @@ test("reports account R2 capacity and direct-transfer rejections", async () => {
   expect(response.status).toBe(200);
   expect(await response.json()).toMatchObject({
     resources: 1,
-    usedBytes: 18,
+    usedBytes: 20,
     reservedBytes: 3,
     ticketsIssued: 4,
     rejectedQuota: 2,

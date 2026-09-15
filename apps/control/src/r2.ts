@@ -65,6 +65,11 @@ function openR2(path: string): Database {
       "etag TEXT NOT NULL, uploaded TEXT NOT NULL, http_json TEXT NOT NULL DEFAULT '{}', custom_json TEXT NOT NULL DEFAULT '{}', " +
       "PRIMARY KEY (bucket, key))",
   );
+  db.exec(
+    "CREATE TABLE IF NOT EXISTS r2_part (bucket TEXT NOT NULL, key TEXT NOT NULL, upload_id TEXT NOT NULL, " +
+      "part_number INTEGER NOT NULL, size INTEGER NOT NULL, etag TEXT NOT NULL, " +
+      "PRIMARY KEY (bucket, key, upload_id, part_number))",
+  );
   return db;
 }
 
@@ -83,9 +88,14 @@ export async function r2Usage(request: Request): Promise<Response> {
   for (const resource of resources) {
     const path = resolve(resourceRoot(), `${resource.id}.sqlite`);
     if (!existsSync(path)) continue;
-    const db = new Database(path, { readonly: true });
+    const db = openR2(path);
     try {
-      usedBytes += db.query<{ bytes: number }, []>("SELECT COALESCE(SUM(size), 0) AS bytes FROM r2").get()?.bytes ?? 0;
+      usedBytes +=
+        db
+          .query<{ bytes: number }, []>(
+            "SELECT (SELECT COALESCE(SUM(size), 0) FROM r2) + (SELECT COALESCE(SUM(size), 0) FROM r2_part) AS bytes",
+          )
+          .get()?.bytes ?? 0;
     } finally {
       db.close();
     }
