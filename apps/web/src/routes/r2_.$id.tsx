@@ -17,6 +17,16 @@ type R2Object = {
   httpMetadata?: { contentType?: string };
 };
 type ObjectsPage = { objects: R2Object[]; cursor: string | null };
+type R2Usage = {
+  usedBytes: number;
+  reservedBytes: number;
+  quotaBytes: number;
+  availableBytes: number;
+  ticketsIssued: number;
+  rejectedQuota: number;
+  rejectedDisk: number;
+  rejectedSize: number;
+};
 
 const UNITS = ["B", "KB", "MB", "GB"] as const;
 /** No formatting library for one call site — 1024-based, one decimal past KB. */
@@ -42,6 +52,7 @@ function R2ObjectBrowser() {
   const [loadingMore, setLoadingMore] = useState(false);
   const listUrl = `/api/r2/${encodeURIComponent(id)}/objects${prefix ? `?prefix=${encodeURIComponent(prefix)}` : ""}`;
   const { data, state } = useJson<ObjectsPage>(listUrl);
+  const { data: usage } = useJson<R2Usage>("/api/r2/usage");
 
   const objects = data ? [...pages.flat(), ...(pages.length === 0 ? data.objects : [])] : [];
   // pages accumulates only what "Load more" fetched; the first page comes
@@ -92,6 +103,31 @@ function R2ObjectBrowser() {
           </p>
         </div>
       </header>
+
+      {usage && (
+        <Panel className="mb-5" variant="bare">
+          <dl className="grid gap-px bg-border text-sm sm:grid-cols-4">
+            <div className="bg-background px-5 py-4">
+              <dt className="text-muted-foreground">Account storage</dt>
+              <dd className="mt-1 font-semibold">
+                {formatBytes(usage.usedBytes)} / {formatBytes(usage.quotaBytes)}
+              </dd>
+            </div>
+            <div className="bg-background px-5 py-4">
+              <dt className="text-muted-foreground">Reserved by uploads</dt>
+              <dd className="mt-1 font-semibold">{formatBytes(usage.reservedBytes)}</dd>
+            </div>
+            <div className="bg-background px-5 py-4">
+              <dt className="text-muted-foreground">Transfer tickets</dt>
+              <dd className="mt-1 font-semibold">{usage.ticketsIssued}</dd>
+            </div>
+            <div className="bg-background px-5 py-4">
+              <dt className="text-muted-foreground">Rejected transfers</dt>
+              <dd className="mt-1 font-semibold">{usage.rejectedQuota + usage.rejectedDisk + usage.rejectedSize}</dd>
+            </div>
+          </dl>
+        </Panel>
+      )}
 
       <Panel variant="bare">
         <div className="flex flex-wrap items-end gap-2.5 px-5 py-[1.1rem]">

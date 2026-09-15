@@ -825,7 +825,10 @@ async function writeRouteSnapshot(): Promise<void> {
     secretsPath?: string;
     secretsHash?: string;
     services?: Record<string, string>;
+    ownerId: string;
+    r2ResourceIds: string[];
   }> = [];
+  const r2Resources = new Map<string, string[]>();
   for (const row of rows) {
     const key = `${row.owner_id}\0${row.project}`;
     if (!written.has(key)) {
@@ -853,9 +856,14 @@ async function writeRouteSnapshot(): Promise<void> {
       const host = activeHosts.get(`${row.owner_id}\0${entry.service}`);
       if (host) services[entry.binding] = host;
     }
-    const route = info
-      ? { hostname: row.hostname, sproutPath: row.sprout_path, ...info }
-      : { hostname: row.hostname, sproutPath: row.sprout_path };
+    let r2ResourceIds = r2Resources.get(row.owner_id);
+    if (!r2ResourceIds) {
+      r2ResourceIds = [];
+      for (const resource of ownerResources(row.owner_id)) if (resource.kind === "r2") r2ResourceIds.push(resource.id);
+      r2Resources.set(row.owner_id, r2ResourceIds);
+    }
+    const base = { hostname: row.hostname, sproutPath: row.sprout_path, ownerId: row.owner_id, r2ResourceIds };
+    const route = info ? { ...base, ...info } : base;
     routes.push(Object.keys(services).length > 0 ? { ...route, services } : route);
   }
 
