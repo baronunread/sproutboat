@@ -136,6 +136,14 @@ const routesPath = resolve(process.env.SPROUTBOAT_ROUTE_SNAPSHOT || "routes.json
 // #27/#33: platform-wide request wall-clock and response-size caps. Per-project
 // overrides are still tracked on #27.
 const requestTimeoutMs = Number(process.env.SPROUTBOAT_REQUEST_TIMEOUT_MS) || 30_000;
+const transferTimeoutMs = Number(process.env.SPROUTBOAT_TRANSFER_TIMEOUT_MS) || 10 * 60_000;
+// Bun rejects request bodies above its own server limit before fetch() runs.
+// Direct transfer tickets enforce their smaller per-upload cap in the broker.
+const configuredEdgeBodyBytes = Number(process.env.SPROUTBOAT_EDGE_MAX_BODY_BYTES);
+const edgeMaxBodyBytes =
+  Number.isSafeInteger(configuredEdgeBodyBytes) && configuredEdgeBodyBytes > 0
+    ? configuredEdgeBodyBytes
+    : 5 * 1024 * 1024 * 1024;
 const responseMaxBytes = Number(process.env.SPROUTBOAT_RESPONSE_MAX_BYTES) || 10 * 1024 * 1024;
 // #38: per-node edge cache. Set SPROUTBOAT_EDGE_CACHE=off to disable.
 const cache = process.env.SPROUTBOAT_EDGE_CACHE === "off" ? null : new EdgeCache();
@@ -195,6 +203,7 @@ function cappedBody(
   body: ReadableStream<Uint8Array> | null,
   host: string,
   onEnd: (bytes: number, ok: boolean) => void,
+  maxBytes: number | null = responseMaxBytes,
 ): ReadableStream<Uint8Array> | null {
   if (!body) {
     onEnd(0, true);
@@ -214,8 +223,8 @@ function cappedBody(
     new TransformStream<Uint8Array, Uint8Array>({
       transform(chunk, controller) {
         sent += chunk.byteLength;
-        if (sent > responseMaxBytes) {
-          console.error(`response body cap (${responseMaxBytes}B) exceeded for ${host}`);
+        if (maxBytes !== null && sent > maxBytes) {
+          console.error(`response body cap (${maxBytes}B) exceeded for ${host}`);
           finish(false);
           controller.error(new Error("response exceeded byte cap"));
           return;
@@ -335,7 +344,8 @@ async function refreshRoutes(): Promise<void> {
 const server = Bun.serve({
   port,
   hostname: bindHost,
-  async fetch(request) {
+  maxRequestBodySize: edgeMaxBodyBytes,
+  async fetch(request, server) {
     const started = performance.now();
     const elapsed = () => Math.round(performance.now() - started);
     const reqBytes = Number(request.headers.get("content-length")) || 0;
@@ -366,11 +376,13 @@ const server = Bun.serve({
     const sproutPath = route.sproutPath;
 
     const target = new URL(request.url);
+    const directTransfer = /^\/__sb\/r2\/transfer\/[A-Z][A-Z0-9_]*\/[0-9a-f]{24}$/.test(target.pathname);
+    if (directTransfer) server.timeout(request, 255);
 
     // Static assets, served edge-first (Cloudflare's default). Static-host path
     // resolution (`/docs` -> `/docs.html`, `/docs/` -> `/docs/index.html`); the
     // SPA / 404 fallback still belongs to the sprout via `env.<ASSETS>.fetch()`.
-    if (request.method === "GET" || request.method === "HEAD") {
+    if (!directTransfer && (request.method === "GET" || request.method === "HEAD")) {
       const manifest = assetManifestFor(sproutPath);
       const assetKey = manifest
         ? resolveAssetKey(decodeURIComponent(target.pathname), (k) => Boolean(manifest.files[k]))
@@ -419,7 +431,7 @@ const server = Bun.serve({
     // Decide before lookup as well as insertion. A credentialed request must
     // never consume an anonymous shared entry, even if the origin later sends
     // public Cache-Control by mistake.
-    const cacheEligibleRequest = cache !== null && cacheRequestEligible(request);
+    const cacheEligibleRequest = !directTransfer && cache !== null && cacheRequestEligible(request);
     const cacheKey = cacheEligibleRequest ? EdgeCache.key(host, "GET", target.pathname + target.search) : null;
     if (cacheKey) {
       const hit = cache!.get(cacheKey);
@@ -444,9 +456,24 @@ const server = Bun.serve({
     let coldStart = false;
     let startupMs: number | null = null;
     let bootMs: number | null = null;
+    let transferKeepAlive: ReturnType<typeof setInterval> | null = null;
+    let transferDeadline: ReturnType<typeof setTimeout> | null = null;
+    const stopTransferKeepAlive = () => {
+      if (transferKeepAlive) clearInterval(transferKeepAlive);
+      if (transferDeadline) clearTimeout(transferDeadline);
+      transferKeepAlive = null;
+      transferDeadline = null;
+      request.signal.removeEventListener("abort", stopTransferKeepAlive);
+    };
     try {
       const endpoint = await pool.endpoint(sproutPath, route.secretsPath, route.services);
-      base = endpoint.url;
+      if (directTransfer && !endpoint.transferUrl) return new Response("direct transfers unavailable", { status: 503 });
+      base = directTransfer ? endpoint.transferUrl! : endpoint.url;
+      if (directTransfer) {
+        transferKeepAlive = setInterval(() => pool.touch(sproutPath, route.secretsPath, route.services), 30_000);
+        transferDeadline = setTimeout(stopTransferKeepAlive, transferTimeoutMs + 1_000);
+        request.signal.addEventListener("abort", stopTransferKeepAlive, { once: true });
+      }
       coldStart = endpoint.coldStart;
       startupMs = endpoint.coldStart ? endpoint.startupMs : null;
       bootMs = endpoint.coldStart ? endpoint.bootMs : null;
@@ -475,7 +502,7 @@ const server = Bun.serve({
         headers: request.headers,
         body: request.method === "GET" || request.method === "HEAD" ? undefined : request.body,
         redirect: "manual",
-        signal: AbortSignal.timeout(requestTimeoutMs),
+        signal: AbortSignal.timeout(directTransfer ? transferTimeoutMs : requestTimeoutMs),
       });
       const ttfbMs = elapsed();
       // #28 — per-invocation CPU time the sprout self-reports. Cache entries
@@ -487,7 +514,7 @@ const server = Bun.serve({
       // a finite 0 and slip past both the response-size cap and the cache-entry
       // cap. Treat "absent" as unknown.
       const declared = upstream.headers.has("content-length") ? Number(upstream.headers.get("content-length")) : NaN;
-      if (Number.isFinite(declared) && declared > responseMaxBytes) {
+      if (!directTransfer && Number.isFinite(declared) && declared > responseMaxBytes) {
         log({
           hostname: host,
           method: request.method,
@@ -535,25 +562,32 @@ const server = Bun.serve({
                 : false,
             )
           : upstream.body;
-      const body = cappedBody(cacheFill, host, (bytes) => {
-        log({
-          hostname: host,
-          method: request.method,
-          status: upstream.status,
-          durationMs: elapsed(),
-          ttfbMs,
-          reqBytes,
-          resBytes: Number.isFinite(declared) ? declared : bytes,
-          coldStart,
-          startupMs,
-          bootMs,
-          cpuMs,
-          errorKind: upstream.status >= 500 ? "upstream-5xx" : undefined,
-          cacheStatus,
-        });
-      });
+      const body = cappedBody(
+        cacheFill,
+        host,
+        (bytes) => {
+          stopTransferKeepAlive();
+          log({
+            hostname: host,
+            method: request.method,
+            status: upstream.status,
+            durationMs: elapsed(),
+            ttfbMs,
+            reqBytes,
+            resBytes: Number.isFinite(declared) ? declared : bytes,
+            coldStart,
+            startupMs,
+            bootMs,
+            cpuMs,
+            errorKind: upstream.status >= 500 ? "upstream-5xx" : undefined,
+            cacheStatus,
+          });
+        },
+        directTransfer ? null : responseMaxBytes,
+      );
       return new Response(body, { status: upstream.status, headers });
     } catch (error) {
+      stopTransferKeepAlive();
       const timedOut = error instanceof Error && (error.name === "TimeoutError" || error.name === "AbortError");
       const status = timedOut ? 504 : 502;
       console.error(

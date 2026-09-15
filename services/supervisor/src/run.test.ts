@@ -154,6 +154,18 @@ test("evictIdle reaps any idle sprout; a still-hot one survives", async () => {
   expect((await fetch(hot.url)).ok).toBe(true);
 });
 
+test("touch keeps a long direct transfer's broker pair from idle eviction", async () => {
+  const { spawn } = fakeSpawn();
+  let now = 0;
+  const pool = makePool(spawn, { idleMs: 100, now: () => now });
+  const endpoint = await pool.endpoint("/tmp/transfer/worker");
+  now = 90;
+  pool.touch("/tmp/transfer/worker");
+  now = 150;
+  expect(pool.evictIdle()).toBe(0);
+  expect((await fetch(endpoint.url)).ok).toBe(true);
+});
+
 test("active timed routes start without HTTP traffic and survive HTTP idle eviction (#142)", async () => {
   const { spawn, servers } = fakeSpawn();
   let now = 0;
@@ -321,6 +333,7 @@ test("the broker is told where its sprout is, so cron and queues actually run (#
   const args = brokerArgs({
     entry: "/opt/sproutboat/broker.ts",
     brokerPort: 14_321,
+    transferPort: 34_321,
     token: "deadbeef",
     stateDir: "/var/lib/sproutboat/brokers/abc",
     resourceDir: "/var/lib/sproutboat/resources",
@@ -335,6 +348,7 @@ test("the broker is told where its sprout is, so cron and queues actually run (#
   expect(args[flag + 1]).toBe("http://127.0.0.1:4321/");
   expect(args).toContain("--bindings");
   expect(args).toContain("--resource-dir");
+  expect(args[args.indexOf("--transfer-port") + 1]).toBe("34321");
 });
 
 test("brokerArgs adds secrets and assets only when there are any", () => {

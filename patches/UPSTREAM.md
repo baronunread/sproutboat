@@ -440,3 +440,29 @@ internally and would need to read the stored bytes directly instead once
 Not shimmable from a prelude: `Response.prototype.text`/the constructor
 aren't assignable the way `Date.parse` isn't (Draft E) — has to be fixed in
 `runtime/fetch-globals.js` itself.
+
+## Draft H: native-fetch request streaming for large direct transfers
+
+Do not file this on Porffor's side from this workspace. Bring it to the
+maintainer only after reviewing and rewriting it by hand per `AI_POLICY`.
+
+The pinned alpha-5 native server (`compiler/uwebsockets.js`) creates a
+`PendingRequest`, appends every `res->onData` chunk to `pending->body`, and only
+calls `handle_request` once `last` is true. Raising the body cap allows a large
+upload, but allocates the whole upload before application code or a binding can
+see it. A Sproutboat transfer ticket can bypass JavaScript at the deployed
+edge and broker, but a single-binary standalone sprout still has no equivalent
+way to consume a request incrementally.
+
+What would help: a native-fetch facility to register a path or request hook
+before `PendingRequest::body` accumulation, consume `onData` chunks with
+backpressure, and finish or abort without calling the JS handler. A streaming
+`Request.body` interface would be more general, but a bounded native hook is
+enough for direct file-to-storage transfers. The hook needs an explicit byte
+limit, disconnect cleanup, and a way to stream a response or file range without
+materializing it as a JS `Response` body. This is separate from the existing
+WHATWG Streams discussion: the memory spike occurs in the native HTTP ingress
+before a JavaScript stream could be constructed.
+
+Standalone-side Sproutboat work would still be required for ticket validation,
+storage writes, and cleanup. No Porffor issue or PR was opened for this note.
