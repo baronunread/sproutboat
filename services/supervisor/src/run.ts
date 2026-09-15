@@ -60,7 +60,7 @@ export type SproutFactory = (
  * start (0 on a warm hit). The edge records both per request so the dashboard
  * can chart cold-start rate and startup-time percentiles.
  */
-export type Endpoint = { url: string; coldStart: boolean; startupMs: number; bootMs: number };
+export type Endpoint = { url: string; transferUrl?: string; coldStart: boolean; startupMs: number; bootMs: number };
 
 /**
  * A route whose broker must keep its paired sprout available without an HTTP
@@ -126,6 +126,7 @@ function portBindable(port: number): boolean {
 export function brokerArgs(opts: {
   entry: string;
   brokerPort: number;
+  transferPort?: number;
   token: string;
   stateDir: string;
   resourceDir: string;
@@ -160,6 +161,7 @@ export function brokerArgs(opts: {
     "--sprout-url",
     `http://127.0.0.1:${opts.sproutPort}/`,
   ];
+  if (opts.transferPort) args.push("--transfer-port", String(opts.transferPort));
   if (opts.secretsPath) args.push("--secrets", opts.secretsPath);
   // #48 — service bindings only work when the broker knows both where to send a
   // call (the node's edge, on loopback) and which hostname each binding means.
@@ -217,6 +219,8 @@ function spawnWithBroker(
 
   if (existsSync(bindingsPath)) {
     const brokerPort = port + 10_000;
+    const transferPort = port - 10_000;
+    if (transferPort <= 0) throw new RangeError("sprout port must be above 10000 for direct transfers");
     const token = randomBytes(24).toString("hex");
     // The artifact dir is read-only to the edge (0750 sproutboat-control), so
     // broker state can't live in `workerDir/.broker`. Put it beside the request
@@ -242,6 +246,7 @@ function spawnWithBroker(
     const args = brokerArgs({
       entry: brokerEntry,
       brokerPort,
+      transferPort,
       token,
       stateDir,
       resourceDir,
@@ -286,11 +291,11 @@ function spawnWithBroker(
   // the broker's port. No broker (no bindings) -> start immediately.
   const exited = (async () => {
     if (capturedBroker) {
-      const up = await awaitPort(port + 10_000, 5_000);
+      const [up, transferUp] = await Promise.all([awaitPort(port + 10_000, 5_000), awaitPort(port - 10_000, 5_000)]);
       if (stopped) return 0;
       // Broker never listened — don't start a sprout that will only crash on its
       // first binding call. Resolve as a failed exit; the pool retries next hit.
-      if (!up) {
+      if (!up || !transferUp) {
         capturedBroker.kill(9);
         return 1;
       }
@@ -496,12 +501,18 @@ export class SproutPool {
    * microseconds against a range of thousands, where before the collision
    * window was the whole life of the other listener.
    */
-  #freePort(): number {
+  #freePort(sproutPath: string): number {
     const [lo, hi] = this.#portRange;
+    const withBroker = existsSync(resolve(dirname(sproutPath), "bindings.json"));
     for (let attempt = 0; attempt < 10_000; attempt++) {
       const port = lo + Math.floor(Math.random() * (hi - lo + 1));
       if (this.#usedPorts.has(port)) continue;
-      if (portBindable(port)) return port;
+      if (
+        portBindable(port) &&
+        (!withBroker ||
+          (port > 10_000 && port + 10_000 <= 65_535 && portBindable(port + 10_000) && portBindable(port - 10_000)))
+      )
+        return port;
     }
     throw new Error("no free sprout port available");
   }
@@ -519,7 +530,7 @@ export class SproutPool {
       coldStart = true;
       if (this.#seenKeys.has(key)) this.#restarts += 1; // this route ran before: crash/evict replacement
       this.#seenKeys.add(key);
-      const port = this.#freePort();
+      const port = this.#freePort(sproutPath);
       this.#usedPorts.add(port);
       this.#spawns += 1;
       server = new SproutServer(
@@ -555,10 +566,19 @@ export class SproutPool {
     }
     return {
       url: server.url,
+      transferUrl: existsSync(resolve(dirname(server.sproutPath), "bindings.json"))
+        ? `http://127.0.0.1:${server.port - 10_000}`
+        : undefined,
       coldStart,
       startupMs: coldStart ? server.startupMs : 0,
       bootMs: coldStart ? server.bootMs : 0,
     };
+  }
+
+  /** Keep an in-flight direct transfer from being reaped as HTTP-idle. */
+  touch(sproutPath: string, secretsPath?: string | null, services?: Record<string, string> | null): void {
+    const server = this.#servers.get(runtimeKey(sproutPath, secretsPath, services));
+    if (server && !server.closed) server.lastUsedAt = this.#now();
   }
 
   dispose(sproutPath: string): void {

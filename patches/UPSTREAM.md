@@ -22,14 +22,14 @@ LLM-written prose** — rewrite the drafts below in your own words before filing
 
 **alpha-5 checked (2026-09-10, `1f4ae4a`).** Nothing relevant changed:
 
-| Gap                                                                   | alpha-5                                                                                                       | Action                                                                      |
-| --------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------- |
-| `URLSearchParams` / `URL.prototype.searchParams`                      | still missing (shimmed in `@sproutboat/runtime`)                                                              | Draft A stands                                                              |
-| static `Response.json(data, init)`                                    | still missing (instance `json()` only; shimmed)                                                               | Draft A stands                                                              |
-| class declaration not hoisted into scope                              | still throws in interpreter and native                                                                        | Draft B stands                                                              |
-| `Date` non-ISO string parse (`15-date-iso`, `16-date-parts`)          | parses positionally, unlike V8: implementation-defined, needs a realistic (not synthetic) input before filing | Draft D — needs revision, not yet filable                                   |
-| `Date` timezone offsets (`32-date-offset`)                            | ignored, folded into ms: a real bug on valid ISO 8601 input                                                   | Draft E — filed as [#387](https://github.com/CanadaHonk/porffor/issues/387) |
-| promise-resolve thenable probe can spin forever                       | reproduced with lldb; missing prototype-walk termination guard                                                | Draft F — filed as [#388](https://github.com/CanadaHonk/porffor/issues/388) |
+| Gap                                                                   | alpha-5                                                                                                       | Action                                                                                                                                                                                                    |
+| --------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `URLSearchParams` / `URL.prototype.searchParams`                      | still missing (shimmed in `@sproutboat/runtime`)                                                              | Draft A stands                                                                                                                                                                                            |
+| static `Response.json(data, init)`                                    | still missing (instance `json()` only; shimmed)                                                               | Draft A stands                                                                                                                                                                                            |
+| class declaration not hoisted into scope                              | still throws in interpreter and native                                                                        | Draft B stands                                                                                                                                                                                            |
+| `Date` non-ISO string parse (`15-date-iso`, `16-date-parts`)          | parses positionally, unlike V8: implementation-defined, needs a realistic (not synthetic) input before filing | Draft D — needs revision, not yet filable                                                                                                                                                                 |
+| `Date` timezone offsets (`32-date-offset`)                            | ignored, folded into ms: a real bug on valid ISO 8601 input                                                   | Draft E — filed as [#387](https://github.com/CanadaHonk/porffor/issues/387)                                                                                                                               |
+| promise-resolve thenable probe can spin forever                       | reproduced with lldb; missing prototype-walk termination guard                                                | Draft F — filed as [#388](https://github.com/CanadaHonk/porffor/issues/388)                                                                                                                               |
 | `Request`/`Response` accept no byte body (`Uint8Array`/`ArrayBuffer`) | `.text()`/`.json()` fall through to `String(bytes)`, garbage not a decode                                     | Draft G — [#386](https://github.com/CanadaHonk/porffor/issues/386) was filed and then retracted (filed without review before the filing step); not currently open, re-file by hand if still worth raising |
 
 This table is our own filing status, not a Porffor compat number — it doesn't
@@ -440,3 +440,56 @@ internally and would need to read the stored bytes directly instead once
 Not shimmable from a prelude: `Response.prototype.text`/the constructor
 aren't assignable the way `Date.parse` isn't (Draft E) — has to be fixed in
 `runtime/fetch-globals.js` itself.
+
+## Draft H: native-fetch request streaming for large direct transfers
+
+Do not file this on Porffor's side from this workspace. Bring it to the
+maintainer only after reviewing and rewriting it by hand per `AI_POLICY`.
+
+The pinned alpha-5 native server (`compiler/uwebsockets.js`) creates a
+`PendingRequest`, appends every `res->onData` chunk to `pending->body`, and only
+calls `handle_request` once `last` is true. Raising the body cap allows a large
+upload, but allocates the whole upload before application code or a binding can
+see it. A Sproutboat transfer ticket can bypass JavaScript at the deployed
+edge and broker, but a single-binary standalone sprout still has no equivalent
+way to consume a request incrementally.
+
+What would help: a native-fetch facility to register a path or request hook
+before `PendingRequest::body` accumulation, consume `onData` chunks with
+backpressure, and finish or abort without calling the JS handler. A streaming
+`Request.body` interface would be more general, but a bounded native hook is
+enough for direct file-to-storage transfers. The hook needs an explicit byte
+limit, disconnect cleanup, and a way to stream a response or file range without
+materializing it as a JS `Response` body. This is separate from the existing
+WHATWG Streams discussion: the memory spike occurs in the native HTTP ingress
+before a JavaScript stream could be constructed.
+
+Standalone-side Sproutboat work would still be required for ticket validation,
+storage writes, and cleanup. No Porffor issue or PR was opened for this note.
+
+Implementation boundary in the pinned build: `compiler/index.js` compiles the
+generated Sproutboat C bundle into `porffor.o`, then compiles the uWebSockets
+shim as a separate C++ translation unit. The shim has to select the transfer
+route before `alloc_request_url` and `collect_headers`, not merely before
+`PendingRequest::body.append`, or a large request still crosses the JS heap.
+An early hook would receive the method, path, relevant headers, each body
+chunk, and the abort event. It must be able to stop ordinary handler dispatch,
+reject oversized `Content-Length` before reading, cap chunked bodies while
+reading, and pause or resume reads when the file sink cannot keep up. It also
+needs a bounded file-response path for GET, HEAD, and byte ranges.
+
+The Sproutboat bridge is distinct from the Porffor hook. Its embedded R2
+helpers in `transport-embedded.js` are currently `static` C functions, so the
+C++ shim cannot link against them directly. A standalone implementation would
+export a narrow C ABI from the generated object for claiming a one-use ticket,
+opening an exclusive temporary file, committing a SHA-256-addressed blob and
+SQLite metadata, and aborting with cleanup. Ticket creation would have to be
+implemented in the embedded R2 dispatch too. This bridge must preserve the
+same binding scoping, expiry, method checks, maximum bytes, expected hash,
+atomic metadata behavior, and immutable blob generations as the broker route.
+It should keep the normal 1 MiB native-fetch request cap unchanged.
+
+The broker and deployed edge direct-transfer path does not depend on this
+native hook. Until the standalone bridge is implemented and load-tested, a
+single-binary sprout should use multipart uploads with bounded part sizes;
+raising `SB_REQUEST_BODY_MAX` alone does not make single-PUT uploads bounded.
