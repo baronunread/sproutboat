@@ -377,7 +377,10 @@ const server = Bun.serve({
 
     const target = new URL(request.url);
     const directTransfer = /^\/__sb\/r2\/transfer\/[A-Z][A-Z0-9_]*\/[0-9a-f]{24}$/.test(target.pathname);
-    if (directTransfer) server.timeout(request, 255);
+    // Direct transfers use the explicit AbortSignal deadline below. Bun's
+    // per-request idle timeout accepts seconds, and 255 would silently cut a
+    // configured ten-minute upload short.
+    if (directTransfer) server.timeout(request, 0);
 
     // Static assets, served edge-first (Cloudflare's default). Static-host path
     // resolution (`/docs` -> `/docs.html`, `/docs/` -> `/docs/index.html`); the
