@@ -31,6 +31,8 @@ type R2Row = {
   uploaded: string;
   http_json: string;
   custom_json: string;
+  /** Immutable on-disk generation. Older rows stored no explicit generation. */
+  blob_id?: string | null;
 };
 
 const resourceRoot = (): string =>
@@ -136,13 +138,14 @@ export async function r2Usage(request: Request): Promise<Response> {
 
 /**
  * Same hash as @sproutboat/wire's broker.ts `r2BlobId` (bucket+key, sha256,
- * hex) — must stay identical, since it's how both sides find the same file
- * on disk without a lookup column. Duplicated rather than imported: this is
- * a pure 2-line function, and @sproutboat/wire's published version doesn't
- * carry it yet (unpublished as of #56/#184).
+ * hex). It must stay identical, since it's how both sides find the same file
+ * on disk. Duplicated rather than imported because it is a small stable
+ * storage-format boundary between the control plane and wire package.
  */
-function r2BlobPath(resourceDbPath: string, bucket: string, key: string): string {
-  const hash = createHash("sha256").update(`${bucket}\0${key}`).digest("hex");
+function r2BlobPath(resourceDbPath: string, bucket: string, key: string, generation?: string | null): string {
+  const hash = createHash("sha256")
+    .update(generation ? `${bucket}\0${key}\0${generation}` : `${bucket}\0${key}`)
+    .digest("hex");
   return join(dirname(resourceDbPath), "r2-blobs", `${hash}.blob`);
 }
 
@@ -187,11 +190,7 @@ export async function r2Object(request: Request, id: string, key: string): Promi
   const db = openR2(owned.path);
   let row: R2Row | null;
   try {
-    row = db
-      .query<R2Row, [string, string]>(
-        "SELECT key, size, etag, uploaded, http_json, custom_json FROM r2 WHERE bucket = ? AND key = ?",
-      )
-      .get(id, key);
+    row = db.query<R2Row, [string, string]>("SELECT * FROM r2 WHERE bucket = ? AND key = ?").get(id, key);
   } finally {
     db.close();
   }
@@ -203,7 +202,10 @@ export async function r2Object(request: Request, id: string, key: string): Promi
     audit(owned, "get", "rejected", 0);
     return Response.json({ error: `object exceeds the ${MAX_DOWNLOAD_BYTES} byte download limit` }, { status: 413 });
   }
-  const blobPath = r2BlobPath(owned.path, id, key);
+  // Current broker writes use immutable blobs keyed by `blob_id`; retain the
+  // original key-only filename as a compatibility fallback for pre-generation
+  // rows created before @sproutboat/wire 0.7.
+  const blobPath = r2BlobPath(owned.path, id, key, row.blob_id);
   if (!existsSync(blobPath)) {
     // A metadata row with no blob file (disk issue, deleted out from under
     // it) reads as not-found rather than a 500.

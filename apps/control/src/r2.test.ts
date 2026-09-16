@@ -21,12 +21,12 @@ async function seedObject(resourceDir: string, bucket: string, key: string, byte
   const db = new Database(dbPath, { create: true });
   db.exec(
     "CREATE TABLE IF NOT EXISTS r2 (bucket TEXT NOT NULL, key TEXT NOT NULL, size INTEGER NOT NULL, " +
-      "etag TEXT NOT NULL, uploaded TEXT NOT NULL, http_json TEXT NOT NULL DEFAULT '{}', custom_json TEXT NOT NULL DEFAULT '{}', " +
+      "etag TEXT NOT NULL, uploaded TEXT NOT NULL, http_json TEXT NOT NULL DEFAULT '{}', custom_json TEXT NOT NULL DEFAULT '{}', blob_id TEXT, " +
       "PRIMARY KEY (bucket, key))",
   );
   const etag = createHash("sha256").update(bytes).digest("hex");
   db.query(
-    "INSERT INTO r2 (bucket, key, size, etag, uploaded, http_json, custom_json) VALUES (?1,?2,?3,?4,?5,?6,?7)",
+    "INSERT INTO r2 (bucket, key, size, etag, uploaded, http_json, custom_json, blob_id) VALUES (?1,?2,?3,?4,?5,?6,?7,?8)",
   ).run(
     bucket,
     key,
@@ -35,11 +35,12 @@ async function seedObject(resourceDir: string, bucket: string, key: string, byte
     new Date().toISOString(),
     JSON.stringify(contentType ? { contentType } : {}),
     "{}",
+    etag,
   );
   db.close();
   const blobDir = join(resourceDir, "r2-blobs");
   await mkdir(blobDir, { recursive: true });
-  const hash = createHash("sha256").update(`${bucket}\0${key}`).digest("hex");
+  const hash = createHash("sha256").update(`${bucket}\0${key}\0${etag}`).digest("hex");
   await writeFile(join(blobDir, `${hash}.blob`), bytes);
 }
 
