@@ -95,18 +95,22 @@ function Overview() {
           Loading workspace data…
         </Panel>
       ) : state === "sign-in" ? (
-        <Panel variant="bare">
-          <h2>Sign in to view your workspace</h2>
-          <p>Sign in to deploy and inspect your services.</p>
-          <Link className={buttonVariants({ variant: "default", className: "text-[0.82rem]" })} to="/login">
+        <Panel>
+          <PanelHeading
+            title="Sign in to view your workspace"
+            description="Sign in to deploy and inspect your services."
+          />
+          <Link className={buttonVariants({ variant: "default", className: "mt-5 text-[0.82rem]" })} to="/login">
             Sign in
           </Link>
         </Panel>
       ) : state === "setup" ? (
-        <Panel variant="bare">
-          <h2>Claim your deployment namespace</h2>
-          <p>Set up the namespace that will be used in your project routes.</p>
-          <Link className={buttonVariants({ variant: "default", className: "text-[0.82rem]" })} to="/profile">
+        <Panel>
+          <PanelHeading
+            title="Claim your deployment namespace"
+            description="Set up the namespace that will be used in your project routes."
+          />
+          <Link className={buttonVariants({ variant: "default", className: "mt-5 text-[0.82rem]" })} to="/profile">
             Set up profile
           </Link>
         </Panel>

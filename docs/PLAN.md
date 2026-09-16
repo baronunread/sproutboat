@@ -94,7 +94,7 @@ The happy path should look like this:
 ```console
 $ open https://dashboard.sproutboat.com
 Create a user-owned CLI key
-Logged in as andrea
+Logged in as example-user
 
 $ sproutboat init hello
 Created hello/sproutboat.jsonc
@@ -109,7 +109,7 @@ Uploading artifact...
 Activating version 01K4F9...
 
 Deployed hello
-https://hello.andrea.sproutboat.com
+https://hello.example-user.sproutboat.com
 ```
 
 ## 4. CLI contract
@@ -763,11 +763,11 @@ The POC is complete only when all of the following are demonstrated:
 
 1. Visit `sproutboat.com`, see the experimental warning, then sign in with GitHub
    at `dashboard.sproutboat.com` and
-   reserve `andrea`.
+   reserve `example-user`.
 2. Run `sproutboat login` and approve the exact scopes in the browser.
 3. Run `sproutboat init hello` and deploy a passing handler.
 4. Receive and successfully request
-   `https://hello.andrea.sproutboat.com` over valid HTTPS.
+   `https://hello.example-user.sproutboat.com` over valid HTTPS.
 5. Introduce a compile error and prove `sproutboat deploy` uploads zero bytes.
 6. Inspect logs with `sproutboat tail`.
 7. Deploy a second version and roll back to the first without rebuilding.

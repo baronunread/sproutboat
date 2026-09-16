@@ -149,14 +149,14 @@ describe("Phase A contracts", () => {
       await mkdtemp(join(tmpdir(), "sproutboat-profiles-")),
       "sproutboat.sqlite",
     );
-    expect(validUsername("andrea")).toBe(true);
+    expect(validUsername("example-user")).toBe(true);
     expect(validUsername("dashboard")).toBe(false);
-    expect(reserveUsername("user-a", "andrea")).toEqual(
-      expect.objectContaining({ userId: "user-a", username: "andrea" }),
+    expect(reserveUsername("user-a", "example-user")).toEqual(
+      expect.objectContaining({ userId: "user-a", username: "example-user" }),
     );
-    expect(profileForUser("user-a")).toEqual(expect.objectContaining({ username: "andrea" }));
-    expect(deploymentHostname("hello", "andrea")).toBe("hello.andrea.sproutboat.com");
-    expect(() => reserveUsername("user-b", "andrea")).toThrow("username is already taken");
+    expect(profileForUser("user-a")).toEqual(expect.objectContaining({ username: "example-user" }));
+    expect(deploymentHostname("hello", "example-user")).toBe("hello.example-user.sproutboat.com");
+    expect(() => reserveUsername("user-b", "example-user")).toThrow("username is already taken");
   });
 
   test("creates a short-lived CLI request that cannot be exchanged before approval", async () => {

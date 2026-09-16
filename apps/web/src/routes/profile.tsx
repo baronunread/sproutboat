@@ -100,7 +100,7 @@ function Profile() {
                   setUsername(event.target.value);
                   setError(null);
                 }}
-                placeholder="andrea"
+                placeholder="your-name"
                 autoComplete="off"
                 spellCheck={false}
                 required
