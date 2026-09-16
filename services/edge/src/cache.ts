@@ -45,7 +45,7 @@ export function cacheRequestEligible(request: Request): boolean {
 export function cacheableForSeconds(cacheControl: string | null): number | null {
   if (!cacheControl) return null; // no directive → treat as dynamic, don't cache
   const cc = cacheControl.toLowerCase();
-  if (/(^|,)\s*(no-store|private|no-cache)(?:\s*=\s*(?:\"[^\"]*\"|[^,]+))?\s*(,|$)/.test(cc)) return null;
+  if (/(^|,)\s*(no-store|private|no-cache)(?:\s*=\s*(?:"[^"]*"|[^,]+))?\s*(,|$)/.test(cc)) return null;
   const directive = (name: string): number | null | undefined => {
     const values = [...cc.matchAll(new RegExp(`(?:^|,)\\s*${name}\\s*=\\s*([^,]+)\\s*(?=,|$)`, "g"))];
     if (values.length === 0) return undefined;
