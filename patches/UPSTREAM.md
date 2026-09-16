@@ -20,23 +20,23 @@ delete the corresponding lines from `native-fetch-prelude.js`.
 Porffor's AI_POLICY: **disclose AI use** (name the tool), and **do not paste
 LLM-written prose** — rewrite the drafts below in your own words before filing.
 
-**alpha-5 checked (2026-09-10, `1f4ae4a`).** Nothing relevant changed:
+**alpha-6 checked (2026-09-16, `038f415e`).** The promise-resolve livelock is
+fixed upstream. The two prematurely filed native-fetch reports were closed and
+are archived below only as filing-history context.
 
-| Gap                                                                   | alpha-5                                                                                                       | Action                                                                                                                                                                                                    |
+| Gap                                                                   | alpha-6                                                                                                       | Action                                                                                                                                                                                                    |
 | --------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `URLSearchParams` / `URL.prototype.searchParams`                      | still missing (shimmed in `@sproutboat/runtime`)                                                              | Draft A stands                                                                                                                                                                                            |
 | static `Response.json(data, init)`                                    | still missing (instance `json()` only; shimmed)                                                               | Draft A stands                                                                                                                                                                                            |
 | class declaration not hoisted into scope                              | still throws in interpreter and native                                                                        | Draft B stands                                                                                                                                                                                            |
 | `Date` non-ISO string parse (`15-date-iso`, `16-date-parts`)          | parses positionally, unlike V8: implementation-defined, needs a realistic (not synthetic) input before filing | Draft D — needs revision, not yet filable                                                                                                                                                                 |
 | `Date` timezone offsets (`32-date-offset`)                            | ignored, folded into ms: a real bug on valid ISO 8601 input                                                   | Draft E — filed as [#387](https://github.com/CanadaHonk/porffor/issues/387)                                                                                                                               |
-| promise-resolve thenable probe can spin forever                       | reproduced with lldb; missing prototype-walk termination guard                                                | Draft F — filed as [#388](https://github.com/CanadaHonk/porffor/issues/388)                                                                                                                               |
-| `Request`/`Response` accept no byte body (`Uint8Array`/`ArrayBuffer`) | `.text()`/`.json()` fall through to `String(bytes)`, garbage not a decode                                     | Draft G — [#386](https://github.com/CanadaHonk/porffor/issues/386) was filed and then retracted (filed without review before the filing step); not currently open, re-file by hand if still worth raising |
 
 This table is our own filing status, not a Porffor compat number — it doesn't
 belong to a "release readiness" metric and shouldn't grow one; see one below
 per draft instead. The `$PORT` and remaining patches now live in
 `@sproutboat/toolchain` (`ensurePorfforPatched`), not this repo. The drafts
-below still apply. Bump their version line to `alpha-5 (1f4ae4a)` and rewrite
+below still apply. Bump their version line to `alpha-6 (038f415e)` and rewrite
 the prose before filing.
 
 ---
@@ -212,7 +212,10 @@ have 1`) and the C build fails. It has to be fixed in `compiler/builtins`.
 
 Covered by `tests/porffor/capabilities/32-date-offset.js`.
 
-## Draft F — promise-resolve's thenable probe can loop forever, livelocking the process
+## Archived: #388 promise-resolve livelock
+
+**Resolved upstream in alpha-6.** The report remains only as historical
+reproduction evidence and is not an active dependency.
 
 **Filed: [CanadaHonk/porffor#388](https://github.com/CanadaHonk/porffor/issues/388).**
 
@@ -355,7 +358,10 @@ Not shimmable from a prelude — this is in the object/promise runtime
 internals (`compiler/builtins/promise.ts`, `compiler/builtins/_internal_object.ts`),
 not something a userland polyfill can reach.
 
-## Draft G — `Request`/`Response` accept no byte body (`Uint8Array`/`ArrayBuffer`)
+## Archived: #386 byte-body report
+
+**Closed after retraction.** This is not an active dependency or release
+blocker; retain the report only to avoid repeating the premature filing.
 
 **Filed: [CanadaHonk/porffor#386](https://github.com/CanadaHonk/porffor/issues/386).**
 
