@@ -128,3 +128,30 @@ gh release create vX.Y.Z --repo baronunread/sproutboat \
 
 (Extract just that entry's section between its heading and the next `## [`:
 don't hand the whole file to `--notes-file`.)
+
+## 8. If this release bumps `@sproutboat/toolchain` or `@sproutboat/runtime`
+
+A toolchain/runtime fix or revert almost never stops at this repo. Before
+calling the release done:
+
+- **Check `sproutboat-cli`** for the same stale pin and cut a matching CLI
+  release too (its own `release` skill) — this platform release and the CLI
+  release should land on the same toolchain/runtime version, not drift.
+- **Check `sproutboat-site`**'s `sproutboat` devDependency pin
+  (`sproutboat-site/package.json`). It deploys itself with
+  `bunx sproutboat deploy`, so a stale pin there means the flagship demo
+  silently keeps running an old CLI/toolchain after everything else has
+  moved on. Bump it, `bun install`, `bun run build` to confirm it still
+  compiles, then `bun run deploy`.
+- `bunx`/`npm install` can lag the registry for a few minutes after a real
+  publish, longer for the platform-specific `@sproutboat/cli-<os>-<arch>`
+  binary packages than for plain JS packages — a 404 or a resolved-but-stale
+  version right after tagging is very likely propagation lag, not a failed
+  publish. Poll `https://registry.npmjs.org/<pkg>/<version>` for a 200
+  before concluding otherwise, and re-run `bun install --no-cache` (bun's
+  own package-metadata cache lags separately from the registry).
+- This was missed once already: v0.5.0's release notes were written and
+  committed but never tagged, and v0.11.7/v0.11.8 (CLI) shipped with no
+  CHANGELOG entry at all. If you find gaps like these on a sibling repo
+  while doing this, it's worth closing them in the same pass rather than
+  leaving them for a future session to rediscover.
