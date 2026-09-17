@@ -5,6 +5,27 @@ Changes to the self-hosted Sproutboat platform are recorded here. Read the
 
 ## [Unreleased]
 
+## [0.5.1] - 2026-09-17
+
+### Fixed
+
+- `@sproutboat/toolchain` bumped to `^0.4.9` and `@sproutboat/runtime` to
+  `^0.9.6`. `0.4.6`/`0.4.7` shipped a native R2 size-gating feature
+  (baronunread/sproutboat#202) with a misplaced `#endif` in the generated
+  C++ guard, breaking every R2-free native build with a compiler error.
+  The fix landed as `0.4.8`, but that version got stuck permanently
+  conflicted on npm after an interrupted trusted-publish attempt — so
+  `0.4.9`/`0.9.6` instead revert #202 outright: R2 transfer support is
+  native code again, always compiled in with 404 stubs where unused, the
+  pre-#202 shape. The size gate saved ~11KB of `__text` (~1.3% of a typical
+  binary) and didn't even change the shipped file size on macOS, since
+  `__TEXT` is page-aligned there — not worth the guard-placement bug class
+  it introduced.
+
+### Breaking and operator actions
+
+- None. `sbctl update` is sufficient.
+
 ## [0.5.0] - 2026-09-15
 
 ### Added
