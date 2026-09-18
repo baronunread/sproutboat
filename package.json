@@ -36,7 +36,7 @@
     "@sproutboat/assets": "^0.2.0",
     "@sproutboat/config": "^0.3.0",
     "@sproutboat/runtime": "^0.9.6",
-    "@sproutboat/toolchain": "^0.4.9",
+    "@sproutboat/toolchain": "^0.4.10",
     "@sproutboat/wire": "^0.7.0",
     "@tanstack/charts": "^0.16.0",
     "@tanstack/react-router": "^1.170.32",

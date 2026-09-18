@@ -5,6 +5,15 @@ Changes to the self-hosted Sproutboat platform are recorded here. Read the
 
 ## [Unreleased]
 
+## [0.5.2] - 2026-09-18
+
+### Fixed
+
+- `@sproutboat/toolchain` bumped to `^0.4.10`, pinning Porffor to the
+  `alpha-7` tag. All local patches (render.js, uwebsockets.js) verified
+  against the real alpha-7 source — no anchor drift, and the full test
+  suite (153 tests) passes.
+
 ## [0.5.1] - 2026-09-17
 
 ### Fixed
