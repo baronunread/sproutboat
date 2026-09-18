@@ -53,7 +53,13 @@ export async function createCliAuthorization(): Promise<Response> {
         "",
       );
       return Response.json(
-        { deviceCode, userCode: code, verificationUri: `${dashboardUrl}/?cli_code=${code}`, interval: 2, expiresAt },
+        {
+          deviceCode,
+          userCode: code,
+          verificationUri: `${dashboardUrl}/cli-authorize?cli_code=${code}`,
+          interval: 2,
+          expiresAt,
+        },
         { status: 201 },
       );
     } catch (error) {

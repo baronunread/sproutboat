@@ -10,7 +10,9 @@ export const Route = createFileRoute("/login")({
 
 function callbackTarget(): string {
   const cliCode = new URLSearchParams(location.search).get("cli_code");
-  return cliCode ? `${location.origin}/?cli_code=${encodeURIComponent(cliCode)}` : `${location.origin}/profile`;
+  return cliCode
+    ? `${location.origin}/cli-authorize?cli_code=${encodeURIComponent(cliCode)}`
+    : `${location.origin}/profile`;
 }
 
 async function signInWithGithub() {

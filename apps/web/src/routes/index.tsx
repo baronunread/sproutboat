@@ -9,7 +9,6 @@ import { scaleLinear } from "@tanstack/charts/scales/linear";
 import { stack } from "@tanstack/charts/stack";
 import { tooltip } from "@tanstack/charts/tooltip";
 import {
-  Arrow,
   EmptyState,
   Metric,
   Panel,
@@ -40,15 +39,6 @@ export const Route = createFileRoute("/")({
 function Overview() {
   const { data, state } = useOverview();
   const metrics = data?.metrics;
-  const cliCode = import.meta.env.SSR ? null : new URLSearchParams(location.search).get("cli_code");
-  const approve = async () => {
-    if (!cliCode) return;
-    const response = await fetch(`/api/cli/authorizations/${encodeURIComponent(cliCode)}/approve`, {
-      method: "POST",
-      credentials: "include",
-    });
-    if (response.ok) history.replaceState({}, "", "/");
-  };
   return (
     <>
       <section className="mb-8 flex items-center justify-between gap-8 border-b border-border pb-7 max-[800px]:mb-10 max-[800px]:flex-col max-[800px]:items-start [&_h1]:m-0 [&_h1]:text-[1.85rem] [&_h1]:font-bold [&_h1]:tracking-[-0.035em] [&_h1]:max-[480px]:text-[1.6rem] [&_p]:mt-1.5 [&_p]:max-w-[38rem] [&_p]:text-[0.875rem] [&_p]:leading-normal [&_p]:text-muted-foreground">
@@ -60,35 +50,6 @@ function Overview() {
           View sprouts
         </Link>
       </section>
-
-      {cliCode && (
-        <section className="mb-6 flex items-center justify-between gap-8 rounded-lg border border-[color-mix(in_srgb,var(--color-sky)_25%,var(--color-border))] bg-[color-mix(in_srgb,var(--color-sky)_8%,var(--color-card))] p-5 max-[800px]:flex-col max-[800px]:items-start [&_h2]:m-0 [&_h2]:text-base [&_h2]:font-semibold [&_h2]:tracking-tight [&_p]:mt-1.5 [&_p]:max-w-[38rem] [&_p]:text-[0.8rem] [&_p]:leading-relaxed [&_p]:text-muted-foreground">
-          <div>
-            <h2>Connect this machine to Sproutboat.</h2>
-            <p>
-              {data
-                ? "Approve this browser login to store a local CLI credential."
-                : "Sign in and claim a namespace before approving this browser login."}
-            </p>
-          </div>
-          {data ? (
-            <button
-              className={buttonVariants({ variant: "default", className: "text-[0.82rem]" })}
-              type="button"
-              onClick={approve}
-            >
-              Approve login <Arrow />
-            </button>
-          ) : (
-            <Link
-              className={buttonVariants({ variant: "default", className: "text-[0.82rem]" })}
-              to={state === "sign-in" ? "/login" : "/profile"}
-            >
-              Continue <Arrow />
-            </Link>
-          )}
-        </section>
-      )}
 
       {state === "loading" ? (
         <Panel variant="bare" className="min-h-56 px-5 pt-12 text-muted-foreground" aria-live="polite">

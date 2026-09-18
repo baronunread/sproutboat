@@ -57,8 +57,10 @@ function AuthGate() {
   // session. Rendering it per route unmounted the sidebar on every navigation:
   // the nav groups and the rail re-initialised from storage each time, which is
   // the flicker, and a reload had no chrome at all until the page component
-  // mounted. /login is the one screen with no shell around it.
-  if (pathname === "/login") return <Outlet />;
+  // mounted. /login and /cli-authorize are the two screens with no shell
+  // around them — the latter is a device-flow confirmation, not a dashboard
+  // view, and the nav rail would only distract from reading it.
+  if (pathname === "/login" || pathname === "/cli-authorize") return <Outlet />;
   return (
     <Shell>
       <Outlet />

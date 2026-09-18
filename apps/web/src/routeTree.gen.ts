@@ -11,6 +11,7 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AdminRouteImport } from './routes/admin'
+import { Route as CliAuthorizeRouteImport } from './routes/cli-authorize'
 import { Route as D1RouteImport } from './routes/d1'
 import { Route as KvRouteImport } from './routes/kv'
 import { Route as LoginRouteImport } from './routes/login'
@@ -48,6 +49,11 @@ const IndexRoute = IndexRouteImport.update({
 const AdminRoute = AdminRouteImport.update({
   id: '/admin',
   path: '/admin',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const CliAuthorizeRoute = CliAuthorizeRouteImport.update({
+  id: '/cli-authorize',
+  path: '/cli-authorize',
   getParentRoute: () => rootRouteImport,
 } as any)
 const D1Route = D1RouteImport.update({
@@ -195,6 +201,7 @@ const ProjectsNameDeploymentsIdRoute =
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/admin': typeof AdminRouteWithChildren
+  '/cli-authorize': typeof CliAuthorizeRoute
   '/d1': typeof D1Route
   '/kv': typeof KvRoute
   '/login': typeof LoginRoute
@@ -226,6 +233,7 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/cli-authorize': typeof CliAuthorizeRoute
   '/d1': typeof D1Route
   '/kv': typeof KvRoute
   '/login': typeof LoginRoute
@@ -257,6 +265,7 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/admin': typeof AdminRouteWithChildren
+  '/cli-authorize': typeof CliAuthorizeRoute
   '/d1': typeof D1Route
   '/kv': typeof KvRoute
   '/login': typeof LoginRoute
@@ -291,6 +300,7 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/admin'
+    | '/cli-authorize'
     | '/d1'
     | '/kv'
     | '/login'
@@ -322,6 +332,7 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/cli-authorize'
     | '/d1'
     | '/kv'
     | '/login'
@@ -352,6 +363,7 @@ export interface FileRouteTypes {
     | '__root__'
     | '/'
     | '/admin'
+    | '/cli-authorize'
     | '/d1'
     | '/kv'
     | '/login'
@@ -385,6 +397,7 @@ export interface FileRouteTypes {
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AdminRoute: typeof AdminRouteWithChildren
+  CliAuthorizeRoute: typeof CliAuthorizeRoute
   D1Route: typeof D1Route
   KvRoute: typeof KvRoute
   LoginRoute: typeof LoginRoute
@@ -415,6 +428,13 @@ declare module '@tanstack/react-router' {
       path: '/admin'
       fullPath: '/admin'
       preLoaderRoute: typeof AdminRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/cli-authorize': {
+      id: '/cli-authorize'
+      path: '/cli-authorize'
+      fullPath: '/cli-authorize'
+      preLoaderRoute: typeof CliAuthorizeRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/d1': {
@@ -675,6 +695,7 @@ const ProjectsNameRouteWithChildren = ProjectsNameRoute._addFileChildren(
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AdminRoute: AdminRouteWithChildren,
+  CliAuthorizeRoute: CliAuthorizeRoute,
   D1Route: D1Route,
   KvRoute: KvRoute,
   LoginRoute: LoginRoute,
