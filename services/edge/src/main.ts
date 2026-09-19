@@ -434,7 +434,9 @@ const server = Bun.serve({
           });
           return new Response(null, { status: 304, headers: { etag } });
         }
-        const body = request.method === "HEAD" ? null : await readFile(join(dirname(sproutPath), "assets", assetKey));
+        // Bun.file() streams from disk on demand instead of buffering the
+        // whole asset in JS memory per request (#147).
+        const body = request.method === "HEAD" ? null : Bun.file(join(dirname(sproutPath), "assets", assetKey));
         log({
           hostname: host,
           method: request.method,
