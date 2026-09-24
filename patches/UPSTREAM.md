@@ -2,8 +2,8 @@
 
 **Local patching moved out.** The pin and every Porffor source patch now live in
 `@sproutboat/toolchain` (`ensurePorffor` + `ensurePorfforPatched`), shared with
-`sproutboat-cli`; its `patches/UPSTREAM.md` is the current, complete list ($PORT,
-request-body limit, status lines, console sink, remote address). The WHATWG
+`sproutboat-cli`; its `patches/upstream/README.md` links the current notes
+($PORT, request-body limit, status lines, console sink, remote address). The WHATWG
 surface shims moved to `@sproutboat/runtime`'s prelude
 (`URLSearchParams`, `URL` accessors, static `Response.json`, `crypto.randomUUID`
 / `getRandomValues`, `structuredClone`).
