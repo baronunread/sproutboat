@@ -31,7 +31,7 @@ Porffor incompatibility.
 Current evidence is the repository compatibility report (`COMPAT.md`), not a
 marketing claim: on Porffor alpha-4 all 31 frozen handlers compile and 29 match
 Bun on all probes — the two misses are non-ISO `Date` string parsing (a Porffor
-bug, tracked in `patches/UPSTREAM.md`). The public site should derive any
+bug, tracked in `patches/upstream/README.md`). The public site should derive any
 compatibility status from versioned test data rather than hard-code a percentage.
 
 ## 2. POC scope
