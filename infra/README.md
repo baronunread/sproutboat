@@ -78,7 +78,7 @@ the dashboard; `control.<domain>` is the CLI/API origin.
 ## Native runtime sandbox
 
 Each active deployment is ONE long-lived process: a native-fetch HTTP server
-(Porffor `alpha-3` + uWebSockets) — see `docs/runtime-native-fetch.md`. The
+(Porffor `alpha-9` + uWebSockets); see `docs/runtime-native-fetch.md`. The
 supervisor (`services/supervisor/src/run.ts`) assigns it a loopback port, starts
 it through `infra/sandbox/sprout-sandbox.sh`, waits for it to accept a
 connection, and restarts it if it exits. The edge reverse-proxies each request

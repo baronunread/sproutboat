@@ -20,10 +20,10 @@ import { join } from "node:path";
 import { connect } from "node:net";
 import { EMPTY_BINDINGS, preludePath, wrapNativeFetchHandler, type Bindings } from "./compile";
 import { parseConfig, resourceRefs } from "@sproutboat/config";
+import { ensurePorffor, ensurePorfforPatched } from "@sproutboat/toolchain";
 import { startupFilePath } from "../services/supervisor/src/run";
 
 const ROOT = join(import.meta.dir, "..");
-const PORF = join(ROOT, "node_modules/porffor/runtime/index.js");
 
 const argv = process.argv.slice(2);
 const flag = (name: string) => {
@@ -78,8 +78,10 @@ if (prebuilt) {
 
   console.log(`compiling ${projectDir} (host native)…`);
   const t = performance.now();
-  const r = Bun.spawnSync(["node", PORF, "native", gen, "-o", bin], {
-    env: { ...process.env, PATH: `${join(ROOT, "node_modules/.bin")}:${process.env.PATH}` },
+  const porfforRoot = await ensurePorffor();
+  await ensurePorfforPatched(porfforRoot);
+  const r = Bun.spawnSync(["node", join(porfforRoot, "runtime/index.js"), "native", gen, "-o", bin], {
+    env: process.env,
     stdout: "pipe",
     stderr: "pipe",
   });

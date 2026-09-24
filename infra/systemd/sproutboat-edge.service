@@ -25,7 +25,7 @@ Environment=SPROUTBOAT_RESPONSE_MAX_BYTES=10485760
 # on by default; set SPROUTBOAT_EDGE_CACHE=off to disable it.
 Environment=SPROUTBOAT_BIND_HOST=127.0.0.1
 # Native runtime: each deployment is a long-lived native-fetch HTTP server
-# (Porffor alpha-3 + uWebSockets) started inside the bubblewrap sandbox
+# (Porffor alpha-9 + uWebSockets) started inside the bubblewrap sandbox
 # (infra/sandbox/sprout-sandbox.sh). The supervisor assigns it a loopback $PORT;
 # the edge reverse-proxies to it. No Docker in the request path.
 Environment=SPROUTBOAT_SPROUT_SANDBOX=bwrap

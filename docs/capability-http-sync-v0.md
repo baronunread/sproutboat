@@ -9,7 +9,7 @@ contract. The accepted fixtures live in `tests/porffor/capabilities/`.
 **Imports (#89).** The entry point may import: relative modules across the
 project, and bare specifiers resolved from the project's own `node_modules`.
 The CLI bundles the handler into one module before Porffor sees it, so the
-compiler still only ever gets a single self-contained file. The capability
+compiler receives a single self-contained file in this build path. The capability
 rules below are enforced against that _bundled_ output, which means a
 dependency reaching for `process` or `node:fs` fails exactly as hand-written
 code would — a package is not a way around the profile. Dynamic `import()` is

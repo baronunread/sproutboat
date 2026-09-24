@@ -16,9 +16,6 @@ if (!Bun.which("cc") && !Bun.which("clang") && !Bun.which("gcc"))
   problems.push("no C compiler on PATH (install clang or gcc)");
 if (!Bun.which("c++") && !Bun.which("clang++") && !Bun.which("g++"))
   problems.push("no C++ compiler on PATH (native-fetch links uWebSockets with c++)");
-if (!(await Bun.file(resolve(root, "node_modules/.bin/esbuild")).exists()) && !Bun.which("esbuild")) {
-  problems.push("esbuild is not installed (native-fetch auto-bundles handlers with it)");
-}
 // Porffor is fetched, verified and patched on the first compile by
 // @sproutboat/toolchain (ensurePorffor + ensurePorfforPatched, into
 // ~/.cache/sproutboat). Nothing to check here — a stale or hand-edited cache
