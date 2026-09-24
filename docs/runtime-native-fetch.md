@@ -1,6 +1,6 @@
 # Native-fetch runtime
 
-Each deployment is a long-lived HTTP server: Porffor (`alpha-3`) compiles
+Each deployment is a long-lived HTTP server: Porffor (`alpha-9`) compiles
 `export default { fetch(request) { … } }` into a native binary that embeds a
 [uWebSockets](https://github.com/uNetworking/uWebSockets) server. Porffor's C
 runtime parses the request and calls `fetch`; the handler returns a `Response`.
@@ -11,22 +11,20 @@ runtime parses the request and calls `fetch`; the handler returns a `Response`.
   deployment a loopback port, starts the sprout with `PORT` in its environment
   (honoured by the render.js patch in `@sproutboat/toolchain`), waits for it to
   accept a TCP connection, and restarts it if it exits.
-- One process serves the deployment for its whole life. alpha-3 has working
-  memory management — RSS stays flat over hundreds of thousands of requests — so
-  there is no per-request recycle.
+- One process serves the deployment for its whole life. The supervisor restarts
+  it if it exits; there is no per-request recycle.
 - Idle deployments are evicted after `idleMs` (default 10 min).
 - The edge (`services/edge/src/main.ts`) reverse-proxies each request to
   `workerEndpoint(workerPath)`.
 
 ## Handler contract
 
-alpha-3 provides real `Request`, `Response`, `Headers`, `URL`,
-`URLSearchParams` (added by `patches/porffor-fetch-globals.patch`), `JSON`,
-`TextEncoder`/`TextDecoder`, and `console` (logs go to the sprout's stderr).
-Handlers are import-free and validated by `validateHttpSyncSource`
-(`sproutboat/runtime/source`): no `import`/`require`, no Node/Bun/Deno
-globals, no outbound `fetch`/`WebSocket` (a deliberate capability boundary — see
-issue #19, and the sandbox blocks egress regardless).
+The runtime supplies `Request`, `Response`, `Headers`, `URL`,
+`URLSearchParams`, `JSON`, `TextEncoder`/`TextDecoder`, and `console` (logs go
+to the sprout's stderr). The CLI bundles imports with Bun before Porffor and
+validates the bundled output with `validateHttpSyncSource`
+(`@sproutboat/runtime`): no Node/Bun/Deno globals, unsupported `node:` APIs,
+or `WebSocket`. Outbound `fetch` requires an allowlist binding.
 
 ## Sandbox
 
@@ -37,7 +35,8 @@ optional seccomp. It keeps the caller's network namespace so the edge can reach
 its loopback port; egress is denied by the edge unit's
 `IPAddressDeny=any` / `IPAddressAllow=localhost`.
 
-## Known Porffor gaps (alpha-3)
+## Known Porffor gaps (alpha-9)
 
-- `Date` string parsing is wrong for some inputs (capability `15-date-iso`).
+- `Date` string parsing is wrong for some non-ISO inputs and ISO timezone
+  offsets (capabilities `15-date-iso`, `16-date-parts`, and `32-date-offset`).
 - `Porffor.dlopen` is unavailable in the native backend (not needed here).

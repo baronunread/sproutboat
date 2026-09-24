@@ -66,8 +66,7 @@ export async function compileHandler(input: string, output?: string): Promise<Co
       cwd: root,
       stdout: "pipe",
       stderr: "pipe",
-      // esbuild (auto-bundler) + the porffor launcher must be resolvable.
-      env: { ...process.env, PATH: `${resolve(root, "node_modules/.bin")}:${process.env.PATH ?? ""}` },
+      env: process.env,
     });
     let timedOut = false;
     const timeout = setTimeout(() => {
