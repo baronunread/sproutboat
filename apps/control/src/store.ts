@@ -3,6 +3,7 @@ import { readFileSync, renameSync } from "node:fs";
 import { mkdir, rename, rm, writeFile } from "node:fs/promises";
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { dirname, resolve } from "node:path";
+import { validateManifest } from "@sproutboat/artifact";
 import { decryptSecret, encryptSecret } from "./secrets-crypto";
 
 /**
@@ -31,6 +32,8 @@ export type Deployment = {
   sproutPath: string;
   deployedAt: string;
   active: boolean;
+  binarySize: number | null;
+  compileMs: number | null;
 };
 export type ProjectSummary = { name: string; hostname: string; activeDeploymentId: string; deployedAt: string };
 
@@ -44,6 +47,8 @@ type DeploymentRow = {
   sprout_path: string;
   deployed_at: string;
   active: number;
+  binary_size: number | null;
+  compile_ms: number | null;
 };
 
 const toDeployment = (row: DeploymentRow): Deployment => ({
@@ -56,6 +61,8 @@ const toDeployment = (row: DeploymentRow): Deployment => ({
   sproutPath: row.sprout_path,
   deployedAt: row.deployed_at,
   active: row.active === 1,
+  binarySize: row.binary_size,
+  compileMs: row.compile_ms,
 });
 
 let db: Database | undefined;
@@ -125,6 +132,8 @@ function connection(): Database {
       sprout_path TEXT NOT NULL,
       deployed_at TEXT NOT NULL,
       active INTEGER NOT NULL DEFAULT 0,
+      binary_size INTEGER,
+      compile_ms INTEGER,
       FOREIGN KEY (owner_id, project) REFERENCES projects(owner_id, name) ON DELETE CASCADE
     );
     CREATE UNIQUE INDEX IF NOT EXISTS one_active_deployment_per_project
@@ -173,13 +182,39 @@ function connection(): Database {
   // worker -> sprout rename: bring a pre-rename DB's column name forward.
   // SAFETY: PRAGMA table_info rows always expose a string `name` column.
   const cols = database.query("PRAGMA table_info(deployments)").all() as Array<{ name: string }>;
+  const addedBinarySize = !cols.some((column) => column.name === "binary_size");
   if (cols.some((column) => column.name === "worker_path") && !cols.some((column) => column.name === "sprout_path")) {
     database.run("ALTER TABLE deployments RENAME COLUMN worker_path TO sprout_path");
   }
+  if (addedBinarySize) database.run("ALTER TABLE deployments ADD COLUMN binary_size INTEGER");
+  if (!cols.some((column) => column.name === "compile_ms"))
+    database.run("ALTER TABLE deployments ADD COLUMN compile_ms INTEGER");
   db = database;
   dbConnectedPath = dbPath();
   importLegacyDeployments();
+  if (addedBinarySize) backfillBinarySizes(database);
   return database;
+}
+
+/** Read each retained artifact once when adding the size column to an old store. */
+function backfillBinarySizes(database: Database): void {
+  // SAFETY: SQLite returns exactly the id and artifact_digest columns selected here.
+  const rows = database.query("SELECT id, artifact_digest FROM deployments WHERE binary_size IS NULL").all() as Array<{
+    id: string;
+    artifact_digest: string;
+  }>;
+  const update = database.query("UPDATE deployments SET binary_size = ? WHERE id = ?");
+  for (const row of rows) {
+    if (!/^[a-f0-9]{64}$/.test(row.artifact_digest)) continue;
+    try {
+      const manifest = validateManifest(
+        JSON.parse(readFileSync(resolve(artifactRoot(), row.artifact_digest, "manifest.json"), "utf8")),
+      );
+      if (manifest.ok) update.run(manifest.value.binarySize, row.id);
+    } catch {
+      // A missing or unreadable retained artifact remains unavailable in the list.
+    }
+  }
 }
 
 /** One-time import of the pre-#17 deployments.json; the file is renamed aside afterwards. */
@@ -365,8 +400,15 @@ export function ownerRollups(): OwnerRollup[] {
 
 // --- mutations (each its own transaction) ---------------------------------
 
-export function recordDeployment(input: Omit<Deployment, "active"> & { resourceIds?: string[] }): Deployment {
-  const { resourceIds = [], ...deployment } = input;
+export function recordDeployment(
+  input: Omit<Deployment, "active" | "binarySize" | "compileMs"> & {
+    binarySize?: number | null;
+    compileMs?: number | null;
+    resourceIds?: string[];
+  },
+): Deployment {
+  const { resourceIds = [], ...fields } = input;
+  const deployment = { ...fields, binarySize: fields.binarySize ?? null, compileMs: fields.compileMs ?? null };
   return connection().transaction(() => {
     run(
       "INSERT OR IGNORE INTO projects (owner_id, name, username, created_at) VALUES (?, ?, ?, ?)",
@@ -382,8 +424,8 @@ export function recordDeployment(input: Omit<Deployment, "active"> & { resourceI
     );
     run("UPDATE deployments SET active = 0 WHERE owner_id = ? AND project = ?", deployment.ownerId, deployment.project);
     run(
-      `INSERT INTO deployments (id, owner_id, project, username, hostname, artifact_digest, sprout_path, deployed_at, active)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1)`,
+      `INSERT INTO deployments (id, owner_id, project, username, hostname, artifact_digest, sprout_path, deployed_at, active, binary_size, compile_ms)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)`,
       deployment.id,
       deployment.ownerId,
       deployment.project,
@@ -392,6 +434,8 @@ export function recordDeployment(input: Omit<Deployment, "active"> & { resourceI
       deployment.artifact,
       deployment.sproutPath,
       deployment.deployedAt,
+      deployment.binarySize,
+      deployment.compileMs,
     );
     for (const resourceId of new Set(resourceIds)) {
       run(

@@ -18,7 +18,9 @@ function elf(): Uint8Array {
   return new Uint8Array(buf);
 }
 
-async function seed(over: { bindings?: unknown; assets?: { manifest: unknown; files: Record<string, string> } } = {}) {
+async function seed(
+  over: { bindings?: unknown; compileMs?: unknown; assets?: { manifest: unknown; files: Record<string, string> } } = {},
+) {
   const worker = elf();
   await writeFile(join(dir, "sprout"), worker);
   const manifest = {
@@ -34,6 +36,7 @@ async function seed(over: { bindings?: unknown; assets?: { manifest: unknown; fi
     binaryHash: "sha256:" + sha(worker),
     binarySize: worker.length,
     builtAt: new Date().toISOString(),
+    compileMs: over.compileMs,
   };
   await writeFile(join(dir, "manifest.json"), JSON.stringify(manifest));
   if (over.bindings !== undefined) await writeFile(join(dir, "bindings.json"), JSON.stringify(over.bindings));
@@ -57,6 +60,17 @@ test("bare manifest + sprout validates", async () => {
   await seed();
   const result = await validateArtifactDirectory(dir);
   expect(result.ok).toBe(true);
+});
+
+test("compile time is validated at the artifact boundary", async () => {
+  await seed({ compileMs: 0 });
+  const valid = await validateArtifactDirectory(dir);
+  expect(valid.ok).toBe(true);
+  if (valid.ok) expect(valid.value.manifest.compileMs).toBe(0);
+  await seed({ compileMs: -2 });
+  const invalid = await validateArtifactDirectory(dir);
+  expect(invalid.ok).toBe(false);
+  if (!invalid.ok) expect(invalid.errors).toContain("compileMs must be a non-negative integer");
 });
 
 test("a well-formed bindings.json is accepted", async () => {

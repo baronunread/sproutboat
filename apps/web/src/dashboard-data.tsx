@@ -206,6 +206,8 @@ export type ProjectDeployment = {
   artifact: string;
   deployedAt: string;
   active: boolean;
+  binarySize: number | null;
+  compileMs: number | null;
 };
 
 export type ProjectView = {
