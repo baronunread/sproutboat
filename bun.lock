@@ -6,7 +6,7 @@
       "name": "sproutboat-platform",
       "dependencies": {
         "@better-auth/api-key": "^1.7.1",
-        "@sproutboat/artifact": "^0.2.0",
+        "@sproutboat/artifact": "^0.3.0",
         "@sproutboat/assets": "^0.3.0",
         "@sproutboat/config": "^0.4.0",
         "@sproutboat/runtime": "^0.12.1",
@@ -510,7 +510,7 @@
 
     "@shaderfrog/glsl-parser": ["@shaderfrog/glsl-parser@7.0.1", "", {}, "sha512-8mpfsoPeRhesY3pOrzNZBL8uG6N5GVX1EHLBYbd4gzKs+c7vaEIqpTNK5VrffU33qQN4cwpP2v3u4aPPBU32sw=="],
 
-    "@sproutboat/artifact": ["@sproutboat/artifact@0.2.0", "", {}, "sha512-lDJz0YGByMZX5x9JAf6Co07y6dPMT3/aR7QnBvvEQHSlOkyhgyaVBV7Gi9kscv8nDAFoO/wENjJyryxdyFhcWQ=="],
+    "@sproutboat/artifact": ["@sproutboat/artifact@0.3.0", "", {}, "sha512-+Rs3eLezheNLBSASsdEhYdmngWTRWJd1J32akBczPhk9Dt+NsTCfhfk8qAXJFi0oho3XCfMcyT/DqU7t7o8zJQ=="],
 
     "@sproutboat/assets": ["@sproutboat/assets@0.3.0", "", {}, "sha512-YvKhDPnAaU+Xxnn6QpDizFq/SYwGEgbCWtSz+7edniPBQT5HHOnh9GyKj5Sa1+sjlkNnpKvUk+6evfCUTNRytg=="],
 

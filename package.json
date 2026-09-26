@@ -1,6 +1,6 @@
 {
   "name": "sproutboat",
-  "version": "0.2.1",
+  "version": "0.5.3",
   "private": true,
   "type": "module",
   "scripts": {
@@ -32,7 +32,7 @@
   },
   "dependencies": {
     "@better-auth/api-key": "^1.7.1",
-    "@sproutboat/artifact": "^0.2.0",
+    "@sproutboat/artifact": "^0.3.0",
     "@sproutboat/assets": "^0.3.0",
     "@sproutboat/config": "^0.4.0",
     "@sproutboat/runtime": "^0.12.1",

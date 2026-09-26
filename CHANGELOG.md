@@ -5,6 +5,32 @@ Changes to the self-hosted Sproutboat platform are recorded here. Read the
 
 ## [Unreleased]
 
+## [0.5.3] - 2026-09-26
+
+### Added
+
+- Deployment history now shows compile time and binary size, with a binary-size
+  trend across retained versions. Existing sizes are recovered from available
+  artifact manifests.
+- A dedicated CLI authorization page for device login.
+
+### Changed
+
+- The edge serves static asset bodies through `Bun.file()` rather than reading
+  the complete file into memory per request.
+- Updated the Porffor alpha 9 toolchain to `@sproutboat/toolchain@^0.4.13`
+  and the artifact manifest contract to `@sproutboat/artifact@^0.3.0`.
+- The control API now reports the platform tag version in its version header.
+  CLI v0.11.13 is the release tested with this platform version.
+
+### Fixed
+
+- Updated the native runtime for repeated HMAC signing with raw digest bytes.
+
+### Breaking and operator actions
+
+- None. Existing artifacts remain valid, and `sbctl update` is sufficient.
+
 ## [0.5.2] - 2026-09-18
 
 ### Fixed
@@ -265,7 +291,8 @@ Changes to the self-hosted Sproutboat platform are recorded here. Read the
 
 First tagged self-hosted platform checkpoint.
 
-[Unreleased]: https://github.com/baronunread/sproutboat/compare/v0.4.3...HEAD
+[Unreleased]: https://github.com/baronunread/sproutboat/compare/v0.5.3...HEAD
+[0.5.3]: https://github.com/baronunread/sproutboat/compare/v0.5.2...v0.5.3
 [0.4.3]: https://github.com/baronunread/sproutboat/compare/v0.4.2...v0.4.3
 [0.4.2]: https://github.com/baronunread/sproutboat/compare/v0.4.1...v0.4.2
 [0.4.1]: https://github.com/baronunread/sproutboat/compare/v0.4.0...v0.4.1
