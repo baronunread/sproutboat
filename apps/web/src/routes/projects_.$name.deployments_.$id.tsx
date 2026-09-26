@@ -31,6 +31,7 @@ type Manifest = {
   sourceHash: string;
   binaryHash: string;
   binarySize: number;
+  compileMs?: number;
   builtAt: string;
 };
 type Resource = { id: string; kind: string; name: string };
@@ -66,6 +67,7 @@ const COMPARED: ReadonlyArray<readonly [keyof Manifest, string]> = [
   ["binaryHash", "Binary hash"],
   ["sourceHash", "Source hash"],
   ["binarySize", "Binary size"],
+  ["compileMs", "Compile time (ms)"],
   ["porfforVersion", "Porffor toolchain"],
   ["esbuildVersion", "esbuild"],
   ["buildImage", "Build image"],
@@ -211,7 +213,7 @@ function DeploymentDetail() {
                   <div key={key}>
                     <dt>{label}</dt>
                     <dd>
-                      <code>{String(detail.manifest?.[key])}</code>
+                      <code>{detail.manifest?.[key] === undefined ? "Unavailable" : String(detail.manifest[key])}</code>
                     </dd>
                   </div>
                 ))}

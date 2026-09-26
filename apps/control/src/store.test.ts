@@ -2,6 +2,7 @@ import { afterAll, beforeAll, expect, test } from "bun:test";
 import { access, mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { Database } from "bun:sqlite";
 
 let dir: string;
 let store: typeof import("./store");
@@ -67,6 +68,20 @@ test("recordDeployment keeps exactly one active version per project", async () =
       r2ResourceIds: [],
     },
   ]);
+});
+
+test("deployment list retains binary size and compile time per version", async () => {
+  const digest = "f".repeat(64);
+  await makeArtifact(digest);
+  store.recordDeployment({
+    ...D({ id: "metrics-1", project: "metrics", artifact: digest }),
+    binarySize: 4096,
+    compileMs: 0,
+  });
+  const [version] = store.projectDeployments("user-1", "metrics");
+  expect(version.binarySize).toBe(4096);
+  expect(version.compileMs).toBe(0);
+  store.deleteProject("user-1", "metrics");
 });
 
 test("activateDeployment rolls back to an older version without a second active row", () => {
@@ -287,4 +302,60 @@ test("#48 — service bindings resolve to the target's hostname, same owner only
   expect(web?.services?.THEIRS).toBeUndefined();
   // A project with no service bindings carries no services key at all.
   expect(snapshot.find((route) => route.hostname === "api.alice.test")?.services).toBeUndefined();
+});
+
+test("an existing deployment store gains binary sizes from retained manifests", async () => {
+  store.closeStore();
+  const oldPath = process.env.SPROUTBOAT_DATABASE_PATH;
+  const legacyPath = join(dir, "legacy-size.sqlite");
+  const digest = "1".repeat(64);
+  const artifactDir = join(dir, "artifacts", digest);
+  await mkdir(artifactDir, { recursive: true });
+  await writeFile(
+    join(artifactDir, "manifest.json"),
+    JSON.stringify({
+      schemaVersion: 2,
+      project: "old",
+      target: "linux-x86_64",
+      runtime: "native-fetch",
+      capabilityProfile: "http-sync-v0",
+      porfforVersion: "alpha-7",
+      esbuildVersion: "0.25",
+      buildImage: "zig-musl",
+      sourceHash: `sha256:${"a".repeat(64)}`,
+      binaryHash: `sha256:${"b".repeat(64)}`,
+      binarySize: 12345,
+      builtAt: "2026-09-26T00:00:00.000Z",
+    }),
+  );
+  const database = new Database(legacyPath);
+  database.exec(`CREATE TABLE deployments (
+    id TEXT PRIMARY KEY, owner_id TEXT NOT NULL, project TEXT NOT NULL,
+    username TEXT NOT NULL, hostname TEXT NOT NULL, artifact_digest TEXT NOT NULL,
+    sprout_path TEXT NOT NULL, deployed_at TEXT NOT NULL, active INTEGER NOT NULL DEFAULT 0
+  )`);
+  database
+    .query(`INSERT INTO deployments VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+    .run(
+      "legacy-size",
+      "legacy-owner",
+      "old",
+      "alice",
+      "old.alice.test",
+      digest,
+      join(artifactDir, "sprout"),
+      "2026-09-26T00:00:00.000Z",
+      1,
+    );
+  database.close();
+  process.env.SPROUTBOAT_DATABASE_PATH = legacyPath;
+  try {
+    const [deployment] = store.projectDeployments("legacy-owner", "old");
+    expect(deployment.binarySize).toBe(12345);
+    expect(deployment.compileMs).toBeNull();
+  } finally {
+    store.closeStore();
+    if (oldPath === undefined) delete process.env.SPROUTBOAT_DATABASE_PATH;
+    else process.env.SPROUTBOAT_DATABASE_PATH = oldPath;
+  }
 });

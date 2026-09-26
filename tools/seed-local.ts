@@ -96,8 +96,8 @@ const DEMO: DemoUser[] = [
   { login: "deletable", namespace: "deletable", projects: [{ project: "throwaway", versions: 1, active: true }] },
 ];
 
-function elfStub(seed: string): Uint8Array {
-  const bytes = new Uint8Array(256);
+function elfStub(seed: string, size = 256): Uint8Array {
+  const bytes = new Uint8Array(size);
   bytes.set([0x7f, 0x45, 0x4c, 0x46, 2, 1, 1, 0], 0); // ELF64, little-endian
   new DataView(bytes.buffer).setUint16(18, 62, true); // e_machine = x86-64
   for (let i = 32; i < bytes.length; i++) bytes[i] = (seed.charCodeAt(i % seed.length) + i) & 0xff;
@@ -283,7 +283,8 @@ async function main(): Promise<void> {
       let activeId = "";
       for (let v = 0; v < spec.versions; v++) {
         const id = randomUUID();
-        const sprout = elfStub(`${user.login}/${spec.project}/${v}`);
+        const sprout = elfStub(`${user.login}/${spec.project}/${v}`, 256 + v * 64);
+        const compileMs = 900 + v * 120;
         const digest = sha256(sprout).slice("sha256:".length);
         const dir = resolve(process.env.SPROUTBOAT_ARTIFACTS_DIR!, digest);
         await mkdir(dir, { recursive: true });
@@ -300,6 +301,7 @@ async function main(): Promise<void> {
           sourceHash: sha256(`src:${user.login}/${spec.project}/${v}`),
           binaryHash: sha256(sprout),
           binarySize: sprout.length,
+          compileMs,
           builtAt,
         };
         await writeFile(resolve(dir, "manifest.json"), JSON.stringify(manifest, null, 2));
@@ -315,6 +317,8 @@ async function main(): Promise<void> {
           artifact: digest,
           sproutPath: resolve(dir, "sprout"),
           deployedAt: builtAt,
+          binarySize: sprout.length,
+          compileMs,
           resourceIds: created.map((entry) => entry.record.id),
         });
         activeId = id;

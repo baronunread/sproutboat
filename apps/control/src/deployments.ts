@@ -470,6 +470,8 @@ export async function deployArtifact(request: Request, project: string): Promise
       artifact: digest,
       sproutPath: resolve(destination, "sprout"),
       deployedAt: new Date().toISOString(),
+      binarySize: validation.value.manifest.binarySize,
+      compileMs: validation.value.manifest.compileMs ?? null,
       resourceIds: resolvedResources,
     });
     await syncRoutes();

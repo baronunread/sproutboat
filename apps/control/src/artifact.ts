@@ -29,7 +29,7 @@ export type ArtifactBindings = {
 };
 
 export type ValidatedArtifact = {
-  manifest: ArtifactManifest;
+  manifest: ArtifactManifest & { compileMs?: number };
   sproutPath: string;
   resourceBindings: ResourceBindingRef[];
   /** null when the artifact carries no bindings.json at all. */
@@ -200,12 +200,16 @@ export async function validateArtifactDirectory(directory: string): Promise<Arti
   if (unexpected.length) errors.push(`artifact directory has unexpected entries: ${unexpected.join(", ")}`);
   const manifestPath = resolve(directory, "manifest.json");
   const sproutPath = resolve(directory, "sprout");
-  let manifest: ArtifactManifest | undefined;
+  let manifest: ValidatedArtifact["manifest"] | undefined;
   try {
-    const parsed = JSON.parse(await readFile(manifestPath, "utf8"));
+    const parsed = parseJson(await readFile(manifestPath, "utf8"));
     const result = validateManifest(parsed);
     if (!result.ok) errors.push(...result.errors);
-    else manifest = result.value;
+    else if (isObj(parsed) && parsed.compileMs !== undefined) {
+      if (isNum(parsed.compileMs) && Number.isSafeInteger(parsed.compileMs) && parsed.compileMs >= 0)
+        manifest = { ...result.value, compileMs: parsed.compileMs };
+      else errors.push("compileMs must be a non-negative integer");
+    } else manifest = result.value;
   } catch {
     errors.push("manifest.json is not valid JSON");
   }
