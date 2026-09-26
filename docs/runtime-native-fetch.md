@@ -37,6 +37,7 @@ its loopback port; egress is denied by the edge unit's
 
 ## Known Porffor gaps (alpha-9)
 
-- `Date` string parsing is wrong for some non-ISO inputs and ISO timezone
-  offsets (capabilities `15-date-iso`, `16-date-parts`, and `32-date-offset`).
+- `Date` string parsing is wrong for some non-ISO inputs (capabilities
+  `15-date-iso` and `16-date-parts`). The toolchain patch fixes ISO timezone
+  offsets in `32-date-offset`.
 - `Porffor.dlopen` is unavailable in the native backend (not needed here).

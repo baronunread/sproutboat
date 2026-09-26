@@ -40,3 +40,7 @@ a call with the wrong arity (`too few arguments to function call, expected 3,
 have 1`) and the C build fails. It has to be fixed in `compiler/builtins`.
 
 Covered by `tests/porffor/capabilities/32-date-offset.js`.
+
+Sproutboat patches `compiler/builtins/date.ts` in `@sproutboat/toolchain@0.4.13`.
+The alpha-9 capability comparison now passes `32-date-offset.js`; the upstream
+Porffor issue remains open.

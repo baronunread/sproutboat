@@ -154,8 +154,8 @@ Bun's on every probe.
 
 `bun run validate` rebuilds [COMPAT.md](COMPAT.md), which opens with the
 compiler version, compile and match counts, median binary size, and a GO/NO-GO
-decision. Porffor alpha-9 is currently 32/32 compile, 29/32 match. Two misses
-are non-ISO `Date` parsing (#90); the third is ISO timezone-offset parsing.
+decision. Porffor alpha-9 with `@sproutboat/toolchain@0.4.13` is currently
+32/32 compile, 30/32 match. The two misses are non-ISO `Date` parsing (#90).
 
 ## Repository layout
 
