@@ -5,6 +5,14 @@ Changes to the self-hosted Sproutboat platform are recorded here. Read the
 
 ## [Unreleased]
 
+## [0.5.4] - 2026-09-30
+
+### Fixed
+
+- The installer's closing instructions told you to run
+  `bunx @sproutboat/cli login`, an old 0.1.0 package. They now print
+  `npx sproutboat login --api-url https://control.<domain> --token <token>`.
+
 ## [0.5.3] - 2026-09-26
 
 ### Added
@@ -291,7 +299,8 @@ Changes to the self-hosted Sproutboat platform are recorded here. Read the
 
 First tagged self-hosted platform checkpoint.
 
-[Unreleased]: https://github.com/baronunread/sproutboat/compare/v0.5.3...HEAD
+[Unreleased]: https://github.com/baronunread/sproutboat/compare/v0.5.4...HEAD
+[0.5.4]: https://github.com/baronunread/sproutboat/compare/v0.5.3...v0.5.4
 [0.5.3]: https://github.com/baronunread/sproutboat/compare/v0.5.2...v0.5.3
 [0.4.3]: https://github.com/baronunread/sproutboat/compare/v0.4.2...v0.4.3
 [0.4.2]: https://github.com/baronunread/sproutboat/compare/v0.4.1...v0.4.2
