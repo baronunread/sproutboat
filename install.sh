@@ -495,7 +495,7 @@ if [ -n "$SB_GITHUB_CLIENT_ID" ] && [ -n "$SB_GITHUB_CLIENT_SECRET" ]; then
 fi
 
 say "Deploy from your workstation"
-note "bunx @sproutboat/cli login --api-url https://control.$SB_DOMAIN --token <token>"
+note "npx sproutboat login --api-url https://control.$SB_DOMAIN --token <token>"
 note "sproutboat init hello && cd hello && sproutboat deploy"
 
 say "Operate  (sudo sbctl <cmd>)"
