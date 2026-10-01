@@ -5,12 +5,11 @@ locally: each is a language or platform gap that only makes sense in the
 compiler. Recorded here so the next person checks the issue before writing a
 workaround.
 
-| #                                                        | What                                                 | Why it matters here                                  |
-| -------------------------------------------------------- | ---------------------------------------------------- | ---------------------------------------------------- |
-| [#145](https://github.com/CanadaHonk/porffor/issues/145) | `Proxy` support                                      | `new Proxy` compiles and silently ignores every trap |
-| [#347](https://github.com/CanadaHonk/porffor/issues/347) | Web Crypto                                           | no `crypto.*` at all; blocks any auth library        |
-| [#349](https://github.com/CanadaHonk/porffor/issues/349) | Streams                                              | a response body is one whole string                  |
-| [#350](https://github.com/CanadaHonk/porffor/issues/350) | Coroutine stack corruption on native fetch exception | an async handler that throws                         |
+| #                                                        | What            | Why it matters here                                  |
+| -------------------------------------------------------- | --------------- | ---------------------------------------------------- |
+| [#145](https://github.com/CanadaHonk/porffor/issues/145) | `Proxy` support | `new Proxy` compiles and silently ignores every trap |
+| [#347](https://github.com/CanadaHonk/porffor/issues/347) | Web Crypto      | no `crypto.*` at all; blocks any auth library        |
+| [#349](https://github.com/CanadaHonk/porffor/issues/349) | Streams         | a response body is one whole string                  |
 
 ## Proxy support (#145), and why we reject it at build time
 
@@ -42,8 +41,7 @@ considers out of bounds.
 The prelude shims `crypto.getRandomValues`, `crypto.randomUUID`, and, as of
 #133, a `crypto.subtle` subset: `digest` (SHA-256/384/512) and HMAC
 `importKey` / `sign` / `verify`. Enough for JWTs and hand-rolled sessions; no
-ECDSA, no AES, no key wrapping. better-auth still needs more (and is blocked by
-the [zod init crash](zod-module-init.md) regardless).
+ECDSA, no AES, no key wrapping. better-auth still needs more.
 
 Backed by ~300 lines of reference SHA-2 as inline C, **not** BearSSL. BearSSL is
 linked only in `--standalone` builds, and the prelude's inline C is shared with

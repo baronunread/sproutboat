@@ -1,5 +1,10 @@
 # Open finding: zod compiles, then dies at module init
 
+**Resolved on Porffor alpha-13** (`547c781`), checked 2026-10-01: zod 4.6.3
+`z.string().safeParse()` and a failing object schema both run in a standalone
+build, and baronunread/sproutboat#175 is closed. The investigation below is kept
+as history.
+
 Tracked as baronunread/sproutboat#175 (independently re-reproduced there,
 2026-09-13, past the capability-check fix in #132). Not filed upstream at
 Porffor yet: the reproducer below is small and reliable but has not been

@@ -25,7 +25,7 @@ text. Filing an issue on `CanadaHonk/porffor` requires explicit human approval.
 | [Environment access](environment-access.md)             | Retracted environment-access finding                |
 | [Non-ISO Date parsing](date-noniso-parsing.md)          | Web compatibility draft                             |
 | [Date timezone offsets](date-timezone-offsets.md)       | Filed as Porffor #387                               |
-| [Zod module init](zod-module-init.md)                   | Reduced startup failure and related finding         |
+| [Zod module init](zod-module-init.md)                   | Resolved on alpha-13; reduced startup failure       |
 | [Request streaming](request-streaming.md)               | Standalone ingress draft                            |
 | [Promise resolution](promise-resolution-livelock.md)    | Original resumed async turn investigation           |
 | [Porffor #388 history](promise-resolution-issue-388.md) | Archived promise resolution report                  |
