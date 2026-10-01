@@ -5,6 +5,16 @@ Changes to the self-hosted Sproutboat platform are recorded here. Read the
 
 ## [Unreleased]
 
+## [0.5.5] - 2026-10-01
+
+### Changed
+
+- Sprouts build with Porffor alpha-13 (`@sproutboat/toolchain` 0.4.16, up
+  from 0.4.13 on alpha-9) and `@sproutboat/runtime` 0.13, matching CLI
+  v0.12.3. This includes the coroutine-stack fix for #178, which stopped
+  large async handlers from crashing with SIGBUS. Compatibility is unchanged
+  at 32/32 compile, 30/32 match.
+
 ## [0.5.4] - 2026-09-30
 
 ### Fixed
@@ -299,7 +309,8 @@ Changes to the self-hosted Sproutboat platform are recorded here. Read the
 
 First tagged self-hosted platform checkpoint.
 
-[Unreleased]: https://github.com/baronunread/sproutboat/compare/v0.5.4...HEAD
+[Unreleased]: https://github.com/baronunread/sproutboat/compare/v0.5.5...HEAD
+[0.5.5]: https://github.com/baronunread/sproutboat/compare/v0.5.4...v0.5.5
 [0.5.4]: https://github.com/baronunread/sproutboat/compare/v0.5.3...v0.5.4
 [0.5.3]: https://github.com/baronunread/sproutboat/compare/v0.5.2...v0.5.3
 [0.4.3]: https://github.com/baronunread/sproutboat/compare/v0.4.2...v0.4.3
