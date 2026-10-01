@@ -1,49 +1,49 @@
 {
-  "generatedAt": "2026-09-26T00:46:22.306Z",
-  "porfforVersion": "alpha-9 (de4eb58)",
+  "generatedAt": "2026-10-01T11:12:42.976Z",
+  "porfforVersion": "alpha-13 (547c781)",
   "requestsPerFile": 3,
   "files": [
     {
       "file": "01-hello.js",
       "compiles": true,
-      "sizeBytes": 983384,
-      "compileMs": 4492,
-      "runMs": 269,
+      "sizeBytes": 966872,
+      "compileMs": 7122,
+      "runMs": 190,
       "matches": true,
       "error": null
     },
     {
       "file": "02-static-json.js",
       "compiles": true,
-      "sizeBytes": 983392,
-      "compileMs": 3109,
-      "runMs": 159,
+      "sizeBytes": 966864,
+      "compileMs": 2851,
+      "runMs": 188,
       "matches": true,
       "error": null
     },
     {
       "file": "03-echo-method.js",
       "compiles": true,
-      "sizeBytes": 983392,
-      "compileMs": 3103,
-      "runMs": 159,
+      "sizeBytes": 966880,
+      "compileMs": 2755,
+      "runMs": 185,
       "matches": true,
       "error": null
     },
     {
       "file": "04-query-param.js",
       "compiles": true,
-      "sizeBytes": 983392,
-      "compileMs": 3021,
-      "runMs": 160,
+      "sizeBytes": 966880,
+      "compileMs": 2688,
+      "runMs": 158,
       "matches": true,
       "error": null
     },
     {
       "file": "05-query-default.js",
       "compiles": true,
-      "sizeBytes": 983392,
-      "compileMs": 3183,
+      "sizeBytes": 966880,
+      "compileMs": 2910,
       "runMs": 187,
       "matches": true,
       "error": null
@@ -51,53 +51,53 @@
     {
       "file": "06-url-routing.js",
       "compiles": true,
-      "sizeBytes": 983392,
-      "compileMs": 3075,
-      "runMs": 160,
+      "sizeBytes": 966880,
+      "compileMs": 2832,
+      "runMs": 186,
       "matches": true,
       "error": null
     },
     {
       "file": "07-json-echo.js",
       "compiles": true,
-      "sizeBytes": 983392,
-      "compileMs": 2941,
-      "runMs": 187,
+      "sizeBytes": 966880,
+      "compileMs": 2734,
+      "runMs": 185,
       "matches": true,
       "error": null
     },
     {
       "file": "08-json-transform.js",
       "compiles": true,
-      "sizeBytes": 983392,
-      "compileMs": 3102,
-      "runMs": 160,
+      "sizeBytes": 966880,
+      "compileMs": 2785,
+      "runMs": 187,
       "matches": true,
       "error": null
     },
     {
       "file": "09-json-stringify.js",
       "compiles": true,
-      "sizeBytes": 983392,
-      "compileMs": 3054,
-      "runMs": 169,
+      "sizeBytes": 966880,
+      "compileMs": 2692,
+      "runMs": 626,
       "matches": true,
       "error": null
     },
     {
       "file": "10-uppercase.js",
       "compiles": true,
-      "sizeBytes": 983392,
-      "compileMs": 2958,
-      "runMs": 185,
+      "sizeBytes": 966864,
+      "compileMs": 2747,
+      "runMs": 160,
       "matches": true,
       "error": null
     },
     {
       "file": "11-reverse.js",
       "compiles": true,
-      "sizeBytes": 983384,
-      "compileMs": 3185,
+      "sizeBytes": 966872,
+      "compileMs": 2744,
       "runMs": 159,
       "matches": true,
       "error": null
@@ -105,17 +105,17 @@
     {
       "file": "12-slugify.js",
       "compiles": true,
-      "sizeBytes": 999896,
-      "compileMs": 3077,
-      "runMs": 158,
+      "sizeBytes": 983384,
+      "compileMs": 2704,
+      "runMs": 187,
       "matches": true,
       "error": null
     },
     {
       "file": "13-regex-email.js",
       "compiles": true,
-      "sizeBytes": 983392,
-      "compileMs": 3061,
+      "sizeBytes": 966880,
+      "compileMs": 2684,
       "runMs": 159,
       "matches": true,
       "error": null
@@ -123,26 +123,26 @@
     {
       "file": "14-regex-extract.js",
       "compiles": true,
-      "sizeBytes": 983392,
-      "compileMs": 3116,
-      "runMs": 160,
+      "sizeBytes": 966880,
+      "compileMs": 2711,
+      "runMs": 186,
       "matches": true,
       "error": null
     },
     {
       "file": "15-date-iso.js",
       "compiles": true,
-      "sizeBytes": 1016456,
-      "compileMs": 3173,
-      "runMs": 162,
+      "sizeBytes": 999944,
+      "compileMs": 2717,
+      "runMs": 189,
       "matches": false,
       "error": "request 3 mismatch: expected {\"status\":200,\"body\":\"2008-03-04T23:00:00.000Z\",\"content-type\":null}, got {\"status\":200,\"body\":\"0003-05-08T00:00:00.000Z\",\"content-type\":null}"
     },
     {
       "file": "16-date-parts.js",
       "compiles": true,
-      "sizeBytes": 1016448,
-      "compileMs": 3273,
+      "sizeBytes": 999936,
+      "compileMs": 2669,
       "runMs": 159,
       "matches": false,
       "error": "request 3 mismatch: expected {\"status\":200,\"body\":\"{\\\"year\\\":2008,\\\"month\\\":3,\\\"day\\\":4}\",\"content-type\":\"application/json;charset=utf-8\"}, got {\"status\":200,\"body\":\"{\\\"year\\\":3,\\\"month\\\":5,\\\"day\\\":8}\",\"content-type\":\"application/json;charset=utf-8\"}"
@@ -150,17 +150,17 @@
     {
       "file": "17-math-sum.js",
       "compiles": true,
-      "sizeBytes": 999896,
-      "compileMs": 3118,
-      "runMs": 159,
+      "sizeBytes": 983384,
+      "compileMs": 2763,
+      "runMs": 161,
       "matches": true,
       "error": null
     },
     {
       "file": "18-math-stats.js",
       "compiles": true,
-      "sizeBytes": 1083456,
-      "compileMs": 3209,
+      "sizeBytes": 1050400,
+      "compileMs": 2829,
       "runMs": 186,
       "matches": true,
       "error": null
@@ -168,8 +168,8 @@
     {
       "file": "19-header-echo.js",
       "compiles": true,
-      "sizeBytes": 983392,
-      "compileMs": 3107,
+      "sizeBytes": 966864,
+      "compileMs": 2819,
       "runMs": 159,
       "matches": true,
       "error": null
@@ -177,17 +177,17 @@
     {
       "file": "20-auth-header.js",
       "compiles": true,
-      "sizeBytes": 983392,
-      "compileMs": 3222,
-      "runMs": 185,
+      "sizeBytes": 966880,
+      "compileMs": 2695,
+      "runMs": 159,
       "matches": true,
       "error": null
     },
     {
       "file": "21-response-headers.js",
       "compiles": true,
-      "sizeBytes": 983392,
-      "compileMs": 2985,
+      "sizeBytes": 966880,
+      "compileMs": 2760,
       "runMs": 186,
       "matches": true,
       "error": null
@@ -195,8 +195,8 @@
     {
       "file": "22-status-created.js",
       "compiles": true,
-      "sizeBytes": 983392,
-      "compileMs": 3045,
+      "sizeBytes": 966880,
+      "compileMs": 2800,
       "runMs": 159,
       "matches": true,
       "error": null
@@ -204,35 +204,35 @@
     {
       "file": "23-status-not-found.js",
       "compiles": true,
-      "sizeBytes": 983392,
-      "compileMs": 3077,
-      "runMs": 163,
+      "sizeBytes": 966880,
+      "compileMs": 2697,
+      "runMs": 157,
       "matches": true,
       "error": null
     },
     {
       "file": "24-status-no-content.js",
       "compiles": true,
-      "sizeBytes": 983400,
-      "compileMs": 2969,
-      "runMs": 160,
+      "sizeBytes": 966888,
+      "compileMs": 2808,
+      "runMs": 215,
       "matches": true,
       "error": null
     },
     {
       "file": "25-slack-command.js",
       "compiles": true,
-      "sizeBytes": 983392,
-      "compileMs": 3101,
-      "runMs": 159,
+      "sizeBytes": 966880,
+      "compileMs": 2694,
+      "runMs": 187,
       "matches": true,
       "error": null
     },
     {
       "file": "26-stripe-shape.js",
       "compiles": true,
-      "sizeBytes": 999920,
-      "compileMs": 3048,
+      "sizeBytes": 983392,
+      "compileMs": 2642,
       "runMs": 186,
       "matches": true,
       "error": null
@@ -240,27 +240,27 @@
     {
       "file": "27-github-routing.js",
       "compiles": true,
-      "sizeBytes": 983392,
-      "compileMs": 3090,
-      "runMs": 159,
+      "sizeBytes": 966880,
+      "compileMs": 2744,
+      "runMs": 187,
       "matches": true,
       "error": null
     },
     {
       "file": "28-state-machine.js",
       "compiles": true,
-      "sizeBytes": 983392,
-      "compileMs": 3066,
-      "runMs": 177,
+      "sizeBytes": 966880,
+      "compileMs": 2680,
+      "runMs": 239,
       "matches": true,
       "error": null
     },
     {
       "file": "29-form-urlencoded.js",
       "compiles": true,
-      "sizeBytes": 983392,
-      "compileMs": 3058,
-      "runMs": 160,
+      "sizeBytes": 966880,
+      "compileMs": 2727,
+      "runMs": 186,
       "matches": true,
       "error": null
     },
@@ -268,8 +268,8 @@
       "file": "30-content-negotiation.js",
       "compiles": true,
       "sizeBytes": 983400,
-      "compileMs": 3141,
-      "runMs": 187,
+      "compileMs": 2644,
+      "runMs": 188,
       "matches": true,
       "error": null
     },
@@ -277,17 +277,17 @@
       "file": "31-web-apis.js",
       "compiles": true,
       "sizeBytes": 983384,
-      "compileMs": 3123,
-      "runMs": 161,
+      "compileMs": 2709,
+      "runMs": 187,
       "matches": true,
       "error": null
     },
     {
       "file": "32-date-offset.js",
       "compiles": true,
-      "sizeBytes": 1016464,
-      "compileMs": 3197,
-      "runMs": 159,
+      "sizeBytes": 999936,
+      "compileMs": 2699,
+      "runMs": 186,
       "matches": true,
       "error": null
     }
