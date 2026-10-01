@@ -29,6 +29,7 @@ text. Filing an issue on `CanadaHonk/porffor` requires explicit human approval.
 | [Request streaming](request-streaming.md)               | Standalone ingress draft                            |
 | [Promise resolution](promise-resolution-livelock.md)    | Original resumed async turn investigation           |
 | [Porffor #388 history](promise-resolution-issue-388.md) | Archived promise resolution report                  |
+| [Promise resolve null](promise-resolve-null.md)         | Unfiled draft: null resolution rejects (#168)       |
 | [Porffor #386 history](request-body-report-386.md)      | Retracted byte body report                          |
 | [Tracked issues](tracked-issues.md)                     | Proxy and Web Crypto gaps                           |
 | [Local patches](local-patches.md)                       | Historical patch inventory and source pin rationale |
