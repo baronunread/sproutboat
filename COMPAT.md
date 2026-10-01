@@ -8,37 +8,37 @@ Decision: **GO** (go threshold: at least 40% matching).
 
 Failure categories: 0 compile, 0 runtime, 2 output mismatch.
 
-| Handler | Compiles | Matches | Bytes | Compile ms | Run ms | Error |
-|---|---:|---:|---:|---:|---:|---|
-| 01-hello.js | yes | yes | 966872 | 7122 | 190 |  |
-| 02-static-json.js | yes | yes | 966864 | 2851 | 188 |  |
-| 03-echo-method.js | yes | yes | 966880 | 2755 | 185 |  |
-| 04-query-param.js | yes | yes | 966880 | 2688 | 158 |  |
-| 05-query-default.js | yes | yes | 966880 | 2910 | 187 |  |
-| 06-url-routing.js | yes | yes | 966880 | 2832 | 186 |  |
-| 07-json-echo.js | yes | yes | 966880 | 2734 | 185 |  |
-| 08-json-transform.js | yes | yes | 966880 | 2785 | 187 |  |
-| 09-json-stringify.js | yes | yes | 966880 | 2692 | 626 |  |
-| 10-uppercase.js | yes | yes | 966864 | 2747 | 160 |  |
-| 11-reverse.js | yes | yes | 966872 | 2744 | 159 |  |
-| 12-slugify.js | yes | yes | 983384 | 2704 | 187 |  |
-| 13-regex-email.js | yes | yes | 966880 | 2684 | 159 |  |
-| 14-regex-extract.js | yes | yes | 966880 | 2711 | 186 |  |
-| 15-date-iso.js | yes | no | 999944 | 2717 | 189 | request 3 mismatch: expected {"status":200,"body":"2008-03-04T23:00:00.000Z","content-type":null}, got {"status":200,"body":"0003-05-08T00:00:00.000Z","content-type":null} |
-| 16-date-parts.js | yes | no | 999936 | 2669 | 159 | request 3 mismatch: expected {"status":200,"body":"{\"year\":2008,\"month\":3,\"day\":4}","content-type":"application/json;charset=utf-8"}, got {"status":200,"body":"{\"year\":3,\"month\":5,\"day\":8}","content-type":"application/json;charset=utf-8"} |
-| 17-math-sum.js | yes | yes | 983384 | 2763 | 161 |  |
-| 18-math-stats.js | yes | yes | 1050400 | 2829 | 186 |  |
-| 19-header-echo.js | yes | yes | 966864 | 2819 | 159 |  |
-| 20-auth-header.js | yes | yes | 966880 | 2695 | 159 |  |
-| 21-response-headers.js | yes | yes | 966880 | 2760 | 186 |  |
-| 22-status-created.js | yes | yes | 966880 | 2800 | 159 |  |
-| 23-status-not-found.js | yes | yes | 966880 | 2697 | 157 |  |
-| 24-status-no-content.js | yes | yes | 966888 | 2808 | 215 |  |
-| 25-slack-command.js | yes | yes | 966880 | 2694 | 187 |  |
-| 26-stripe-shape.js | yes | yes | 983392 | 2642 | 186 |  |
-| 27-github-routing.js | yes | yes | 966880 | 2744 | 187 |  |
-| 28-state-machine.js | yes | yes | 966880 | 2680 | 239 |  |
-| 29-form-urlencoded.js | yes | yes | 966880 | 2727 | 186 |  |
-| 30-content-negotiation.js | yes | yes | 983400 | 2644 | 188 |  |
-| 31-web-apis.js | yes | yes | 983384 | 2709 | 187 |  |
-| 32-date-offset.js | yes | yes | 999936 | 2699 | 186 |  |
+| Handler                   | Compiles | Matches |   Bytes | Compile ms | Run ms | Error                                                                                                                                                                                                                                                      |
+| ------------------------- | -------: | ------: | ------: | ---------: | -----: | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 01-hello.js               |      yes |     yes |  966872 |       7122 |    190 |                                                                                                                                                                                                                                                            |
+| 02-static-json.js         |      yes |     yes |  966864 |       2851 |    188 |                                                                                                                                                                                                                                                            |
+| 03-echo-method.js         |      yes |     yes |  966880 |       2755 |    185 |                                                                                                                                                                                                                                                            |
+| 04-query-param.js         |      yes |     yes |  966880 |       2688 |    158 |                                                                                                                                                                                                                                                            |
+| 05-query-default.js       |      yes |     yes |  966880 |       2910 |    187 |                                                                                                                                                                                                                                                            |
+| 06-url-routing.js         |      yes |     yes |  966880 |       2832 |    186 |                                                                                                                                                                                                                                                            |
+| 07-json-echo.js           |      yes |     yes |  966880 |       2734 |    185 |                                                                                                                                                                                                                                                            |
+| 08-json-transform.js      |      yes |     yes |  966880 |       2785 |    187 |                                                                                                                                                                                                                                                            |
+| 09-json-stringify.js      |      yes |     yes |  966880 |       2692 |    626 |                                                                                                                                                                                                                                                            |
+| 10-uppercase.js           |      yes |     yes |  966864 |       2747 |    160 |                                                                                                                                                                                                                                                            |
+| 11-reverse.js             |      yes |     yes |  966872 |       2744 |    159 |                                                                                                                                                                                                                                                            |
+| 12-slugify.js             |      yes |     yes |  983384 |       2704 |    187 |                                                                                                                                                                                                                                                            |
+| 13-regex-email.js         |      yes |     yes |  966880 |       2684 |    159 |                                                                                                                                                                                                                                                            |
+| 14-regex-extract.js       |      yes |     yes |  966880 |       2711 |    186 |                                                                                                                                                                                                                                                            |
+| 15-date-iso.js            |      yes |      no |  999944 |       2717 |    189 | request 3 mismatch: expected {"status":200,"body":"2008-03-04T23:00:00.000Z","content-type":null}, got {"status":200,"body":"0003-05-08T00:00:00.000Z","content-type":null}                                                                                |
+| 16-date-parts.js          |      yes |      no |  999936 |       2669 |    159 | request 3 mismatch: expected {"status":200,"body":"{\"year\":2008,\"month\":3,\"day\":4}","content-type":"application/json;charset=utf-8"}, got {"status":200,"body":"{\"year\":3,\"month\":5,\"day\":8}","content-type":"application/json;charset=utf-8"} |
+| 17-math-sum.js            |      yes |     yes |  983384 |       2763 |    161 |                                                                                                                                                                                                                                                            |
+| 18-math-stats.js          |      yes |     yes | 1050400 |       2829 |    186 |                                                                                                                                                                                                                                                            |
+| 19-header-echo.js         |      yes |     yes |  966864 |       2819 |    159 |                                                                                                                                                                                                                                                            |
+| 20-auth-header.js         |      yes |     yes |  966880 |       2695 |    159 |                                                                                                                                                                                                                                                            |
+| 21-response-headers.js    |      yes |     yes |  966880 |       2760 |    186 |                                                                                                                                                                                                                                                            |
+| 22-status-created.js      |      yes |     yes |  966880 |       2800 |    159 |                                                                                                                                                                                                                                                            |
+| 23-status-not-found.js    |      yes |     yes |  966880 |       2697 |    157 |                                                                                                                                                                                                                                                            |
+| 24-status-no-content.js   |      yes |     yes |  966888 |       2808 |    215 |                                                                                                                                                                                                                                                            |
+| 25-slack-command.js       |      yes |     yes |  966880 |       2694 |    187 |                                                                                                                                                                                                                                                            |
+| 26-stripe-shape.js        |      yes |     yes |  983392 |       2642 |    186 |                                                                                                                                                                                                                                                            |
+| 27-github-routing.js      |      yes |     yes |  966880 |       2744 |    187 |                                                                                                                                                                                                                                                            |
+| 28-state-machine.js       |      yes |     yes |  966880 |       2680 |    239 |                                                                                                                                                                                                                                                            |
+| 29-form-urlencoded.js     |      yes |     yes |  966880 |       2727 |    186 |                                                                                                                                                                                                                                                            |
+| 30-content-negotiation.js |      yes |     yes |  983400 |       2644 |    188 |                                                                                                                                                                                                                                                            |
+| 31-web-apis.js            |      yes |     yes |  983384 |       2709 |    187 |                                                                                                                                                                                                                                                            |
+| 32-date-offset.js         |      yes |     yes |  999936 |       2699 |    186 |                                                                                                                                                                                                                                                            |
