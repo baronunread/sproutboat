@@ -5,6 +5,22 @@ Changes to the self-hosted Sproutboat platform are recorded here. Read the
 
 ## [Unreleased]
 
+## [0.5.6] - 2026-10-02
+
+### Fixed
+
+- Async handlers no longer start failing on every request after a few
+  requests. An async function returning `null` was rejected with
+  `TypeError: Cannot get property of null` once a `toISOString()` call had
+  run, and the deployment never recovered. Sprouts now build with
+  `@sproutboat/toolchain` 0.4.17, which patches the Porffor bug behind it
+  (#168).
+- Non-ASCII text read back from bindings is no longer garbled: D1 rows, KV
+  values, cached bodies and error messages returned "café" as "cafÃ©"
+  (`@sproutboat/runtime` 0.13.2, #189).
+- Uncaught handler exceptions are logged to the sprout log instead of being
+  swallowed behind a bare 500.
+
 ## [0.5.5] - 2026-10-01
 
 ### Changed
@@ -309,7 +325,8 @@ Changes to the self-hosted Sproutboat platform are recorded here. Read the
 
 First tagged self-hosted platform checkpoint.
 
-[Unreleased]: https://github.com/baronunread/sproutboat/compare/v0.5.5...HEAD
+[Unreleased]: https://github.com/baronunread/sproutboat/compare/v0.5.6...HEAD
+[0.5.6]: https://github.com/baronunread/sproutboat/compare/v0.5.5...v0.5.6
 [0.5.5]: https://github.com/baronunread/sproutboat/compare/v0.5.4...v0.5.5
 [0.5.4]: https://github.com/baronunread/sproutboat/compare/v0.5.3...v0.5.4
 [0.5.3]: https://github.com/baronunread/sproutboat/compare/v0.5.2...v0.5.3
