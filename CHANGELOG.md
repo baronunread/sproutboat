@@ -5,6 +5,20 @@ Changes to the self-hosted Sproutboat platform are recorded here. Read the
 
 ## [Unreleased]
 
+## [0.5.7] - 2026-10-02
+
+### Fixed
+
+- Floating-point results on arm64 now match JavaScript: builds use
+  `-ffp-contract=off`, so `a * b + c` rounds twice as JavaScript requires
+  instead of once in a fused instruction (#235).
+- Standalone binaries accept HTTP/1.0 requests instead of answering 505, so
+  they work behind nginx's default `proxy_http_version 1.0` (#236).
+- Binary responses from outbound `fetch()` and service bindings arrive intact.
+  The broker (`@sproutboat/wire` 0.9.2) now sends them as raw bytes to sprouts
+  built with runtime 0.13.3 or later; older sprouts are served exactly as before
+  (#232).
+
 ## [0.5.6] - 2026-10-02
 
 ### Fixed
@@ -325,7 +339,8 @@ Changes to the self-hosted Sproutboat platform are recorded here. Read the
 
 First tagged self-hosted platform checkpoint.
 
-[Unreleased]: https://github.com/baronunread/sproutboat/compare/v0.5.6...HEAD
+[Unreleased]: https://github.com/baronunread/sproutboat/compare/v0.5.7...HEAD
+[0.5.7]: https://github.com/baronunread/sproutboat/compare/v0.5.6...v0.5.7
 [0.5.6]: https://github.com/baronunread/sproutboat/compare/v0.5.5...v0.5.6
 [0.5.5]: https://github.com/baronunread/sproutboat/compare/v0.5.4...v0.5.5
 [0.5.4]: https://github.com/baronunread/sproutboat/compare/v0.5.3...v0.5.4
