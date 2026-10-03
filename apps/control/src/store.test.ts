@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { afterAll, beforeAll, expect, test } from "bun:test";
 import { access, mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -14,6 +15,7 @@ async function routes(): Promise<
     sproutPath: string;
     ownerId?: string;
     r2ResourceIds?: string[];
+    doStoreId?: string;
     services?: Record<string, string>;
   }>
 > {
@@ -66,6 +68,8 @@ test("recordDeployment keeps exactly one active version per project", async () =
       sproutPath: join(dir, "artifacts", b, "sprout"),
       ownerId: "user-1",
       r2ResourceIds: [],
+      // #207 — derived from owner + project, so the redeploy above keeps it.
+      doStoreId: `do_${createHash("sha256").update("user-1\0app").digest("hex").slice(0, 24)}`,
     },
   ]);
 });
