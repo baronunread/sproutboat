@@ -5,6 +5,23 @@ Changes to the self-hosted Sproutboat platform are recorded here. Read the
 
 ## [Unreleased]
 
+## [0.5.8] - 2026-10-03
+
+### Fixed
+
+- `String.prototype.replaceAll` is linear instead of quadratic: a 2.1 MB
+  replacement went from about 42 s to 71 ms (#237).
+- uuid and @noble/hashes work in sprouts. Integer typed-array stores now wrap
+  instead of clamping; `typedArray.set(source)` with no offset copies to the
+  start instead of the wrong memory; `~x` wraps for large values; out-of-range
+  typed-array reads return `undefined`; and a handler's own top-level `URL` no
+  longer replaces the runtime's `URL` class at startup (#238).
+
+### Changed
+
+- Sprouts build with `@sproutboat/toolchain` 0.4.22 and `@sproutboat/runtime`
+  0.13.4. The median compatibility-suite binary is 1.02 MB, up from 0.98 MB.
+
 ## [0.5.7] - 2026-10-02
 
 ### Fixed
@@ -339,7 +356,8 @@ Changes to the self-hosted Sproutboat platform are recorded here. Read the
 
 First tagged self-hosted platform checkpoint.
 
-[Unreleased]: https://github.com/baronunread/sproutboat/compare/v0.5.7...HEAD
+[Unreleased]: https://github.com/baronunread/sproutboat/compare/v0.5.8...HEAD
+[0.5.8]: https://github.com/baronunread/sproutboat/compare/v0.5.7...v0.5.8
 [0.5.7]: https://github.com/baronunread/sproutboat/compare/v0.5.6...v0.5.7
 [0.5.6]: https://github.com/baronunread/sproutboat/compare/v0.5.5...v0.5.6
 [0.5.5]: https://github.com/baronunread/sproutboat/compare/v0.5.4...v0.5.5
