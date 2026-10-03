@@ -3,6 +3,7 @@ import { createWriteStream, existsSync, mkdirSync, readFileSync, type WriteStrea
 import { dirname, join, resolve } from "node:path";
 import { pool } from "../../supervisor/src/run";
 import { isSproutFirst, resolveAssetKey, type AssetManifest } from "@sproutboat/assets";
+import { applyAssetHeaders, assetRedirect } from "./asset-rules";
 import { EdgeCache, cacheRequestEligible, cacheResponseEligible } from "./cache";
 import { cacheControlFor } from "./asset-cache-control";
 
@@ -412,9 +413,21 @@ const server = Bun.serve({
     // SPA / 404 fallback still belongs to the sprout via `env.<ASSETS>.fetch()`.
     if (!directTransfer && (request.method === "GET" || request.method === "HEAD")) {
       const manifest = assetManifestFor(sproutPath);
-      const assetKey = manifest
-        ? resolveAssetKey(decodeURIComponent(target.pathname), (k) => Boolean(manifest.files[k]))
-        : null;
+      const pathname = decodeURIComponent(target.pathname);
+      const redirect = manifest ? assetRedirect(manifest, pathname) : null;
+      if (redirect) {
+        log({
+          hostname: host,
+          method: request.method,
+          status: redirect.status,
+          durationMs: elapsed(),
+          reqBytes,
+          resBytes: 0,
+          cacheStatus: "asset",
+        });
+        return redirect;
+      }
+      const assetKey = manifest ? resolveAssetKey(pathname, (k) => Boolean(manifest.files[k])) : null;
       const entry =
         manifest && assetKey && !isSproutFirst(manifest.runSproutFirst, assetKey)
           ? manifest.files[assetKey]
@@ -448,12 +461,16 @@ const server = Bun.serve({
         });
         return new Response(body, {
           status: 200,
-          headers: {
-            "content-type": entry.type,
-            etag,
-            "content-length": String(entry.size),
-            "cache-control": cacheControlFor(assetKey),
-          },
+          headers: applyAssetHeaders(
+            new Headers({
+              "content-type": entry.type,
+              etag,
+              "content-length": String(entry.size),
+              "cache-control": cacheControlFor(assetKey),
+            }),
+            manifest!,
+            pathname,
+          ),
         });
       }
     }
