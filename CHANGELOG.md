@@ -5,6 +5,26 @@ Changes to the self-hosted Sproutboat platform are recorded here. Read the
 
 ## [Unreleased]
 
+## [0.5.9] - 2026-10-04
+
+### Fixed
+
+- Typed-array writes past the end are ignored instead of overwriting
+  neighbouring memory (#241).
+- Typed-array `join()` and `toString()` work; `Uint8Array.join` returned
+  garbage and `Uint16Array.join` could kill the sprout (#242).
+- KV stores binary values. The broker's KV tables gain a `binary` column on
+  first use, and `get(key, type)` supports `"text"`, `"json"` and
+  `"arrayBuffer"` (#233).
+- Binary `fetch()` and service-binding request bodies reach the upstream as
+  their exact bytes (#232).
+
+### Changed
+
+- Sprouts build with `@sproutboat/toolchain` 0.4.24, `@sproutboat/runtime`
+  0.13.5 and `@sproutboat/wire` 0.9.3. Sprouts built before this release keep
+  their previous KV and fetch behaviour.
+
 ## [0.5.8] - 2026-10-03
 
 ### Fixed
@@ -356,7 +376,8 @@ Changes to the self-hosted Sproutboat platform are recorded here. Read the
 
 First tagged self-hosted platform checkpoint.
 
-[Unreleased]: https://github.com/baronunread/sproutboat/compare/v0.5.8...HEAD
+[Unreleased]: https://github.com/baronunread/sproutboat/compare/v0.5.9...HEAD
+[0.5.9]: https://github.com/baronunread/sproutboat/compare/v0.5.8...v0.5.9
 [0.5.8]: https://github.com/baronunread/sproutboat/compare/v0.5.7...v0.5.8
 [0.5.7]: https://github.com/baronunread/sproutboat/compare/v0.5.6...v0.5.7
 [0.5.6]: https://github.com/baronunread/sproutboat/compare/v0.5.5...v0.5.6
