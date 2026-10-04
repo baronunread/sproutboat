@@ -1,7 +1,7 @@
 [Unit]
 Description=Sproutboat deployment edge router
-After=network-online.target
-Wants=network-online.target
+After=network-online.target sproutboat-egress.service
+Wants=network-online.target sproutboat-egress.service
 
 [Service]
 Type=simple
@@ -18,6 +18,12 @@ Environment=SPROUTBOAT_BROKER_STATE_DIR=/var/lib/sproutboat/brokers
 Environment=SPROUTBOAT_RESOURCE_DIR=/var/lib/sproutboat/resources
 # Deployment domain + dashboard URL, written by install.sh.
 EnvironmentFile=-/etc/sproutboat/sproutboat.env
+# #252 — brokers can't reach the network from this unit (IPAddressDeny below),
+# so their fetch() goes through sproutboat-egress.service on loopback. The token
+# reaches brokers through the supervisor's environment; the sprout sandbox
+# clears its own environment, so sprouts never see it.
+Environment=SB_EGRESS_URL=http://127.0.0.1:8070
+EnvironmentFile=-/etc/sproutboat/egress.env
 # Platform-wide request caps (issue #27). Per-project overrides still tracked there.
 Environment=SPROUTBOAT_REQUEST_TIMEOUT_MS=30000
 Environment=SPROUTBOAT_RESPONSE_MAX_BYTES=10485760

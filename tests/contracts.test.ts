@@ -183,6 +183,35 @@ describe("Phase A contracts", () => {
     expect(edgeUnit).toContain("UMask=0007");
   });
 
+  test("#252: brokers reach the network only through the token-gated egress unit", async () => {
+    const install = await Bun.file("install.sh").text();
+    const sbctl = await Bun.file("infra/sbctl").text();
+    const edgeUnit = await Bun.file("infra/systemd/sproutboat-edge.service").text();
+    const egressUnit = await Bun.file("infra/systemd/sproutboat-egress.service").text();
+    const sandbox = await Bun.file("infra/sandbox/sprout-sandbox.sh").text();
+
+    // The unit runs a script the pinned @sproutboat/wire actually ships, on the
+    // port the edge points its brokers at.
+    const exec = /^ExecStart=\S+ (\S+) --host 127\.0\.0\.1 --port (\d+)$/m.exec(egressUnit);
+    expect(exec).not.toBeNull();
+    expect(await Bun.file(exec![1]).exists()).toBe(true);
+    expect(edgeUnit).toContain(`Environment=SB_EGRESS_URL=http://127.0.0.1:${exec![2]}`);
+    expect(edgeUnit).toContain("EnvironmentFile=-/etc/sproutboat/egress.env");
+    expect(egressUnit).toContain("EnvironmentFile=/etc/sproutboat/egress.env");
+    // The edge's own deny stays: sprouts must not gain a route.
+    expect(edgeUnit).toContain("IPAddressDeny=any");
+
+    expect(install).toContain("for u in sproutboat-control sproutboat-edge sproutboat-egress; do");
+    expect(install).toContain("systemctl restart sproutboat-control sproutboat-egress sproutboat-edge");
+    expect(install).toContain('EGRESS_TOKEN=$(val_env "$ETC/egress.env" SB_EGRESS_TOKEN)');
+    expect(install).toContain('chmod 0600 "$ETC/egress.env"');
+    expect(sbctl).toContain("sproutboat-egress");
+    // Sprouts share loopback with the service; only the token keeps them off
+    // it, so the sandbox must never forward it.
+    expect(sandbox).toContain("--clearenv");
+    expect(sandbox).not.toContain("SB_EGRESS");
+  });
+
   test("updates stage a new installer outside the active release", async () => {
     const install = await Bun.file("install.sh").text();
     const updater = await Bun.file("infra/sb-update").text();

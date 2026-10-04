@@ -10,7 +10,7 @@ set -euo pipefail
 ROOT=/opt/sproutboat
 TOKEN_FILE=/root/sproutboat-admin.env
 UPDATER=/usr/local/lib/sproutboat/update
-SERVICES=(sproutboat-control sproutboat-edge caddy)
+SERVICES=(sproutboat-control sproutboat-egress sproutboat-edge caddy)
 UNITS=("${SERVICES[@]}" sproutboat-backup.timer)
 
 if [ -t 1 ]; then OK=$'\033[1;32m'; NO=$'\033[1;31m'; D=$'\033[2m'; Z=$'\033[0m'

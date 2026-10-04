@@ -80,8 +80,9 @@ if [ "${1:-}" = --uninstall ]; then
     read -r -p "  type 'remove' to confirm: " __c < "$PROMPT_TTY" || true
     [ "$__c" = remove ] || die "aborted"
   fi
-  systemctl disable --now sproutboat-control sproutboat-edge caddy sproutboat-backup.timer sproutboat-backup.service >/dev/null 2>&1 || true
+  systemctl disable --now sproutboat-control sproutboat-edge sproutboat-egress caddy sproutboat-backup.timer sproutboat-backup.service >/dev/null 2>&1 || true
   rm -f /etc/systemd/system/sproutboat-control.service /etc/systemd/system/sproutboat-edge.service \
+        /etc/systemd/system/sproutboat-egress.service \
         /etc/systemd/system/sproutboat-backup.service /etc/systemd/system/sproutboat-backup.timer
   rm -rf /etc/systemd/system/caddy.service.d
   # only remove caddy.service if this installer created it (has our marker path)
@@ -305,6 +306,17 @@ chown root:sproutboat "$ETC/sproutboat.env"; chmod 0640 "$ETC/sproutboat.env"
 } > "$ETC/control.env"
 chown root:sproutboat "$ETC/control.env"; chmod 0640 "$ETC/control.env"
 
+# #252 — the token brokers present to sproutboat-egress. Kept across upgrades,
+# like the other secrets; so is an operator's SB_EGRESS_ALLOW. Only systemd
+# reads this file, so root-only.
+EGRESS_TOKEN=$(val_env "$ETC/egress.env" SB_EGRESS_TOKEN); EGRESS_TOKEN=${EGRESS_TOKEN:-$(randhex)}
+EGRESS_ALLOW=$(val_env "$ETC/egress.env" SB_EGRESS_ALLOW)
+{
+  echo "SB_EGRESS_TOKEN=$EGRESS_TOKEN"
+  [ -n "$EGRESS_ALLOW" ] && echo "SB_EGRESS_ALLOW=$EGRESS_ALLOW"
+} > "$ETC/egress.env"
+chmod 0600 "$ETC/egress.env"
+
 {
   echo "ACME_EMAIL=$SB_ACME_EMAIL"
   [ -n "${SB_CF_TOKEN:-}" ] && echo "CLOUDFLARE_API_TOKEN=$SB_CF_TOKEN"
@@ -409,7 +421,7 @@ Restart=on-failure
 [Install]
 WantedBy=multi-user.target
 EOF
-for u in sproutboat-control sproutboat-edge; do
+for u in sproutboat-control sproutboat-edge sproutboat-egress; do
   install -m 0644 "$ROOT/infra/systemd/$u.service" "/etc/systemd/system/$u.service"
 done
 install -m 0644 "$ROOT/infra/systemd/sproutboat-backup.service" /etc/systemd/system/sproutboat-backup.service
@@ -449,9 +461,9 @@ else
   # one alone. An upgrade has just replaced the source beneath active Bun
   # processes, so explicitly restart them or they keep running the old code.
   say "Starting services"
-  units=(sproutboat-control sproutboat-edge caddy sproutboat-backup.timer)
-  systemctl enable sproutboat-control sproutboat-edge caddy sproutboat-backup.timer >/dev/null 2>&1
-  systemctl restart sproutboat-control sproutboat-edge
+  units=(sproutboat-control sproutboat-egress sproutboat-edge caddy sproutboat-backup.timer)
+  systemctl enable sproutboat-control sproutboat-egress sproutboat-edge caddy sproutboat-backup.timer >/dev/null 2>&1
+  systemctl restart sproutboat-control sproutboat-egress sproutboat-edge
   systemctl reload-or-restart caddy
   systemctl start sproutboat-backup.timer
   for u in "${units[@]}"; do
