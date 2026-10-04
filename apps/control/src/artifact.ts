@@ -14,7 +14,6 @@ export type ResourceBindingRef = { binding: string; kind: "kv" | "d1" | "r2" | "
 export type ArtifactBindings = {
   kv: string[];
   secrets: string[];
-  outbound: string[];
   d1: string[];
   r2: string[];
   queues: string[];
@@ -71,7 +70,7 @@ function digest(bytes: Uint8Array): string {
 function bindingsErrors(value: Json | undefined): string[] {
   if (!isObj(value)) return ["bindings.json must be a JSON object"];
   const errors: string[] = [];
-  for (const key of ["kv", "secrets", "outbound", "d1", "r2", "queues", "analytics", "crons"] as const) {
+  for (const key of ["kv", "secrets", "d1", "r2", "queues", "analytics", "crons"] as const) {
     if (key in value && !isStrArray(value[key])) errors.push(`bindings.json.${key} must be a string[]`);
   }
   if ("assets" in value && !isStr(value.assets)) errors.push("bindings.json.assets must be a string");
@@ -127,7 +126,6 @@ function bindingsOf(value: Json | undefined): ArtifactBindings {
   return {
     kv: names("kv"),
     secrets: names("secrets"),
-    outbound: names("outbound"),
     d1: names("d1"),
     r2: names("r2"),
     queues: names("queues"),

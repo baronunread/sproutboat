@@ -112,11 +112,13 @@ a read-only filesystem holding only its own artifact directory, its own uid,
 private namespaces, and no network route except loopback. A per-sprout cgroup
 scope caps memory, CPU and pids.
 
-An artifact that ships `bindings.json` also gets a binding broker beside it on a
-token-gated loopback port. The broker implements KV, D1, R2, queues, secrets and
-outbound `fetch`, which is what keeps the sprout itself free of disk and
-egress. A handler reaches the outside world only through the
-broker, and only for hosts in the config's `outbound` allowlist.
+Every artifact ships `bindings.json`, so every sprout gets a binding broker
+beside it on a token-gated loopback port. The broker implements KV, D1, R2,
+queues, secrets and outbound `fetch`, which is what keeps the sprout itself free
+of disk and egress. A handler reaches the outside world only through the
+broker, which never connects to a private or reserved address (#174). An
+operator can allow specific ones with `SB_EGRESS_ALLOW` in the supervisor's
+environment, which its brokers inherit.
 
 Cron, queue consumers and Durable Object alarms are different from HTTP-only
 handlers: their active route generation is started by the edge even with no

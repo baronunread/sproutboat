@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import {
   ConfirmButton,
@@ -38,7 +38,6 @@ type Resource = { id: string; kind: string; name: string };
 type Bindings = {
   kv: string[];
   secrets: string[];
-  outbound: string[];
   d1: string[];
   r2: string[];
   queues: string[];
@@ -115,8 +114,12 @@ function DeploymentDetail() {
   const rollback = async () => {
     setError("");
     setBusy(true);
-    const failure = await mutate(`${base}/activate`, { method: "POST" });
-    setBusy(false);
+    let failure: string | null;
+    try {
+      failure = await mutate(`${base}/activate`, { method: "POST" });
+    } finally {
+      setBusy(false);
+    }
     if (failure) {
       setError(failure);
       return;
@@ -290,7 +293,7 @@ function BindingsSummary({ bindings, resources }: { bindings: Bindings | null; r
     ...(bindings.assets ? [bindingRow(bindings.assets, "Static assets")] : []),
     ...Object.keys(bindings.vars ?? {}).map((binding) => bindingRow(binding, "Variable")),
   ];
-  if (rows.length === 0 && bindings.outbound.length === 0) return null;
+  if (rows.length === 0) return null;
 
   return (
     <Panel variant="wide">
@@ -306,14 +309,6 @@ function BindingsSummary({ bindings, resources }: { bindings: Bindings | null; r
             </div>
           ))}
         </dl>
-      )}
-      {bindings.outbound.length > 0 && (
-        <p className="mt-3 text-[0.75rem] text-muted-foreground">
-          Outbound fetch allowed to:{" "}
-          {bindings.outbound.map((host) => (
-            <code key={host}>{host} </code>
-          ))}
-        </p>
       )}
       {resources.length > 0 && (
         <p className="mt-3 text-[0.75rem] text-muted-foreground">
@@ -342,36 +337,37 @@ function Compare({
   const [other, setOther] = useState<Detail>();
   const [state, setState] = useState<"idle" | "loading" | "ready" | "error">("idle");
 
-  useEffect(() => {
-    if (!otherId) {
+  // Loaded when the user picks a version, so the fetch belongs to that event.
+  // `latest` drops a reply that a newer pick has already superseded.
+  const latest = useRef("");
+  const choose = (id: string) => {
+    setOtherId(id);
+    latest.current = id;
+    if (!id) {
       setState("idle");
       setOther(undefined);
       return;
     }
-    let ignore = false;
     setState("loading");
-    void fetch(`/api/projects/${encodeURIComponent(name)}/deployments/${encodeURIComponent(otherId)}`, {
+    void fetch(`/api/projects/${encodeURIComponent(name)}/deployments/${encodeURIComponent(id)}`, {
       credentials: "include",
     })
       .then(async (response) => {
-        if (ignore) return;
+        if (latest.current !== id) return;
         if (!response.ok) {
           setState("error");
           return;
         }
         // SAFETY: a 2xx from the deployment-detail endpoint is the Detail contract.
         const body = (await response.json()) as Detail;
-        if (ignore) return;
+        if (latest.current !== id) return;
         setOther(body);
         setState("ready");
       })
       .catch(() => {
-        if (!ignore) setState("error");
+        if (latest.current === id) setState("error");
       });
-    return () => {
-      ignore = true;
-    };
-  }, [name, otherId]);
+  };
 
   if (versions.length === 0) return null;
 
@@ -404,7 +400,7 @@ function Compare({
           fieldClassName="w-[24rem] max-w-full"
           value={otherId}
           options={options}
-          onValueChange={(value) => setOtherId(value)}
+          onValueChange={choose}
         />
       </div>
 

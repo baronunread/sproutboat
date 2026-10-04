@@ -80,14 +80,13 @@ describe("Phase A contracts", () => {
 
   test("accepts the frozen capability handlers and rejects unsupported source", async () => {
     const accepted = await Bun.file("tests/porffor/capabilities/01-hello.js").text();
-    const rejected = await Bun.file("tests/porffor/rejected/03-outbound-fetch.js").text();
+    const rejected = await Bun.file("tests/porffor/rejected/02-node-api.js").text();
     expect(validateHttpSyncSource(accepted).ok).toBe(true);
-    // bare fetch() is rejected unless the project declares an `outbound` allowlist
-    const rej = validateHttpSyncSource(rejected);
-    expect(rej.ok).toBe(false);
-    if (!rej.ok) expect(rej.errors.join(" ")).toContain("outbound");
-    // ...and accepted once outbound is allowed
-    expect(validateHttpSyncSource(rejected, true).ok).toBe(true);
+    expect(validateHttpSyncSource(rejected).ok).toBe(false);
+    // #174 — fetch() needs no config: a bare upstream call is accepted.
+    expect(
+      validateHttpSyncSource(`export default { async fetch() { return fetch("https://example.com"); } };`).ok,
+    ).toBe(true);
   });
 
   test("allows console — native-fetch logs go to the sprout's stderr, not a protocol stream", () => {

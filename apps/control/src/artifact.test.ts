@@ -108,6 +108,7 @@ test("#76 — every declared binding is surfaced for the dashboard's Bindings vi
     bindings: {
       kv: ["LINKS"],
       secrets: ["API_KEY"],
+      // #174 — an artifact built before the allowlist was dropped still carries it.
       outbound: ["https://api.example.com"],
       queues: ["JOBS"],
       assets: "ASSETS",
@@ -121,7 +122,7 @@ test("#76 — every declared binding is surfaced for the dashboard's Bindings vi
   const bindings = result.value.bindings;
   expect(bindings?.kv).toEqual(["LINKS"]);
   expect(bindings?.secrets).toEqual(["API_KEY"]);
-  expect(bindings?.outbound).toEqual(["https://api.example.com"]);
+  expect(bindings && "outbound" in bindings).toBe(false);
   expect(bindings?.assets).toBe("ASSETS");
   expect(bindings?.durableObjects).toEqual([{ binding: "COUNTER", className: "Counter" }]);
   expect(bindings?.resources).toEqual(result.value.resourceBindings);
