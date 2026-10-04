@@ -371,16 +371,15 @@ function Compare({
 
   if (versions.length === 0) return null;
 
-  const options = [
-    ["", "Choose a version…"] as const,
-    ...versions.map(
-      (version) =>
-        [
-          version.id,
-          `${version.id.slice(0, 8)} · ${relativeTime(version.deployedAt)}${version.active ? " · active" : ""}`,
-        ] as const,
-    ),
-  ];
+  // No empty-value item: Radix Select can't show one in its trigger, so the
+  // prompt is the placeholder instead.
+  const options = versions.map(
+    (version) =>
+      [
+        version.id,
+        `${version.id.slice(0, 8)} · ${relativeTime(version.deployedAt)}${version.active ? " · active" : ""}`,
+      ] as const,
+  );
   const differences =
     current.manifest && other?.manifest
       ? COMPARED.filter(([key]) => String(current.manifest?.[key]) !== String(other.manifest?.[key]))
@@ -400,6 +399,7 @@ function Compare({
           fieldClassName="w-[24rem] max-w-full"
           value={otherId}
           options={options}
+          placeholder="Choose a version…"
           onValueChange={choose}
         />
       </div>
