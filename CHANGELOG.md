@@ -5,6 +5,29 @@ Changes to the self-hosted Sproutboat platform are recorded here. Read the
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-10-04
+
+### Changed
+
+- Brokers refuse private and reserved addresses for `fetch()`, checking the
+  resolved address at connect; the `outbound` allowlist is gone
+  (`@sproutboat/wire` 0.11.0, #174).
+- The dashboard no longer lists outbound hosts.
+
+### Fixed
+
+- The deployment page's version compare loads on selection, and rollback always
+  clears its busy state.
+
+### Breaking and operator actions
+
+- To let sprouts reach a private address, such as a database on the same host,
+  set `SB_EGRESS_ALLOW` (`*` or exact addresses) in the supervisor's
+  environment; brokers inherit it.
+- The edge unit's `IPAddressDeny=any` still blocks all off-box egress on the
+  systemd install, so `fetch()` reaches nothing outside the host there.
+  `sbctl update` is sufficient.
+
 ## [0.6.0] - 2026-10-04
 
 ### Added
