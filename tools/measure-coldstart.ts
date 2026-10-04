@@ -61,7 +61,6 @@ if (prebuilt) {
     ...EMPTY_BINDINGS,
     kv: resourceRefs(c.kv_namespaces).map((ref) => ref.binding),
     secrets: c.secrets ?? [],
-    outbound: (c.outbound ?? []).map(String),
     d1: resourceRefs(c.d1_databases).map((ref) => ref.binding),
     r2: resourceRefs(c.r2_buckets).map((ref) => ref.binding),
     queues: resourceRefs(c.queues).map((ref) => ref.binding),

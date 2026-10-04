@@ -8,10 +8,10 @@
         "@better-auth/api-key": "^1.7.1",
         "@sproutboat/artifact": "^0.3.0",
         "@sproutboat/assets": "^0.3.0",
-        "@sproutboat/config": "^0.4.0",
-        "@sproutboat/runtime": "^0.13.5",
+        "@sproutboat/config": "^0.5.0",
+        "@sproutboat/runtime": "^0.14.0",
         "@sproutboat/toolchain": "^0.4.24",
-        "@sproutboat/wire": "^0.10.0",
+        "@sproutboat/wire": "^0.11.0",
         "@tanstack/charts": "^0.16.0",
         "@tanstack/react-router": "^1.170.32",
         "@tanstack/react-start": "^1.168.49",
@@ -514,13 +514,13 @@
 
     "@sproutboat/assets": ["@sproutboat/assets@0.3.0", "", {}, "sha512-YvKhDPnAaU+Xxnn6QpDizFq/SYwGEgbCWtSz+7edniPBQT5HHOnh9GyKj5Sa1+sjlkNnpKvUk+6evfCUTNRytg=="],
 
-    "@sproutboat/config": ["@sproutboat/config@0.4.0", "", {}, "sha512-uNMaIRw5Jl3Cxt8uZuRapFxUL1z4dcjIcB1jFphllmv3XJi1/q5PL6/HY+LnLRs+Xqejl6ilhfh+g5N9E4+BeQ=="],
+    "@sproutboat/config": ["@sproutboat/config@0.5.0", "", {}, "sha512-GKLjuzxTIXyaxocgJqgveW48+NixWrvXZqGAFh7mfH7C9698YFtOtObk4cwC0k+PKNSXmus9kYWcp8TUxzD/wQ=="],
 
-    "@sproutboat/runtime": ["@sproutboat/runtime@0.13.5", "", {}, "sha512-hK0i1S4JkM6eHAfF3nJl8BGyJHmosR+7n5/xDZNVhRK8mNVAqKcNJWOTD6u3JBouumwEbN6KGGGNYmXqLyF5yA=="],
+    "@sproutboat/runtime": ["@sproutboat/runtime@0.14.0", "", {}, "sha512-Xhb0/ZLXu+cwuLmPKNopf8yoreUyDZXfMBwai/SptvidJLEjGdZHWWvwarPPnYQIelpmUiXe8FLybv741toS4w=="],
 
     "@sproutboat/toolchain": ["@sproutboat/toolchain@0.4.24", "", {}, "sha512-OeuPpFZ2IU0rq8dn8MqACX2ZHd/8iKTxrPsdDfrxSmZoNB7iGRhcWc7l28FtpZ9Tg3mybiNRCqp2OpJacD1yYQ=="],
 
-    "@sproutboat/wire": ["@sproutboat/wire@0.10.0", "", { "dependencies": { "@sproutboat/assets": "^0.3.0" } }, "sha512-QSAoSruDYbVfL6TPUmi7XAr0cbm25WYDO92afcQRWDz8FDVCrT8NtyQgzr6JjNyfWLBcQ6TtoC5SQiwB2Gawbg=="],
+    "@sproutboat/wire": ["@sproutboat/wire@0.11.0", "", { "dependencies": { "@sproutboat/assets": "^0.3.0", "@sproutboat/runtime": "^0.14.0" } }, "sha512-oTRSbOQ11Vd/fKs03itLqwIGhhRaghVw/7WZsFnUHXWjuYLQXwW4RrJtyfiGT2NJNLNrf17tx2F7EtSr0v2/YQ=="],
 
     "@standard-schema/spec": ["@standard-schema/spec@1.1.0", "", {}, "sha512-l2aFy5jALhniG5HgqrD6jXLi/rUWrKvqN/qJx6yoJsgKhblVd+iqqU4RCXavm/jPityDo5TCvKMnpjKnOriy0w=="],
 
