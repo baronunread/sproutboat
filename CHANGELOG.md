@@ -5,6 +5,20 @@ Changes to the self-hosted Sproutboat platform are recorded here. Read the
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-10-05
+
+### Added
+
+- `sproutboat-egress.service`: deployed `fetch()` reaches the internet on the
+  systemd install. Brokers hand each request to this token-gated loopback
+  service, which runs outside the edge's network deny and refuses private and
+  reserved addresses itself (`@sproutboat/wire` 0.12.0, #252).
+
+### Breaking and operator actions
+
+- `sbctl update` installs and starts the new unit and generates
+  `/etc/sproutboat/egress.env`. `SB_EGRESS_ALLOW` now goes in that file.
+
 ## [0.7.0] - 2026-10-04
 
 ### Changed
