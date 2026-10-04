@@ -5,6 +5,30 @@ Changes to the self-hosted Sproutboat platform are recorded here. Read the
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-10-04
+
+### Added
+
+- The edge applies an asset directory's `_redirects` and `_headers`
+  (Cloudflare Pages format), read from `assets.json`. Redirects answer before
+  any file lookup; header rules apply to edge-served files and can override
+  `Cache-Control` or unset a header. Needs sprouts built with CLI 0.13.0 (#61).
+
+### Fixed
+
+- Durable Object storage and alarms survive redeploys. They now live in one
+  database per owner and project instead of the per-deployment state (#207).
+
+### Changed
+
+- `@sproutboat/wire` 0.10.0.
+
+### Breaking and operator actions
+
+- Durable Object data written before this release is not carried over: the
+  first deploy after upgrading starts from empty storage, as every redeploy
+  did before. `sbctl update` is sufficient.
+
 ## [0.5.9] - 2026-10-04
 
 ### Fixed
