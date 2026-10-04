@@ -1,0 +1,11 @@
+[
+  "built-ins/RegExp/property-escapes/generated/General_Category_-_Decimal_Number.js",
+  "built-ins/RegExp/property-escapes/generated/General_Category_-_Uppercase_Letter.js",
+  "built-ins/RegExp/prototype/exec/S15.10.6.2_A4_T10.js",
+  "built-ins/RegExp/prototype/exec/S15.10.6.2_A4_T11.js",
+  "built-ins/RegExp/prototype/exec/success-g-lastindex-no-access.js",
+  "built-ins/String/prototype/replaceAll/replaceValue-call-each-match-position.js",
+  "built-ins/Temporal/ZonedDateTime/prototype/subtract/non-integer-throws-rangeerror.js",
+  "built-ins/TypedArrayConstructors/prototype/indexOf/bigint-inherited.js",
+  "staging/sm/String/split.js"
+]

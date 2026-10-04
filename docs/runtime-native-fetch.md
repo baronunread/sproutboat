@@ -1,6 +1,6 @@
 # Native-fetch runtime
 
-Each deployment is a long-lived HTTP server: Porffor (`alpha-9`) compiles
+Each deployment is a long-lived HTTP server: Porffor (`alpha-13`) compiles
 `export default { fetch(request) { … } }` into a native binary that embeds a
 [uWebSockets](https://github.com/uNetworking/uWebSockets) server. Porffor's C
 runtime parses the request and calls `fetch`; the handler returns a `Response`.
@@ -35,7 +35,7 @@ optional seccomp. It keeps the caller's network namespace so the edge can reach
 its loopback port; egress is denied by the edge unit's
 `IPAddressDeny=any` / `IPAddressAllow=localhost`.
 
-## Known Porffor gaps (alpha-9)
+## Known Porffor gaps (alpha-13)
 
 - `Date` string parsing is wrong for some non-ISO inputs (capabilities
   `15-date-iso` and `16-date-parts`). The toolchain patch fixes ISO timezone

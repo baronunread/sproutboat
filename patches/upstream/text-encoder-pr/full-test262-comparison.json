@@ -1,0 +1,66 @@
+{
+  "total": 53404,
+  "baselineCounts": {
+    "passes": 34210,
+    "fails": 8721,
+    "runtimeErrors": 10363,
+    "nativeErrors": 62,
+    "compileErrors": 18,
+    "timeouts": 30
+  },
+  "patchedCounts": {
+    "passes": 34210,
+    "fails": 8722,
+    "runtimeErrors": 10360,
+    "nativeErrors": 62,
+    "compileErrors": 18,
+    "timeouts": 32
+  },
+  "changed": [
+    {
+      "test": "built-ins/RegExp/property-escapes/generated/General_Category_-_Decimal_Number.js",
+      "baseline": "passes",
+      "patched": "timeouts"
+    },
+    {
+      "test": "built-ins/RegExp/property-escapes/generated/General_Category_-_Uppercase_Letter.js",
+      "baseline": "passes",
+      "patched": "timeouts"
+    },
+    {
+      "test": "built-ins/RegExp/prototype/exec/S15.10.6.2_A4_T10.js",
+      "baseline": "runtimeErrors",
+      "patched": "passes"
+    },
+    {
+      "test": "built-ins/RegExp/prototype/exec/S15.10.6.2_A4_T11.js",
+      "baseline": "runtimeErrors",
+      "patched": "fails"
+    },
+    {
+      "test": "built-ins/RegExp/prototype/exec/success-g-lastindex-no-access.js",
+      "baseline": "runtimeErrors",
+      "patched": "passes"
+    },
+    {
+      "test": "built-ins/String/prototype/replaceAll/replaceValue-call-each-match-position.js",
+      "baseline": "passes",
+      "patched": "fails"
+    },
+    {
+      "test": "built-ins/Temporal/ZonedDateTime/prototype/subtract/non-integer-throws-rangeerror.js",
+      "baseline": "fails",
+      "patched": "runtimeErrors"
+    },
+    {
+      "test": "built-ins/TypedArrayConstructors/prototype/indexOf/bigint-inherited.js",
+      "baseline": "fails",
+      "patched": "passes"
+    },
+    {
+      "test": "staging/sm/String/split.js",
+      "baseline": "runtimeErrors",
+      "patched": "fails"
+    }
+  ]
+}

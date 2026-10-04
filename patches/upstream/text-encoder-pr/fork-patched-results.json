@@ -1,0 +1,500 @@
+{
+  "backend": "native HTTP",
+  "oracle": "Bun 1.4.1",
+  "correct": 123,
+  "total": 123,
+  "rows": [
+    {
+      "name": "encode-0",
+      "correct": true
+    },
+    {
+      "name": "encode-1",
+      "correct": true
+    },
+    {
+      "name": "encode-2",
+      "correct": true
+    },
+    {
+      "name": "encode-3",
+      "correct": true
+    },
+    {
+      "name": "encode-4",
+      "correct": true
+    },
+    {
+      "name": "encode-5",
+      "correct": true
+    },
+    {
+      "name": "encode-6",
+      "correct": true
+    },
+    {
+      "name": "encode-7",
+      "correct": true
+    },
+    {
+      "name": "encode-8",
+      "correct": true
+    },
+    {
+      "name": "encode-9",
+      "correct": true
+    },
+    {
+      "name": "encodeInto-0-0",
+      "correct": true
+    },
+    {
+      "name": "encodeInto-0-1",
+      "correct": true
+    },
+    {
+      "name": "encodeInto-0-2",
+      "correct": true
+    },
+    {
+      "name": "encodeInto-0-3",
+      "correct": true
+    },
+    {
+      "name": "encodeInto-0-4",
+      "correct": true
+    },
+    {
+      "name": "encodeInto-0-5",
+      "correct": true
+    },
+    {
+      "name": "encodeInto-0-6",
+      "correct": true
+    },
+    {
+      "name": "encodeInto-0-7",
+      "correct": true
+    },
+    {
+      "name": "encodeInto-0-8",
+      "correct": true
+    },
+    {
+      "name": "encodeInto-0-9",
+      "correct": true
+    },
+    {
+      "name": "encodeInto-0-10",
+      "correct": true
+    },
+    {
+      "name": "encodeInto-1-0",
+      "correct": true
+    },
+    {
+      "name": "encodeInto-1-1",
+      "correct": true
+    },
+    {
+      "name": "encodeInto-1-2",
+      "correct": true
+    },
+    {
+      "name": "encodeInto-1-3",
+      "correct": true
+    },
+    {
+      "name": "encodeInto-1-4",
+      "correct": true
+    },
+    {
+      "name": "encodeInto-1-5",
+      "correct": true
+    },
+    {
+      "name": "encodeInto-1-6",
+      "correct": true
+    },
+    {
+      "name": "encodeInto-1-7",
+      "correct": true
+    },
+    {
+      "name": "encodeInto-1-8",
+      "correct": true
+    },
+    {
+      "name": "encodeInto-1-9",
+      "correct": true
+    },
+    {
+      "name": "encodeInto-1-10",
+      "correct": true
+    },
+    {
+      "name": "encodeInto-2-0",
+      "correct": true
+    },
+    {
+      "name": "encodeInto-2-1",
+      "correct": true
+    },
+    {
+      "name": "encodeInto-2-2",
+      "correct": true
+    },
+    {
+      "name": "encodeInto-2-3",
+      "correct": true
+    },
+    {
+      "name": "encodeInto-2-4",
+      "correct": true
+    },
+    {
+      "name": "encodeInto-2-5",
+      "correct": true
+    },
+    {
+      "name": "encodeInto-2-6",
+      "correct": true
+    },
+    {
+      "name": "encodeInto-2-7",
+      "correct": true
+    },
+    {
+      "name": "encodeInto-2-8",
+      "correct": true
+    },
+    {
+      "name": "encodeInto-2-9",
+      "correct": true
+    },
+    {
+      "name": "encodeInto-2-10",
+      "correct": true
+    },
+    {
+      "name": "encodeInto-3-0",
+      "correct": true
+    },
+    {
+      "name": "encodeInto-3-1",
+      "correct": true
+    },
+    {
+      "name": "encodeInto-3-2",
+      "correct": true
+    },
+    {
+      "name": "encodeInto-3-3",
+      "correct": true
+    },
+    {
+      "name": "encodeInto-3-4",
+      "correct": true
+    },
+    {
+      "name": "encodeInto-3-5",
+      "correct": true
+    },
+    {
+      "name": "encodeInto-3-6",
+      "correct": true
+    },
+    {
+      "name": "encodeInto-3-7",
+      "correct": true
+    },
+    {
+      "name": "encodeInto-3-8",
+      "correct": true
+    },
+    {
+      "name": "encodeInto-3-9",
+      "correct": true
+    },
+    {
+      "name": "encodeInto-3-10",
+      "correct": true
+    },
+    {
+      "name": "encodeInto-4-0",
+      "correct": true
+    },
+    {
+      "name": "encodeInto-4-1",
+      "correct": true
+    },
+    {
+      "name": "encodeInto-4-2",
+      "correct": true
+    },
+    {
+      "name": "encodeInto-4-3",
+      "correct": true
+    },
+    {
+      "name": "encodeInto-4-4",
+      "correct": true
+    },
+    {
+      "name": "encodeInto-4-5",
+      "correct": true
+    },
+    {
+      "name": "encodeInto-4-6",
+      "correct": true
+    },
+    {
+      "name": "encodeInto-4-7",
+      "correct": true
+    },
+    {
+      "name": "encodeInto-4-8",
+      "correct": true
+    },
+    {
+      "name": "encodeInto-4-9",
+      "correct": true
+    },
+    {
+      "name": "encodeInto-4-10",
+      "correct": true
+    },
+    {
+      "name": "encodeInto-5-0",
+      "correct": true
+    },
+    {
+      "name": "encodeInto-5-1",
+      "correct": true
+    },
+    {
+      "name": "encodeInto-5-2",
+      "correct": true
+    },
+    {
+      "name": "encodeInto-5-3",
+      "correct": true
+    },
+    {
+      "name": "encodeInto-5-4",
+      "correct": true
+    },
+    {
+      "name": "encodeInto-5-5",
+      "correct": true
+    },
+    {
+      "name": "encodeInto-5-6",
+      "correct": true
+    },
+    {
+      "name": "encodeInto-5-7",
+      "correct": true
+    },
+    {
+      "name": "encodeInto-5-8",
+      "correct": true
+    },
+    {
+      "name": "encodeInto-5-9",
+      "correct": true
+    },
+    {
+      "name": "encodeInto-5-10",
+      "correct": true
+    },
+    {
+      "name": "encodeInto-6-0",
+      "correct": true
+    },
+    {
+      "name": "encodeInto-6-1",
+      "correct": true
+    },
+    {
+      "name": "encodeInto-6-2",
+      "correct": true
+    },
+    {
+      "name": "encodeInto-6-3",
+      "correct": true
+    },
+    {
+      "name": "encodeInto-6-4",
+      "correct": true
+    },
+    {
+      "name": "encodeInto-6-5",
+      "correct": true
+    },
+    {
+      "name": "encodeInto-6-6",
+      "correct": true
+    },
+    {
+      "name": "encodeInto-6-7",
+      "correct": true
+    },
+    {
+      "name": "encodeInto-6-8",
+      "correct": true
+    },
+    {
+      "name": "encodeInto-6-9",
+      "correct": true
+    },
+    {
+      "name": "encodeInto-6-10",
+      "correct": true
+    },
+    {
+      "name": "encodeInto-7-0",
+      "correct": true
+    },
+    {
+      "name": "encodeInto-7-1",
+      "correct": true
+    },
+    {
+      "name": "encodeInto-7-2",
+      "correct": true
+    },
+    {
+      "name": "encodeInto-7-3",
+      "correct": true
+    },
+    {
+      "name": "encodeInto-7-4",
+      "correct": true
+    },
+    {
+      "name": "encodeInto-7-5",
+      "correct": true
+    },
+    {
+      "name": "encodeInto-7-6",
+      "correct": true
+    },
+    {
+      "name": "encodeInto-7-7",
+      "correct": true
+    },
+    {
+      "name": "encodeInto-7-8",
+      "correct": true
+    },
+    {
+      "name": "encodeInto-7-9",
+      "correct": true
+    },
+    {
+      "name": "encodeInto-7-10",
+      "correct": true
+    },
+    {
+      "name": "encodeInto-8-0",
+      "correct": true
+    },
+    {
+      "name": "encodeInto-8-1",
+      "correct": true
+    },
+    {
+      "name": "encodeInto-8-2",
+      "correct": true
+    },
+    {
+      "name": "encodeInto-8-3",
+      "correct": true
+    },
+    {
+      "name": "encodeInto-8-4",
+      "correct": true
+    },
+    {
+      "name": "encodeInto-8-5",
+      "correct": true
+    },
+    {
+      "name": "encodeInto-8-6",
+      "correct": true
+    },
+    {
+      "name": "encodeInto-8-7",
+      "correct": true
+    },
+    {
+      "name": "encodeInto-8-8",
+      "correct": true
+    },
+    {
+      "name": "encodeInto-8-9",
+      "correct": true
+    },
+    {
+      "name": "encodeInto-8-10",
+      "correct": true
+    },
+    {
+      "name": "encodeInto-9-0",
+      "correct": true
+    },
+    {
+      "name": "encodeInto-9-1",
+      "correct": true
+    },
+    {
+      "name": "encodeInto-9-2",
+      "correct": true
+    },
+    {
+      "name": "encodeInto-9-3",
+      "correct": true
+    },
+    {
+      "name": "encodeInto-9-4",
+      "correct": true
+    },
+    {
+      "name": "encodeInto-9-5",
+      "correct": true
+    },
+    {
+      "name": "encodeInto-9-6",
+      "correct": true
+    },
+    {
+      "name": "encodeInto-9-7",
+      "correct": true
+    },
+    {
+      "name": "encodeInto-9-8",
+      "correct": true
+    },
+    {
+      "name": "encodeInto-9-9",
+      "correct": true
+    },
+    {
+      "name": "encodeInto-9-10",
+      "correct": true
+    },
+    {
+      "name": "encode-ignores-overridden-encodeInto",
+      "correct": true
+    },
+    {
+      "name": "encode-default",
+      "correct": true
+    },
+    {
+      "name": "encode-number",
+      "correct": true
+    }
+  ]
+}

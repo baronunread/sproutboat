@@ -1,0 +1,779 @@
+{
+  "date": "2026-09-27",
+  "scope": "Targeted native-fetch semantics, not an overall compatibility score or a performance benchmark",
+  "versions": [
+    {
+      "name": "pin",
+      "commit": "de4eb588264885b3a1596f75010e371a2052033f",
+      "archive": "1a62187a93356b36cb6ac703ce9770c8917e4fa65545fd7c33ee8a180ae5a4c9",
+      "compilerHashes": {
+        "compiler/uwebsockets.js": "0b1be528ce2646f5eefc4ab8f3d5530bb383a7e0e836cfa79904bb6ba88122d3",
+        "compiler/render.js": "783adf1126e8c120f5041f56ca87b6b4303443a52a3ed7f3263013fc205f5967",
+        "compiler/builtins/json.ts": "3e21dee48696297e19455a570a39e409f7144a65306159e03f3e785db2c6827d",
+        "compiler/builtins/promise.ts": "25fede0650b4b47d71ddc1a56bc1e4bb5e1f4a60bb09390403faf4ac82550a3c",
+        "compiler/builtins_precompiled.js": "9217a8622458142a94bc727a6da6c3730e1475e7889385000b8bd5f1b6422cd7",
+        "runtime/fetch-globals.js": "9b55235236ded298b945c72967a8c20d89f107d7550e17b95745862367fd5ffe"
+      }
+    },
+    {
+      "name": "current",
+      "commit": "08ac7ee1077c05da2bec18dcca15197051e87b62",
+      "archive": "d49ce6724efde555b4cdeea0d2610baddd4310153956c79b352d86ba9cf0f60f",
+      "compilerHashes": {
+        "compiler/uwebsockets.js": "0b1be528ce2646f5eefc4ab8f3d5530bb383a7e0e836cfa79904bb6ba88122d3",
+        "compiler/render.js": "781c0f305dc13290198a20dd43837b3804b7829cab83974c359cbad33bb15ab0",
+        "compiler/builtins/json.ts": "3e21dee48696297e19455a570a39e409f7144a65306159e03f3e785db2c6827d",
+        "compiler/builtins/promise.ts": "25fede0650b4b47d71ddc1a56bc1e4bb5e1f4a60bb09390403faf4ac82550a3c",
+        "compiler/builtins_precompiled.js": "1f798ee99a16553159c56264a4eaee5ac1d44bbfb5994d4dcd4b237d166ba523",
+        "runtime/fetch-globals.js": "9b55235236ded298b945c72967a8c20d89f107d7550e17b95745862367fd5ffe"
+      }
+    }
+  ],
+  "repetitions": 3,
+  "deadlineSeconds": 2,
+  "transportChange": "Loopback listener only; no Sproutboat runtime or compiler patches",
+  "results": [
+    {
+      "name": "encoder-bmp",
+      "group": "TextEncoder",
+      "expected": [99, 97, 102, 102, 195, 168],
+      "source": "return Array.from(new TextEncoder().encode('caff\u00e8'));",
+      "body": null,
+      "status": 200,
+      "versions": {
+        "pin": [
+          {
+            "repetition": 0,
+            "response": {
+              "ok": true,
+              "status": 200,
+              "actual": [99, 97, 102, 102, 195, 168],
+              "rawHex": "5b39392c39372c3130322c3130322c3139352c3136385d"
+            },
+            "healthyAfter": true,
+            "exitCode": null
+          },
+          {
+            "repetition": 1,
+            "response": {
+              "ok": true,
+              "status": 200,
+              "actual": [99, 97, 102, 102, 195, 168],
+              "rawHex": "5b39392c39372c3130322c3130322c3139352c3136385d"
+            },
+            "healthyAfter": true,
+            "exitCode": null
+          },
+          {
+            "repetition": 2,
+            "response": {
+              "ok": true,
+              "status": 200,
+              "actual": [99, 97, 102, 102, 195, 168],
+              "rawHex": "5b39392c39372c3130322c3130322c3139352c3136385d"
+            },
+            "healthyAfter": true,
+            "exitCode": null
+          }
+        ],
+        "current": [
+          {
+            "repetition": 0,
+            "response": {
+              "ok": true,
+              "status": 200,
+              "actual": [99, 97, 102, 102, 195, 168],
+              "rawHex": "5b39392c39372c3130322c3130322c3139352c3136385d"
+            },
+            "healthyAfter": true,
+            "exitCode": null
+          },
+          {
+            "repetition": 1,
+            "response": {
+              "ok": true,
+              "status": 200,
+              "actual": [99, 97, 102, 102, 195, 168],
+              "rawHex": "5b39392c39372c3130322c3130322c3139352c3136385d"
+            },
+            "healthyAfter": true,
+            "exitCode": null
+          },
+          {
+            "repetition": 2,
+            "response": {
+              "ok": true,
+              "status": 200,
+              "actual": [99, 97, 102, 102, 195, 168],
+              "rawHex": "5b39392c39372c3130322c3130322c3139352c3136385d"
+            },
+            "healthyAfter": true,
+            "exitCode": null
+          }
+        ]
+      }
+    },
+    {
+      "name": "encoder-astral",
+      "group": "TextEncoder",
+      "expected": [240, 159, 154, 164],
+      "source": "return Array.from(new TextEncoder().encode('\ud83d\udea4'));",
+      "body": null,
+      "status": 200,
+      "versions": {
+        "pin": [
+          {
+            "repetition": 0,
+            "response": {
+              "ok": false,
+              "status": 200,
+              "actual": [237, 160, 189, 237, 186, 164],
+              "rawHex": "5b3233372c3136302c3138392c3233372c3138362c3136345d"
+            },
+            "healthyAfter": true,
+            "exitCode": null
+          },
+          {
+            "repetition": 1,
+            "response": {
+              "ok": false,
+              "status": 200,
+              "actual": [237, 160, 189, 237, 186, 164],
+              "rawHex": "5b3233372c3136302c3138392c3233372c3138362c3136345d"
+            },
+            "healthyAfter": true,
+            "exitCode": null
+          },
+          {
+            "repetition": 2,
+            "response": {
+              "ok": false,
+              "status": 200,
+              "actual": [237, 160, 189, 237, 186, 164],
+              "rawHex": "5b3233372c3136302c3138392c3233372c3138362c3136345d"
+            },
+            "healthyAfter": true,
+            "exitCode": null
+          }
+        ],
+        "current": [
+          {
+            "repetition": 0,
+            "response": {
+              "ok": false,
+              "status": 200,
+              "actual": [237, 160, 189, 237, 186, 164],
+              "rawHex": "5b3233372c3136302c3138392c3233372c3138362c3136345d"
+            },
+            "healthyAfter": true,
+            "exitCode": null
+          },
+          {
+            "repetition": 1,
+            "response": {
+              "ok": false,
+              "status": 200,
+              "actual": [237, 160, 189, 237, 186, 164],
+              "rawHex": "5b3233372c3136302c3138392c3233372c3138362c3136345d"
+            },
+            "healthyAfter": true,
+            "exitCode": null
+          },
+          {
+            "repetition": 2,
+            "response": {
+              "ok": false,
+              "status": 200,
+              "actual": [237, 160, 189, 237, 186, 164],
+              "rawHex": "5b3233372c3136302c3138392c3233372c3138362c3136345d"
+            },
+            "healthyAfter": true,
+            "exitCode": null
+          }
+        ]
+      }
+    },
+    {
+      "name": "encoder-lone",
+      "group": "TextEncoder",
+      "expected": [239, 191, 189],
+      "source": "return Array.from(new TextEncoder().encode(String.fromCharCode(55296)));",
+      "body": null,
+      "status": 200,
+      "versions": {
+        "pin": [
+          {
+            "repetition": 0,
+            "response": {
+              "ok": false,
+              "status": 200,
+              "actual": [237, 160, 128],
+              "rawHex": "5b3233372c3136302c3132385d"
+            },
+            "healthyAfter": true,
+            "exitCode": null
+          },
+          {
+            "repetition": 1,
+            "response": {
+              "ok": false,
+              "status": 200,
+              "actual": [237, 160, 128],
+              "rawHex": "5b3233372c3136302c3132385d"
+            },
+            "healthyAfter": true,
+            "exitCode": null
+          },
+          {
+            "repetition": 2,
+            "response": {
+              "ok": false,
+              "status": 200,
+              "actual": [237, 160, 128],
+              "rawHex": "5b3233372c3136302c3132385d"
+            },
+            "healthyAfter": true,
+            "exitCode": null
+          }
+        ],
+        "current": [
+          {
+            "repetition": 0,
+            "response": {
+              "ok": false,
+              "status": 200,
+              "actual": [237, 160, 128],
+              "rawHex": "5b3233372c3136302c3132385d"
+            },
+            "healthyAfter": true,
+            "exitCode": null
+          },
+          {
+            "repetition": 1,
+            "response": {
+              "ok": false,
+              "status": 200,
+              "actual": [237, 160, 128],
+              "rawHex": "5b3233372c3136302c3132385d"
+            },
+            "healthyAfter": true,
+            "exitCode": null
+          },
+          {
+            "repetition": 2,
+            "response": {
+              "ok": false,
+              "status": 200,
+              "actual": [237, 160, 128],
+              "rawHex": "5b3233372c3136302c3132385d"
+            },
+            "healthyAfter": true,
+            "exitCode": null
+          }
+        ]
+      }
+    },
+    {
+      "name": "encodeinto-short",
+      "group": "TextEncoder",
+      "expected": {
+        "read": 0,
+        "written": 0,
+        "bytes": [0, 0, 0]
+      },
+      "source": "const dest=new Uint8Array(3);const result=new TextEncoder().encodeInto('\ud83d\udea4',dest);return {read:result.read,written:result.written,bytes:Array.from(dest)};",
+      "body": null,
+      "status": 200,
+      "versions": {
+        "pin": [
+          {
+            "repetition": 0,
+            "response": {
+              "ok": false,
+              "status": 200,
+              "actual": {
+                "read": 2,
+                "written": 3,
+                "bytes": [237, 160, 189]
+              },
+              "rawHex": "7b2272656164223a322c227772697474656e223a332c226279746573223a5b3233372c3136302c3138395d7d"
+            },
+            "healthyAfter": true,
+            "exitCode": null
+          },
+          {
+            "repetition": 1,
+            "response": {
+              "ok": false,
+              "status": 200,
+              "actual": {
+                "read": 2,
+                "written": 3,
+                "bytes": [237, 160, 189]
+              },
+              "rawHex": "7b2272656164223a322c227772697474656e223a332c226279746573223a5b3233372c3136302c3138395d7d"
+            },
+            "healthyAfter": true,
+            "exitCode": null
+          },
+          {
+            "repetition": 2,
+            "response": {
+              "ok": false,
+              "status": 200,
+              "actual": {
+                "read": 2,
+                "written": 3,
+                "bytes": [237, 160, 189]
+              },
+              "rawHex": "7b2272656164223a322c227772697474656e223a332c226279746573223a5b3233372c3136302c3138395d7d"
+            },
+            "healthyAfter": true,
+            "exitCode": null
+          }
+        ],
+        "current": [
+          {
+            "repetition": 0,
+            "response": {
+              "ok": false,
+              "status": 200,
+              "actual": {
+                "read": 2,
+                "written": 3,
+                "bytes": [237, 160, 189]
+              },
+              "rawHex": "7b2272656164223a322c227772697474656e223a332c226279746573223a5b3233372c3136302c3138395d7d"
+            },
+            "healthyAfter": true,
+            "exitCode": null
+          },
+          {
+            "repetition": 1,
+            "response": {
+              "ok": false,
+              "status": 200,
+              "actual": {
+                "read": 2,
+                "written": 3,
+                "bytes": [237, 160, 189]
+              },
+              "rawHex": "7b2272656164223a322c227772697474656e223a332c226279746573223a5b3233372c3136302c3138395d7d"
+            },
+            "healthyAfter": true,
+            "exitCode": null
+          },
+          {
+            "repetition": 2,
+            "response": {
+              "ok": false,
+              "status": 200,
+              "actual": {
+                "read": 2,
+                "written": 3,
+                "bytes": [237, 160, 189]
+              },
+              "rawHex": "7b2272656164223a322c227772697474656e223a332c226279746573223a5b3233372c3136302c3138395d7d"
+            },
+            "healthyAfter": true,
+            "exitCode": null
+          }
+        ]
+      }
+    },
+    {
+      "name": "json-unicode",
+      "group": "JSON",
+      "expected": {
+        "length": 2,
+        "first": 55357,
+        "second": 56996
+      },
+      "source": "const text=JSON.parse('{\"id\":\"\\ud83d\\udea4\"}').id;return {length:text.length,first:text.charCodeAt(0),second:text.charCodeAt(1)};",
+      "body": null,
+      "status": 200,
+      "versions": {
+        "pin": [
+          {
+            "repetition": 0,
+            "response": {
+              "ok": false,
+              "error": "Remote end closed connection without response",
+              "rawHex": null
+            },
+            "healthyAfter": false,
+            "exitCode": 1
+          },
+          {
+            "repetition": 1,
+            "response": {
+              "ok": false,
+              "error": "Remote end closed connection without response",
+              "rawHex": null
+            },
+            "healthyAfter": false,
+            "exitCode": 1
+          },
+          {
+            "repetition": 2,
+            "response": {
+              "ok": false,
+              "error": "Remote end closed connection without response",
+              "rawHex": null
+            },
+            "healthyAfter": false,
+            "exitCode": 1
+          }
+        ],
+        "current": [
+          {
+            "repetition": 0,
+            "response": {
+              "ok": false,
+              "error": "Remote end closed connection without response",
+              "rawHex": null
+            },
+            "healthyAfter": false,
+            "exitCode": 1
+          },
+          {
+            "repetition": 1,
+            "response": {
+              "ok": false,
+              "error": "Remote end closed connection without response",
+              "rawHex": null
+            },
+            "healthyAfter": false,
+            "exitCode": 1
+          },
+          {
+            "repetition": 2,
+            "response": {
+              "ok": false,
+              "error": "Remote end closed connection without response",
+              "rawHex": null
+            },
+            "healthyAfter": false,
+            "exitCode": 1
+          }
+        ]
+      }
+    },
+    {
+      "name": "json-quoted-key",
+      "group": "JSON",
+      "expected": "{\"a\\\"b\":1}",
+      "source": "const value={};value['a\"b']=1;return new Response(JSON.stringify(value));",
+      "body": null,
+      "status": 200,
+      "versions": {
+        "pin": [
+          {
+            "repetition": 0,
+            "response": {
+              "ok": false,
+              "status": 200,
+              "actual": "{\"a\"b\":1}",
+              "rawHex": "7b22612262223a317d"
+            },
+            "healthyAfter": true,
+            "exitCode": null
+          },
+          {
+            "repetition": 1,
+            "response": {
+              "ok": false,
+              "status": 200,
+              "actual": "{\"a\"b\":1}",
+              "rawHex": "7b22612262223a317d"
+            },
+            "healthyAfter": true,
+            "exitCode": null
+          },
+          {
+            "repetition": 2,
+            "response": {
+              "ok": false,
+              "status": 200,
+              "actual": "{\"a\"b\":1}",
+              "rawHex": "7b22612262223a317d"
+            },
+            "healthyAfter": true,
+            "exitCode": null
+          }
+        ],
+        "current": [
+          {
+            "repetition": 0,
+            "response": {
+              "ok": false,
+              "status": 200,
+              "actual": "{\"a\"b\":1}",
+              "rawHex": "7b22612262223a317d"
+            },
+            "healthyAfter": true,
+            "exitCode": null
+          },
+          {
+            "repetition": 1,
+            "response": {
+              "ok": false,
+              "status": 200,
+              "actual": "{\"a\"b\":1}",
+              "rawHex": "7b22612262223a317d"
+            },
+            "healthyAfter": true,
+            "exitCode": null
+          },
+          {
+            "repetition": 2,
+            "response": {
+              "ok": false,
+              "status": 200,
+              "actual": "{\"a\"b\":1}",
+              "rawHex": "7b22612262223a317d"
+            },
+            "healthyAfter": true,
+            "exitCode": null
+          }
+        ]
+      }
+    },
+    {
+      "name": "json-lone",
+      "group": "JSON",
+      "expected": "\"\\ud800\"",
+      "source": "return new Response(JSON.stringify(String.fromCharCode(55296)));",
+      "body": null,
+      "status": 200,
+      "versions": {
+        "pin": [
+          {
+            "repetition": 0,
+            "response": {
+              "ok": false,
+              "status": 200,
+              "actual": "\"\u0000\"",
+              "rawHex": "220022"
+            },
+            "healthyAfter": true,
+            "exitCode": null
+          },
+          {
+            "repetition": 1,
+            "response": {
+              "ok": false,
+              "status": 200,
+              "actual": "\"\u0000\"",
+              "rawHex": "220022"
+            },
+            "healthyAfter": true,
+            "exitCode": null
+          },
+          {
+            "repetition": 2,
+            "response": {
+              "ok": false,
+              "status": 200,
+              "actual": "\"\u0000\"",
+              "rawHex": "220022"
+            },
+            "healthyAfter": true,
+            "exitCode": null
+          }
+        ],
+        "current": [
+          {
+            "repetition": 0,
+            "response": {
+              "ok": false,
+              "status": 200,
+              "actual": "\"\u0000\"",
+              "rawHex": "220022"
+            },
+            "healthyAfter": true,
+            "exitCode": null
+          },
+          {
+            "repetition": 1,
+            "response": {
+              "ok": false,
+              "status": 200,
+              "actual": "\"\u0000\"",
+              "rawHex": "220022"
+            },
+            "healthyAfter": true,
+            "exitCode": null
+          },
+          {
+            "repetition": 2,
+            "response": {
+              "ok": false,
+              "status": 200,
+              "actual": "\"\u0000\"",
+              "rawHex": "220022"
+            },
+            "healthyAfter": true,
+            "exitCode": null
+          }
+        ]
+      }
+    },
+    {
+      "name": "json-trailing",
+      "group": "JSON",
+      "expected": true,
+      "source": "let rejected=false;try{JSON.parse('{\"x\":1} garbage');}catch{rejected=true;}return rejected;",
+      "body": null,
+      "status": 200,
+      "versions": {
+        "pin": [
+          {
+            "repetition": 0,
+            "response": {
+              "ok": false,
+              "status": 200,
+              "actual": false,
+              "rawHex": "66616c7365"
+            },
+            "healthyAfter": true,
+            "exitCode": null
+          },
+          {
+            "repetition": 1,
+            "response": {
+              "ok": false,
+              "status": 200,
+              "actual": false,
+              "rawHex": "66616c7365"
+            },
+            "healthyAfter": true,
+            "exitCode": null
+          },
+          {
+            "repetition": 2,
+            "response": {
+              "ok": false,
+              "status": 200,
+              "actual": false,
+              "rawHex": "66616c7365"
+            },
+            "healthyAfter": true,
+            "exitCode": null
+          }
+        ],
+        "current": [
+          {
+            "repetition": 0,
+            "response": {
+              "ok": false,
+              "status": 200,
+              "actual": false,
+              "rawHex": "66616c7365"
+            },
+            "healthyAfter": true,
+            "exitCode": null
+          },
+          {
+            "repetition": 1,
+            "response": {
+              "ok": false,
+              "status": 200,
+              "actual": false,
+              "rawHex": "66616c7365"
+            },
+            "healthyAfter": true,
+            "exitCode": null
+          },
+          {
+            "repetition": 2,
+            "response": {
+              "ok": false,
+              "status": 200,
+              "actual": false,
+              "rawHex": "66616c7365"
+            },
+            "healthyAfter": true,
+            "exitCode": null
+          }
+        ]
+      }
+    },
+    {
+      "name": "response-astral",
+      "group": "Response UTF-8",
+      "expected": "\ud83d\udea4",
+      "source": "return new Response('\ud83d\udea4');",
+      "body": null,
+      "status": 200,
+      "versions": {
+        "pin": [
+          {
+            "repetition": 0,
+            "response": {
+              "ok": false,
+              "error": "'utf-8' codec can't decode byte 0xed in position 0: invalid continuation byte",
+              "rawHex": "eda0bdedbaa4"
+            },
+            "healthyAfter": true,
+            "exitCode": null
+          },
+          {
+            "repetition": 1,
+            "response": {
+              "ok": false,
+              "error": "'utf-8' codec can't decode byte 0xed in position 0: invalid continuation byte",
+              "rawHex": "eda0bdedbaa4"
+            },
+            "healthyAfter": true,
+            "exitCode": null
+          },
+          {
+            "repetition": 2,
+            "response": {
+              "ok": false,
+              "error": "'utf-8' codec can't decode byte 0xed in position 0: invalid continuation byte",
+              "rawHex": "eda0bdedbaa4"
+            },
+            "healthyAfter": true,
+            "exitCode": null
+          }
+        ],
+        "current": [
+          {
+            "repetition": 0,
+            "response": {
+              "ok": false,
+              "error": "'utf-8' codec can't decode byte 0xed in position 0: invalid continuation byte",
+              "rawHex": "eda0bdedbaa4"
+            },
+            "healthyAfter": true,
+            "exitCode": null
+          },
+          {
+            "repetition": 1,
+            "response": {
+              "ok": false,
+              "error": "'utf-8' codec can't decode byte 0xed in position 0: invalid continuation byte",
+              "rawHex": "eda0bdedbaa4"
+            },
+            "healthyAfter": true,
+            "exitCode": null
+          },
+          {
+            "repetition": 2,
+            "response": {
+              "ok": false,
+              "error": "'utf-8' codec can't decode byte 0xed in position 0: invalid continuation byte",
+              "rawHex": "eda0bdedbaa4"
+            },
+            "healthyAfter": true,
+            "exitCode": null
+          }
+        ]
+      }
+    }
+  ],
+  "selectedProbes": 9,
+  "selectedExecutions": 54
+}

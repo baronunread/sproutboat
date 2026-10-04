@@ -1,0 +1,335 @@
+{
+  "runs": {
+    "baseline1": {
+      "passes": 34210,
+      "fails": 8721,
+      "runtimeErrors": 10363,
+      "compileErrors": 18,
+      "nativeErrors": 62,
+      "timeouts": 30
+    },
+    "patched": {
+      "passes": 34210,
+      "fails": 8722,
+      "runtimeErrors": 10360,
+      "compileErrors": 18,
+      "nativeErrors": 62,
+      "timeouts": 32
+    },
+    "baseline2": {
+      "passes": 34200,
+      "fails": 8716,
+      "runtimeErrors": 10366,
+      "compileErrors": 18,
+      "nativeErrors": 62,
+      "timeouts": 42
+    }
+  },
+  "totalPerRun": 53404,
+  "pairwiseChanges": {
+    "baseline1_vs_patched": {
+      "count": 9,
+      "transitions": {
+        "fails -> passes": 1,
+        "fails -> runtimeErrors": 1,
+        "passes -> fails": 1,
+        "passes -> timeouts": 2,
+        "runtimeErrors -> fails": 2,
+        "runtimeErrors -> passes": 2
+      },
+      "files": [
+        {
+          "file": "built-ins/RegExp/property-escapes/generated/General_Category_-_Decimal_Number.js",
+          "from": "passes",
+          "to": "timeouts"
+        },
+        {
+          "file": "built-ins/RegExp/property-escapes/generated/General_Category_-_Uppercase_Letter.js",
+          "from": "passes",
+          "to": "timeouts"
+        },
+        {
+          "file": "built-ins/RegExp/prototype/exec/S15.10.6.2_A4_T10.js",
+          "from": "runtimeErrors",
+          "to": "passes"
+        },
+        {
+          "file": "built-ins/RegExp/prototype/exec/S15.10.6.2_A4_T11.js",
+          "from": "runtimeErrors",
+          "to": "fails"
+        },
+        {
+          "file": "built-ins/RegExp/prototype/exec/success-g-lastindex-no-access.js",
+          "from": "runtimeErrors",
+          "to": "passes"
+        },
+        {
+          "file": "built-ins/String/prototype/replaceAll/replaceValue-call-each-match-position.js",
+          "from": "passes",
+          "to": "fails"
+        },
+        {
+          "file": "built-ins/Temporal/ZonedDateTime/prototype/subtract/non-integer-throws-rangeerror.js",
+          "from": "fails",
+          "to": "runtimeErrors"
+        },
+        {
+          "file": "built-ins/TypedArrayConstructors/prototype/indexOf/bigint-inherited.js",
+          "from": "fails",
+          "to": "passes"
+        },
+        {
+          "file": "staging/sm/String/split.js",
+          "from": "runtimeErrors",
+          "to": "fails"
+        }
+      ]
+    },
+    "baseline1_vs_baseline2": {
+      "count": 21,
+      "transitions": {
+        "fails -> passes": 2,
+        "fails -> runtimeErrors": 5,
+        "passes -> timeouts": 12,
+        "runtimeErrors -> fails": 2
+      },
+      "files": [
+        {
+          "file": "built-ins/Map/prototype/forEach/callback-this-non-strict.js",
+          "from": "fails",
+          "to": "passes"
+        },
+        {
+          "file": "built-ins/RegExp/property-escapes/generated/General_Category_-_Cased_Letter.js",
+          "from": "passes",
+          "to": "timeouts"
+        },
+        {
+          "file": "built-ins/RegExp/property-escapes/generated/General_Category_-_Control.js",
+          "from": "passes",
+          "to": "timeouts"
+        },
+        {
+          "file": "built-ins/RegExp/property-escapes/generated/General_Category_-_Currency_Symbol.js",
+          "from": "passes",
+          "to": "timeouts"
+        },
+        {
+          "file": "built-ins/RegExp/property-escapes/generated/General_Category_-_Decimal_Number.js",
+          "from": "passes",
+          "to": "timeouts"
+        },
+        {
+          "file": "built-ins/RegExp/property-escapes/generated/General_Category_-_Initial_Punctuation.js",
+          "from": "passes",
+          "to": "timeouts"
+        },
+        {
+          "file": "built-ins/RegExp/property-escapes/generated/General_Category_-_Number.js",
+          "from": "passes",
+          "to": "timeouts"
+        },
+        {
+          "file": "built-ins/RegExp/property-escapes/generated/General_Category_-_Other_Punctuation.js",
+          "from": "passes",
+          "to": "timeouts"
+        },
+        {
+          "file": "built-ins/RegExp/property-escapes/generated/General_Category_-_Other_Symbol.js",
+          "from": "passes",
+          "to": "timeouts"
+        },
+        {
+          "file": "built-ins/RegExp/property-escapes/generated/General_Category_-_Uppercase_Letter.js",
+          "from": "passes",
+          "to": "timeouts"
+        },
+        {
+          "file": "built-ins/RegExp/prototype/exec/S15.10.6.2_A4_T11.js",
+          "from": "runtimeErrors",
+          "to": "fails"
+        },
+        {
+          "file": "built-ins/Temporal/PlainDate/prototype/since/throws-if-rounded-date-outside-valid-iso-range.js",
+          "from": "passes",
+          "to": "timeouts"
+        },
+        {
+          "file": "built-ins/Temporal/PlainDate/prototype/until/throws-if-rounded-date-outside-valid-iso-range.js",
+          "from": "passes",
+          "to": "timeouts"
+        },
+        {
+          "file": "built-ins/TypedArrayConstructors/prototype/indexOf/bigint-inherited.js",
+          "from": "fails",
+          "to": "passes"
+        },
+        {
+          "file": "intl402/Temporal/PlainMonthDay/prototype/toJSON/calendarname.js",
+          "from": "fails",
+          "to": "runtimeErrors"
+        },
+        {
+          "file": "intl402/Temporal/ZonedDateTime/prototype/until/sub-minute-offset.js",
+          "from": "fails",
+          "to": "runtimeErrors"
+        },
+        {
+          "file": "intl402/Temporal/ZonedDateTime/prototype/with/disambiguation-undefined.js",
+          "from": "fails",
+          "to": "runtimeErrors"
+        },
+        {
+          "file": "intl402/Temporal/ZonedDateTime/prototype/with/dst-option-offset.js",
+          "from": "fails",
+          "to": "runtimeErrors"
+        },
+        {
+          "file": "intl402/Temporal/ZonedDateTime/prototype/with/offset-property-sub-minute.js",
+          "from": "fails",
+          "to": "runtimeErrors"
+        },
+        {
+          "file": "staging/sm/Array/toSpliced-dense.js",
+          "from": "passes",
+          "to": "timeouts"
+        },
+        {
+          "file": "staging/sm/String/split.js",
+          "from": "runtimeErrors",
+          "to": "fails"
+        }
+      ]
+    },
+    "patched_vs_baseline2": {
+      "count": 20,
+      "transitions": {
+        "fails -> passes": 2,
+        "fails -> runtimeErrors": 5,
+        "passes -> runtimeErrors": 2,
+        "passes -> timeouts": 10,
+        "runtimeErrors -> fails": 1
+      },
+      "files": [
+        {
+          "file": "built-ins/Map/prototype/forEach/callback-this-non-strict.js",
+          "from": "fails",
+          "to": "passes"
+        },
+        {
+          "file": "built-ins/RegExp/property-escapes/generated/General_Category_-_Cased_Letter.js",
+          "from": "passes",
+          "to": "timeouts"
+        },
+        {
+          "file": "built-ins/RegExp/property-escapes/generated/General_Category_-_Control.js",
+          "from": "passes",
+          "to": "timeouts"
+        },
+        {
+          "file": "built-ins/RegExp/property-escapes/generated/General_Category_-_Currency_Symbol.js",
+          "from": "passes",
+          "to": "timeouts"
+        },
+        {
+          "file": "built-ins/RegExp/property-escapes/generated/General_Category_-_Initial_Punctuation.js",
+          "from": "passes",
+          "to": "timeouts"
+        },
+        {
+          "file": "built-ins/RegExp/property-escapes/generated/General_Category_-_Number.js",
+          "from": "passes",
+          "to": "timeouts"
+        },
+        {
+          "file": "built-ins/RegExp/property-escapes/generated/General_Category_-_Other_Punctuation.js",
+          "from": "passes",
+          "to": "timeouts"
+        },
+        {
+          "file": "built-ins/RegExp/property-escapes/generated/General_Category_-_Other_Symbol.js",
+          "from": "passes",
+          "to": "timeouts"
+        },
+        {
+          "file": "built-ins/RegExp/prototype/exec/S15.10.6.2_A4_T10.js",
+          "from": "passes",
+          "to": "runtimeErrors"
+        },
+        {
+          "file": "built-ins/RegExp/prototype/exec/success-g-lastindex-no-access.js",
+          "from": "passes",
+          "to": "runtimeErrors"
+        },
+        {
+          "file": "built-ins/String/prototype/replaceAll/replaceValue-call-each-match-position.js",
+          "from": "fails",
+          "to": "passes"
+        },
+        {
+          "file": "built-ins/Temporal/PlainDate/prototype/since/throws-if-rounded-date-outside-valid-iso-range.js",
+          "from": "passes",
+          "to": "timeouts"
+        },
+        {
+          "file": "built-ins/Temporal/PlainDate/prototype/until/throws-if-rounded-date-outside-valid-iso-range.js",
+          "from": "passes",
+          "to": "timeouts"
+        },
+        {
+          "file": "built-ins/Temporal/ZonedDateTime/prototype/subtract/non-integer-throws-rangeerror.js",
+          "from": "runtimeErrors",
+          "to": "fails"
+        },
+        {
+          "file": "intl402/Temporal/PlainMonthDay/prototype/toJSON/calendarname.js",
+          "from": "fails",
+          "to": "runtimeErrors"
+        },
+        {
+          "file": "intl402/Temporal/ZonedDateTime/prototype/until/sub-minute-offset.js",
+          "from": "fails",
+          "to": "runtimeErrors"
+        },
+        {
+          "file": "intl402/Temporal/ZonedDateTime/prototype/with/disambiguation-undefined.js",
+          "from": "fails",
+          "to": "runtimeErrors"
+        },
+        {
+          "file": "intl402/Temporal/ZonedDateTime/prototype/with/dst-option-offset.js",
+          "from": "fails",
+          "to": "runtimeErrors"
+        },
+        {
+          "file": "intl402/Temporal/ZonedDateTime/prototype/with/offset-property-sub-minute.js",
+          "from": "fails",
+          "to": "runtimeErrors"
+        },
+        {
+          "file": "staging/sm/Array/toSpliced-dense.js",
+          "from": "passes",
+          "to": "timeouts"
+        }
+      ]
+    }
+  },
+  "flaggedTests": {
+    "built-ins/RegExp/property-escapes/generated/General_Category_-_Decimal_Number.js": {
+      "baseline1": "passes",
+      "patched": "timeouts",
+      "baseline2": "timeouts"
+    },
+    "built-ins/RegExp/property-escapes/generated/General_Category_-_Uppercase_Letter.js": {
+      "baseline1": "passes",
+      "patched": "timeouts",
+      "baseline2": "timeouts"
+    },
+    "built-ins/String/prototype/replaceAll/replaceValue-call-each-match-position.js": {
+      "baseline1": "passes",
+      "patched": "fails",
+      "baseline2": "passes"
+    }
+  },
+  "interpretation": "Two unchanged baseline runs differ on 21 tests, including both RegExp cases that timed out in the patched run. The String replaceAll case passed in both unchanged full runs, failed in the patched full run, and passed in three focused reruns on both builds. That failure was not reproduced, but a full-run-only interaction remains possible. Test262 host compiler run does not load runtime/fetch-globals.js."
+}

@@ -1,0 +1,28 @@
+--- a/compiler/render.js
++++ b/compiler/render.js
+@@ -1603,14 +1603,23 @@
+ 
+     size_t out_len_local = 0;
+     for (size_t i = 0; i < len; i++) {
+-      u16 c = chars[i];
++      // sb_native_utf8_scalar_v1
++      u32 c = chars[i];
++      if (c >= 0xd800 && c <= 0xdbff && i + 1 < len && chars[i + 1] >= 0xdc00 && chars[i + 1] <= 0xdfff) {
++        c = 0x10000 + ((c - 0xd800) << 10) + chars[++i] - 0xdc00;
++      } else if (c >= 0xd800 && c <= 0xdfff) c = 0xfffd;
+       if (c < 0x80) {
+         utf8[out_len_local++] = (char)c;
+       } else if (c < 0x800) {
+         utf8[out_len_local++] = (char)(0xc0 | (c >> 6));
+         utf8[out_len_local++] = (char)(0x80 | (c & 0x3f));
++      } else if (c < 0x10000) {
++        utf8[out_len_local++] = (char)(0xe0 | (c >> 12));
++        utf8[out_len_local++] = (char)(0x80 | ((c >> 6) & 0x3f));
++        utf8[out_len_local++] = (char)(0x80 | (c & 0x3f));
+       } else {
+-        utf8[out_len_local++] = (char)(0xe0 | (c >> 12));
++        utf8[out_len_local++] = (char)(0xf0 | (c >> 18));
++        utf8[out_len_local++] = (char)(0x80 | ((c >> 12) & 0x3f));
+         utf8[out_len_local++] = (char)(0x80 | ((c >> 6) & 0x3f));
+         utf8[out_len_local++] = (char)(0x80 | (c & 0x3f));
+       }

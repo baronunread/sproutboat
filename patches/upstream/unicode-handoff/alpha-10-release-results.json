@@ -1,0 +1,109 @@
+{
+  "release": "alpha-10",
+  "commit": "08ac7ee1077c05da2bec18dcca15197051e87b62",
+  "platform": "darwin-arm64",
+  "packageIntegrity": "sha512-k/avIssNjOyWT5Zku0/u3AMA4zHc0acRKjIKK77+D7nX4be56juI7eigb7SB7iex1yOOjztrq6nFNYfENpanQw==",
+  "scope": "One fresh native process per probe, official npm binary; no Sproutboat patches",
+  "results": [
+    {
+      "name": "encoder-bmp",
+      "expected": [99, 97, 102, 102, 195, 168],
+      "status": 200,
+      "rawHex": "5b39392c39372c3130322c3130322c3139352c3136385d",
+      "actual": [99, 97, 102, 102, 195, 168],
+      "correct": true,
+      "exitCodeBeforeCleanup": null,
+      "stderr": "Porffor native fetch server listening on http://127.0.0.1:18082\n"
+    },
+    {
+      "name": "encoder-astral",
+      "expected": [240, 159, 154, 164],
+      "status": 200,
+      "rawHex": "5b3233372c3136302c3138392c3233372c3138362c3136345d",
+      "actual": [237, 160, 189, 237, 186, 164],
+      "correct": false,
+      "exitCodeBeforeCleanup": null,
+      "stderr": "Porffor native fetch server listening on http://127.0.0.1:18082\n"
+    },
+    {
+      "name": "encoder-lone",
+      "expected": [239, 191, 189],
+      "status": 200,
+      "rawHex": "5b3233372c3136302c3132385d",
+      "actual": [237, 160, 128],
+      "correct": false,
+      "exitCodeBeforeCleanup": null,
+      "stderr": "Porffor native fetch server listening on http://127.0.0.1:18082\n"
+    },
+    {
+      "name": "encodeinto-short",
+      "expected": {
+        "read": 0,
+        "written": 0,
+        "bytes": [0, 0, 0]
+      },
+      "status": 200,
+      "rawHex": "7b2272656164223a322c227772697474656e223a332c226279746573223a5b3233372c3136302c3138395d7d",
+      "actual": {
+        "read": 2,
+        "written": 3,
+        "bytes": [237, 160, 189]
+      },
+      "correct": false,
+      "exitCodeBeforeCleanup": null,
+      "stderr": "Porffor native fetch server listening on http://127.0.0.1:18082\n"
+    },
+    {
+      "name": "json-unicode",
+      "expected": {
+        "length": 2,
+        "first": 55357,
+        "second": 56996
+      },
+      "error": "Remote end closed connection without response",
+      "correct": false,
+      "exitCodeBeforeCleanup": 1,
+      "stderr": "Porffor native fetch server listening on http://127.0.0.1:18082\nUncaught SyntaxError: Expected string key\n"
+    },
+    {
+      "name": "json-quoted-key",
+      "expected": "{\"a\\\"b\":1}",
+      "status": 200,
+      "rawHex": "7b22612262223a317d",
+      "actual": "{\"a\"b\":1}",
+      "correct": false,
+      "exitCodeBeforeCleanup": null,
+      "stderr": "Porffor native fetch server listening on http://127.0.0.1:18082\n"
+    },
+    {
+      "name": "json-lone",
+      "expected": "\"\\ud800\"",
+      "status": 200,
+      "rawHex": "220022",
+      "actual": "\"\u0000\"",
+      "correct": false,
+      "exitCodeBeforeCleanup": null,
+      "stderr": "Porffor native fetch server listening on http://127.0.0.1:18082\n"
+    },
+    {
+      "name": "json-trailing",
+      "expected": true,
+      "status": 200,
+      "rawHex": "66616c7365",
+      "actual": false,
+      "correct": false,
+      "exitCodeBeforeCleanup": null,
+      "stderr": "Porffor native fetch server listening on http://127.0.0.1:18082\n"
+    },
+    {
+      "name": "response-astral",
+      "expected": "\ud83d\udea4",
+      "status": 200,
+      "rawHex": "eda0bdedbaa4",
+      "error": "'utf-8' codec can't decode byte 0xed in position 0: invalid continuation byte",
+      "correct": false,
+      "exitCodeBeforeCleanup": null,
+      "stderr": "Porffor native fetch server listening on http://127.0.0.1:18082\n"
+    }
+  ]
+}

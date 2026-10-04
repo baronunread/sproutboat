@@ -1,0 +1,83 @@
+[
+  {
+    "repetition": 1,
+    "results": {
+      "baseline": {
+        "built-ins/RegExp/property-escapes/generated/General_Category_-_Decimal_Number.js": "passes",
+        "built-ins/RegExp/property-escapes/generated/General_Category_-_Uppercase_Letter.js": "passes",
+        "built-ins/String/prototype/replaceAll/replaceValue-call-each-match-position.js": "passes",
+        "built-ins/TypedArrayConstructors/prototype/indexOf/bigint-inherited.js": "passes",
+        "staging/sm/String/split.js": "fails",
+        "built-ins/RegExp/prototype/exec/S15.10.6.2_A4_T11.js": "fails",
+        "built-ins/Temporal/ZonedDateTime/prototype/subtract/non-integer-throws-rangeerror.js": "fails",
+        "built-ins/RegExp/prototype/exec/S15.10.6.2_A4_T10.js": "runtimeErrors",
+        "built-ins/RegExp/prototype/exec/success-g-lastindex-no-access.js": "runtimeErrors"
+      },
+      "patched": {
+        "built-ins/RegExp/property-escapes/generated/General_Category_-_Decimal_Number.js": "passes",
+        "built-ins/RegExp/property-escapes/generated/General_Category_-_Uppercase_Letter.js": "passes",
+        "built-ins/String/prototype/replaceAll/replaceValue-call-each-match-position.js": "passes",
+        "built-ins/TypedArrayConstructors/prototype/indexOf/bigint-inherited.js": "passes",
+        "staging/sm/String/split.js": "fails",
+        "built-ins/RegExp/prototype/exec/S15.10.6.2_A4_T11.js": "fails",
+        "built-ins/Temporal/ZonedDateTime/prototype/subtract/non-integer-throws-rangeerror.js": "fails",
+        "built-ins/RegExp/prototype/exec/S15.10.6.2_A4_T10.js": "runtimeErrors",
+        "built-ins/RegExp/prototype/exec/success-g-lastindex-no-access.js": "runtimeErrors"
+      }
+    }
+  },
+  {
+    "repetition": 2,
+    "results": {
+      "baseline": {
+        "built-ins/RegExp/property-escapes/generated/General_Category_-_Decimal_Number.js": "passes",
+        "built-ins/RegExp/property-escapes/generated/General_Category_-_Uppercase_Letter.js": "passes",
+        "built-ins/String/prototype/replaceAll/replaceValue-call-each-match-position.js": "passes",
+        "built-ins/TypedArrayConstructors/prototype/indexOf/bigint-inherited.js": "passes",
+        "staging/sm/String/split.js": "fails",
+        "built-ins/RegExp/prototype/exec/S15.10.6.2_A4_T11.js": "fails",
+        "built-ins/Temporal/ZonedDateTime/prototype/subtract/non-integer-throws-rangeerror.js": "fails",
+        "built-ins/RegExp/prototype/exec/S15.10.6.2_A4_T10.js": "runtimeErrors",
+        "built-ins/RegExp/prototype/exec/success-g-lastindex-no-access.js": "runtimeErrors"
+      },
+      "patched": {
+        "built-ins/RegExp/property-escapes/generated/General_Category_-_Decimal_Number.js": "passes",
+        "built-ins/RegExp/property-escapes/generated/General_Category_-_Uppercase_Letter.js": "passes",
+        "built-ins/String/prototype/replaceAll/replaceValue-call-each-match-position.js": "passes",
+        "built-ins/TypedArrayConstructors/prototype/indexOf/bigint-inherited.js": "passes",
+        "staging/sm/String/split.js": "fails",
+        "built-ins/RegExp/prototype/exec/S15.10.6.2_A4_T11.js": "fails",
+        "built-ins/Temporal/ZonedDateTime/prototype/subtract/non-integer-throws-rangeerror.js": "fails",
+        "built-ins/RegExp/prototype/exec/S15.10.6.2_A4_T10.js": "runtimeErrors",
+        "built-ins/RegExp/prototype/exec/success-g-lastindex-no-access.js": "runtimeErrors"
+      }
+    }
+  },
+  {
+    "repetition": 3,
+    "results": {
+      "baseline": {
+        "built-ins/RegExp/property-escapes/generated/General_Category_-_Decimal_Number.js": "passes",
+        "built-ins/RegExp/property-escapes/generated/General_Category_-_Uppercase_Letter.js": "passes",
+        "built-ins/String/prototype/replaceAll/replaceValue-call-each-match-position.js": "passes",
+        "built-ins/TypedArrayConstructors/prototype/indexOf/bigint-inherited.js": "passes",
+        "staging/sm/String/split.js": "fails",
+        "built-ins/RegExp/prototype/exec/S15.10.6.2_A4_T11.js": "fails",
+        "built-ins/Temporal/ZonedDateTime/prototype/subtract/non-integer-throws-rangeerror.js": "fails",
+        "built-ins/RegExp/prototype/exec/S15.10.6.2_A4_T10.js": "runtimeErrors",
+        "built-ins/RegExp/prototype/exec/success-g-lastindex-no-access.js": "runtimeErrors"
+      },
+      "patched": {
+        "built-ins/RegExp/property-escapes/generated/General_Category_-_Decimal_Number.js": "passes",
+        "built-ins/RegExp/property-escapes/generated/General_Category_-_Uppercase_Letter.js": "passes",
+        "built-ins/String/prototype/replaceAll/replaceValue-call-each-match-position.js": "passes",
+        "built-ins/TypedArrayConstructors/prototype/indexOf/bigint-inherited.js": "passes",
+        "staging/sm/String/split.js": "fails",
+        "built-ins/RegExp/prototype/exec/S15.10.6.2_A4_T11.js": "fails",
+        "built-ins/Temporal/ZonedDateTime/prototype/subtract/non-integer-throws-rangeerror.js": "fails",
+        "built-ins/RegExp/prototype/exec/S15.10.6.2_A4_T10.js": "runtimeErrors",
+        "built-ins/RegExp/prototype/exec/success-g-lastindex-no-access.js": "runtimeErrors"
+      }
+    }
+  }
+]

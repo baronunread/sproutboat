@@ -1,0 +1,48 @@
+{
+  "forkCommit": "aa80008c12d286d5eac32687d0762e57c09ad185",
+  "test262Commit": "6eec1ac9ee144dafd8f344d73a21f36bfc9f6755",
+  "tinyccCommit": "9db1105c32afd3dcf0c28b8186f08e63c761b2b5",
+  "nodeVersion": "v26.5.1",
+  "platform": "macOS arm64",
+  "workers": 8,
+  "command": "PORFFOR_TEST262_TCC=<temporary TinyCC>/bin/tcc node test262/index.js --threads=8 --plain-results",
+  "skips": [],
+  "status": "complete",
+  "patchedStatus": "complete",
+  "patchedCounts": {
+    "passes": 34210,
+    "fails": 8722,
+    "runtimeErrors": 10360,
+    "compileErrors": 18,
+    "nativeErrors": 62,
+    "timeouts": 32
+  },
+  "baselineStatus": "complete",
+  "baselineCounts": {
+    "passes": 34210,
+    "fails": 8721,
+    "runtimeErrors": 10363,
+    "nativeErrors": 62,
+    "compileErrors": 18,
+    "timeouts": 30
+  },
+  "outcomeChangesInFullRuns": 9,
+  "focusedReruns": 3,
+  "focusedRerunReproducedDifferences": 0,
+  "fullResults": "full-test262-baseline.json and full-test262-patched.json",
+  "test262ArchiveSha256": "c34e69891b908add2dff3d683c878be50c8d26c947041ab7967f7a89d0975d88",
+  "baselineRepeatStatus": "complete",
+  "baselineRepeatCounts": {
+    "passes": 34200,
+    "fails": 8716,
+    "runtimeErrors": 10366,
+    "compileErrors": 18,
+    "nativeErrors": 62,
+    "timeouts": 42
+  },
+  "unchangedBaselineOutcomeChanges": 21,
+  "repeatControlResults": "full-test262-baseline-repeat.json and full-test262-repeat-control.json",
+  "fullTest262PatchSha256": "88b4398e075d8140246eabc8e5115ea207c9be3eb4e1b2dc420b82b0b7ea0b8e",
+  "currentPatchSha256": "2c6785d487ab96e1c0e8fe4a5b34d91ccefef971d68ad8166a19ebbc6aa19619",
+  "note": "Full Test262 runs used an earlier helper version of this patch. The current minimal encode-based encodeInto version passed the 123-vector native regression but was not rerun through full Test262."
+}

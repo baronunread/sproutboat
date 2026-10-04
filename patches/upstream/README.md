@@ -38,3 +38,12 @@ text. Filing an issue on `CanadaHonk/porffor` requires explicit human approval.
 | [Tracked issues](tracked-issues.md)                     | Proxy and Web Crypto gaps                              |
 | [Local patches](local-patches.md)                       | Historical patch inventory and source pin rationale    |
 | [Alpha-6 audit](historical-audit.md)                    | Historical platform status snapshot                    |
+
+## Research snapshots (alpha-9/alpha-10, September 2026)
+
+These predate the alpha-13 pin. Re-check a finding against the current pin before citing it.
+
+- [Limitation analysis](../../docs/porffor-limitations-analysis.md), 2026-09-27: 45 native HTTP probes, three fresh processes each, alpha-9 pin against alpha-10. It separates missing APIs, protocol bugs, silent wrong results and fatal exceptions. It is not a compatibility score.
+- [Runtime comparison plan](../../docs/runtime-comparison-plan.md): a proposed Node, workerd and Sproutboat benchmark. Not yet run.
+- [Native Unicode input](native-unicode-json.md) and [Unicode handoff](unicode-handoff/README.md): reproducers and candidate patches for TextEncoder, native response encoding and JSON.
+- [TextEncoder PR notes](text-encoder-pr/README.md): the fix is open upstream as [Porffor PR #395](https://github.com/CanadaHonk/porffor/pull/395). Native regression vectors went from 34/123 to 123/123.

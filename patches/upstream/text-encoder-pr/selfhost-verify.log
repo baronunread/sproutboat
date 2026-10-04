@@ -1,0 +1,12 @@
+[ok] hello c parity 95281/95281 bytes match
+[ok] exceptions c parity 203130/203130 bytes match
+[ok] json_stringify c parity 225693/225693 bytes match
+[ok] indirect c parity 219394/219394 bytes match
+[ok] linked_list c parity 249023/249023 bytes match
+[ok] bf c parity 246495/246495 bytes match
+[ok] richards c parity 337027/337027 bytes match
+[ok] v8_v7 c parity 5197961/5197961 bytes match
+[ok] string_methods c parity 669511/669511 bytes match
+[ok] regex c parity 1170150/1170150 bytes match
+[ok] temporal c parity 1602471/1602471 bytes match
+[ok] stage2 c parity 13142331/13142331 bytes match
