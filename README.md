@@ -116,9 +116,11 @@ Every artifact ships `bindings.json`, so every sprout gets a binding broker
 beside it on a token-gated loopback port. The broker implements KV, D1, R2,
 queues, secrets and outbound `fetch`, which is what keeps the sprout itself free
 of disk and egress. A handler reaches the outside world only through the
-broker, which never connects to a private or reserved address (#174). An
-operator can allow specific ones with `SB_EGRESS_ALLOW` in the supervisor's
-environment, which its brokers inherit.
+broker, which never connects to a private or reserved address (#174). On the
+systemd install the broker can't reach the network itself, so it hands each
+request to `sproutboat-egress.service`, a token-gated loopback service that
+makes the same checks (#252). An operator allows specific private addresses
+with `SB_EGRESS_ALLOW` in `/etc/sproutboat/egress.env`.
 
 Cron, queue consumers and Durable Object alarms are different from HTTP-only
 handlers: their active route generation is started by the edge even with no

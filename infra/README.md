@@ -145,6 +145,31 @@ directly once the edge is up:
 systemd-run --uid=sproutboat-edge --slice=$(systemctl show -p Slice --value sproutboat-edge) --pipe --quiet -- curl -s -m 3 https://example.com ; echo "exit $?"
 ```
 
+### Outbound fetch
+
+Brokers run inside the edge unit too, so they can't reach the network either.
+A sprout's `fetch()` leaves the host through `sproutboat-egress.service`
+instead (#252). That's a separate unit outside the edge's cgroup, listening on
+`127.0.0.1:8070`:
+
+- **Token:** it answers only callers that present the token in
+  `/etc/sproutboat/egress.env`. `install.sh` generates it, keeps it across
+  upgrades, and the edge unit reads it so its brokers carry it. Sprouts share
+  loopback, but the sandbox clears their environment, so they never see it.
+- **Address checks:** it resolves each target, refuses private and reserved
+  addresses (loopback, RFC 1918, link-local and the metadata endpoint, CGNAT,
+  multicast, and their IPv6 forms), and connects only to the address it vetted.
+- **Allowing private addresses:** to let sprouts reach one, such as a database
+  on this host, add `SB_EGRESS_ALLOW=10.0.0.5` (comma-separated exact
+  addresses, or `*`) to `/etc/sproutboat/egress.env` and run
+  `systemctl restart sproutboat-egress`. Re-running the installer keeps it.
+
+```sh
+sbctl status   # sproutboat-egress should be active
+# from the edge's cgroup the service answers; with the token it fetches
+curl -s -o /dev/null -w "%{http_code}\n" http://127.0.0.1:8070/   # 401 without the token
+```
+
 ### Local development
 
 Off Linux the sandbox is skipped and the sprout is spawned directly. On a Linux

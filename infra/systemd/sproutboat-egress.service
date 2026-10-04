@@ -1,0 +1,41 @@
+[Unit]
+Description=Sproutboat egress for sprout fetch()
+# #252 — brokers run inside sproutboat-edge.service, whose IPAddressDeny=any
+# keeps sprouts (and so the brokers beside them) off the network. A child
+# cgroup cannot loosen that, so a sprout's fetch() leaves the host through this
+# separate unit instead: loopback-only, token-gated, and it refuses private and
+# reserved addresses itself (@sproutboat/wire's egress.ts, #174).
+After=network-online.target
+Wants=network-online.target
+Before=sproutboat-edge.service
+
+[Service]
+Type=simple
+DynamicUser=yes
+WorkingDirectory=/opt/sproutboat
+# SB_EGRESS_TOKEN (and an optional SB_EGRESS_ALLOW), written by install.sh.
+# The edge unit reads the same file, so its brokers carry the token.
+EnvironmentFile=/etc/sproutboat/egress.env
+ExecStart=/opt/sproutboat/bun/bin/bun node_modules/@sproutboat/wire/src/egress.ts --host 127.0.0.1 --port 8070
+Restart=always
+RestartSec=2
+# No IPAddressDeny here on purpose: name resolution goes through the resolver
+# the host has configured, which on some clouds sits in a private or link-local
+# range. egress.ts vets the address of every connection instead.
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+RestrictNamespaces=true
+LockPersonality=true
+CapabilityBoundingSet=
+MemoryMax=512M
+TasksMax=256
+
+[Install]
+WantedBy=multi-user.target
