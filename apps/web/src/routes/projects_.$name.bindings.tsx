@@ -14,7 +14,6 @@ type ResourceRef = { binding: string; kind: string; id: string };
 type Bindings = {
   kv: string[];
   secrets: string[];
-  outbound: string[];
   d1: string[];
   r2: string[];
   queues: string[];
@@ -35,7 +34,6 @@ const KIND_LABEL = new Map([
   ["r2", "R2 bucket"],
   ["queue", "Queue"],
   ["secret", "Secret"],
-  ["outbound", "Outbound fetch"],
   ["analytics", "Analytics dataset"],
   ["assets", "Static assets"],
   ["do", "Durable Object"],
@@ -92,7 +90,6 @@ function rowsFor(bindings: Bindings, resources: Resource[]): Row[] {
     ...(bindings.assets
       ? [{ binding: bindings.assets, kind: "assets", target: "Files served from the artifact", resourceId: null }]
       : []),
-    ...bindings.outbound.map((host) => ({ binding: "fetch", kind: "outbound", target: host, resourceId: null })),
     // Plain baked config, shown with its value - unlike a secret, whose value
     // the API never returns.
     ...Object.entries(bindings.vars ?? {}).map(([binding, value]) => ({
