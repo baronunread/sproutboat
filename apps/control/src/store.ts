@@ -871,6 +871,7 @@ async function writeRouteSnapshot(): Promise<void> {
     services?: Record<string, string>;
     ownerId: string;
     r2ResourceIds: string[];
+    doStoreId: string;
   }> = [];
   const r2Resources = new Map<string, string[]>();
   for (const row of rows) {
@@ -906,7 +907,16 @@ async function writeRouteSnapshot(): Promise<void> {
       for (const resource of ownerResources(row.owner_id)) if (resource.kind === "r2") r2ResourceIds.push(resource.id);
       r2Resources.set(row.owner_id, r2ResourceIds);
     }
-    const base = { hostname: row.hostname, sproutPath: row.sprout_path, ownerId: row.owner_id, r2ResourceIds };
+    // #207 — Durable Object state is keyed by owner + project, not by the
+    // deployment, so it survives redeploys. Derived, so it needs no migration.
+    const doStoreId = `do_${createHash("sha256").update(`${row.owner_id}\0${row.project}`).digest("hex").slice(0, 24)}`;
+    const base = {
+      hostname: row.hostname,
+      sproutPath: row.sprout_path,
+      ownerId: row.owner_id,
+      r2ResourceIds,
+      doStoreId,
+    };
     const route = info ? { ...base, ...info } : base;
     routes.push(Object.keys(services).length > 0 ? { ...route, services } : route);
   }

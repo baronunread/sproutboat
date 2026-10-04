@@ -351,6 +351,21 @@ test("the broker is told where its sprout is, so cron and queues actually run (#
   expect(args[args.indexOf("--transfer-port") + 1]).toBe("34321");
 });
 
+test("#207: Durable Object state goes to the per-project --do-db only when given", () => {
+  const base = {
+    entry: "/broker.ts",
+    brokerPort: 1,
+    token: "t",
+    stateDir: "/s",
+    resourceDir: "/r",
+    bindingsPath: "/b.json",
+    sproutPort: 2,
+  };
+  const args = brokerArgs({ ...base, doDb: "/r/do_0123456789abcdef01234567.sqlite" });
+  expect(args[args.indexOf("--do-db") + 1]).toBe("/r/do_0123456789abcdef01234567.sqlite");
+  expect(brokerArgs(base)).not.toContain("--do-db");
+});
+
 test("brokerArgs adds secrets and assets only when there are any", () => {
   const base = {
     entry: "/broker.ts",

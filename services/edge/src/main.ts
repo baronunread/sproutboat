@@ -57,7 +57,7 @@ type Route = {
   secretsPath: string | null;
   secretsHash: string | null;
   services: Record<string, string> | null;
-  r2: { ownerId: string; resourceIds: string[] } | null;
+  r2: { ownerId: string; resourceIds: string[]; doStoreId?: string } | null;
 };
 
 type TimedBindings = {
@@ -87,7 +87,7 @@ function timedSprouts(current: Map<string, Route>) {
     sproutPath: string;
     secretsPath: string | null;
     services: Record<string, string> | null;
-    r2: { ownerId: string; resourceIds: string[] } | null;
+    r2: { ownerId: string; resourceIds: string[]; doStoreId?: string } | null;
   }> = [];
   for (const route of current.values()) {
     if (!hasTimedBindings(route.sproutPath)) continue;
@@ -142,12 +142,18 @@ async function loadRoutes(path: string): Promise<Map<string, Route>> {
     const resourceIds = Array.isArray(route.r2ResourceIds)
       ? route.r2ResourceIds.filter((id): id is string => isString(id) && /^r2_[a-f0-9]{24}$/.test(id))
       : [];
+    // #207 — the project's stable Durable Object store id.
+    let r2: Route["r2"] = null;
+    if (ownerId) {
+      r2 = { ownerId, resourceIds };
+      if (isString(route.doStoreId) && /^do_[a-f0-9]{24}$/.test(route.doStoreId)) r2.doStoreId = route.doStoreId;
+    }
     result.set(route.hostname, {
       sproutPath: route.sproutPath,
       secretsPath,
       secretsHash: isString(route.secretsHash) ? route.secretsHash : null,
       services,
-      r2: ownerId ? { ownerId, resourceIds } : null,
+      r2,
     });
   }
   return result;
