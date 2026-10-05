@@ -228,6 +228,9 @@ install -d -m 0750 -o sproutboat-control -g sproutboat "$STATE" "$STATE/artifact
 install -d -m 0770 -o sproutboat-edge   -g sproutboat "$STATE/logs"
 install -d -m 2770 -o sproutboat-edge   -g sproutboat "$STATE/brokers"
 install -d -m 2770 -o sproutboat-edge   -g sproutboat "$STATE/resources"
+# #141: control drops activation requests here and the edge answers; both
+# delete them, so both need group write. The sprout sandbox never mounts it.
+install -d -m 2770 -o sproutboat-control -g sproutboat "$STATE/activation"
 # Older binding files may predate shared control-plane administration.
 for _d in brokers resources; do
   chgrp -R sproutboat "$STATE/$_d"

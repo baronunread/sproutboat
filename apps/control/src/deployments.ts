@@ -1,6 +1,7 @@
 import { chmod, mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { basename, dirname, resolve } from "node:path";
 import { createHash, randomUUID } from "node:crypto";
+import { stageCandidate } from "./activation";
 import { validateArtifactDirectory, type ResourceBindingRef } from "./artifact";
 import { actorFor, purgeUser, type Actor } from "./identity";
 import { guardDeploy, guardNewProject, LIMITS } from "./limits";
@@ -8,6 +9,7 @@ import { aggregateLogs, readLogHistory, readLogTailText, readSproutLogText, rout
 import {
   activateDeployment as storeActivate,
   activeProjects,
+  candidateRoute,
   collectArtifacts,
   deleteDeployment as storeDeleteDeployment,
   deleteOwner,
@@ -213,6 +215,14 @@ export async function deleteDeployment(request: Request, project: string, id: st
 export async function activateDeployment(request: Request, project: string, id: string): Promise<Response> {
   const actor = await authorized(request);
   if (actor instanceof Response) return actor;
+  const target = projectDeployment(actor.id, project, id);
+  if (!target) return Response.json({ error: "deployment not found" }, { status: 404 });
+  // #141: a rollback target must start too; otherwise the current version stays.
+  try {
+    await stageCandidate(await candidateRoute(target));
+  } catch (error) {
+    return Response.json({ error: error instanceof Error ? error.message : "activation failed" }, { status: 409 });
+  }
   const deployment = storeActivate(actor.id, project, id);
   if (!deployment) return Response.json({ error: "deployment not found" }, { status: 404 });
   await syncRoutes();
@@ -341,13 +351,15 @@ function resolveResourceBindings(refs: ResourceBindingRef[], ownerId: string): s
 export async function artifactDigest(dir: string, binaryHash: string): Promise<string> {
   const hash = createHash("sha256");
   hash.update(binaryHash);
-  for (const sidecar of ["bindings.json", "assets.json"]) {
-    hash.update(`\n${sidecar}\n`);
-    try {
-      hash.update(await readFile(resolve(dir, sidecar)));
-    } catch {
-      /* sidecar absent for this project */
-    }
+  const sidecars = await Promise.all(
+    ["bindings.json", "assets.json"].map(async (name) => ({
+      name,
+      body: await readFile(resolve(dir, name)).catch(() => null), // absent for this project
+    })),
+  );
+  for (const { name, body } of sidecars) {
+    hash.update(`\n${name}\n`);
+    if (body) hash.update(body);
   }
   return hash.digest("hex");
 }
@@ -445,8 +457,10 @@ export async function deployArtifact(request: Request, project: string): Promise
     // #55: capture the outgoing version's Porffor pin before it is replaced.
     const previousPorffor = await activePorfforVersion(actor.id, project);
     const destination = resolve(artifactRoot, digest);
+    let placed = false;
     try {
       await rename(temporary, destination);
+      placed = true;
     } catch (error) {
       if (!(error instanceof Error) || !("code" in error) || (error.code !== "EEXIST" && error.code !== "ENOTEMPTY"))
         throw error;
@@ -461,6 +475,19 @@ export async function deployArtifact(request: Request, project: string): Promise
     if (resolvedResources instanceof Response) return resolvedResources;
 
     const hostname = deploymentHostname(project, actor.username);
+    const sproutPath = resolve(destination, "sprout");
+    // #141: start it on the edge first. Nothing is recorded or routed unless it
+    // listens, so the previous version keeps serving and there is no
+    // half-activated row to recover after a crash.
+    try {
+      await stageCandidate(await candidateRoute({ hostname, sproutPath, ownerId: actor.id, project }));
+    } catch (error) {
+      if (placed) await rm(destination, { recursive: true, force: true });
+      return Response.json(
+        { error: error instanceof Error ? error.message : "activation failed", activated: false },
+        { status: 409 },
+      );
+    }
     const deployment = recordDeployment({
       id: randomUUID(),
       project,
@@ -468,7 +495,7 @@ export async function deployArtifact(request: Request, project: string): Promise
       username: actor.username,
       hostname,
       artifact: digest,
-      sproutPath: resolve(destination, "sprout"),
+      sproutPath,
       deployedAt: new Date().toISOString(),
       binarySize: validation.value.manifest.binarySize,
       compileMs: validation.value.manifest.compileMs ?? null,

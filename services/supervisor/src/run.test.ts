@@ -433,3 +433,35 @@ test("brokerArgs passes the owner-wide R2 quota context to the broker", () => {
     "5",
   ]);
 });
+
+test("#141: brokerArgs holds timers only for a staged candidate", () => {
+  const base = {
+    entry: "/broker.ts",
+    brokerPort: 1,
+    token: "t",
+    stateDir: "/s",
+    resourceDir: "/r",
+    bindingsPath: "/b.json",
+    sproutPort: 2,
+  };
+  expect(brokerArgs({ ...base, dispatchDisabled: true })).toContain("--dispatch-disabled");
+  expect(brokerArgs(base)).not.toContain("--dispatch-disabled");
+});
+
+test("#141: a staged candidate's timers start once its route is active", async () => {
+  const { spawn: serve } = fakeSpawn();
+  const held: boolean[] = [];
+  let enabled = 0;
+  const spawn: SproutFactory = (sproutPath, port, secretsPath, services, r2, dispatchDisabled) => {
+    held.push(dispatchDisabled === true);
+    return { ...serve(sproutPath, port), enableDispatch: () => (enabled += 1) };
+  };
+  const pool = makePool(spawn);
+  await pool.endpoint("/tmp/candidate/sprout", null, null, null, true);
+  expect(held).toEqual([true]);
+  expect(enabled).toBe(0);
+  // The route switches: the same runtime is reused, not respawned, and released.
+  await pool.reconcileTimed([{ sproutPath: "/tmp/candidate/sprout" }]);
+  expect(held).toEqual([true]);
+  expect(enabled).toBe(1);
+});

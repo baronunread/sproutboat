@@ -181,6 +181,9 @@ describe("Phase A contracts", () => {
     expect(install).toContain('chmod -R g+rwX "$STATE/$_d"');
     expect(controlUnit).toContain("UMask=0007");
     expect(edgeUnit).toContain("UMask=0007");
+    expect(install).toContain('install -d -m 2770 -o sproutboat-control -g sproutboat "$STATE/activation"');
+    expect(controlUnit).toContain("SPROUTBOAT_ACTIVATION_DIR=/var/lib/sproutboat/activation");
+    expect(edgeUnit).toContain("SPROUTBOAT_ACTIVATION_DIR=/var/lib/sproutboat/activation");
   });
 
   test("#252: brokers reach the network only through the token-gated egress unit", async () => {
