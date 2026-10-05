@@ -1,6 +1,6 @@
-# Draft: a named class expression's own name is a different object inside a function
+# A named class expression's own name is a different object inside a function
 
-**Not filed.** Investigation notes for review (see the [README](README.md)).
+**Filed** as CanadaHonk/porffor#400 (2026-10-05).
 Worked around in `@sproutboat/toolchain` by a parse-time rewrite
 (`CLASS_SELF_MARKER`, baronunread/sproutboat#256).
 
