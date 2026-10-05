@@ -379,3 +379,19 @@ test("#141: a candidate's route entry is the one routes.json gets once it is act
   expect((await routes()).find((route) => route.hostname === "staged.alice.test")).toEqual(staged);
   expect(staged.secretsHash).toBeString();
 });
+
+test("sweepBrokerState removes old state of collected artifacts only", async () => {
+  const { utimes } = await import("node:fs/promises");
+  const brokers = join(dir, "brokers");
+  const kept = "f".repeat(64);
+  await makeArtifact(kept);
+  store.recordDeployment(D({ id: "d-kept", project: "kept", hostname: "kept.alice.test", artifact: kept }));
+  const old = Date.now() / 1000 - 3600;
+  const names = { collected: "1".repeat(64), live: kept, staging: "2".repeat(64), other: "notes" };
+  for (const name of Object.values(names)) await mkdir(join(brokers, name, "d1"), { recursive: true });
+  for (const name of [names.collected, names.live, names.other]) await utimes(join(brokers, name), old, old);
+  // `staging` is recent: a deploy stages its candidate before recording the artifact.
+  expect(await store.sweepBrokerState()).toEqual([names.collected]);
+  const { readdir } = await import("node:fs/promises");
+  expect((await readdir(brokers)).sort()).toEqual([names.staging, names.live, names.other].sort());
+});

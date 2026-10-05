@@ -1,6 +1,6 @@
 import { Database } from "bun:sqlite";
 import { readFileSync, renameSync } from "node:fs";
-import { mkdir, rename, rm, writeFile } from "node:fs/promises";
+import { mkdir, readdir, rename, rm, stat, writeFile } from "node:fs/promises";
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { dirname, resolve } from "node:path";
 import { validateManifest } from "@sproutboat/artifact";
@@ -19,6 +19,9 @@ import { decryptSecret, encryptSecret } from "./secrets-crypto";
 const dbPath = () => process.env.SPROUTBOAT_DATABASE_PATH || "/var/lib/sproutboat/sproutboat.sqlite";
 const routesPath = () => resolve(process.env.SPROUTBOAT_ROUTE_SNAPSHOT || "/var/lib/sproutboat/routes.json");
 const artifactRoot = () => resolve(process.env.SPROUTBOAT_ARTIFACTS_DIR || "/var/lib/sproutboat/artifacts");
+// The edge keeps each artifact's broker state in `brokers/<digest>/`; same env
+// var it reads, defaulting to where install.sh puts it.
+const brokersDir = () => resolve(process.env.SPROUTBOAT_BROKER_STATE_DIR || resolve(dirname(dbPath()), "brokers"));
 const legacyDeploymentsPath = () =>
   resolve(process.env.SPROUTBOAT_DEPLOYMENTS_PATH || "/var/lib/sproutboat/deployments.json");
 
@@ -983,7 +986,34 @@ export async function collectArtifacts(digests: string[]): Promise<{ removed: st
       failed.push(digest);
     }
   }
+  await sweepBrokerState();
   return { removed, failed };
+}
+
+/**
+ * Remove `brokers/<digest>/` for every digest no artifact row holds any more:
+ * the per-deployment KV / D1 / queue state of a version that can no longer be
+ * routed or rolled back to. It used to be kept forever, one copy per deploy.
+ * Skips anything changed in the last 10 minutes, because a deploy stages its
+ * candidate (which creates this dir) before it records the artifact. Never throws.
+ */
+export async function sweepBrokerState(): Promise<string[]> {
+  const cutoff = Date.now() - 10 * 60_000;
+  const names = (await readdir(brokersDir()).catch((): string[] => [])).filter(
+    (name) => /^[a-f0-9]{64}$/.test(name) && !q1("SELECT 1 FROM artifacts WHERE digest = ?", name),
+  );
+  const removed = await Promise.all(
+    names.map(async (name) => {
+      const path = resolve(brokersDir(), name);
+      const info = await stat(path).catch(() => null);
+      if (!info || info.mtimeMs > cutoff) return null;
+      return rm(path, { recursive: true, force: true }).then(
+        () => name,
+        () => null,
+      );
+    }),
+  );
+  return removed.filter((name): name is string => name !== null);
 }
 
 /** Test/ops helper: close and forget the connection. */

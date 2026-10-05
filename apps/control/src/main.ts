@@ -20,6 +20,7 @@ import {
 } from "./deployments";
 import { addDomain, deleteDomain, listDomains, verifyDomain } from "./domains";
 import { listSecrets, putSecret, removeSecret } from "./secrets";
+import { sweepBrokerState } from "./store";
 import {
   createResourceHandler,
   createResourceOfKind,
@@ -93,6 +94,12 @@ async function activeHostnames(): Promise<Set<string>> {
     return new Set();
   }
 }
+
+// Clear broker state left by versions collected before the sweep existed, and
+// by any collection a crash interrupted. Later collections sweep as they go.
+void sweepBrokerState().then((removed) => {
+  if (removed.length > 0) console.log(`removed broker state for ${removed.length} collected artifact(s)`);
+});
 
 const server = Bun.serve({
   port,

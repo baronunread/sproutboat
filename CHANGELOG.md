@@ -12,6 +12,13 @@ Changes to the self-hosted Sproutboat platform are recorded here. Read the
   10 s, the deploy fails with 409 and the current version keeps serving. Its
   cron, queue and alarm timers stay off until its route is active (#141).
 
+### Fixed
+
+- Per-deployment broker state (`/var/lib/sproutboat/brokers/<digest>/`) is
+  removed when its version is pruned or its project deleted. It used to stay
+  forever, one copy per deploy, and ride along in every backup. Control clears
+  the existing leftovers when it starts.
+
 ### Breaking and operator actions
 
 - Update with `sbctl update`: it creates `/var/lib/sproutboat/activation` and
