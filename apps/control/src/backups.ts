@@ -303,10 +303,16 @@ export async function restoreBackup(archive: string, { force = false } = {}): Pr
 if (import.meta.main) {
   const [command, archive, flag] = process.argv.slice(2);
   if (command === "restore") {
-    if (!archive) throw new Error("usage: backups.ts restore <archive.tar.gz> [--force]");
-    for (const warning of await restoreBackup(resolve(archive), { force: flag === "--force" }))
-      console.error(`warning: ${warning}`);
-    console.log(`restored ${archive} into ${stateDir()}`);
+    // An operator command: a refusal is one line and exit 1, not a stack trace.
+    try {
+      if (!archive) throw new Error("usage: backups.ts restore <archive.tar.gz> [--force]");
+      for (const warning of await restoreBackup(resolve(archive), { force: flag === "--force" }))
+        console.error(`warning: ${warning}`);
+      console.log(`restored ${archive} into ${stateDir()}`);
+    } catch (error) {
+      console.error(`restore: ${error instanceof Error ? error.message : String(error)}`);
+      process.exit(1);
+    }
   } else {
     const entry = await createBackup();
     console.log(JSON.stringify(entry));
