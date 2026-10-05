@@ -5,6 +5,19 @@ Changes to the self-hosted Sproutboat platform are recorded here. Read the
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-10-05
+
+### Added
+
+- Backups now include binding data: every KV, D1, R2, queue and Durable
+  Object store under `resources/` and `brokers/`, each snapshotted with
+  `VACUUM INTO` so writes in flight are captured. Before this, a restore
+  brought projects back with empty storage (#139).
+- `bun apps/control/src/backups.ts restore <archive>` restores a backup onto
+  an empty install. It checks the whole archive first, refuses a state dir
+  that already has a control database unless `--force`, and warns when the
+  secrets key is missing. `infra/README.md` has the runbook.
+
 ### Changed
 
 - A new version only goes live once it starts. Control asks the edge to start
@@ -474,7 +487,8 @@ Changes to the self-hosted Sproutboat platform are recorded here. Read the
 
 First tagged self-hosted platform checkpoint.
 
-[Unreleased]: https://github.com/baronunread/sproutboat/compare/v0.5.9...HEAD
+[Unreleased]: https://github.com/baronunread/sproutboat/compare/v0.9.0...HEAD
+[0.9.0]: https://github.com/baronunread/sproutboat/compare/v0.8.1...v0.9.0
 [0.5.9]: https://github.com/baronunread/sproutboat/compare/v0.5.8...v0.5.9
 [0.5.8]: https://github.com/baronunread/sproutboat/compare/v0.5.7...v0.5.8
 [0.5.7]: https://github.com/baronunread/sproutboat/compare/v0.5.6...v0.5.7
