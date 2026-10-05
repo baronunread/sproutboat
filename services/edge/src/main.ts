@@ -4,6 +4,7 @@ import { dirname, join, resolve } from "node:path";
 import { pool } from "../../supervisor/src/run";
 import { isSproutFirst, resolveAssetKey, type AssetManifest } from "@sproutboat/assets";
 import { applyAssetHeaders, assetRedirect } from "./asset-rules";
+import { serveActivations } from "./activation";
 import { EdgeCache, cacheRequestEligible, cacheResponseEligible } from "./cache";
 import { cacheControlFor } from "./asset-cache-control";
 
@@ -692,9 +693,26 @@ const routeRefreshTimer = setInterval(() => {
   });
 }, 1_000);
 
+// #141: control asks for each new version to be started before it is routed.
+// The request is a one-entry route snapshot, so it gets the same validation as
+// routes.json; the candidate starts with its timers held until it is routed.
+const activationDir = process.env.SPROUTBOAT_ACTIVATION_DIR;
+const activationTimer = activationDir
+  ? setInterval(() => {
+      void serveActivations(activationDir, async (request) => {
+        const [route] = (await loadRoutes(request)).values();
+        if (!route) throw new Error("empty activation request");
+        await pool.endpoint(route.sproutPath, route.secretsPath, route.services, route.r2, true);
+      }).catch((error) => {
+        console.error(`activation request failed: ${error instanceof Error ? error.message : String(error)}`);
+      });
+    }, 100)
+  : null;
+
 function shutdown(): void {
   clearInterval(evictionTimer);
   clearInterval(routeRefreshTimer);
+  if (activationTimer) clearInterval(activationTimer);
   logStream?.end();
   pool.disposeAll();
   server.stop();

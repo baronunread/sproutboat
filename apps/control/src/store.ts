@@ -832,12 +832,104 @@ function declaredServices(sproutPath: string): Array<{ binding: string; service:
   );
 }
 
+export type RouteEntry = {
+  hostname: string;
+  sproutPath: string;
+  secretsPath?: string;
+  secretsHash?: string;
+  services?: Record<string, string>;
+  ownerId: string;
+  r2ResourceIds: string[];
+  doStoreId: string;
+};
+type RouteRow = { hostname: string; sprout_path: string; owner_id: string; project: string };
+
+/**
+ * One routes.json entry per row: the runtime context the edge starts a sprout
+ * with. #141 stages a candidate from the same entry, so the process it starts
+ * is the one the route later points at. Per-snapshot caches live in the closure.
+ */
+function routeContext() {
+  // #48: canonical hostname of every active deployment, keyed by owner and
+  // project, so a service binding can be resolved to something the edge routes.
+  // Same-owner only: on a multi-user box, naming another user's project must not
+  // be a way to call it.
+  const activeHosts = new Map<string, string>();
+  for (const row of q<{ owner_id: string; project: string; hostname: string }>(
+    "SELECT owner_id, project, hostname FROM deployments WHERE active = 1",
+  )) {
+    activeHosts.set(`${row.owner_id}\0${row.project}`, row.hostname);
+  }
+  const written = new Map<string, { secretsPath: string; secretsHash: string } | null>(); // "<owner>\0<project>" -> file info
+  const r2Resources = new Map<string, string[]>();
+  return {
+    async entry(row: RouteRow): Promise<RouteEntry> {
+      const key = `${row.owner_id}\0${row.project}`;
+      if (!written.has(key)) {
+        await mkdir(secretsDir(), { recursive: true, mode: 0o700 });
+        const values = projectSecretValues(row.owner_id, row.project);
+        const path = secretsFile(row.owner_id, row.project);
+        if (Object.keys(values).length > 0) {
+          // Deterministic bytes so the hash only moves when a value actually changes.
+          const content = JSON.stringify(values, Object.keys(values).sort());
+          await writeFile(path, content, { mode: 0o600 });
+          written.set(key, {
+            secretsPath: path,
+            secretsHash: createHash("sha256").update(content).digest("hex").slice(0, 16),
+          });
+        } else {
+          await rm(path, { force: true });
+          written.set(key, null);
+        }
+      }
+      const info = written.get(key);
+      // Resolve each declared service to the target's hostname. An entry that
+      // resolves to nothing is left out on purpose: the broker then reports the
+      // target as undeployed, which is what it is.
+      const services: Record<string, string> = {};
+      for (const entry of declaredServices(row.sprout_path)) {
+        const host = activeHosts.get(`${row.owner_id}\0${entry.service}`);
+        if (host) services[entry.binding] = host;
+      }
+      let r2ResourceIds = r2Resources.get(row.owner_id);
+      if (!r2ResourceIds) {
+        r2ResourceIds = [];
+        for (const resource of ownerResources(row.owner_id))
+          if (resource.kind === "r2") r2ResourceIds.push(resource.id);
+        r2Resources.set(row.owner_id, r2ResourceIds);
+      }
+      // #207: Durable Object state is keyed by owner + project, not by the
+      // deployment, so it survives redeploys. Derived, so it needs no migration.
+      const doStoreId = `do_${createHash("sha256").update(`${row.owner_id}\0${row.project}`).digest("hex").slice(0, 24)}`;
+      const base = {
+        hostname: row.hostname,
+        sproutPath: row.sprout_path,
+        ownerId: row.owner_id,
+        r2ResourceIds,
+        doStoreId,
+      };
+      const route = info ? { ...base, ...info } : base;
+      return Object.keys(services).length > 0 ? { ...route, services } : route;
+    },
+  };
+}
+
+/** #141: the route entry a not-yet-active deployment would get. */
+export function candidateRoute(deployment: Pick<Deployment, "hostname" | "sproutPath" | "ownerId" | "project">) {
+  return routeContext().entry({
+    hostname: deployment.hostname,
+    sprout_path: deployment.sproutPath,
+    owner_id: deployment.ownerId,
+    project: deployment.project,
+  });
+}
+
 async function writeRouteSnapshot(): Promise<void> {
   // Generated `<project>.<user>.<domain>` hosts, plus every verified custom
   // domain (#2) pointed at whatever version of its project is active right now.
   // owner_id/project ride along so each route can carry its decrypted secrets
   // file path (#2) — the supervisor hands it to the per-deployment broker.
-  const rows = q<{ hostname: string; sprout_path: string; owner_id: string; project: string }>(
+  const rows = q<RouteRow>(
     `SELECT hostname, sprout_path, owner_id, project FROM deployments
        WHERE active = 1 AND owner_id NOT IN (SELECT owner_id FROM banned_owners)
      UNION
@@ -850,76 +942,8 @@ async function writeRouteSnapshot(): Promise<void> {
      ORDER BY hostname`,
   );
 
-  // #48 — canonical hostname of every active deployment, keyed by owner and
-  // project, so a service binding can be resolved to something the edge routes.
-  // Same-owner only: on a multi-user box, naming another user's project must not
-  // be a way to call it.
-  const activeHosts = new Map<string, string>();
-  for (const row of q<{ owner_id: string; project: string; hostname: string }>(
-    "SELECT owner_id, project, hostname FROM deployments WHERE active = 1",
-  )) {
-    activeHosts.set(`${row.owner_id}\0${row.project}`, row.hostname);
-  }
-
-  await mkdir(secretsDir(), { recursive: true, mode: 0o700 });
-  const written = new Map<string, { secretsPath: string; secretsHash: string } | null>(); // "<owner>\0<project>" -> file info
-  const routes: Array<{
-    hostname: string;
-    sproutPath: string;
-    secretsPath?: string;
-    secretsHash?: string;
-    services?: Record<string, string>;
-    ownerId: string;
-    r2ResourceIds: string[];
-    doStoreId: string;
-  }> = [];
-  const r2Resources = new Map<string, string[]>();
-  for (const row of rows) {
-    const key = `${row.owner_id}\0${row.project}`;
-    if (!written.has(key)) {
-      const values = projectSecretValues(row.owner_id, row.project);
-      const path = secretsFile(row.owner_id, row.project);
-      if (Object.keys(values).length > 0) {
-        // Deterministic bytes so the hash only moves when a value actually changes.
-        const content = JSON.stringify(values, Object.keys(values).sort());
-        await writeFile(path, content, { mode: 0o600 });
-        written.set(key, {
-          secretsPath: path,
-          secretsHash: createHash("sha256").update(content).digest("hex").slice(0, 16),
-        });
-      } else {
-        await rm(path, { force: true });
-        written.set(key, null);
-      }
-    }
-    const info = written.get(key);
-    // Resolve each declared service to the target's hostname. An entry that
-    // resolves to nothing is left out on purpose: the broker then reports the
-    // target as undeployed, which is what it is.
-    const services: Record<string, string> = {};
-    for (const entry of declaredServices(row.sprout_path)) {
-      const host = activeHosts.get(`${row.owner_id}\0${entry.service}`);
-      if (host) services[entry.binding] = host;
-    }
-    let r2ResourceIds = r2Resources.get(row.owner_id);
-    if (!r2ResourceIds) {
-      r2ResourceIds = [];
-      for (const resource of ownerResources(row.owner_id)) if (resource.kind === "r2") r2ResourceIds.push(resource.id);
-      r2Resources.set(row.owner_id, r2ResourceIds);
-    }
-    // #207 — Durable Object state is keyed by owner + project, not by the
-    // deployment, so it survives redeploys. Derived, so it needs no migration.
-    const doStoreId = `do_${createHash("sha256").update(`${row.owner_id}\0${row.project}`).digest("hex").slice(0, 24)}`;
-    const base = {
-      hostname: row.hostname,
-      sproutPath: row.sprout_path,
-      ownerId: row.owner_id,
-      r2ResourceIds,
-      doStoreId,
-    };
-    const route = info ? { ...base, ...info } : base;
-    routes.push(Object.keys(services).length > 0 ? { ...route, services } : route);
-  }
+  const context = routeContext();
+  const routes = await Promise.all(rows.map((row) => context.entry(row)));
 
   await mkdir(dirname(routesPath()), { recursive: true });
   const temporary = `${routesPath()}.${randomUUID()}.tmp`;

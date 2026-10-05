@@ -5,6 +5,18 @@ Changes to the self-hosted Sproutboat platform are recorded here. Read the
 
 ## [Unreleased]
 
+### Changed
+
+- A new version only goes live once it starts. Control asks the edge to start
+  each deploy or rollback target first; if it exits or doesn't listen within
+  10 s, the deploy fails with 409 and the current version keeps serving. Its
+  cron, queue and alarm timers stay off until its route is active (#141).
+
+### Breaking and operator actions
+
+- Update with `sbctl update`: it creates `/var/lib/sproutboat/activation` and
+  installs the units that point control and the edge at it.
+
 ## [0.8.1] - 2026-10-05
 
 ### Fixed

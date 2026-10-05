@@ -45,7 +45,12 @@ function readBootMs(file: string, spawnedAt: number, startupMs: number): number 
  * working memory management (verified flat RSS over 500k requests).
  */
 
-export type SproutChild = { readonly exited: Promise<number>; kill(signal?: number): void };
+export type SproutChild = {
+  readonly exited: Promise<number>;
+  kill(signal?: number): void;
+  /** #141: let a broker started with `--dispatch-disabled` run its timers. */
+  enableDispatch?(): void;
+};
 /** Account context the broker needs to enforce shared R2 storage limits. */
 export type R2Runtime = {
   ownerId: string;
@@ -69,6 +74,9 @@ export type SproutFactory = (
    *  refactor here is work that gets thrown away. */
   services?: Record<string, string> | null,
   r2?: R2Runtime | null,
+  /** #141: a staged candidate listens, but its broker must not fire cron,
+   *  queue or alarm work until its route is active. */
+  dispatchDisabled?: boolean,
 ) => SproutChild;
 
 /**
@@ -164,6 +172,7 @@ export function brokerArgs(opts: {
   services?: Record<string, string> | null;
   edgeUrl?: string | null;
   doDb?: string | null;
+  dispatchDisabled?: boolean;
 }): string[] {
   const args = [
     // `process.execPath`, not "bun": sproutboat-edge.service runs with a
@@ -206,6 +215,7 @@ export function brokerArgs(opts: {
   if (opts.assetsDir) args.push("--assets-dir", opts.assetsDir);
   // #207 — Durable Object state in a per-project file that survives redeploys.
   if (opts.doDb) args.push("--do-db", opts.doDb);
+  if (opts.dispatchDisabled) args.push("--dispatch-disabled");
   return args;
 }
 
@@ -236,6 +246,7 @@ function spawnWithBroker(
   secretsPath?: string | null,
   services?: Record<string, string> | null,
   r2?: R2Runtime | null,
+  dispatchDisabled?: boolean,
 ): SproutChild {
   const workerDir = dirname(sproutPath);
   const bindingsPath = resolve(workerDir, "bindings.json");
@@ -312,6 +323,7 @@ function spawnWithBroker(
       // The edge is the process spawning us, so it tells us its own address.
       edgeUrl: process.env.SPROUTBOAT_EDGE_URL || null,
       doDb,
+      dispatchDisabled,
     });
     const brokerFd = openLog("w");
     broker = Bun.spawn(args, { ...withLog(brokerFd), env: process.env });
@@ -379,7 +391,13 @@ function spawnWithBroker(
     return sprout.exited;
   })();
 
-  return { exited, kill: stop };
+  return {
+    exited,
+    kill: stop,
+    // SAFETY: Bun's signal type omits SIGUSR1; the broker treats it as "enable
+    // dispatch", and sending it twice is harmless.
+    enableDispatch: () => capturedBroker?.kill("SIGUSR1" as never),
+  };
 }
 
 /** The real spawn behind the default pool. Exported so the unexecutable-artifact
@@ -390,8 +408,9 @@ export function spawnSprout(
   secretsPath?: string | null,
   services?: Record<string, string> | null,
   r2?: R2Runtime | null,
+  dispatchDisabled?: boolean,
 ): SproutChild {
-  return spawnWithBroker(sproutPath, port, secretsPath, services, r2);
+  return spawnWithBroker(sproutPath, port, secretsPath, services, r2, dispatchDisabled);
 }
 
 async function listens(port: number): Promise<boolean> {
@@ -438,12 +457,13 @@ class SproutServer {
     secretsPath?: string | null,
     services?: Record<string, string> | null,
     r2?: R2Runtime | null,
+    dispatchDisabled?: boolean,
   ) {
     this.port = port;
     this.url = `http://127.0.0.1:${port}`;
     this.lastUsedAt = now();
     const spawnedAt = Date.now();
-    this.#child = spawn(sproutPath, port, secretsPath, services, r2);
+    this.#child = spawn(sproutPath, port, secretsPath, services, r2, dispatchDisabled);
     this.#ready = this.#awaitListening(readyTimeoutMs).then(() => {
       this.startupMs = Date.now() - spawnedAt;
       this.bootMs = readBootMs(startupFilePath(sproutPath, port), spawnedAt, this.startupMs);
@@ -458,6 +478,10 @@ class SproutServer {
 
   get closed(): boolean {
     return this.#closed;
+  }
+
+  enableDispatch(): void {
+    this.#child.enableDispatch?.();
   }
 
   async ready(): Promise<void> {
@@ -573,11 +597,15 @@ export class SproutPool {
   }
 
   /** Base URL of the deployment's server, starting and awaiting it if needed. */
+  /** `dispatchDisabled` (#141) only applies when this call spawns the process:
+   *  the edge stages a candidate with it, and #reconcileTimed lifts it once the
+   *  candidate's route is active. */
   async endpoint(
     sproutPath: string,
     secretsPath?: string | null,
     services?: Record<string, string> | null,
     r2?: R2Runtime | null,
+    dispatchDisabled = false,
   ): Promise<Endpoint> {
     const key = runtimeKey(sproutPath, secretsPath, services, r2);
     let server = this.#servers.get(key);
@@ -608,6 +636,7 @@ export class SproutPool {
         secretsPath,
         services,
         r2,
+        dispatchDisabled,
       );
       this.#servers.set(key, server);
     }
@@ -727,6 +756,10 @@ export class SproutPool {
       if (server) this.#usedPorts.delete(server.port);
     }
     for (const [key, sprout] of next) this.#timed.set(key, sprout);
+    // #141: a candidate staged with dispatch disabled becomes active here, the
+    // first time its route is in the snapshot. Enabling is idempotent, so every
+    // active timed runtime gets the signal rather than tracking which were held.
+    for (const key of next.keys()) this.#servers.get(key)?.enableDispatch();
 
     const pending = Array.from(next.keys());
     const wakeNext = async (): Promise<void> => {

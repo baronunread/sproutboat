@@ -363,3 +363,19 @@ test("an existing deployment store gains binary sizes from retained manifests", 
     else process.env.SPROUTBOAT_DATABASE_PATH = oldPath;
   }
 });
+
+test("#141: a candidate's route entry is the one routes.json gets once it is active", async () => {
+  const [first, digest] = ["c".repeat(64), "e".repeat(64)];
+  const host = { hostname: "staged.alice.test", ownerId: "user-9", project: "staged", username: "alice" };
+  store.recordDeployment(D({ id: "d-first", ...host, sproutPath: await makeArtifact(first), artifact: first }));
+  store.setSecret("user-9", "staged", "TOKEN", "s3cret");
+  // The redeploy: staged from its candidate entry before it is recorded.
+  const sproutPath = await makeArtifact(digest);
+  const candidate = { hostname: host.hostname, sproutPath, ownerId: host.ownerId, project: host.project };
+  const staged = await store.candidateRoute(candidate);
+  store.recordDeployment(D({ id: "d-staged", ...candidate, username: "alice", artifact: digest }));
+  await store.syncRoutes();
+  // Same entry, same runtime key: the edge reuses the process it staged.
+  expect((await routes()).find((route) => route.hostname === "staged.alice.test")).toEqual(staged);
+  expect(staged.secretsHash).toBeString();
+});
