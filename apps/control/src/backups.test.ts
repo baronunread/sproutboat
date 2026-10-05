@@ -79,6 +79,80 @@ test("backupPath: rejects traversal and bad names, accepts a real name", () => {
   expect(mod.backupPath("sproutboat-20260101-000000.tar.gz")).toContain("/backups/");
 });
 
+/** A WAL store with its newest row still only in the -wal file (connection left open). */
+function walStore(path: string, value: string): Database {
+  const db = new Database(path);
+  db.run("PRAGMA journal_mode = WAL");
+  db.run("PRAGMA wal_autocheckpoint = 0");
+  db.run("CREATE TABLE kv (key TEXT PRIMARY KEY, value TEXT)");
+  db.run("INSERT INTO kv VALUES ('k', ?)", [value]);
+  return db;
+}
+
+test("createBackup + restoreBackup: binding data survives onto an empty install (#139)", async () => {
+  await mkdir(join(dir, "resources", "r2-blobs"), { recursive: true });
+  await mkdir(join(dir, "brokers", "abc123", "d1"), { recursive: true });
+  const kv = walStore(join(dir, "resources", "kv_1.sqlite"), "resource-value");
+  const d1 = walStore(join(dir, "brokers", "abc123", "d1", "DB.sqlite"), "broker-value");
+  await writeFile(join(dir, "resources", "r2-blobs", "obj.blob"), "BYTES");
+  await writeFile(join(dir, "resources", "r2-blobs", "upload.tmp"), "partial");
+  await writeFile(join(dir, "secrets.key"), Buffer.alloc(32, 7));
+  const entry = await mod.createBackup();
+  kv.close();
+  d1.close();
+
+  const members = await tarList(join(dir, "backups", entry.name));
+  expect(members).toContain("resources/kv_1.sqlite");
+  expect(members).toContain("resources/r2-blobs/obj.blob");
+  expect(members).toContain("brokers/abc123/d1/DB.sqlite");
+  expect(members.some((m) => /-(wal|shm)$|\.tmp$/.test(m))).toBe(false);
+
+  const archive = join(tmpdir(), entry.name);
+  await Bun.write(archive, Bun.file(join(dir, "backups", entry.name)));
+  const fresh = await mkdtemp(join(tmpdir(), "sb-restore-"));
+  try {
+    process.env.SPROUTBOAT_STATE_DIR = fresh;
+    process.env.SPROUTBOAT_DATABASE_PATH = join(fresh, "sproutboat.sqlite");
+    expect(await mod.restoreBackup(archive)).toEqual([]);
+    const read = (path: string) => {
+      const db = new Database(path, { readonly: true });
+      try {
+        return db.query<{ value: string }, []>("SELECT value FROM kv").get()?.value;
+      } finally {
+        db.close();
+      }
+    };
+    expect(read(join(fresh, "resources", "kv_1.sqlite"))).toBe("resource-value");
+    expect(read(join(fresh, "brokers", "abc123", "d1", "DB.sqlite"))).toBe("broker-value");
+    expect(await Bun.file(join(fresh, "resources", "r2-blobs", "obj.blob")).text()).toBe("BYTES");
+    // A second restore onto the now-populated dir needs --force.
+    await expect(mod.restoreBackup(archive)).rejects.toThrow(/already has a sproutboat.sqlite/);
+    expect(await mod.restoreBackup(archive, { force: true })).toEqual([]);
+  } finally {
+    await rm(fresh, { recursive: true, force: true });
+    await rm(archive, { force: true });
+  }
+});
+
+test("restoreBackup: rejects a truncated archive and warns about a missing key", async () => {
+  const entry = await mod.createBackup();
+  const full = await Bun.file(join(dir, "backups", entry.name)).arrayBuffer();
+  const fresh = await mkdtemp(join(tmpdir(), "sb-restore-"));
+  try {
+    const truncated = join(fresh, "cut.tar.gz");
+    await Bun.write(truncated, full.slice(0, Math.floor(full.byteLength / 2)));
+    process.env.SPROUTBOAT_STATE_DIR = join(fresh, "state");
+    process.env.SPROUTBOAT_DATABASE_PATH = join(fresh, "state", "sproutboat.sqlite");
+    await expect(mod.restoreBackup(truncated)).rejects.toThrow(/unreadable or incomplete/);
+    delete process.env.SPROUTBOAT_SECRETS_KEY;
+    const warnings = await mod.restoreBackup(join(dir, "backups", entry.name));
+    expect(warnings.join("\n")).toContain("secrets.key");
+    expect(warnings.join("\n")).toContain("predates #139");
+  } finally {
+    await rm(fresh, { recursive: true, force: true });
+  }
+});
+
 test("deleteBackup: removes a real backup, false for a missing one", async () => {
   const entry = await mod.createBackup();
   expect(await mod.deleteBackup(entry.name)).toBe(true);
