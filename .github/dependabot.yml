@@ -9,18 +9,17 @@ updates:
       actions:
         patterns: ["*"]
 
-  # npm deps (root package.json covers apps/web too — one lockfile, not a workspace).
-  # Ignored, both bumped by hand:
-  #   porffor    — branch-pinned git dep, coupled to tools/ pins
-  #   sproutboat — our own CLI (github:#main); move the pin with `bun update sproutboat`
-  - package-ecosystem: npm
+  # Bun deps (root package.json covers apps/web too, one bun.lock). The npm
+  # ecosystem can't update bun.lock, so every run failed until this said `bun`.
+  # Ignored: @sproutboat/* are our own packages, moved by hand with each tested
+  # release (a toolchain bump changes the Porffor compiler).
+  - package-ecosystem: bun
     directory: /
     schedule:
       interval: weekly
     open-pull-requests-limit: 5
     ignore:
-      - dependency-name: porffor
-      - dependency-name: sproutboat
+      - dependency-name: "@sproutboat/*"
     groups:
       npm:
         patterns: ["*"]
