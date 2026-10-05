@@ -212,9 +212,12 @@ for you.
 
 ## Backups
 
-`sproutboat-backup.timer` runs `apps/control/src/backups.ts` daily: a consistent
-SQLite snapshot (`VACUUM INTO`) plus the artifact directory and route snapshot,
-one `sproutboat-<date>.tar.gz` under `/var/lib/sproutboat/backups/`. The newest
+`sproutboat-backup.timer` runs `apps/control/src/backups.ts` daily, writing one
+`sproutboat-<date>.tar.gz` under `/var/lib/sproutboat/backups/`. It holds the
+control database, every binding store under `resources/` and `brokers/` (KV, D1,
+R2, queues, Durable Objects), R2 object bodies, the artifact directory, the
+route snapshot and `secrets.key`. Each SQLite file is snapshotted with
+`VACUUM INTO`, so the backup is consistent while the edge keeps writing. The newest
 `SPROUTBOAT_BACKUP_KEEP` (default 7) are kept.
 
 Admin -> **Backups** in the dashboard lists them, takes one on demand, and
@@ -241,13 +244,21 @@ Still keep taking provider snapshots.
 
 ### Restore
 
+Onto a fresh install (run `install.sh` first, so the users and units exist):
+
 ```sh
 systemctl stop sproutboat-control sproutboat-edge
-cd /var/lib/sproutboat
-tar -xzf backups/sproutboat-<date>.tar.gz          # sproutboat.sqlite, artifacts/, routes.json
-chown -R sproutboat-control:sproutboat sproutboat.sqlite artifacts routes.json
+cd /opt/sproutboat
+sudo -u sproutboat-control /opt/sproutboat/bun/bin/bun apps/control/src/backups.ts \
+  restore /path/to/sproutboat-<date>.tar.gz
 systemctl start sproutboat-control sproutboat-edge
 ```
+
+`restore` checks the whole archive first and stops on a truncated or foreign
+file. It refuses a state dir that already has a `sproutboat.sqlite`; pass
+`--force` as the last argument to overwrite one on purpose. It warns when the
+archive has no `secrets.key` and `SPROUTBOAT_SECRETS_KEY` is unset, and when the
+archive predates binding-data backups (no `resources/`).
 
 ## Limits and abuse controls (#25)
 

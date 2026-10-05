@@ -1,5 +1,5 @@
 [Unit]
-Description=Sproutboat state backup (SQLite + artifacts)
+Description=Sproutboat state backup (control, binding data, artifacts)
 After=sproutboat-control.service
 
 [Service]
