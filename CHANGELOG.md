@@ -5,6 +5,24 @@ Changes to the self-hosted Sproutboat platform are recorded here. Read the
 
 ## [Unreleased]
 
+## [0.8.1] - 2026-10-05
+
+### Fixed
+
+- The deployment page's "Compare against" picker shows "Choose a version…"
+  instead of an empty box (#255).
+
+### Changed
+
+- The compatibility suite and tools build with `@sproutboat/toolchain` 0.5.0
+  (Porffor alpha-15): 32/32 compile, 30/32 match, unchanged. Sprouts are built
+  by the CLI, so the class-expression (#256) and date-offset fixes reach them
+  through CLI 0.15.0.
+
+### Breaking and operator actions
+
+- None. `sbctl update` is sufficient.
+
 ## [0.8.0] - 2026-10-05
 
 ### Added
