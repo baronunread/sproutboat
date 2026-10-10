@@ -7,29 +7,26 @@ workaround.
 
 | #                                                        | What            | Why it matters here                                  |
 | -------------------------------------------------------- | --------------- | ---------------------------------------------------- |
-| [#145](https://github.com/CanadaHonk/porffor/issues/145) | `Proxy` support | `new Proxy` compiles and silently ignores every trap |
+| [#145](https://github.com/CanadaHonk/porffor/issues/145) | `Proxy` support | Resolved in alpha-16; native regression coverage added |
 | [#347](https://github.com/CanadaHonk/porffor/issues/347) | Web Crypto      | no `crypto.*` at all; blocks any auth library        |
 | [#349](https://github.com/CanadaHonk/porffor/issues/349) | Streams         | a response body is one whole string                  |
 
-## Proxy support (#145), and why we reject it at build time
+## Proxy support (#145), resolved in alpha-16
 
-`compiler/builtins/object.ts` validates the two arguments and returns the
-target. No trap ever runs, so a program using a Proxy reads wrong values rather
-than failing: `p.a` returns the target's `a`, and `p.b = 5` is discarded. Of
-337 Proxy tests in test262, the 14 that pass are argument-validation tests the
-stub satisfies by accident.
+The alpha-16 compiler implements Proxy traps and revocation. Toolchain 0.6.0
+pins that release, and runtime 0.15.0 removes the source validation ban.
+Native regressions compare object traps, enumeration, calls, construction,
+revocation and a frozen-property invariant with Bun. These operations work;
+full Proxy conformance is not established by this small regression suite.
 
-**We cannot shim this.** A JavaScript-level Proxy shim can only intercept
-properties it can enumerate at construction time, using `defineProperty`
-getters, which is the one case where the caller did not need a Proxy. Google's
-`proxy-polyfill` has the same limitation for the same reason: intercepting a
-read of a key nobody knew about needs the engine.
+Proxy-dependent packages need individual probes. qs 6.16.0 nested query
+parse/stringify and tRPC 11.19.0's basic server caller pass. itty-router 5.0.24
+IttyRouter passes GET parameters, Unicode POST and a 404 fallback after adding
+live URLSearchParams iteration to the runtime. Standard Router still fails
+around labelled iterator breaks. Better Auth's crypto and framework requirements
+remain a separate evaluation.
 
-So `src/source.ts` rejects `new Proxy` at build time instead. That is the whole
-of the local fix, and it is the right one: it converts a silent wrong answer
-into a build error naming the cause. It is why itty-router and other
-Proxy-based routers do not work, and why better-auth does not build (its env
-shim is a Proxy).
+See the complete [alpha-16 audit](https://github.com/baronunread/sproutboat-packages/blob/main/packages/toolchain/PORFFOR_ALPHA16.md).
 
 ## Web Crypto (#347), and what we ship meanwhile
 

@@ -5,6 +5,15 @@ Changes to the self-hosted Sproutboat platform are recorded here. Read the
 
 ## [Unreleased]
 
+### Changed
+
+- Shared runtime and compiler dependencies move to runtime 0.15.0, toolchain
+  0.6.0 and wire 0.12.1. Porffor alpha-16 implements Proxy and collection
+  iterators; the runtime adds live URLSearchParams and FormData iterators.
+  All 32 compatibility handlers compile and 30 match Bun. The two existing
+  non-ISO date parsing mismatches remain.
+
+
 ## [0.9.0] - 2026-10-05
 
 ### Added

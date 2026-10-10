@@ -1,6 +1,6 @@
 # Native-fetch runtime
 
-Each deployment is a long-lived HTTP server: Porffor (`alpha-15`) compiles
+Each deployment is a long-lived HTTP server: Porffor (`alpha-16`) compiles
 `export default { fetch(request) { … } }` into a native binary that embeds a
 [uWebSockets](https://github.com/uNetworking/uWebSockets) server. Porffor's C
 runtime parses the request and calls `fetch`; the handler returns a `Response`.
@@ -35,9 +35,16 @@ optional seccomp. It keeps the caller's network namespace so the edge can reach
 its loopback port; egress is denied by the edge unit's
 `IPAddressDeny=any` / `IPAddressAllow=localhost`.
 
-## Known Porffor gaps (alpha-15)
+## Known Porffor gaps (alpha-16)
 
 - `Date` string parsing is wrong for some non-ISO inputs (capabilities
   `15-date-iso` and `16-date-parts`). The toolchain patch fixes ISO timezone
   offsets in `32-date-offset`.
 - `Porffor.dlopen` is unavailable in the native backend (not needed here).
+
+- Proxy and revocable Proxy are supported for the tested operations. Collection
+  iterators and lazy matchAll work; string iteration still splits astral Unicode
+  characters. URLSearchParams and FormData have live Web API iterators.
+- itty-router 5.0.24 IttyRouter passes basic native HTTP routing. Its standard
+  Router remains blocked by a labelled-break compiler error in iterator cleanup.
+  qs 6.16.0 and a basic tRPC 11.19.0 server caller pass native probes.
