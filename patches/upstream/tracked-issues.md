@@ -5,11 +5,11 @@ locally: each is a language or platform gap that only makes sense in the
 compiler. Recorded here so the next person checks the issue before writing a
 workaround.
 
-| #                                                        | What            | Why it matters here                                  |
-| -------------------------------------------------------- | --------------- | ---------------------------------------------------- |
+| #                                                        | What            | Why it matters here                                    |
+| -------------------------------------------------------- | --------------- | ------------------------------------------------------ |
 | [#145](https://github.com/CanadaHonk/porffor/issues/145) | `Proxy` support | Resolved in alpha-16; native regression coverage added |
-| [#347](https://github.com/CanadaHonk/porffor/issues/347) | Web Crypto      | no `crypto.*` at all; blocks any auth library        |
-| [#349](https://github.com/CanadaHonk/porffor/issues/349) | Streams         | a response body is one whole string                  |
+| [#347](https://github.com/CanadaHonk/porffor/issues/347) | Web Crypto      | no `crypto.*` at all; blocks any auth library          |
+| [#349](https://github.com/CanadaHonk/porffor/issues/349) | Streams         | a response body is one whole string                    |
 
 ## Proxy support (#145), resolved in alpha-16
 

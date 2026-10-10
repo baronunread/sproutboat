@@ -13,7 +13,6 @@ Changes to the self-hosted Sproutboat platform are recorded here. Read the
   All 32 compatibility handlers compile and 30 match Bun. The two existing
   non-ISO date parsing mismatches remain.
 
-
 ## [0.9.0] - 2026-10-05
 
 ### Added

@@ -1,0 +1,26 @@
+kitchen-sink conformance — baseline vs candidate
+
+  baseline: PASS (17.9s)
+  candidate: PASS (27.3s)
+
+/Users/andreabruno/Code/Products/sproutboat-platform/standalone-app — 5 interleaved reps per pin
+
+  rep 1 baseline: compile 19.2s  size 2.56MB  cold 759.2ms  4173 req/s
+  rep 1 candidate: compile 13.9s  size 2.57MB  cold 210.5ms  16163 req/s
+  rep 2 baseline: compile 10.3s  size 2.56MB  cold 187.5ms  20120 req/s
+  rep 2 candidate: compile 11.4s  size 2.57MB  cold 199.8ms  17441 req/s
+  rep 3 baseline: compile 9.6s  size 2.56MB  cold 174.4ms  23099 req/s
+  rep 3 candidate: compile 9.2s  size 2.57MB  cold 200.2ms  24939 req/s
+  rep 4 baseline: compile 10.0s  size 2.56MB  cold 199.0ms  14764 req/s
+  rep 4 candidate: compile 9.3s  size 2.57MB  cold 208.0ms  21768 req/s
+  rep 5 baseline: compile 9.3s  size 2.56MB  cold 175.2ms  24378 req/s
+  rep 5 candidate: compile 9.1s  size 2.57MB  cold 197.6ms  22377 req/s
+
+| metric | baseline | candidate | change |
+| --- | ---: | ---: | ---: |
+| binary size | 2.56MB | 2.57MB | +0.6% |
+| compile time (median) | 10.0s | 9.3s | -7.8% |
+| cold start (median) | 187.5ms | 200.2ms | +6.8% |
+| throughput /api/health (median) | 20120 req/s | 21768 req/s | +8.2% |
+
+written: bench/pin-compare.json

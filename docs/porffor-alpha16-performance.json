@@ -1,0 +1,22 @@
+{
+  "baseline": {
+    "dir": "/tmp/sb-alpha15-baseline",
+    "bytes": 2557520,
+    "compileSeconds": 10.042351958000014,
+    "coldStartMs": 187.45445799999288,
+    "requestsPerSecond": 20119.719034830254
+  },
+  "candidate": {
+    "dir": "/tmp/sb-alpha16-release-cache/porffor-43087d42f0b90d14f04f3cddac034822560aefad",
+    "bytes": 2574096,
+    "compileSeconds": 9.257056750000018,
+    "coldStartMs": 200.21279200000572,
+    "requestsPerSecond": 21767.638675151942
+  },
+  "ratios": {
+    "size": 1.0064812787387782,
+    "compile": 0.9218016644622371,
+    "coldStart": 1.068060979376726,
+    "throughput": 1.0819056984577613
+  }
+}
