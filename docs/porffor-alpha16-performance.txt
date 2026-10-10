@@ -1,9 +1,9 @@
-kitchen-sink conformance — baseline vs candidate
+kitchen-sink conformance : baseline vs candidate
 
   baseline: PASS (17.9s)
   candidate: PASS (27.3s)
 
-/Users/andreabruno/Code/Products/sproutboat-platform/standalone-app — 5 interleaved reps per pin
+/Users/andreabruno/Code/Products/sproutboat-platform/standalone-app : 5 interleaved reps per pin
 
   rep 1 baseline: compile 19.2s  size 2.56MB  cold 759.2ms  4173 req/s
   rep 1 candidate: compile 13.9s  size 2.57MB  cold 210.5ms  16163 req/s

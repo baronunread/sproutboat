@@ -5,6 +5,8 @@ Changes to the self-hosted Sproutboat platform are recorded here. Read the
 
 ## [Unreleased]
 
+## [0.9.1] - 2026-10-10
+
 ### Changed
 
 - Shared runtime and compiler dependencies move to runtime 0.15.0, toolchain
