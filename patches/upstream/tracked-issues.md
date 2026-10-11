@@ -8,7 +8,7 @@ workaround.
 | #                                                        | What            | Why it matters here                                    |
 | -------------------------------------------------------- | --------------- | ------------------------------------------------------ |
 | [#145](https://github.com/CanadaHonk/porffor/issues/145) | `Proxy` support | Resolved in alpha-16; native regression coverage added |
-| [#347](https://github.com/CanadaHonk/porffor/issues/347) | Web Crypto      | AES and asymmetric algorithms still missing          |
+| [#347](https://github.com/CanadaHonk/porffor/issues/347) | Web Crypto      | AES and asymmetric algorithms still missing            |
 | [#349](https://github.com/CanadaHonk/porffor/issues/349) | Streams         | a response body is one whole string                    |
 
 ## Proxy support (#145), resolved in alpha-16
