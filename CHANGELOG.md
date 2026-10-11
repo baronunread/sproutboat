@@ -5,6 +5,15 @@ Changes to the self-hosted Sproutboat platform are recorded here. Read the
 
 ## [Unreleased]
 
+## [0.9.2] - 2026-10-11
+
+### Changed
+
+- Adopt toolchain 0.7.0, runtime 0.16.0 and wire 0.12.2 with Porffor Alpha 17.
+  Native handlers gain in-memory Web Streams and global timers, with compiler
+  fixes for Better Auth's model resolver and base64 signatures. HTTP remains
+  buffered; AES/JWE stateless sessions remain unsupported.
+
 ## [0.9.1] - 2026-10-10
 
 ### Changed
