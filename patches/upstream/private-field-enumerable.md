@@ -8,7 +8,14 @@ Tested alpha-17 (`731f1b2a`) and alpha-18 (`deda4945`), unpatched.
 ## Repro
 
 ```js
-class A { #s = 1; pub = 2; static #t = 3; get s() { return this.#s; } }
+class A {
+  #s = 1;
+  pub = 2;
+  static #t = 3;
+  get s() {
+    return this.#s;
+  }
+}
 console.log(JSON.stringify(Object.keys(new A())), JSON.stringify(new A()), JSON.stringify(Object.keys(A)));
 ```
 
