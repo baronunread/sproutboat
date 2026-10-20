@@ -9,9 +9,9 @@
         "@sproutboat/artifact": "^0.3.0",
         "@sproutboat/assets": "^0.3.0",
         "@sproutboat/config": "^0.5.0",
-        "@sproutboat/runtime": "^0.16.0",
-        "@sproutboat/toolchain": "^0.7.0",
-        "@sproutboat/wire": "^0.12.2",
+        "@sproutboat/runtime": "^0.18.0",
+        "@sproutboat/toolchain": "^0.9.0",
+        "@sproutboat/wire": "^0.13.1",
         "@tanstack/charts": "^0.16.0",
         "@tanstack/react-router": "^1.170.32",
         "@tanstack/react-start": "^1.168.49",
@@ -516,11 +516,11 @@
 
     "@sproutboat/config": ["@sproutboat/config@0.5.0", "", {}, "sha512-GKLjuzxTIXyaxocgJqgveW48+NixWrvXZqGAFh7mfH7C9698YFtOtObk4cwC0k+PKNSXmus9kYWcp8TUxzD/wQ=="],
 
-    "@sproutboat/runtime": ["@sproutboat/runtime@0.16.0", "", {}, "sha512-F0oeuRRP0BgkSwZ6d+2Gg/j30VpTRI9U9LLcX1Y5GU9TJTHb1urkuBvzQX5GFKsdMKQCPwwvBuyDjDi3mMS1fg=="],
+    "@sproutboat/runtime": ["@sproutboat/runtime@0.18.0", "", {}, "sha512-6/I04V+iCARbYfO3I/wIoyj6kGccpZrgisNKlRS/whS73DnXZYtrbwho8bKtMXwRSZFFTYUXR5hIXz8A1jY+ag=="],
 
-    "@sproutboat/toolchain": ["@sproutboat/toolchain@0.7.0", "", {}, "sha512-r/peQiRydTHT07Cv32KBfpnNR4DIcyEts+PBsx32UegBi2V0TDV3JdSCNQ9zgUf0BP1kItfEpVB7vx4mfgyiNA=="],
+    "@sproutboat/toolchain": ["@sproutboat/toolchain@0.9.0", "", {}, "sha512-ncZaafp7IPsD5ZhjnImLG9qRsRRwyETwWRMl7s++4d9Z32n7z3oCA3MBjKlLX/2vu2MGxkuB83sHP4r/EaZ3hA=="],
 
-    "@sproutboat/wire": ["@sproutboat/wire@0.12.2", "", { "dependencies": { "@sproutboat/assets": "^0.3.0", "@sproutboat/runtime": "^0.16.0" } }, "sha512-encxO7DxGm7owQM8GfT7/n8axqh6WQkgu6pTv16A3sppIi7SCwQwbEYhoE0adoWkOjLo52xAlTR2rO0Giy/Cyg=="],
+    "@sproutboat/wire": ["@sproutboat/wire@0.13.1", "", { "dependencies": { "@sproutboat/assets": "^0.3.0", "@sproutboat/runtime": "^0.18.0" } }, "sha512-a3SOYuP68pC1npUaOCTTPSni38JsREkgg0GUw66C2rC3A0u1LvHZ0QD99MrzinCVMD1XP2eB3IVCInSCBKtdEQ=="],
 
     "@standard-schema/spec": ["@standard-schema/spec@1.1.0", "", {}, "sha512-l2aFy5jALhniG5HgqrD6jXLi/rUWrKvqN/qJx6yoJsgKhblVd+iqqU4RCXavm/jPityDo5TCvKMnpjKnOriy0w=="],
 
