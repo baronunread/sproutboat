@@ -15,6 +15,9 @@ beforeEach(async () => {
   process.env.SPROUTBOAT_DATABASE_PATH = join(dir, "sproutboat.sqlite");
   process.env.SPROUTBOAT_ARTIFACTS_DIR = join(dir, "artifacts");
   process.env.SPROUTBOAT_ROUTE_SNAPSHOT = join(dir, "routes.json");
+  // kv.test.ts and r2.test.ts set this for the whole process; backups read it, so a run
+  // that reaches this file after them archived their directory (#289 CI).
+  delete process.env.SPROUTBOAT_RESOURCE_DIR;
   delete process.env.SPROUTBOAT_BACKUP_KEEP;
   delete process.env.SPROUTBOAT_BACKUP_S3_BUCKET;
   delete process.env.SPROUTBOAT_BACKUP_S3_ACCESS_KEY_ID;
