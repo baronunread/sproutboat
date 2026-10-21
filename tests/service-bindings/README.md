@@ -41,16 +41,23 @@ To refresh the reference, run `workerd serve workerd.capnp` from this directory,
 
 ## Progress
 
-The apps use compatibility date `2026-10-22`, so they measure the newest behaviour.
+The apps use compatibility date `2026-10-22`, so they measure the newest behaviour. The two
+streaming cases arrived with the streaming work, so earlier rows count 22 cases.
 
-| Runtime                                                         | Cases | Reliability |
-| --------------------------------------------------------------- | ----- | ----------- |
-| 0.19.2 (first score, below)                                     | 6/22  | 0/5         |
-| + async calls (sproutboat-packages#126)                         | 8/22  | 4/5         |
-| + redirects, no invented content type (sproutboat-packages#127) | 10/22 | 4/5         |
+| Change                                                                       | Cases | Reliability |
+| ---------------------------------------------------------------------------- | ----- | ----------- |
+| 0.19.2 (first score, below)                                                  | 6/22  | 0/5         |
+| + async calls (sproutboat-packages#126)                                      | 8/22  | 4/5         |
+| + redirects, no invented content type (sproutboat-packages#127)              | 10/22 | 4/5         |
+| + edge vouches for calls: caller's URL, rethrown errors (#295, packages#130) | 21/22 | 4/5         |
+| + streamed responses (sproutboat-packages#131)                               | 22/24 | 4/5         |
 
 `calleeNeverAnswers` passes once the edge keeps connections open past its request
-deadline (#294).
+deadline (#294), which takes reliability to 5/5. Two cases still differ from workerd:
+
+- `bigResponse`: the edge caps any response at 10 MiB, binding calls included.
+- `streamRequestBody`: the native server reads a whole request body before the handler
+  runs, so a callee cannot see a streamed upload in parts.
 
 ## Score, 2026-10-21 (CLI 0.19.0, runtime 0.19.2)
 

@@ -315,6 +315,28 @@
         }
       }
     },
+    "streamFirstChunk": {
+      "status": 200,
+      "value": {
+        "ok": true,
+        "value": {
+          "status": 200,
+          "firstChunkEarly": true,
+          "text": "0 1 2 3 "
+        }
+      }
+    },
+    "streamRequestBody": {
+      "status": 200,
+      "value": {
+        "ok": true,
+        "value": {
+          "status": 200,
+          "text": "first second",
+          "arrivedInParts": true
+        }
+      }
+    },
     "promise": {
       "status": 200,
       "value": {
@@ -337,29 +359,29 @@
   },
   "reliability": {
     "responsiveDuringCall": {
-      "pingMs": 79,
+      "pingMs": 69,
       "pingStatus": 200,
-      "slowMs": 3042,
+      "slowMs": 3056,
       "slowStatus": 200
     },
     "concurrent8x500ms": {
-      "totalMs": 586,
+      "totalMs": 577,
       "statuses": [200, 200, 200, 200, 200, 200, 200, 200]
     },
     "selfRecursion": {
       "status": 200,
-      "ms": 50,
-      "text": "bottom 50"
+      "text": "bottom 50",
+      "ms": 49
     },
     "mutualRecursion": {
       "status": 200,
-      "ms": 42,
-      "text": "pong"
+      "text": "pong",
+      "ms": 34
     },
     "calleeNeverAnswers": {
       "status": 0,
-      "ms": 60006,
-      "text": "TimeoutError"
+      "text": "TimeoutError",
+      "ms": 60005
     }
   }
 }

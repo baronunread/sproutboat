@@ -95,6 +95,37 @@ const CASES = {
     }
     return { status: res.status, text: chunks.join("") };
   },
+  // Streaming, judged by timing rather than content (which a buffered body also gets
+  // right): the first of four chunks 300 ms apart arrives early, and a request body
+  // sent in two parts 500 ms apart reaches the callee in two parts.
+  streamFirstChunk: async (env) => {
+    const t0 = Date.now();
+    const res = await env.PEER.fetch("https://peer/drip?n=4&gap=300");
+    const reader = res.body.getReader();
+    const chunks = [];
+    let firstMs = -1;
+    for (;;) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      if (firstMs < 0) firstMs = Date.now() - t0;
+      chunks.push(new TextDecoder().decode(value));
+    }
+    return { status: res.status, firstChunkEarly: firstMs >= 0 && firstMs < 250, text: chunks.join("") };
+  },
+  streamRequestBody: async (env) => {
+    const encoder = new TextEncoder();
+    const body = new ReadableStream({
+      async start(controller) {
+        controller.enqueue(encoder.encode("first "));
+        await new Promise((r) => setTimeout(r, 500));
+        controller.enqueue(encoder.encode("second"));
+        controller.close();
+      },
+    });
+    const res = await env.PEER.fetch("https://peer/bodytiming", { method: "POST", body, duplex: "half" });
+    const seen = await res.json();
+    return { status: res.status, text: seen.text, arrivedInParts: seen.gapMs > 300 };
+  },
   promise: async (env) => {
     const pending = env.PEER.fetch("https://peer/status/200");
     return { isPromise: pending instanceof Promise, status: (await pending).status };

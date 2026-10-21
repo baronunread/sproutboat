@@ -59,6 +59,37 @@ export default {
         }),
       );
     }
+    if (path === "/drip") {
+      // n chunks, gap ms apart: a caller that gets the first one early is streaming.
+      const n = Number(url.searchParams.get("n") || 4);
+      const gap = Number(url.searchParams.get("gap") || 300);
+      return new Response(
+        new ReadableStream({
+          async start(controller) {
+            for (let i = 0; i < n; i++) {
+              if (i) await new Promise((r) => setTimeout(r, gap));
+              controller.enqueue(encoder.encode(i + " "));
+            }
+            controller.close();
+          },
+        }),
+      );
+    }
+    if (path === "/bodytiming") {
+      // How far apart the request body's first and last chunks arrived here.
+      const reader = request.body.getReader();
+      let first = 0;
+      let last = 0;
+      let text = "";
+      for (;;) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        last = Date.now();
+        if (!first) first = last;
+        text += new TextDecoder().decode(value);
+      }
+      return Response.json({ text, gapMs: last - first });
+    }
     if (path === "/calls") return new Response(String(calls));
     // Mutual recursion: the callee calls the caller back (it binds CALLER).
     if (path === "/back")
