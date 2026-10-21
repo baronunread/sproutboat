@@ -7,6 +7,7 @@ import { applyAssetHeaders, assetRedirect } from "./asset-rules";
 import { serveActivations } from "./activation";
 import { EdgeCache, cacheRequestEligible, cacheResponseEligible } from "./cache";
 import { cacheControlFor } from "./asset-cache-control";
+import { edgeIdleTimeoutSeconds } from "./idle-timeout";
 
 type JsonValue = string | number | boolean | null | EdgeJsonObject | JsonValue[];
 
@@ -378,6 +379,7 @@ const server = Bun.serve({
   port,
   hostname: bindHost,
   maxRequestBodySize: edgeMaxBodyBytes,
+  idleTimeout: edgeIdleTimeoutSeconds(requestTimeoutMs),
   async fetch(request, server) {
     const started = performance.now();
     const elapsed = () => Math.round(performance.now() - started);
