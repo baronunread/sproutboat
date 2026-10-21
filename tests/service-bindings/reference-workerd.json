@@ -1,0 +1,365 @@
+{
+  "base": "http://127.0.0.1:18431",
+  "host": null,
+  "cases": {
+    "get": {
+      "status": 200,
+      "value": {
+        "ok": true,
+        "value": {
+          "status": 200,
+          "echo": {
+            "method": "GET",
+            "url": "https://peer/echo?x=1",
+            "path": "/echo?x=1",
+            "headers": [],
+            "bodyLength": 0,
+            "bodySha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "bodyText": ""
+          }
+        }
+      }
+    },
+    "urlObject": {
+      "status": 200,
+      "value": {
+        "ok": true,
+        "value": {
+          "status": 200,
+          "echo": {
+            "method": "GET",
+            "url": "https://peer/echo?y=2",
+            "path": "/echo?y=2",
+            "headers": [],
+            "bodyLength": 0,
+            "bodySha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "bodyText": ""
+          }
+        }
+      }
+    },
+    "postText": {
+      "status": 200,
+      "value": {
+        "ok": true,
+        "value": {
+          "status": 200,
+          "echo": {
+            "method": "POST",
+            "url": "https://peer/echo",
+            "path": "/echo",
+            "headers": [["content-type", "text/plain"]],
+            "bodyLength": 8,
+            "bodySha256": "5f7f4a2a937a3aa3b309e17a3342b3ed59e1239b9622b3c7379a4373685cb56b",
+            "bodyText": "hello é"
+          }
+        }
+      }
+    },
+    "postBinary": {
+      "status": 200,
+      "value": {
+        "ok": true,
+        "value": {
+          "status": 200,
+          "echo": {
+            "method": "POST",
+            "url": "https://peer/echo",
+            "path": "/echo",
+            "headers": [],
+            "bodyLength": 256,
+            "bodySha256": "40aff2e9d2d8922e47afd4648e6967497158785fbd1da870e7110266bf944880",
+            "bodyText": null
+          }
+        }
+      }
+    },
+    "postStream": {
+      "status": 200,
+      "value": {
+        "ok": true,
+        "value": {
+          "status": 200,
+          "echo": {
+            "method": "POST",
+            "url": "https://peer/echo",
+            "path": "/echo",
+            "headers": [],
+            "bodyLength": 13,
+            "bodySha256": "f69f90ba4058671805b9f858c29440e046e98487b7c695739849014bc969bc56",
+            "bodyText": "streamed body"
+          }
+        }
+      }
+    },
+    "requestObject": {
+      "status": 200,
+      "value": {
+        "ok": true,
+        "value": {
+          "status": 200,
+          "echo": {
+            "method": "PUT",
+            "url": "https://peer/echo?r=1",
+            "path": "/echo?r=1",
+            "headers": [
+              ["content-type", "text/plain;charset=UTF-8"],
+              ["x-from", "request"]
+            ],
+            "bodyLength": 8,
+            "bodySha256": "5aceb7a4cfd90072fb4d6524a6c40d4688152277b4237b2a97e8ce0685c87a12",
+            "bodyText": "req body"
+          }
+        }
+      }
+    },
+    "requestPlusInit": {
+      "status": 200,
+      "value": {
+        "ok": true,
+        "value": {
+          "status": 200,
+          "echo": {
+            "method": "PATCH",
+            "url": "https://peer/echo",
+            "path": "/echo",
+            "headers": [["x-from", "init"]],
+            "bodyLength": 8,
+            "bodySha256": "5aceb7a4cfd90072fb4d6524a6c40d4688152277b4237b2a97e8ce0685c87a12",
+            "bodyText": "req body"
+          }
+        }
+      }
+    },
+    "repeatedRequestHeaders": {
+      "status": 200,
+      "value": {
+        "ok": true,
+        "value": {
+          "status": 200,
+          "echo": {
+            "method": "GET",
+            "url": "https://peer/echo",
+            "path": "/echo",
+            "headers": [["x-multi", "a, b"]],
+            "bodyLength": 0,
+            "bodySha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "bodyText": ""
+          }
+        }
+      }
+    },
+    "forwardIncoming": {
+      "status": 200,
+      "value": {
+        "ok": true,
+        "value": {
+          "status": 200,
+          "echo": {
+            "method": "POST",
+            "url": "https://peer/echo?forwarded=1",
+            "path": "/echo?forwarded=1",
+            "headers": [],
+            "bodyLength": 0,
+            "bodySha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "bodyText": ""
+          }
+        }
+      }
+    },
+    "status201": {
+      "status": 200,
+      "value": {
+        "ok": true,
+        "value": {
+          "status": 201,
+          "headers": [["content-type", "text/plain;charset=UTF-8"]],
+          "setCookie": [],
+          "bodyLength": 10,
+          "bodySha256": "04a1c62c0fa61ca51fcd663502895e1e86bb1efd418976d8ad7b57b7804b6591",
+          "bodyText": "status 201"
+        }
+      }
+    },
+    "status404": {
+      "status": 200,
+      "value": {
+        "ok": true,
+        "value": {
+          "status": 404,
+          "headers": [["content-type", "text/plain;charset=UTF-8"]],
+          "setCookie": [],
+          "bodyLength": 10,
+          "bodySha256": "25769985548fa9206b99325f1c1e07b614f8440ba881f5e883c0b009e985da38",
+          "bodyText": "status 404"
+        }
+      }
+    },
+    "status503": {
+      "status": 200,
+      "value": {
+        "ok": true,
+        "value": {
+          "status": 503,
+          "headers": [["content-type", "text/plain;charset=UTF-8"]],
+          "setCookie": [],
+          "bodyLength": 10,
+          "bodySha256": "4e94b2fb032f2c724d3eda6ff7aa0db5183a6eca785cf56d02f136a9e11a5b18",
+          "bodyText": "status 503"
+        }
+      }
+    },
+    "binaryResponse": {
+      "status": 200,
+      "value": {
+        "ok": true,
+        "value": {
+          "status": 200,
+          "headers": [["content-type", "application/octet-stream"]],
+          "setCookie": [],
+          "bodyLength": 1024,
+          "bodySha256": "785b0751fc2c53dc14a4ce3d800e69ef9ce1009eb327ccf458afe09c242c26c9",
+          "bodyText": null
+        }
+      }
+    },
+    "bigResponse": {
+      "status": 200,
+      "value": {
+        "ok": true,
+        "value": {
+          "status": 200,
+          "headers": [],
+          "setCookie": [],
+          "bodyLength": 12582912,
+          "bodySha256": "4ea22663915e910e8ca6d2952f48a7e84fd4195483ca07282eca3a9f6b22fc4a",
+          "bodyText": null
+        }
+      }
+    },
+    "cookies": {
+      "status": 200,
+      "value": {
+        "ok": true,
+        "value": {
+          "status": 200,
+          "headers": [
+            ["content-type", "text/plain;charset=UTF-8"],
+            ["x-multi", "first, second"],
+            ["x-one", "1"]
+          ],
+          "setCookie": ["a=1; Path=/", "b=2; Path=/"],
+          "bodyLength": 7,
+          "bodySha256": "2f0030c535193fc164e4e2b5371e8e676510cf0a64b2689d9aba6533e6ddea82",
+          "bodyText": "cookies"
+        }
+      }
+    },
+    "redirectDefault": {
+      "status": 200,
+      "value": {
+        "ok": true,
+        "value": {
+          "status": 200,
+          "headers": [["content-type", "application/json"]],
+          "setCookie": [],
+          "bodyLength": 205,
+          "bodySha256": "73c36e9477ddac567b9267ce286977bd3dca6ff7f68b5cbefdcf8896fb154a8e",
+          "bodyText": null
+        }
+      }
+    },
+    "redirectManual": {
+      "status": 200,
+      "value": {
+        "ok": true,
+        "value": {
+          "status": 302,
+          "headers": [["location", "https://peer/echo?redirected=1"]],
+          "setCookie": [],
+          "bodyLength": 0,
+          "bodySha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "bodyText": ""
+        }
+      }
+    },
+    "calleeThrows": {
+      "status": 200,
+      "value": {
+        "ok": false,
+        "error": "Error",
+        "message": "callee failed on purpose"
+      }
+    },
+    "streamResponse": {
+      "status": 200,
+      "value": {
+        "ok": true,
+        "value": {
+          "status": 200,
+          "headers": [],
+          "setCookie": [],
+          "bodyLength": 13,
+          "bodySha256": "6899ee404683a14e8c2a03149860df25d67d34d9cd4dae7350cbe91e4b3976be",
+          "bodyText": "one two three"
+        }
+      }
+    },
+    "streamResponseReader": {
+      "status": 200,
+      "value": {
+        "ok": true,
+        "value": {
+          "status": 200,
+          "text": "one two three"
+        }
+      }
+    },
+    "promise": {
+      "status": 200,
+      "value": {
+        "ok": true,
+        "value": {
+          "isPromise": true,
+          "status": 200
+        }
+      }
+    },
+    "unboundBinding": {
+      "status": 200,
+      "value": {
+        "ok": true,
+        "value": {
+          "hasMissing": false
+        }
+      }
+    }
+  },
+  "reliability": {
+    "responsiveDuringCall": {
+      "pingMs": 79,
+      "pingStatus": 200,
+      "slowMs": 3042,
+      "slowStatus": 200
+    },
+    "concurrent8x500ms": {
+      "totalMs": 586,
+      "statuses": [200, 200, 200, 200, 200, 200, 200, 200]
+    },
+    "selfRecursion": {
+      "status": 200,
+      "ms": 50,
+      "text": "bottom 50"
+    },
+    "mutualRecursion": {
+      "status": 200,
+      "ms": 42,
+      "text": "pong"
+    },
+    "calleeNeverAnswers": {
+      "status": 0,
+      "ms": 60006,
+      "text": "TimeoutError"
+    }
+  }
+}
