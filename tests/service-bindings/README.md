@@ -1,8 +1,9 @@
 # Service-binding conformance and reliability suite
 
 One caller and one callee, bound to each other, run unchanged on workerd and on the
-platform. The caller runs each case against `env.PEER` and reports what it observed; the
-two runs are compared case by case. Reliability checks are timed from outside.
+platform. The caller runs each case against `env.PEER` and reports what it observed;
+`compare.ts` matches the two runs case by case. The driver times the reliability checks
+from outside.
 
 | File                     | What it is                                                                  |
 | ------------------------ | --------------------------------------------------------------------------- |
