@@ -1,5 +1,5 @@
 import { closeSync, existsSync, mkdirSync, openSync, readFileSync, rmSync } from "node:fs";
-import { randomBytes } from "node:crypto";
+import { randomBytes, timingSafeEqual } from "node:crypto";
 import { basename, dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { connect } from "node:net";
@@ -50,7 +50,23 @@ export type SproutChild = {
   kill(signal?: number): void;
   /** #141: let a broker started with `--dispatch-disabled` run its timers. */
   enableDispatch?(): void;
+  /** The token this sprout trusts from the edge (SB_EDGE_TOKEN): see `isEdgeSecret`. */
+  readonly edgeToken?: string;
 };
+
+/**
+ * Service-binding calls go from a sprout through its broker to this edge, which routes
+ * them to the callee like any request. Brokers (never sprouts) get this secret as
+ * SB_EDGE_SECRET and send it with each call; the edge checks it with `isEdgeSecret`
+ * and vouches for the call to the callee with the callee's own SB_EDGE_TOKEN. A client
+ * can forge neither, so only real binding calls see the caller's URL and rethrow the
+ * callee's errors.
+ */
+const EDGE_SECRET = randomBytes(32).toString("hex");
+export function isEdgeSecret(value: string | null): boolean {
+  if (value === null || value.length !== EDGE_SECRET.length) return false;
+  return timingSafeEqual(Buffer.from(value), Buffer.from(EDGE_SECRET));
+}
 /** Account context the broker needs to enforce shared R2 storage limits. */
 export type R2Runtime = {
   ownerId: string;
@@ -85,7 +101,15 @@ export type SproutFactory = (
  * start (0 on a warm hit). The edge records both per request so the dashboard
  * can chart cold-start rate and startup-time percentiles.
  */
-export type Endpoint = { url: string; transferUrl?: string; coldStart: boolean; startupMs: number; bootMs: number };
+export type Endpoint = {
+  url: string;
+  transferUrl?: string;
+  coldStart: boolean;
+  startupMs: number;
+  bootMs: number;
+  /** What the edge sends a vouched service-binding call to this sprout with. */
+  edgeToken?: string;
+};
 
 /**
  * A route whose broker must keep its paired sprout available without an HTTP
@@ -240,6 +264,9 @@ function declaresDurableObjects(bindingsPath: string): boolean {
   }
 }
 
+/** What a sprout gets beside the edge's own environment. */
+type SproutEnv = { SB_EDGE_TOKEN: string; SB_BROKER_PORT?: string; SB_BROKER_TOKEN?: string };
+
 function spawnWithBroker(
   sproutPath: string,
   port: number,
@@ -251,7 +278,8 @@ function spawnWithBroker(
   const workerDir = dirname(sproutPath);
   const bindingsPath = resolve(workerDir, "bindings.json");
   let broker: Bun.Subprocess | null = null;
-  const brokerEnv: Record<string, string> = {};
+  const edgeToken = randomBytes(24).toString("hex");
+  const sproutEnv: SproutEnv = { SB_EDGE_TOKEN: edgeToken };
 
   // Tee sprout + broker stdout/stderr to one plain-text file per deployment,
   // truncated on each fresh spawn so it always shows the current instance
@@ -326,10 +354,10 @@ function spawnWithBroker(
       dispatchDisabled,
     });
     const brokerFd = openLog("w");
-    broker = Bun.spawn(args, { ...withLog(brokerFd), env: process.env });
+    broker = Bun.spawn(args, { ...withLog(brokerFd), env: { ...process.env, SB_EDGE_SECRET: EDGE_SECRET } });
     closeLog(brokerFd);
-    brokerEnv.SB_BROKER_PORT = String(brokerPort);
-    brokerEnv.SB_BROKER_TOKEN = token;
+    sproutEnv.SB_BROKER_PORT = String(brokerPort);
+    sproutEnv.SB_BROKER_TOKEN = token;
   }
 
   const startupFile = startupFilePath(sproutPath, port);
@@ -369,7 +397,7 @@ function spawnWithBroker(
     try {
       sprout = Bun.spawn(sproutCommand(sproutPath), {
         ...withLog(sproutFd),
-        env: { ...process.env, PORT: String(port), SB_STARTUP_FILE: startupFile, ...brokerEnv },
+        env: { ...process.env, PORT: String(port), SB_STARTUP_FILE: startupFile, ...sproutEnv },
       });
     } catch (cause) {
       // The artifact is not executable on this box — a truncated upload, a
@@ -397,6 +425,7 @@ function spawnWithBroker(
     // SAFETY: Bun's signal type omits SIGUSR1; the broker treats it as "enable
     // dispatch", and sending it twice is harmless.
     enableDispatch: () => capturedBroker?.kill("SIGUSR1" as never),
+    edgeToken,
   };
 }
 
@@ -446,6 +475,10 @@ class SproutServer {
   startupMs = 0;
   /** Spawn->JS-start slice of startupMs: process create + ld.so + runtime init (#41). */
   bootMs = 0;
+
+  get edgeToken(): string | undefined {
+    return this.#child.edgeToken;
+  }
 
   constructor(
     readonly sproutPath: string,
@@ -658,6 +691,7 @@ export class SproutPool {
       coldStart,
       startupMs: coldStart ? server.startupMs : 0,
       bootMs: coldStart ? server.bootMs : 0,
+      edgeToken: server.edgeToken,
     };
   }
 

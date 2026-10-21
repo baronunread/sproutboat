@@ -2,7 +2,7 @@ import { afterEach, expect, test } from "bun:test";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { SproutPool, brokerArgs, spawnSprout, startupFilePath } from "./run";
+import { SproutPool, brokerArgs, isEdgeSecret, spawnSprout, startupFilePath } from "./run";
 import { sproutCommand } from "./sandbox";
 import type { SproutChild, SproutFactory } from "./run";
 
@@ -464,4 +464,38 @@ test("#141: a staged candidate's timers start once its route is active", async (
   await pool.reconcileTimed([{ sproutPath: "/tmp/candidate/sprout" }]);
   expect(held).toEqual([true]);
   expect(enabled).toBe(1);
+});
+
+test("each sprout gets its own edge token, which its endpoint carries; the edge secret stays out", async () => {
+  // A stand-in sprout that reports what it was started with. Unsandboxed: it is a
+  // script that runs bun, not a native sprout.
+  const dir = mkdtempSync(join(tmpdir(), "sb-edge-token-"));
+  const sproutPath = join(dir, "sprout");
+  const serve =
+    'Bun.serve({ port: Number(process.env.PORT), fetch: () => new Response(process.env.SB_EDGE_TOKEN + " " + process.env.SB_EDGE_SECRET) })';
+  writeFileSync(sproutPath, `#!/bin/sh\nexec "${process.execPath}" -e '${serve}'\n`, { mode: 0o755 });
+  const saved = { sandbox: process.env.SPROUTBOAT_SPROUT_SANDBOX, unsafe: process.env.SPROUTBOAT_UNSAFE_NO_SANDBOX };
+  process.env.SPROUTBOAT_SPROUT_SANDBOX = "none";
+  process.env.SPROUTBOAT_UNSAFE_NO_SANDBOX = "1";
+  try {
+    const pool = makePool(spawnSprout);
+    const endpoint = await pool.endpoint(sproutPath);
+    const [token, secret] = (await (await fetch(endpoint.url)).text()).split(" ");
+    expect(token).toMatch(/^[0-9a-f]{48}$/);
+    expect(token).toBe(endpoint.edgeToken ?? "");
+    expect(secret).toBe("undefined");
+    expect(isEdgeSecret(token)).toBe(false);
+  } finally {
+    if (saved.sandbox === undefined) delete process.env.SPROUTBOAT_SPROUT_SANDBOX;
+    else process.env.SPROUTBOAT_SPROUT_SANDBOX = saved.sandbox;
+    if (saved.unsafe === undefined) delete process.env.SPROUTBOAT_UNSAFE_NO_SANDBOX;
+    else process.env.SPROUTBOAT_UNSAFE_NO_SANDBOX = saved.unsafe;
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("isEdgeSecret accepts nothing a client could send", () => {
+  expect(isEdgeSecret(null)).toBe(false);
+  expect(isEdgeSecret("")).toBe(false);
+  expect(isEdgeSecret("0".repeat(64))).toBe(false);
 });
