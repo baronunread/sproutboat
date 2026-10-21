@@ -1,11 +1,15 @@
 // The callee of the service-binding suite: an echo service plus routes that answer in
 // specific ways. It runs unchanged on workerd and on the platform; the suite compares.
+// A WorkerEntrypoint, so its methods can also be called over RPC (env.PEER.add(...)).
+import { WorkerEntrypoint } from "cloudflare:workers";
+
 const encoder = new TextEncoder();
 const hex = (buffer) => Array.from(new Uint8Array(buffer), (b) => b.toString(16).padStart(2, "0")).join("");
 let calls = 0;
 
-export default {
-  async fetch(request, env) {
+export default class Callee extends WorkerEntrypoint {
+  async fetch(request) {
+    const env = this.env;
     calls++;
     const url = new URL(request.url);
     const path = url.pathname;
@@ -95,5 +99,30 @@ export default {
     if (path === "/back")
       return env.CALLER ? env.CALLER.fetch("https://caller/ping") : new Response("no CALLER binding", { status: 500 });
     return new Response("callee: no route " + path, { status: 404 });
-  },
-};
+  }
+
+  // RPC methods.
+  add(a, b) {
+    return a + b;
+  }
+
+  async slowAdd(a, b) {
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    return a + b;
+  }
+
+  roundTrip(value) {
+    return value;
+  }
+
+  fail(message) {
+    throw new RangeError(message);
+  }
+
+  whoAmI() {
+    return {
+      hasEnv: this.env !== undefined && this.env.CALLER !== undefined,
+      hasWaitUntil: this.ctx.waitUntil instanceof Function,
+    };
+  }
+}

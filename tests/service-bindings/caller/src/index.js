@@ -126,6 +126,55 @@ const CASES = {
     const seen = await res.json();
     return { status: res.status, text: seen.text, arrivedInParts: seen.gapMs > 300 };
   },
+  // RPC: methods of the callee's WorkerEntrypoint, called on the binding.
+  rpcAdd: async (env) => ({ sum: await env.PEER.add(2, 3) }),
+  rpcAsync: async (env) => {
+    const pending = env.PEER.slowAdd(4, 5);
+    // workerd returns a thenable (JsRpcPromise), not a Promise: compare what callers rely on.
+    return { thenable: pending != null && pending.then instanceof Function, sum: await pending };
+  },
+  rpcRoundTrip: async (env) => {
+    const sent = {
+      text: "héllo",
+      nested: [1, { a: null, b: [true, false] }],
+      date: new Date(86400000),
+      bytes: new Uint8Array([1, 2, 255]),
+      map: new Map([["k", 1]]),
+      set: new Set(["x"]),
+      missing: undefined,
+      nan: NaN,
+      negZero: -0,
+    };
+    const r = await env.PEER.roundTrip(sent);
+    return {
+      text: r.text,
+      nested: r.nested,
+      date: r.date instanceof Date ? r.date.getTime() : String(r.date),
+      bytes: r.bytes instanceof Uint8Array ? [...r.bytes] : String(r.bytes),
+      map: r.map instanceof Map ? [...r.map] : String(r.map),
+      set: r.set instanceof Set ? [...r.set] : String(r.set),
+      missing: "missing" in r && r.missing === undefined,
+      nan: Number.isNaN(r.nan),
+      negZero: Object.is(r.negZero, -0),
+    };
+  },
+  rpcThrows: async (env) => {
+    try {
+      await env.PEER.fail("nope");
+      return { threw: false };
+    } catch (e) {
+      return { threw: true, name: e.name, message: e.message, isRangeError: e instanceof RangeError };
+    }
+  },
+  rpcUnknownMethod: async (env) => {
+    try {
+      await env.PEER.noSuchMethod();
+      return { threw: false };
+    } catch (e) {
+      return { threw: true, name: e.name, message: e.message };
+    }
+  },
+  rpcThisContext: async (env) => env.PEER.whoAmI(),
   promise: async (env) => {
     const pending = env.PEER.fetch("https://peer/status/200");
     return { isPromise: pending instanceof Promise, status: (await pending).status };
