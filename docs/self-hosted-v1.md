@@ -47,7 +47,7 @@ SPROUTBOAT_LOG_PATH=/var/lib/sproutboat/logs/edge.ndjson
 SPROUTBOAT_DEPLOYMENT_DOMAIN=<your domain>
 # Optional request caps (defaults shown):
 SPROUTBOAT_REQUEST_TIMEOUT_MS=30000
-SPROUTBOAT_RESPONSE_MAX_BYTES=10485760
+SPROUTBOAT_RESPONSE_MAX_BYTES=536870912
 # Per-node response cache is on by default; disable with:
 # SPROUTBOAT_EDGE_CACHE=off
 ```
