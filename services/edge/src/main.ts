@@ -37,7 +37,7 @@ interface LogEvent {
   readonly cpuMs?: number | null;
   readonly error?: string;
   /** Coarse failure taxonomy: no-route | sprout-unavailable | proxy | timed-out
-   *  | response-too-large | upstream-5xx. Absent on a clean response. */
+   *  | response-too-large | upstream-5xx | client-closed. Absent on a clean response. */
   readonly errorKind?: string;
   /** Edge cache outcome for a GET: hit | miss | dynamic | bypass. */
   readonly cacheStatus?: string;
@@ -561,7 +561,12 @@ const server = Bun.serve({
         headers: request.headers,
         body: request.method === "GET" || request.method === "HEAD" ? undefined : request.body,
         redirect: "manual",
-        signal: AbortSignal.timeout(directTransfer ? transferTimeoutMs : requestTimeoutMs),
+        // A client that goes away (a browser, or a broker whose sprout cancelled a
+        // service call) stops the sprout's request too, not only the deadline.
+        signal: AbortSignal.any([
+          request.signal,
+          AbortSignal.timeout(directTransfer ? transferTimeoutMs : requestTimeoutMs),
+        ]),
       });
       const ttfbMs = elapsed();
       // #28 — per-invocation CPU time the sprout self-reports. Cache entries
@@ -647,6 +652,23 @@ const server = Bun.serve({
       return new Response(body, { status: upstream.status, headers });
     } catch (error) {
       stopTransferKeepAlive();
+      if (request.signal.aborted) {
+        // Nobody is waiting for this answer; 499 is the conventional "client closed".
+        log({
+          hostname: host,
+          method: request.method,
+          status: 499,
+          durationMs: elapsed(),
+          reqBytes,
+          ttfbMs: null,
+          coldStart,
+          startupMs,
+          bootMs,
+          error: "client closed the request",
+          errorKind: "client-closed",
+        });
+        return new Response(null, { status: 499 });
+      }
       const timedOut = error instanceof Error && (error.name === "TimeoutError" || error.name === "AbortError");
       const status = timedOut ? 504 : 502;
       console.error(
