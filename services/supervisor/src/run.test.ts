@@ -1,5 +1,7 @@
 import { afterEach, expect, test } from "bun:test";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { once } from "node:events";
+import { connect } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { SproutPool, brokerArgs, isEdgeSecret, spawnSprout, startupFilePath } from "./run";
@@ -29,8 +31,12 @@ afterEach(() => {
   for (const p of pools) p.disposeAll();
   pools.length = 0;
 });
+// Below every OS ephemeral range (Linux 32768-60999, macOS 49152-65535), so the
+// box's own outbound connections never compete for these ports. The pool probes
+// before it hands one out either way; this just keeps a busy CI runner out of it.
+const testPorts = [20_000, 20_999] as const;
 function makePool(spawn: SproutFactory, opts = {}) {
-  const pool = new SproutPool({ spawn, portRange: [45_000, 45_999], ...opts });
+  const pool = new SproutPool({ spawn, portRange: testPorts, ...opts });
   pools.push(pool);
   return pool;
 }
@@ -89,7 +95,7 @@ test("separate deployments get separate ports", async () => {
 
 test("stats() tracks live count, spawns, restarts, evictions and the port pool", async () => {
   const { spawn, crash } = fakeSpawn();
-  const pool = makePool(spawn, { idleMs: 0, portRange: [46_000, 46_099] });
+  const pool = makePool(spawn, { idleMs: 0, portRange: [21_000, 21_099] });
   await pool.endpoint("/tmp/a/sprout");
   await pool.endpoint("/tmp/b/sprout");
   let s = pool.stats();
@@ -306,7 +312,7 @@ test("an unexecutable artifact fails its own request, it does not throw", async 
   // Executable bit set, but not a runnable image: posix_spawn gives ENOEXEC.
   writeFileSync(sproutPath, "\x7fELF this is not a real binary", { mode: 0o755 });
   try {
-    const child = spawnSprout(sproutPath, 45_998);
+    const child = spawnSprout(sproutPath, 21_998);
     expect(await child.exited).not.toBe(0);
     child.kill();
   } finally {
@@ -328,6 +334,36 @@ test("#freePort skips a port another process already holds (#flaky-ci)", async (
     squatter.stop(true);
   }
 });
+
+// Linux only: macOS lets a wildcard bind share a port with a socket on another
+// specific address, so there the bind would not have failed in the first place.
+test.skipIf(process.platform !== "linux")(
+  "#freePort sees a port held on another local address, not just 127.0.0.1",
+  async () => {
+    // The real CI flake: a sprout binds every address (Bun.serve and uWS default
+    // to the dual-stack wildcard), but the probe only tried 127.0.0.1. A socket
+    // holding the port on any other address (the runner's own outbound HTTPS
+    // connections from its NIC address, an IPv6 client, either one in TIME_WAIT
+    // for a minute) passed the probe and the bind then failed with "Failed to
+    // start server. Is port N in use?". Ports 45000-45999 sit inside Linux's
+    // ephemeral range (32768-60999), so such sockets turn up there all the time.
+    //
+    // Reproduce it with an IPv6 loopback client: its local (ephemeral) port is
+    // held on [::1], invisible to a 127.0.0.1 probe, and the range is pinned to it.
+    const peer = Bun.listen({ hostname: "::1", port: 0, socket: { data() {} } });
+    const client = connect({ host: "::1", port: peer.port });
+    await once(client, "connect");
+    const taken = client.localPort ?? 0;
+    try {
+      const { spawn } = fakeSpawn();
+      const pool = new SproutPool({ spawn, portRange: [taken, taken] });
+      await expect(pool.endpoint("/tmp/app/sprout")).rejects.toThrow(/no free sprout port available/);
+    } finally {
+      client.destroy();
+      peer.stop(true);
+    }
+  },
+);
 
 test("the broker is told where its sprout is, so cron and queues actually run (#81, #82)", () => {
   const args = brokerArgs({

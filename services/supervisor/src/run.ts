@@ -154,18 +154,31 @@ function runtimeKey(
 const brokerEntry = fileURLToPath(import.meta.resolve("@sproutboat/wire/broker"));
 
 /**
- * Whether the OS will let us bind this port on the loopback right now. Bun
- * throws from `Bun.listen` when the port is taken, which is the check; the
- * listener is stopped immediately either way.
+ * Whether the OS will let a sprout bind this port right now. Bun throws from
+ * `Bun.listen` when the port is taken, which is the check; the listener is
+ * stopped immediately either way.
+ *
+ * A sprout listens on the wildcard address (uWS, like Bun.serve, binds every
+ * address by default), so the probe has to bind the wildcard too. Probing only
+ * 127.0.0.1 missed a socket holding the port on any other local address: an
+ * outbound connection from the NIC address or an IPv6 client, including one
+ * left in TIME_WAIT for a minute after it closed. The default range (and the
+ * tests') sits inside Linux's ephemeral range (32768-60999), so on a busy box
+ * such sockets turn up there regularly, and the sprout then died on "Failed to
+ * start server. Is port N in use?". 127.0.0.1 is still probed: it is the
+ * address the edge dials, and macOS lets a wildcard bind share a port with a
+ * loopback listener.
  */
 function portBindable(port: number): boolean {
-  try {
-    const probe = Bun.listen({ hostname: "127.0.0.1", port, socket: { data() {} } });
-    probe.stop(true);
-    return true;
-  } catch {
-    return false;
+  for (const hostname of ["0.0.0.0", "127.0.0.1"]) {
+    try {
+      const probe = Bun.listen({ hostname, port, socket: { data() {} } });
+      probe.stop(true);
+    } catch {
+      return false;
+    }
   }
+  return true;
 }
 
 /**
@@ -616,8 +629,13 @@ export class SproutPool {
   #freePort(sproutPath: string): number {
     const [lo, hi] = this.#portRange;
     const withBroker = existsSync(resolve(dirname(sproutPath), "bindings.json"));
-    for (let attempt = 0; attempt < 10_000; attempt++) {
-      const port = lo + Math.floor(Math.random() * (hi - lo + 1));
+    // Walk the range once from a random start: every port is tried at most
+    // once, so a range that is genuinely full fails after one pass instead of
+    // probing the same few ports thousands of times.
+    const size = hi - lo + 1;
+    const start = Math.floor(Math.random() * size);
+    for (let i = 0; i < size; i++) {
+      const port = lo + ((start + i) % size);
       if (this.#usedPorts.has(port)) continue;
       if (
         portBindable(port) &&
