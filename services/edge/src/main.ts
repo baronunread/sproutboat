@@ -172,7 +172,10 @@ const edgeMaxBodyBytes =
   Number.isSafeInteger(configuredEdgeBodyBytes) && configuredEdgeBodyBytes > 0
     ? configuredEdgeBodyBytes
     : 5 * 1024 * 1024 * 1024;
-const responseMaxBytes = Number(process.env.SPROUTBOAT_RESPONSE_MAX_BYTES) || 10 * 1024 * 1024;
+// Responses stream through the edge (cappedBody counts bytes, it does not buffer), so
+// like Cloudflare and workerd there is no small size limit, only a safety one per
+// response: 512 MiB. It applies to service-binding calls too.
+const responseMaxBytes = Number(process.env.SPROUTBOAT_RESPONSE_MAX_BYTES) || 512 * 1024 * 1024;
 // #38: per-node edge cache. Set SPROUTBOAT_EDGE_CACHE=off to disable.
 const cache = process.env.SPROUTBOAT_EDGE_CACHE === "off" ? null : new EdgeCache();
 const MAX_CACHE_ENTRY_BYTES = 512 * 1024;
