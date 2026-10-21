@@ -2,7 +2,8 @@
 // caller and callee, bound to each other, drives it, and stops it.
 //   bun tests/service-bindings/platform.ts OUT.json
 // Build both apps first (`sproutboat build --target host` in caller/ and callee/); the
-// newest artifact under each .sproutboat/dist is used.
+// newest artifact under each .sproutboat/dist is used. SB_SUITE_EDGE_ROOT runs the edge
+// from another checkout of this repo.
 import { mkdtempSync, readdirSync, statSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -13,7 +14,8 @@ if (!out) {
   process.exit(2);
 }
 const here = import.meta.dir;
-const root = join(here, "../..");
+// The edge to run: this checkout's, or another one's (to score an edge branch).
+const root = process.env.SB_SUITE_EDGE_ROOT ?? join(here, "../..");
 const newestSprout = (app: string) => {
   const dist = join(here, app, ".sproutboat/dist");
   const dirs = readdirSync(dist)
