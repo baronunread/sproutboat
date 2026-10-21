@@ -337,6 +337,81 @@
         }
       }
     },
+    "rpcAdd": {
+      "status": 200,
+      "value": {
+        "ok": true,
+        "value": {
+          "sum": 5
+        }
+      }
+    },
+    "rpcAsync": {
+      "status": 200,
+      "value": {
+        "ok": true,
+        "value": {
+          "thenable": true,
+          "sum": 9
+        }
+      }
+    },
+    "rpcRoundTrip": {
+      "status": 200,
+      "value": {
+        "ok": true,
+        "value": {
+          "text": "héllo",
+          "nested": [
+            1,
+            {
+              "a": null,
+              "b": [true, false]
+            }
+          ],
+          "date": 86400000,
+          "bytes": [1, 2, 255],
+          "map": [["k", 1]],
+          "set": ["x"],
+          "missing": true,
+          "nan": true,
+          "negZero": true
+        }
+      }
+    },
+    "rpcThrows": {
+      "status": 200,
+      "value": {
+        "ok": true,
+        "value": {
+          "threw": true,
+          "name": "RangeError",
+          "message": "nope",
+          "isRangeError": true
+        }
+      }
+    },
+    "rpcUnknownMethod": {
+      "status": 200,
+      "value": {
+        "ok": true,
+        "value": {
+          "threw": true,
+          "name": "TypeError",
+          "message": "The RPC receiver does not implement the method \"noSuchMethod\"."
+        }
+      }
+    },
+    "rpcThisContext": {
+      "status": 200,
+      "value": {
+        "ok": true,
+        "value": {
+          "hasEnv": true,
+          "hasWaitUntil": true
+        }
+      }
+    },
     "promise": {
       "status": 200,
       "value": {
@@ -359,9 +434,9 @@
   },
   "reliability": {
     "responsiveDuringCall": {
-      "pingMs": 69,
+      "pingMs": 68,
       "pingStatus": 200,
-      "slowMs": 3056,
+      "slowMs": 3037,
       "slowStatus": 200
     },
     "concurrent8x500ms": {
@@ -371,17 +446,17 @@
     "selfRecursion": {
       "status": 200,
       "text": "bottom 50",
-      "ms": 49
+      "ms": 51
     },
     "mutualRecursion": {
       "status": 200,
       "text": "pong",
-      "ms": 34
+      "ms": 33
     },
     "calleeNeverAnswers": {
       "status": 0,
       "text": "TimeoutError",
-      "ms": 60005
+      "ms": 60003
     }
   }
 }

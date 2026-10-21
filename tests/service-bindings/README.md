@@ -41,8 +41,9 @@ To refresh the reference, run `workerd serve workerd.capnp` from this directory,
 
 ## Progress
 
-The apps use compatibility date `2026-10-22`, so they measure the newest behaviour. The two
-streaming cases arrived with the streaming work, so earlier rows count 22 cases.
+The apps use compatibility date `2026-10-22`, so they measure the newest behaviour. The callee
+is a `WorkerEntrypoint`, so a caller can also call its methods over RPC. The suite gained
+cases as the work reached them (streaming at 24, RPC at 30), so earlier rows count fewer.
 
 | Change                                                                       | Cases | Reliability |
 | ---------------------------------------------------------------------------- | ----- | ----------- |
@@ -51,13 +52,11 @@ streaming cases arrived with the streaming work, so earlier rows count 22 cases.
 | + redirects, no invented content type (sproutboat-packages#127)              | 10/22 | 4/5         |
 | + edge vouches for calls: caller's URL, rethrown errors (#295, packages#130) | 21/22 | 4/5         |
 | + streamed responses (sproutboat-packages#131)                               | 22/24 | 4/5         |
+| + edge timeout and disconnects (#294), 512 MiB response limit (#296)         | 23/24 | 5/5         |
+| + Workers RPC, atob/btoa fix (sproutboat-packages#132)                       | 29/30 | 5/5         |
 
-`calleeNeverAnswers` passes once the edge keeps connections open past its request
-deadline (#294), which takes reliability to 5/5. Two cases still differ from workerd:
-
-- `bigResponse`: the edge caps any response at 10 MiB, binding calls included.
-- `streamRequestBody`: the native server reads a whole request body before the handler
-  runs, so a callee cannot see a streamed upload in parts.
+One case still differs from workerd: `streamRequestBody`. The native server reads a whole
+request body before the handler runs, so a callee cannot see a streamed upload in parts.
 
 ## Score, 2026-10-21 (CLI 0.19.0, runtime 0.19.2)
 
