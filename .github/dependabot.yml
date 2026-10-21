@@ -11,8 +11,7 @@ updates:
 
   # Bun deps (root package.json covers apps/web too, one bun.lock). The npm
   # ecosystem can't update bun.lock, so every run failed until this said `bun`.
-  # Ignored: @sproutboat/* are our own packages, moved by hand with each tested
-  # release (a toolchain bump changes the Porffor compiler).
+  # @sproutboat/* are our own packages and get their own daily entry below.
   - package-ecosystem: bun
     directory: /
     schedule:
@@ -24,3 +23,23 @@ updates:
       npm:
         patterns: ["*"]
         update-types: [minor, patch]
+
+  # Our own packages, checked daily so a packages release turns into one PR that
+  # bumps @sproutboat/* together in package.json and bun.lock. Nothing merges by
+  # itself: CI runs the suite on the new versions, and a toolchain bump changes
+  # the Porffor compiler, so read its changelog before merging.
+  #
+  # Dependabot allows one entry per ecosystem + directory + target-branch. The
+  # explicit target-branch (the default branch anyway) is what lets this entry
+  # sit next to the weekly one above with its own schedule.
+  - package-ecosystem: bun
+    directory: /
+    target-branch: main
+    schedule:
+      interval: daily
+    allow:
+      - dependency-name: "@sproutboat/*"
+    open-pull-requests-limit: 2
+    groups:
+      sproutboat:
+        patterns: ["@sproutboat/*"]

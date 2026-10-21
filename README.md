@@ -149,6 +149,20 @@ sign in at `https://dashboard.sproutboat.localhost/`, and deploy to it with
 `sproutboat login --api-url https://control.sproutboat.localhost`. To reset,
 stop it and remove `.local/sproutboat` and `~/.config/sproutboat`.
 
+To try unreleased `@sproutboat/{wire,runtime,toolchain}` changes, point this
+checkout at a local [sproutboat-packages](https://github.com/baronunread/sproutboat-packages)
+checkout (with its own `bun install` done) for the length of one command:
+
+```sh
+bun tools/with-local-packages.ts ../sproutboat-packages -- bun test services/supervisor
+bun tools/with-local-packages.ts ../sproutboat-packages --only wire -- bun run edge
+```
+
+It symlinks `node_modules/@sproutboat/<pkg>` to `<path>/packages/<pkg>` (all
+three by default), runs the command, and puts the installed packages back
+afterwards, also when the command fails or is interrupted. It refuses to run in
+the main checkout while that has uncommitted changes: use a `git worktree`.
+
 ## Compatibility
 
 The capability harness answers one question: does the installed Porffor run

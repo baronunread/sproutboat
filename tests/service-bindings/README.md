@@ -26,6 +26,23 @@ bun tests/service-bindings/compare.ts tests/service-bindings/reference-workerd.j
 The whole run takes about three minutes; the recursion and never-answering checks
 each wait up to 60 seconds.
 
+### Score a local packages branch
+
+To see what a `sproutboat-packages` branch changes before it is released, run the
+edge on that branch's `wire` and `runtime` with `tools/with-local-packages.ts`, from
+a worktree of this repo (it refuses a main checkout with uncommitted changes):
+
+```sh
+bun tools/with-local-packages.ts ../sproutboat-packages -- \
+  bun tests/service-bindings/platform.ts /tmp/svc-branch.json
+bun tests/service-bindings/compare.ts tests/service-bindings/reference-workerd.json /tmp/svc-branch.json
+```
+
+That covers the edge and the broker. The two apps are compiled by the CLI, which
+has its own `@sproutboat/*` dependencies: when the branch changes the runtime or
+the toolchain, build `caller/` and `callee/` with a CLI checkout whose packages
+point at the same branch, or the sprouts still carry the released runtime.
+
 To refresh the reference, run `workerd serve workerd.capnp` from this directory, then
 `bun driver.ts http://127.0.0.1:18431 reference-workerd.json`.
 
