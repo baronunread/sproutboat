@@ -1,7 +1,7 @@
 import { readFile, stat } from "node:fs/promises";
 import { createWriteStream, existsSync, mkdirSync, readFileSync, type WriteStream } from "node:fs";
 import { dirname, join, resolve } from "node:path";
-import { pool } from "../../supervisor/src/run";
+import { isEdgeSecret, pool } from "../../supervisor/src/run";
 import { isSproutFirst, resolveAssetKey, type AssetManifest } from "@sproutboat/assets";
 import { applyAssetHeaders, assetRedirect } from "./asset-rules";
 import { serveActivations } from "./activation";
@@ -41,6 +41,9 @@ interface LogEvent {
   /** Edge cache outcome for a GET: hit | miss | dynamic | bypass. */
   readonly cacheStatus?: string;
 }
+
+/** The edge's service-binding headers (#48), which only the edge may set toward a sprout. */
+const INTERNAL_REQUEST_HEADERS = ["x-sb-edge-secret", "x-sb-edge-token", "x-sb-binding-call", "x-sb-url"];
 
 function isObject(value: EdgeInput): value is EdgeJsonObject {
   return value !== null && Object(value) === value && !Array.isArray(value) && !(value instanceof Function);
@@ -510,6 +513,7 @@ const server = Bun.serve({
     let coldStart = false;
     let startupMs: number | null = null;
     let bootMs: number | null = null;
+    let edgeToken: string | undefined;
     let transferKeepAlive: ReturnType<typeof setInterval> | null = null;
     let transferDeadline: ReturnType<typeof setTimeout> | null = null;
     const stopTransferKeepAlive = () => {
@@ -532,6 +536,7 @@ const server = Bun.serve({
         request.signal.addEventListener("abort", stopTransferKeepAlive, { once: true });
       }
       coldStart = endpoint.coldStart;
+      edgeToken = endpoint.edgeToken;
       startupMs = endpoint.coldStart ? endpoint.startupMs : null;
       bootMs = endpoint.coldStart ? endpoint.bootMs : null;
     } catch (error) {
@@ -549,6 +554,20 @@ const server = Bun.serve({
       return new Response("sprout failed", { status: 502 });
     }
 
+    // #48 — a service-binding call arrives from the caller's broker with the edge's
+    // secret (see isEdgeSecret). The edge vouches for it to the callee with the callee's
+    // own token, so the callee sees the caller's URL and reports a thrown error back.
+    // Nobody else can send or receive any of these headers.
+    const bindingCall = isEdgeSecret(request.headers.get("x-sb-edge-secret"));
+    const forwarded = new Headers(request.headers);
+    for (const name of INTERNAL_REQUEST_HEADERS) forwarded.delete(name);
+    if (bindingCall && edgeToken) {
+      forwarded.set("x-sb-binding-call", "1");
+      forwarded.set("x-sb-edge-token", edgeToken);
+      const callerUrl = request.headers.get("x-sb-url");
+      if (callerUrl) forwarded.set("x-sb-url", callerUrl);
+    }
+
     try {
       // Reverse-proxy the request to the deployment's native-fetch server.
       // This is a proxy: every upstream status (incl. 4xx/5xx) is forwarded
@@ -556,7 +575,7 @@ const server = Bun.serve({
       // react-doctor-disable-next-line react-doctor/no-fetch-response-used-without-status-check
       const upstream = await fetch(`${base}${target.pathname}${target.search}`, {
         method: request.method,
-        headers: request.headers,
+        headers: forwarded,
         body: request.method === "GET" || request.method === "HEAD" ? undefined : request.body,
         redirect: "manual",
         signal: AbortSignal.timeout(directTransfer ? transferTimeoutMs : requestTimeoutMs),
@@ -595,6 +614,8 @@ const server = Bun.serve({
       // #31 — log once the response body has actually finished streaming, so
       // durationMs is the full request duration and resBytes is the real count.
       const headers = new Headers(upstream.headers);
+      // A callee's error, for the caller's broker only: it carries the message.
+      if (!bindingCall) headers.delete("x-sb-uncaught");
       headers.delete("x-sb-cpu-ms");
       if (cpuMs !== null) headers.set("x-sb-cpu-ms", cpuMs.toFixed(3));
       if (cacheStatus) headers.set("sb-cache", cacheStatus === "dynamic" ? "DYNAMIC" : cacheStatus.toUpperCase());
