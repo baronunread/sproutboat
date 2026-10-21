@@ -39,6 +39,19 @@ To refresh the reference, run `workerd serve workerd.capnp` from this directory,
 | `mutualRecursion`      | caller → callee → caller completes                                            |
 | `calleeNeverAnswers`   | A callee that never answers either waits like workerd or fails with a 5xx     |
 
+## Progress
+
+The apps use compatibility date `2026-10-22`, so they measure the newest behaviour.
+
+| Runtime                                                         | Cases | Reliability |
+| --------------------------------------------------------------- | ----- | ----------- |
+| 0.19.2 (first score, below)                                     | 6/22  | 0/5         |
+| + async calls (sproutboat-packages#126)                         | 8/22  | 4/5         |
+| + redirects, no invented content type (sproutboat-packages#127) | 10/22 | 4/5         |
+
+`calleeNeverAnswers` passes once the edge keeps connections open past its request
+deadline (#294).
+
 ## Score, 2026-10-21 (CLI 0.19.0, runtime 0.19.2)
 
 Cases 6/22, reliability 0/5.
