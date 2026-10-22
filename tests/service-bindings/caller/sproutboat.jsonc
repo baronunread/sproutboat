@@ -1,7 +1,7 @@
 {
   "name": "svc-caller",
   "main": "src/index.js",
-  "compatibility_date": "2026-10-22",
+  "compatibility_date": "2026-10-23",
   "services": [
     { "binding": "PEER", "service": "svc-callee" },
     { "binding": "SELF", "service": "svc-caller" },

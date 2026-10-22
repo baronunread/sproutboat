@@ -9,9 +9,9 @@
         "@sproutboat/artifact": "^0.3.0",
         "@sproutboat/assets": "^0.3.0",
         "@sproutboat/config": "^0.5.0",
-        "@sproutboat/runtime": "^0.21.0",
-        "@sproutboat/toolchain": "^0.11.0",
-        "@sproutboat/wire": "^0.14.0",
+        "@sproutboat/runtime": "^0.23.0",
+        "@sproutboat/toolchain": "^0.13.0",
+        "@sproutboat/wire": "^0.14.3",
         "@tanstack/charts": "^0.16.0",
         "@tanstack/react-router": "^1.170.32",
         "@tanstack/react-start": "^1.168.49",
@@ -516,11 +516,11 @@
 
     "@sproutboat/config": ["@sproutboat/config@0.5.0", "", {}, "sha512-GKLjuzxTIXyaxocgJqgveW48+NixWrvXZqGAFh7mfH7C9698YFtOtObk4cwC0k+PKNSXmus9kYWcp8TUxzD/wQ=="],
 
-    "@sproutboat/runtime": ["@sproutboat/runtime@0.21.0", "", {}, "sha512-bKt/c66ezPfftJani0NMTGuLhKcfNeMo2YRxa83J7t7rbwhR+ph1TrOZpwkFcfKE8BTDhhcfTCBAPnyobXjl/w=="],
+    "@sproutboat/runtime": ["@sproutboat/runtime@0.23.0", "", {}, "sha512-Q8e4Y0Lb2kreUZYwSDLT0O6Y5jxs0WYvohe5NXBxV9L3upVyaR/qnKBvb2MLu67xZoWMAw72DxlKbpPB/W8igQ=="],
 
-    "@sproutboat/toolchain": ["@sproutboat/toolchain@0.11.0", "", {}, "sha512-3bhZY7RdgfzwH6QzPAOcYvygwjxXeBIDXfpJaKQVVDxVh6htOmoEg4TcmX7GiBCtbXYHmdkTqLL0sw8LQ/cHgg=="],
+    "@sproutboat/toolchain": ["@sproutboat/toolchain@0.13.0", "", {}, "sha512-gD+5yZNEjY8GCOwOrFDSRFSNNBERJpd47dRRogs4gFauwBwFwLsWwYNZ+7wh8t4QOJ7NArZKh+iPB1+kRrc+fQ=="],
 
-    "@sproutboat/wire": ["@sproutboat/wire@0.14.0", "", { "dependencies": { "@sproutboat/assets": "^0.3.0", "@sproutboat/runtime": "^0.20.0" } }, "sha512-P68Wo/kZkUQFPzskvzPH3Dx8qg+xd9XNkGYuKM45nLSwFzlouoiLqGTtWc7WTf+/oIsS+GF36Rxz6LBzCnCVcA=="],
+    "@sproutboat/wire": ["@sproutboat/wire@0.14.3", "", { "dependencies": { "@sproutboat/assets": "^0.3.0", "@sproutboat/runtime": "^0.23.0" } }, "sha512-fIf/bZ8VkEjZoE6cRN/m2DHRwHquxKtLxd48RoJ1xczQR7L6+kxCIIZzDnKgqjOMwWBYx+lf7PHjCUcSI5HsfQ=="],
 
     "@standard-schema/spec": ["@standard-schema/spec@1.1.0", "", {}, "sha512-l2aFy5jALhniG5HgqrD6jXLi/rUWrKvqN/qJx6yoJsgKhblVd+iqqU4RCXavm/jPityDo5TCvKMnpjKnOriy0w=="],
 
@@ -1189,8 +1189,6 @@
     "@babel/traverse/@babel/code-frame": ["@babel/code-frame@7.29.7", "", { "dependencies": { "@babel/helper-validator-identifier": "^7.29.7", "js-tokens": "^4.0.0", "picocolors": "^1.1.1" } }, "sha512-Aup7aUOfpbAUg2ROOJN6Iw5f9DMBlzu0mIkm/malLQFN/YQgO48wCj0Kxa3sEHJvPVFg7siR+qRInwXd2qhQKw=="],
 
     "@eslint-community/eslint-utils/eslint-visitor-keys": ["eslint-visitor-keys@3.4.3", "", {}, "sha512-wpc+LXeiyiisxPlEkUzU6svyS1frIO3Mgxj1fdy7Pm8Ygzguax2N3Fa/D/ag1WqbOprdI+uY6wMUl8/a2G+iag=="],
-
-    "@sproutboat/wire/@sproutboat/runtime": ["@sproutboat/runtime@0.20.0", "", {}, "sha512-ZZyde2WgJe0gy3+IYDTFXavNOC2rsJ1jYLWp8WkebS5hhsLAqQrBq2vfncs9QhziCWh0Ko2HkAzsuxAuw0eLXQ=="],
 
     "@tailwindcss/node/lightningcss": ["lightningcss@1.32.0", "", { "dependencies": { "detect-libc": "^2.0.3" }, "optionalDependencies": { "lightningcss-android-arm64": "1.32.0", "lightningcss-darwin-arm64": "1.32.0", "lightningcss-darwin-x64": "1.32.0", "lightningcss-freebsd-x64": "1.32.0", "lightningcss-linux-arm-gnueabihf": "1.32.0", "lightningcss-linux-arm64-gnu": "1.32.0", "lightningcss-linux-arm64-musl": "1.32.0", "lightningcss-linux-x64-gnu": "1.32.0", "lightningcss-linux-x64-musl": "1.32.0", "lightningcss-win32-arm64-msvc": "1.32.0", "lightningcss-win32-x64-msvc": "1.32.0" } }, "sha512-NXYBzinNrblfraPGyrbPoD19C1h9lfI/1mzgWYvXUTe414Gz/X1FD2XBZSZM7rRTrMA8JL3OtAaGifrIKhQ5yQ=="],
 
