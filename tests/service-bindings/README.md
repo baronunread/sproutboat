@@ -63,16 +63,16 @@ is a `WorkerEntrypoint`, so a caller can also call its methods over RPC. The sui
 cases as the work reached them (streaming at 24, RPC at 30, Request fidelity at 53), so
 earlier rows count fewer.
 
-| Change                                                                       | Cases | Reliability |
-| ---------------------------------------------------------------------------- | ----- | ----------- |
-| 0.19.2 (first score, below)                                                  | 6/22  | 0/5         |
-| + async calls (sproutboat-packages#126)                                      | 8/22  | 4/5         |
-| + redirects, no invented content type (sproutboat-packages#127)              | 10/22 | 4/5         |
-| + edge vouches for calls: caller's URL, rethrown errors (#295, packages#130) | 21/22 | 4/5         |
-| + streamed responses (sproutboat-packages#131)                               | 22/24 | 4/5         |
-| + edge timeout and disconnects (#294), 512 MiB response limit (#296)         | 23/24 | 5/5         |
-| + Workers RPC, atob/btoa fix (sproutboat-packages#132)                       | 29/30 | 5/5         |
-| Request fidelity cases added (runtime 0.22.0, date 2026-10-22)               | 36/53 | 5/5         |
+| Change                                                                        | Cases | Reliability |
+| ----------------------------------------------------------------------------- | ----- | ----------- |
+| 0.19.2 (first score, below)                                                   | 6/22  | 0/5         |
+| + async calls (sproutboat-packages#126)                                       | 8/22  | 4/5         |
+| + redirects, no invented content type (sproutboat-packages#127)               | 10/22 | 4/5         |
+| + edge vouches for calls: caller's URL, rethrown errors (#295, packages#130)  | 21/22 | 4/5         |
+| + streamed responses (sproutboat-packages#131)                                | 22/24 | 4/5         |
+| + edge timeout and disconnects (#294), 512 MiB response limit (#296)          | 23/24 | 5/5         |
+| + Workers RPC, atob/btoa fix (sproutboat-packages#132)                        | 29/30 | 5/5         |
+| Request fidelity cases added (runtime 0.22.0, date 2026-10-22)                | 36/53 | 5/5         |
 | + `fetch(Request)`, `new Request(request, init)` as in workerd (packages#143) | 52/53 | 5/5         |
 
 One case still differs from workerd: `streamRequestBody`. The native server reads a whole

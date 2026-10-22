@@ -1,6 +1,7 @@
 // The caller of the service-binding suite. GET /case/NAME runs one case against env.PEER
 // and answers with what it observed, as JSON; the driver compares workerd and the platform.
 // Reliability is measured from outside (timing, concurrency, aborts) through /call/*.
+// oxlint-disable unicorn/no-invalid-fetch-options -- cases send bodies with Requests whose method the rule cannot see, and check that GET and HEAD refuse one.
 const hex = (buffer) => Array.from(new Uint8Array(buffer), (b) => b.toString(16).padStart(2, "0")).join("");
 const bytes256 = () => {
   const b = new Uint8Array(256);
