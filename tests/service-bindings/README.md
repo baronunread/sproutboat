@@ -58,9 +58,10 @@ To refresh the reference, run `workerd serve workerd.capnp` from this directory,
 
 ## Progress
 
-The apps use compatibility date `2026-10-22`, so they measure the newest behaviour. The callee
+The apps use compatibility date `2026-10-23`, so they measure the newest behaviour. The callee
 is a `WorkerEntrypoint`, so a caller can also call its methods over RPC. The suite gained
-cases as the work reached them (streaming at 24, RPC at 30), so earlier rows count fewer.
+cases as the work reached them (streaming at 24, RPC at 30, Request fidelity at 53), so
+earlier rows count fewer.
 
 | Change                                                                       | Cases | Reliability |
 | ---------------------------------------------------------------------------- | ----- | ----------- |
@@ -71,6 +72,8 @@ cases as the work reached them (streaming at 24, RPC at 30), so earlier rows cou
 | + streamed responses (sproutboat-packages#131)                               | 22/24 | 4/5         |
 | + edge timeout and disconnects (#294), 512 MiB response limit (#296)         | 23/24 | 5/5         |
 | + Workers RPC, atob/btoa fix (sproutboat-packages#132)                       | 29/30 | 5/5         |
+| Request fidelity cases added (runtime 0.22.0, date 2026-10-22)               | 36/53 | 5/5         |
+| + `fetch(Request)`, `new Request(request, init)` as in workerd (packages#143) | 52/53 | 5/5         |
 
 One case still differs from workerd: `streamRequestBody`. The native server reads a whole
 request body before the handler runs, so a callee cannot see a streamed upload in parts.

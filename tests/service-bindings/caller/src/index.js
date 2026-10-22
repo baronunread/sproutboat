@@ -19,6 +19,37 @@ const summary = async (res) => {
   };
 };
 const echo = async (res) => ({ status: res.status, echo: await res.json() });
+// What a step did: its value, or the class and message of what it threw.
+const attempt = async (step) => {
+  try {
+    return { threw: false, value: await step() };
+  } catch (error) {
+    return {
+      threw: true,
+      name: (error && error.name) || "Error",
+      typeError: error instanceof TypeError,
+      message: String((error && error.message) || error).slice(0, 160),
+    };
+  }
+};
+const textStream = (...parts) =>
+  new ReadableStream({
+    start(c) {
+      for (const p of parts) c.enqueue(new TextEncoder().encode(p));
+      c.close();
+    },
+  });
+// The parts of a Request that Fetch defines, as a caller sees them without reading the body.
+const describe = (req) => ({
+  url: req.url,
+  method: req.method,
+  headers: [...req.headers],
+  redirect: req.redirect,
+  bodyUsed: req.bodyUsed,
+  hasBody: req.body !== null,
+  hasSignal: req.signal != null,
+  aborted: req.signal != null ? req.signal.aborted : null,
+});
 
 const CASES = {
   get: async (env) => echo(await env.PEER.fetch("https://peer/echo?x=1")),
@@ -175,6 +206,261 @@ const CASES = {
     }
   },
   rpcThisContext: async (env) => env.PEER.whoAmI(),
+  // Request fidelity: fetch(Request), fetch(Request, init) and new Request(request, init).
+  requestDefaultContentType: async (env) =>
+    echo(await env.PEER.fetch(new Request("https://peer/echo", { method: "POST", body: "plain" }))),
+  requestBodyKinds: async () => {
+    const kinds = {
+      string: "s",
+      bytes: new Uint8Array([1, 2]),
+      buffer: new ArrayBuffer(2),
+      params: new URLSearchParams("a=1&b=2"),
+      blob: new Blob(["b"], { type: "text/x-blob" }),
+      blobNoType: new Blob(["b"]),
+    };
+    const out = {};
+    for (const [k, body] of Object.entries(kinds)) {
+      const req = new Request("https://peer/echo", { method: "POST", body });
+      out[k] = { contentType: req.headers.get("content-type"), text: await req.text() };
+    }
+    return out;
+  },
+  requestPlusInitBody: async (env) =>
+    echo(
+      await env.PEER.fetch(
+        new Request("https://peer/echo", {
+          method: "PUT",
+          headers: { "x-from": "request", "content-type": "text/x-req" },
+          body: "req body",
+        }),
+        { body: "init body" },
+      ),
+    ),
+  requestPlusInitHeadersOnly: async (env) =>
+    echo(
+      await env.PEER.fetch(
+        new Request("https://peer/echo", { method: "POST", headers: { "x-from": "request" }, body: "kept" }),
+        { headers: { "x-init": "1" } },
+      ),
+    ),
+  requestBodyUsedByFetch: async (env) => {
+    const req = new Request("https://peer/echo", { method: "POST", body: "once" });
+    const first = await echo(await env.PEER.fetch(req));
+    const again = await attempt(() => env.PEER.fetch(req).then((r) => r.status));
+    return { first, bodyUsed: req.bodyUsed, again };
+  },
+  requestBodylessReusable: async (env) => {
+    const req = new Request("https://peer/echo?twice=1", { headers: { "x-n": "1" } });
+    const a = await echo(await env.PEER.fetch(req));
+    const b = await echo(await env.PEER.fetch(req));
+    return { a, b, bodyUsed: req.bodyUsed };
+  },
+  requestUsedBodyThrows: async (env) => {
+    const req = new Request("https://peer/echo", { method: "POST", body: "used" });
+    const text = await req.text();
+    return {
+      text,
+      bodyUsed: req.bodyUsed,
+      readAgain: await attempt(() => req.text()),
+      construct: await attempt(() => describe(new Request(req))),
+      constructWithBody: await attempt(async () => {
+        const fresh = new Request(req, { body: "fresh" });
+        return { ...describe(fresh), text: await fresh.text() };
+      }),
+      clone: await attempt(() => describe(req.clone())),
+      fetch: await attempt(() => env.PEER.fetch(req).then((r) => r.status)),
+      fetchWithBody: await attempt(() => env.PEER.fetch(req, { body: "fresh" }).then(echo)),
+    };
+  },
+  requestFromRequest: async () => {
+    const a = new Request("https://peer/echo?a=1", {
+      method: "POST",
+      headers: { "x-a": "1", "content-type": "text/x-a" },
+      body: "abc",
+      redirect: "manual",
+    });
+    const b = new Request(a);
+    b.headers.set("x-b", "2");
+    return {
+      a: describe(a),
+      b: describe(b),
+      sameHeaders: a.headers === b.headers,
+      bText: await b.text(),
+      aRead: await attempt(() => a.text()),
+    };
+  },
+  requestMergeInit: async () => {
+    const a = new Request("https://peer/echo?m=1", {
+      method: "POST",
+      headers: { "x-a": "1", "content-type": "text/x-a" },
+      body: "abc",
+      redirect: "manual",
+    });
+    const b = new Request(a, { method: "PUT", headers: { "x-b": "2" } });
+    return { a: describe(a), b: describe(b), bText: await b.text() };
+  },
+  requestMergeInitBody: async () => {
+    const a = new Request("https://peer/echo", { method: "POST", headers: { "x-a": "1" }, body: "abc" });
+    const b = new Request(a, { body: new Uint8Array([104, 105]), redirect: "manual" });
+    return { a: describe(a), b: describe(b), bText: await b.text(), aText: await attempt(() => a.text()) };
+  },
+  requestAsInit: async (env) => {
+    const init = new Request("https://other/", {
+      method: "POST",
+      headers: { "x-from": "init-request" },
+      body: "init req",
+    });
+    const res = await echo(await env.PEER.fetch("https://peer/echo?asinit=1", init));
+    return { ...res, initUsed: init.bodyUsed };
+  },
+  requestRedirectFromRequest: async (env) => ({
+    viaRequest: await summary(await env.PEER.fetch(new Request("https://peer/redirect", { redirect: "manual" }))),
+    viaCopy: await summary(
+      await env.PEER.fetch(new Request(new Request("https://peer/redirect", { redirect: "manual" }))),
+    ),
+    initOverrides: await summary(
+      await env.PEER.fetch(new Request("https://peer/redirect", { redirect: "manual" }), { redirect: "follow" }),
+    ),
+    errorMode: await attempt(() =>
+      env.PEER.fetch(new Request("https://peer/redirect", { redirect: "error" })).then((r) => r.status),
+    ),
+    invalid: await attempt(() => describe(new Request("https://peer/", { redirect: "bogus" }))),
+  }),
+  requestSignal: async (env) => {
+    const ac = new AbortController();
+    const req = new Request("https://peer/slow?ms=2000", { signal: ac.signal });
+    const copy = new Request(req);
+    const pending = attempt(() => env.PEER.fetch(copy).then((r) => r.status));
+    setTimeout(() => ac.abort(), 100);
+    const t0 = Date.now();
+    const result = await pending;
+    return { result, early: Date.now() - t0 < 1500, reqAborted: req.signal.aborted, copyAborted: copy.signal.aborted };
+  },
+  requestSignalAlreadyAborted: async (env) => ({
+    viaRequest: await attempt(() =>
+      env.PEER.fetch(new Request("https://peer/echo", { signal: AbortSignal.abort() })).then((r) => r.status),
+    ),
+    initOverrides: await attempt(() =>
+      env.PEER.fetch(new Request("https://peer/echo", { signal: AbortSignal.abort() }), {
+        signal: new AbortController().signal,
+      }).then((r) => r.status),
+    ),
+  }),
+  requestGetHeadBody: async (env) => ({
+    getBody: await attempt(() => describe(new Request("https://peer/", { body: "x" }))),
+    headBody: await attempt(() => describe(new Request("https://peer/", { method: "HEAD", body: "x" }))),
+    getEmptyBody: await attempt(() => describe(new Request("https://peer/", { body: "" }))),
+    getNullBody: await attempt(() => describe(new Request("https://peer/", { body: null }))),
+    inheritedBodyToGet: await attempt(() =>
+      describe(new Request(new Request("https://peer/", { method: "POST", body: "x" }), { method: "GET" })),
+    ),
+    fetchGetBody: await attempt(() => env.PEER.fetch("https://peer/echo", { body: "x" }).then((r) => r.status)),
+    fetchRequestToGet: await attempt(() =>
+      env.PEER.fetch(new Request("https://peer/echo", { method: "POST", body: "x" }), { method: "GET" }).then(
+        (r) => r.status,
+      ),
+    ),
+  }),
+  requestStreamBody: async (env) => {
+    const req = new Request("https://peer/echo", {
+      method: "POST",
+      body: textStream("stream ", "in a request"),
+      duplex: "half",
+    });
+    return echo(await env.PEER.fetch(req));
+  },
+  requestStreamBodyCopied: async (env) => {
+    const a = new Request("https://peer/echo", {
+      method: "POST",
+      body: textStream("copied ", "stream"),
+      duplex: "half",
+    });
+    const b = new Request(a, { headers: { "x-copy": "1" } });
+    return { aUsed: a.bodyUsed, res: await echo(await env.PEER.fetch(b)), bUsed: b.bodyUsed };
+  },
+  requestClone: async () => {
+    const a = new Request("https://peer/echo", { method: "POST", headers: { "x-a": "1" }, body: "clone me" });
+    const b = a.clone();
+    b.headers.set("x-b", "2");
+    const aText = await a.text();
+    return { a: describe(a), b: describe(b), aText, bText: await b.text() };
+  },
+  requestCloneStream: async (env) => {
+    const a = new Request("https://peer/echo", { method: "POST", body: textStream("tee ", "me"), duplex: "half" });
+    const b = a.clone();
+    return { bText: await b.text(), res: await echo(await env.PEER.fetch(a)) };
+  },
+  requestCloneIncoming: async (env, request) => {
+    const copy = request.clone();
+    return {
+      sameUrl: copy.url === request.url,
+      method: copy.method,
+      hasBody: request.body !== null,
+      copyHasBody: copy.body !== null,
+      text: await copy.text(),
+    };
+  },
+  requestUrl: async () => {
+    const urls = [
+      "HTTPS://Peer.Example:443/a/./b/../c?q=1#frag",
+      "http://peer:80/x y?z=a b",
+      "https://peer",
+      "https://peer/café",
+      "https://user:pw@peer/",
+      "https://peer:8443/",
+      "/relative",
+      "not a url",
+    ];
+    const out = {};
+    for (const u of urls) out[u] = await attempt(() => new Request(u).url);
+    out.urlObject = new Request(new URL("https://peer/obj?x=1")).url;
+    return out;
+  },
+  requestMethod: async () => {
+    const out = {};
+    const methods = [
+      "get",
+      "post",
+      "patch",
+      "Delete",
+      "options",
+      "head",
+      "put",
+      "PROPFIND",
+      "custom",
+      "CONNECT",
+      "trace",
+      "bad method",
+    ];
+    methods.push("purge", "copy", "lock", "mkcol", "move", "proppatch", "search", "unlock", "acl", "report");
+    methods.push(
+      "mkactivity",
+      "checkout",
+      "merge",
+      "m-search",
+      "msearch",
+      "notify",
+      "subscribe",
+      "unsubscribe",
+      "query",
+      "track",
+    );
+    for (const m of methods) out[m] = await attempt(() => new Request("https://peer/", { method: m }).method);
+    return out;
+  },
+  headersImmutability: async (env, request) => {
+    const res = await env.PEER.fetch("https://peer/status/200");
+    await res.text();
+    return {
+      incomingRequest: await attempt(() => request.headers.set("x-test", "1")),
+      fetchedResponse: await attempt(() => res.headers.set("x-test", "1")),
+      ownRequest: await attempt(() => new Request("https://peer/").headers.set("x-test", "1")),
+      copiedIncoming: await attempt(() => new Request(request).headers.set("x-test", "1")),
+      ownResponse: await attempt(() => new Response("x").headers.set("x-test", "1")),
+      copiedResponse: await attempt(() => new Response(null, res).headers.set("x-test", "1")),
+      redirectResponse: await attempt(() => Response.redirect("https://peer/").headers.set("x-test", "1")),
+    };
+  },
   promise: async (env) => {
     const pending = env.PEER.fetch("https://peer/status/200");
     return { isPromise: pending instanceof Promise, status: (await pending).status };

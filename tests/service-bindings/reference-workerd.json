@@ -412,6 +412,830 @@
         }
       }
     },
+    "requestDefaultContentType": {
+      "status": 200,
+      "value": {
+        "ok": true,
+        "value": {
+          "status": 200,
+          "echo": {
+            "method": "POST",
+            "url": "https://peer/echo",
+            "path": "/echo",
+            "headers": [["content-type", "text/plain;charset=UTF-8"]],
+            "bodyLength": 5,
+            "bodySha256": "a116c9ed46d6207734a43317d30fd88f52ac8634c37d904bbf4e41d865f90475",
+            "bodyText": "plain"
+          }
+        }
+      }
+    },
+    "requestBodyKinds": {
+      "status": 200,
+      "value": {
+        "ok": true,
+        "value": {
+          "string": {
+            "contentType": "text/plain;charset=UTF-8",
+            "text": "s"
+          },
+          "bytes": {
+            "contentType": null,
+            "text": "\u0001\u0002"
+          },
+          "buffer": {
+            "contentType": null,
+            "text": "\u0000\u0000"
+          },
+          "params": {
+            "contentType": "application/x-www-form-urlencoded;charset=UTF-8",
+            "text": "a=1&b=2"
+          },
+          "blob": {
+            "contentType": "text/x-blob",
+            "text": "b"
+          },
+          "blobNoType": {
+            "contentType": null,
+            "text": "b"
+          }
+        }
+      }
+    },
+    "requestPlusInitBody": {
+      "status": 200,
+      "value": {
+        "ok": true,
+        "value": {
+          "status": 200,
+          "echo": {
+            "method": "PUT",
+            "url": "https://peer/echo",
+            "path": "/echo",
+            "headers": [
+              ["content-type", "text/x-req"],
+              ["x-from", "request"]
+            ],
+            "bodyLength": 9,
+            "bodySha256": "c423c8f82cab9e4288bba1049da5775dfb3e4a4f25176c24f4638151f27fb01f",
+            "bodyText": "init body"
+          }
+        }
+      }
+    },
+    "requestPlusInitHeadersOnly": {
+      "status": 200,
+      "value": {
+        "ok": true,
+        "value": {
+          "status": 200,
+          "echo": {
+            "method": "POST",
+            "url": "https://peer/echo",
+            "path": "/echo",
+            "headers": [["x-init", "1"]],
+            "bodyLength": 4,
+            "bodySha256": "79f076abdd19a752db7267bfff2f9022161d120dea919fdaca2ffdfc24ca8c96",
+            "bodyText": "kept"
+          }
+        }
+      }
+    },
+    "requestBodyUsedByFetch": {
+      "status": 200,
+      "value": {
+        "ok": true,
+        "value": {
+          "first": {
+            "status": 200,
+            "echo": {
+              "method": "POST",
+              "url": "https://peer/echo",
+              "path": "/echo",
+              "headers": [["content-type", "text/plain;charset=UTF-8"]],
+              "bodyLength": 4,
+              "bodySha256": "200651a8b2d5912f692db89468a7d47d86a3ed6844f48f1b15f2be1d9c9a7e5e",
+              "bodyText": "once"
+            }
+          },
+          "bodyUsed": true,
+          "again": {
+            "threw": true,
+            "name": "TypeError",
+            "typeError": true,
+            "message": "Cannot reconstruct a Request with a used body."
+          }
+        }
+      }
+    },
+    "requestBodylessReusable": {
+      "status": 200,
+      "value": {
+        "ok": true,
+        "value": {
+          "a": {
+            "status": 200,
+            "echo": {
+              "method": "GET",
+              "url": "https://peer/echo?twice=1",
+              "path": "/echo?twice=1",
+              "headers": [["x-n", "1"]],
+              "bodyLength": 0,
+              "bodySha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "bodyText": ""
+            }
+          },
+          "b": {
+            "status": 200,
+            "echo": {
+              "method": "GET",
+              "url": "https://peer/echo?twice=1",
+              "path": "/echo?twice=1",
+              "headers": [["x-n", "1"]],
+              "bodyLength": 0,
+              "bodySha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "bodyText": ""
+            }
+          },
+          "bodyUsed": false
+        }
+      }
+    },
+    "requestUsedBodyThrows": {
+      "status": 200,
+      "value": {
+        "ok": true,
+        "value": {
+          "text": "used",
+          "bodyUsed": true,
+          "readAgain": {
+            "threw": true,
+            "name": "TypeError",
+            "typeError": true,
+            "message": "Body has already been used. It can only be used once. Use tee() first if you need to read it twice."
+          },
+          "construct": {
+            "threw": true,
+            "name": "TypeError",
+            "typeError": true,
+            "message": "Cannot reconstruct a Request with a used body."
+          },
+          "constructWithBody": {
+            "threw": false,
+            "value": {
+              "url": "https://peer/echo",
+              "method": "POST",
+              "headers": [["content-type", "text/plain;charset=UTF-8"]],
+              "redirect": "follow",
+              "bodyUsed": false,
+              "hasBody": true,
+              "hasSignal": true,
+              "aborted": false,
+              "text": "fresh"
+            }
+          },
+          "clone": {
+            "threw": true,
+            "name": "TypeError",
+            "typeError": true,
+            "message": "This ReadableStream is currently locked to a reader,"
+          },
+          "fetch": {
+            "threw": true,
+            "name": "TypeError",
+            "typeError": true,
+            "message": "Cannot reconstruct a Request with a used body."
+          },
+          "fetchWithBody": {
+            "threw": false,
+            "value": {
+              "status": 200,
+              "echo": {
+                "method": "POST",
+                "url": "https://peer/echo",
+                "path": "/echo",
+                "headers": [["content-type", "text/plain;charset=UTF-8"]],
+                "bodyLength": 5,
+                "bodySha256": "d098ab5e44b9aabb755f76d806598f43573c662b35e4a2eab1e312ec9ad195e2",
+                "bodyText": "fresh"
+              }
+            }
+          }
+        }
+      }
+    },
+    "requestFromRequest": {
+      "status": 200,
+      "value": {
+        "ok": true,
+        "value": {
+          "a": {
+            "url": "https://peer/echo?a=1",
+            "method": "POST",
+            "headers": [
+              ["content-type", "text/x-a"],
+              ["x-a", "1"]
+            ],
+            "redirect": "manual",
+            "bodyUsed": true,
+            "hasBody": true,
+            "hasSignal": true,
+            "aborted": false
+          },
+          "b": {
+            "url": "https://peer/echo?a=1",
+            "method": "POST",
+            "headers": [
+              ["content-type", "text/x-a"],
+              ["x-a", "1"],
+              ["x-b", "2"]
+            ],
+            "redirect": "manual",
+            "bodyUsed": false,
+            "hasBody": true,
+            "hasSignal": true,
+            "aborted": false
+          },
+          "sameHeaders": false,
+          "bText": "abc",
+          "aRead": {
+            "threw": true,
+            "name": "TypeError",
+            "typeError": true,
+            "message": "Body has already been used. It can only be used once. Use tee() first if you need to read it twice."
+          }
+        }
+      }
+    },
+    "requestMergeInit": {
+      "status": 200,
+      "value": {
+        "ok": true,
+        "value": {
+          "a": {
+            "url": "https://peer/echo?m=1",
+            "method": "POST",
+            "headers": [
+              ["content-type", "text/x-a"],
+              ["x-a", "1"]
+            ],
+            "redirect": "manual",
+            "bodyUsed": true,
+            "hasBody": true,
+            "hasSignal": true,
+            "aborted": false
+          },
+          "b": {
+            "url": "https://peer/echo?m=1",
+            "method": "PUT",
+            "headers": [["x-b", "2"]],
+            "redirect": "manual",
+            "bodyUsed": false,
+            "hasBody": true,
+            "hasSignal": true,
+            "aborted": false
+          },
+          "bText": "abc"
+        }
+      }
+    },
+    "requestMergeInitBody": {
+      "status": 200,
+      "value": {
+        "ok": true,
+        "value": {
+          "a": {
+            "url": "https://peer/echo",
+            "method": "POST",
+            "headers": [
+              ["content-type", "text/plain;charset=UTF-8"],
+              ["x-a", "1"]
+            ],
+            "redirect": "follow",
+            "bodyUsed": false,
+            "hasBody": true,
+            "hasSignal": true,
+            "aborted": false
+          },
+          "b": {
+            "url": "https://peer/echo",
+            "method": "POST",
+            "headers": [
+              ["content-type", "text/plain;charset=UTF-8"],
+              ["x-a", "1"]
+            ],
+            "redirect": "manual",
+            "bodyUsed": false,
+            "hasBody": true,
+            "hasSignal": true,
+            "aborted": false
+          },
+          "bText": "hi",
+          "aText": {
+            "threw": false,
+            "value": "abc"
+          }
+        }
+      }
+    },
+    "requestAsInit": {
+      "status": 200,
+      "value": {
+        "ok": true,
+        "value": {
+          "status": 200,
+          "echo": {
+            "method": "POST",
+            "url": "https://peer/echo?asinit=1",
+            "path": "/echo?asinit=1",
+            "headers": [
+              ["content-type", "text/plain;charset=UTF-8"],
+              ["x-from", "init-request"]
+            ],
+            "bodyLength": 8,
+            "bodySha256": "ca6e421c6f50d5f240033512d6f89c8d5d92ba86a644c1eeaff726b666265380",
+            "bodyText": "init req"
+          },
+          "initUsed": true
+        }
+      }
+    },
+    "requestRedirectFromRequest": {
+      "status": 200,
+      "value": {
+        "ok": true,
+        "value": {
+          "viaRequest": {
+            "status": 302,
+            "headers": [["location", "https://peer/echo?redirected=1"]],
+            "setCookie": [],
+            "bodyLength": 0,
+            "bodySha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "bodyText": ""
+          },
+          "viaCopy": {
+            "status": 302,
+            "headers": [["location", "https://peer/echo?redirected=1"]],
+            "setCookie": [],
+            "bodyLength": 0,
+            "bodySha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "bodyText": ""
+          },
+          "initOverrides": {
+            "status": 200,
+            "headers": [["content-type", "application/json"]],
+            "setCookie": [],
+            "bodyLength": 205,
+            "bodySha256": "73c36e9477ddac567b9267ce286977bd3dca6ff7f68b5cbefdcf8896fb154a8e",
+            "bodyText": null
+          },
+          "errorMode": {
+            "threw": true,
+            "name": "TypeError",
+            "typeError": true,
+            "message": "Invalid redirect value, must be one of \"follow\" or \"manual\" (\"error\" won't be implemented since it does not make sense at the edge; use \"manual\" and check the r"
+          },
+          "invalid": {
+            "threw": true,
+            "name": "TypeError",
+            "typeError": true,
+            "message": "Invalid redirect value, must be one of \"follow\" or \"manual\" (\"error\" won't be implemented since it does not make sense at the edge; use \"manual\" and check the r"
+          }
+        }
+      }
+    },
+    "requestSignal": {
+      "status": 200,
+      "value": {
+        "ok": true,
+        "value": {
+          "result": {
+            "threw": true,
+            "name": "AbortError",
+            "typeError": false,
+            "message": "The operation was aborted"
+          },
+          "early": true,
+          "reqAborted": true,
+          "copyAborted": true
+        }
+      }
+    },
+    "requestSignalAlreadyAborted": {
+      "status": 200,
+      "value": {
+        "ok": true,
+        "value": {
+          "viaRequest": {
+            "threw": true,
+            "name": "AbortError",
+            "typeError": false,
+            "message": "The operation was aborted"
+          },
+          "initOverrides": {
+            "threw": false,
+            "value": 200
+          }
+        }
+      }
+    },
+    "requestGetHeadBody": {
+      "status": 200,
+      "value": {
+        "ok": true,
+        "value": {
+          "getBody": {
+            "threw": true,
+            "name": "TypeError",
+            "typeError": true,
+            "message": "Request with a GET or HEAD method cannot have a body."
+          },
+          "headBody": {
+            "threw": true,
+            "name": "TypeError",
+            "typeError": true,
+            "message": "Request with a GET or HEAD method cannot have a body."
+          },
+          "getEmptyBody": {
+            "threw": true,
+            "name": "TypeError",
+            "typeError": true,
+            "message": "Request with a GET or HEAD method cannot have a body."
+          },
+          "getNullBody": {
+            "threw": false,
+            "value": {
+              "url": "https://peer/",
+              "method": "GET",
+              "headers": [],
+              "redirect": "follow",
+              "bodyUsed": false,
+              "hasBody": false,
+              "hasSignal": true,
+              "aborted": false
+            }
+          },
+          "inheritedBodyToGet": {
+            "threw": true,
+            "name": "TypeError",
+            "typeError": true,
+            "message": "Request with a GET or HEAD method cannot have a body."
+          },
+          "fetchGetBody": {
+            "threw": true,
+            "name": "TypeError",
+            "typeError": true,
+            "message": "Request with a GET or HEAD method cannot have a body."
+          },
+          "fetchRequestToGet": {
+            "threw": true,
+            "name": "TypeError",
+            "typeError": true,
+            "message": "Request with a GET or HEAD method cannot have a body."
+          }
+        }
+      }
+    },
+    "requestStreamBody": {
+      "status": 200,
+      "value": {
+        "ok": true,
+        "value": {
+          "status": 200,
+          "echo": {
+            "method": "POST",
+            "url": "https://peer/echo",
+            "path": "/echo",
+            "headers": [],
+            "bodyLength": 19,
+            "bodySha256": "c8c6d333ab553045ebbd60faf60a28125c85fdabd38d9d2586d31f46b19ebc70",
+            "bodyText": "stream in a request"
+          }
+        }
+      }
+    },
+    "requestStreamBodyCopied": {
+      "status": 200,
+      "value": {
+        "ok": true,
+        "value": {
+          "aUsed": true,
+          "res": {
+            "status": 200,
+            "echo": {
+              "method": "POST",
+              "url": "https://peer/echo",
+              "path": "/echo",
+              "headers": [["x-copy", "1"]],
+              "bodyLength": 13,
+              "bodySha256": "c1ac33263c72eaf5b3f704b2630ad67d2616e57001086ca9f815c5bcbe27cead",
+              "bodyText": "copied stream"
+            }
+          },
+          "bUsed": true
+        }
+      }
+    },
+    "requestClone": {
+      "status": 200,
+      "value": {
+        "ok": true,
+        "value": {
+          "a": {
+            "url": "https://peer/echo",
+            "method": "POST",
+            "headers": [
+              ["content-type", "text/plain;charset=UTF-8"],
+              ["x-a", "1"]
+            ],
+            "redirect": "follow",
+            "bodyUsed": true,
+            "hasBody": true,
+            "hasSignal": true,
+            "aborted": false
+          },
+          "b": {
+            "url": "https://peer/echo",
+            "method": "POST",
+            "headers": [
+              ["content-type", "text/plain;charset=UTF-8"],
+              ["x-a", "1"],
+              ["x-b", "2"]
+            ],
+            "redirect": "follow",
+            "bodyUsed": false,
+            "hasBody": true,
+            "hasSignal": true,
+            "aborted": false
+          },
+          "aText": "clone me",
+          "bText": "clone me"
+        }
+      }
+    },
+    "requestCloneStream": {
+      "status": 200,
+      "value": {
+        "ok": true,
+        "value": {
+          "bText": "tee me",
+          "res": {
+            "status": 200,
+            "echo": {
+              "method": "POST",
+              "url": "https://peer/echo",
+              "path": "/echo",
+              "headers": [],
+              "bodyLength": 6,
+              "bodySha256": "8e052eefdb7773f74f82afed88e71453ab8cf1c60088dfbe645e7c26d79e4ed3",
+              "bodyText": "tee me"
+            }
+          }
+        }
+      }
+    },
+    "requestCloneIncoming": {
+      "status": 200,
+      "value": {
+        "ok": true,
+        "value": {
+          "sameUrl": true,
+          "method": "GET",
+          "hasBody": false,
+          "copyHasBody": false,
+          "text": ""
+        }
+      }
+    },
+    "requestUrl": {
+      "status": 200,
+      "value": {
+        "ok": true,
+        "value": {
+          "HTTPS://Peer.Example:443/a/./b/../c?q=1#frag": {
+            "threw": false,
+            "value": "https://peer.example/a/c?q=1#frag"
+          },
+          "http://peer:80/x y?z=a b": {
+            "threw": false,
+            "value": "http://peer/x%20y?z=a%20b"
+          },
+          "https://peer": {
+            "threw": false,
+            "value": "https://peer/"
+          },
+          "https://peer/café": {
+            "threw": false,
+            "value": "https://peer/caf%C3%A9"
+          },
+          "https://user:pw@peer/": {
+            "threw": false,
+            "value": "https://user:pw@peer/"
+          },
+          "https://peer:8443/": {
+            "threw": false,
+            "value": "https://peer:8443/"
+          },
+          "/relative": {
+            "threw": true,
+            "name": "TypeError",
+            "typeError": true,
+            "message": "Invalid URL: /relative"
+          },
+          "not a url": {
+            "threw": true,
+            "name": "TypeError",
+            "typeError": true,
+            "message": "Invalid URL: not a url"
+          },
+          "urlObject": "https://peer/obj?x=1"
+        }
+      }
+    },
+    "requestMethod": {
+      "status": 200,
+      "value": {
+        "ok": true,
+        "value": {
+          "get": {
+            "threw": false,
+            "value": "GET"
+          },
+          "post": {
+            "threw": false,
+            "value": "POST"
+          },
+          "patch": {
+            "threw": false,
+            "value": "PATCH"
+          },
+          "Delete": {
+            "threw": false,
+            "value": "DELETE"
+          },
+          "options": {
+            "threw": false,
+            "value": "OPTIONS"
+          },
+          "head": {
+            "threw": false,
+            "value": "HEAD"
+          },
+          "put": {
+            "threw": false,
+            "value": "PUT"
+          },
+          "PROPFIND": {
+            "threw": false,
+            "value": "PROPFIND"
+          },
+          "custom": {
+            "threw": true,
+            "name": "TypeError",
+            "typeError": true,
+            "message": "Invalid HTTP method string: custom"
+          },
+          "CONNECT": {
+            "threw": true,
+            "name": "TypeError",
+            "typeError": true,
+            "message": "Invalid HTTP method string: CONNECT"
+          },
+          "trace": {
+            "threw": false,
+            "value": "TRACE"
+          },
+          "bad method": {
+            "threw": true,
+            "name": "TypeError",
+            "typeError": true,
+            "message": "Invalid HTTP method string: bad method"
+          },
+          "purge": {
+            "threw": false,
+            "value": "PURGE"
+          },
+          "copy": {
+            "threw": false,
+            "value": "COPY"
+          },
+          "lock": {
+            "threw": false,
+            "value": "LOCK"
+          },
+          "mkcol": {
+            "threw": false,
+            "value": "MKCOL"
+          },
+          "move": {
+            "threw": false,
+            "value": "MOVE"
+          },
+          "proppatch": {
+            "threw": false,
+            "value": "PROPPATCH"
+          },
+          "search": {
+            "threw": false,
+            "value": "SEARCH"
+          },
+          "unlock": {
+            "threw": false,
+            "value": "UNLOCK"
+          },
+          "acl": {
+            "threw": false,
+            "value": "ACL"
+          },
+          "report": {
+            "threw": false,
+            "value": "REPORT"
+          },
+          "mkactivity": {
+            "threw": false,
+            "value": "MKACTIVITY"
+          },
+          "checkout": {
+            "threw": false,
+            "value": "CHECKOUT"
+          },
+          "merge": {
+            "threw": false,
+            "value": "MERGE"
+          },
+          "m-search": {
+            "threw": true,
+            "name": "TypeError",
+            "typeError": true,
+            "message": "Invalid HTTP method string: m-search"
+          },
+          "msearch": {
+            "threw": false,
+            "value": "MSEARCH"
+          },
+          "notify": {
+            "threw": false,
+            "value": "NOTIFY"
+          },
+          "subscribe": {
+            "threw": false,
+            "value": "SUBSCRIBE"
+          },
+          "unsubscribe": {
+            "threw": false,
+            "value": "UNSUBSCRIBE"
+          },
+          "query": {
+            "threw": false,
+            "value": "QUERY"
+          },
+          "track": {
+            "threw": true,
+            "name": "TypeError",
+            "typeError": true,
+            "message": "Invalid HTTP method string: track"
+          }
+        }
+      }
+    },
+    "headersImmutability": {
+      "status": 200,
+      "value": {
+        "ok": true,
+        "value": {
+          "incomingRequest": {
+            "threw": true,
+            "name": "TypeError",
+            "typeError": true,
+            "message": "Can't modify immutable headers."
+          },
+          "fetchedResponse": {
+            "threw": true,
+            "name": "TypeError",
+            "typeError": true,
+            "message": "Can't modify immutable headers."
+          },
+          "ownRequest": {
+            "threw": false
+          },
+          "copiedIncoming": {
+            "threw": false
+          },
+          "ownResponse": {
+            "threw": false
+          },
+          "copiedResponse": {
+            "threw": false
+          },
+          "redirectResponse": {
+            "threw": true,
+            "name": "TypeError",
+            "typeError": true,
+            "message": "Can't modify immutable headers."
+          }
+        }
+      }
+    },
     "promise": {
       "status": 200,
       "value": {
@@ -434,24 +1258,24 @@
   },
   "reliability": {
     "responsiveDuringCall": {
-      "pingMs": 68,
+      "pingMs": 66,
       "pingStatus": 200,
-      "slowMs": 3037,
+      "slowMs": 3047,
       "slowStatus": 200
     },
     "concurrent8x500ms": {
-      "totalMs": 577,
+      "totalMs": 573,
       "statuses": [200, 200, 200, 200, 200, 200, 200, 200]
     },
     "selfRecursion": {
       "status": 200,
       "text": "bottom 50",
-      "ms": 51
+      "ms": 68
     },
     "mutualRecursion": {
       "status": 200,
       "text": "pong",
-      "ms": 33
+      "ms": 40
     },
     "calleeNeverAnswers": {
       "status": 0,
