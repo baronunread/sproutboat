@@ -964,13 +964,15 @@ export function Shell({ children }: { children: ReactNode }) {
         </nav>
       </aside>
       <div className="flex min-h-dvh flex-col">
-        <header className="sticky top-0 z-5 flex h-14 items-center justify-between border-b border-border bg-[color-mix(in_srgb,var(--color-background)_90%,transparent)] px-8 backdrop-blur max-[800px]:px-5">
-          <p className="m-0 flex items-center gap-2 text-[0.8rem] whitespace-nowrap text-muted-foreground">
+        <header className="sticky top-0 z-5 flex h-14 items-center justify-between gap-4 border-b border-border bg-[color-mix(in_srgb,var(--color-background)_90%,transparent)] px-8 backdrop-blur max-[800px]:px-5">
+          <p className="m-0 flex min-w-0 items-center gap-2 text-[0.8rem] whitespace-nowrap text-muted-foreground">
             <span className="font-medium text-foreground max-[480px]:hidden">Personal account</span>
             <span className="font-normal text-line-strong max-[480px]:hidden">/</span>
-            {breadcrumb(pathname)}
+            <span className="min-w-0 truncate" title={breadcrumb(pathname)}>
+              {breadcrumb(pathname)}
+            </span>
           </p>
-          <div className="flex items-center gap-3">
+          <div className="flex shrink-0 items-center gap-3">
             {account?.isAdmin && <span className={BADGE}>Admin</span>}
             <details className="relative">
               <summary aria-label="Open account menu" className={AVATAR}>

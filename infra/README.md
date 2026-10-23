@@ -247,18 +247,22 @@ Still keep taking provider snapshots.
 Onto a fresh install (run `install.sh` first, so the users and units exist):
 
 ```sh
-systemctl stop sproutboat-control sproutboat-edge
-cd /opt/sproutboat
-sudo -u sproutboat-control /opt/sproutboat/bun/bin/bun apps/control/src/backups.ts \
-  restore /path/to/sproutboat-<date>.tar.gz
-systemctl start sproutboat-control sproutboat-edge
+sudo sbctl restore /path/to/sproutboat-<date>.tar.gz --force
 ```
 
-`restore` checks the whole archive first and stops on a truncated or foreign
-file. It refuses a state dir that already has a `sproutboat.sqlite`; pass
-`--force` as the last argument to overwrite one on purpose. It warns when the
-archive has no `secrets.key` and `SPROUTBOAT_SECRETS_KEY` is unset, and when the
-archive predates binding-data backups (no `resources/`).
+`sbctl restore` stops control, the edge and the backup timer, then restores the
+archive. It gives control its database, routes and artifacts, and the edge its
+binding data, group-writable as `install.sh` sets it. Then it starts the
+services again. The fresh install already has a `sproutboat.sqlite`, so the
+restore needs `--force`.
+
+The restore checks the whole archive first. It stops on a truncated or foreign
+file, or on a member outside the state dir. Before unpacking, it deletes the
+`-wal`, `-shm` and `-journal` files beside every database in the archive,
+because SQLite would replay the install's own log over the restored file.
+Without `--force` it refuses a state dir that already has a `sproutboat.sqlite`.
+It warns when the archive has no `secrets.key` and `SPROUTBOAT_SECRETS_KEY` is
+unset, and when the archive predates binding-data backups (no `resources/`).
 
 ## Limits and abuse controls (#25)
 

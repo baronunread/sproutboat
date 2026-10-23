@@ -5,6 +5,113 @@ Changes to the self-hosted Sproutboat platform are recorded here. Read the
 
 ## [Unreleased]
 
+## [0.10.0] - 2026-10-23
+
+### Breaking and operator actions
+
+- Update with `sbctl update`. It reinstalls the edge unit with the new
+  response limit and restarts the services. No new units, env files or
+  secrets. If you set `SPROUTBOAT_RESPONSE_MAX_BYTES` yourself, your value
+  still applies.
+- Deployed apps get the KV and R2 `list()` prefix fix (see Fixed) without a
+  rebuild, at every compatibility date. An app that passes a prefix containing
+  uppercase letters, `_` or `%` can list fewer keys than before.
+- When a broker first opens a KV or R2 store after the update, it adds a
+  `metadata` column to KV and an `md5` column to R2. Existing values, objects,
+  etags and D1 rows are unchanged, and v0.9.2 reads the migrated stores as
+  before, so rolling back keeps the data.
+- A D1 statement that only reads now reports `meta.changes` as 0, at every
+  date. It repeated the previous write's count.
+- A client that disconnects now stops the sprout's request. The edge logs it as
+  499 with `errorKind: "client-closed"`. Before, the request ran to the end.
+- The edge removes `x-sb-edge-secret`, `x-sb-edge-token`, `x-sb-binding-call`
+  and `x-sb-url` from every incoming request, and `x-sb-uncaught` from every
+  response a client receives.
+- Roll back with `SB_REF=v0.9.2 sbctl update` only before apps are rebuilt at
+  compatibility date `2026-10-25` or later. On v0.9.2 such an app's KV `list()`
+  returns no keys and its metadata reads `null`, without an error. The command
+  also pins the install to v0.9.2: remove `SPROUTBOAT_UPDATE_REF` from
+  `/etc/sproutboat/update.env` to follow releases again.
+- Restore a backup with `sudo sbctl restore <archive> --force` (see Fixed). The
+  restore runbook in `infra/README.md` used before this release can lose control
+  data.
+- `MIN_CLI_VERSION` stays `0.0.0`: the control API is unchanged, and older CLIs
+  keep working. CLI 0.28.0 is the release tested with this platform version.
+
+### Added
+
+- Service-binding calls are vouched for by the edge (#295). With a sprout built
+  by CLI 0.20.0 or later, the callee sees the caller's URL as `request.url`, and
+  a callee that throws makes the caller's `fetch()` reject with its error, as in
+  workerd. Brokers get a per-boot edge secret and each sprout its own token.
+  Clients can forge neither.
+- `tests/service-bindings`: a service-binding conformance and reliability suite
+  compared against workerd, including streaming, Workers RPC and Request
+  fidelity cases (#293, #298, #301).
+- `tools/with-local-packages.ts` runs one command against a local
+  `sproutboat-packages` checkout (#300).
+- `sbctl restore <archive> [--force]` stops control, the edge and the backup
+  timer, then restores a backup. It gives each service its files back with the
+  owners and modes `install.sh` sets, then starts the services again.
+
+### Changed
+
+- Adopt `@sproutboat/runtime` 0.28.0, `@sproutboat/toolchain` 0.14.0 (Porffor
+  Alpha 19) and `@sproutboat/wire` 0.17.0 (#288 to #303). The broker can stream
+  `fetch()` and service-binding responses and request bodies, honours aborts,
+  and no longer resends a call it may already have run. It falls back to whole
+  bodies for sprouts that don't ask for streaming.
+- New behaviour is gated by each app's compiled `compatibility_date`. A deployed
+  sprout carries the runtime it was built with, so existing deployments keep
+  their behaviour until they are rebuilt with a newer CLI at a later date:
+
+  | From date    | Behaviour                                                                                                                              |
+  | ------------ | -------------------------------------------------------------------------------------------------------------------------------------- |
+  | `2026-10-21` | `Request.body` and `Response.body` are `ReadableStream`s; `fetch()` and service-binding responses stream                               |
+  | `2026-10-22` | `fetch()` and binding calls return Promises and run off the event loop; redirects follow Fetch; opt-in LTX capture (`SB_LTX_ENABLE=1`) |
+  | `2026-10-23` | `fetch(Request)` and `new Request(request, init)` follow workerd (GET and HEAD refuse a body, immutable headers)                       |
+  | `2026-10-24` | D1 returns Promises and follows workerd's rules (types, parameter counts, foreign keys, errors)                                        |
+  | `2026-10-25` | KV follows the Workers API (Promises, types, metadata, expirations, errors)                                                            |
+  | `2026-10-26` | R2 follows the Workers API (Promises, MD5 etags, ranges, conditionals, `uploadPart()` bodies)                                          |
+  | `2026-10-27` | Request bodies stream; `SB_REQUEST_BODY_MAX` defaults to 100 MiB (1 MiB before)                                                        |
+
+- The compatibility suite reads 32/32 compile, 3/32 match. Every handler's
+  status and body match Bun, including the two date-parsing cases that failed
+  in 0.9.2. The 29 mismatches are `Content-Type` alone: since runtime 0.17.0,
+  string bodies default to `text/plain;charset=UTF-8` and `Response.json` sets
+  `application/json`, as in the Fetch spec and workerd, where Bun differs. This
+  reaches an app only when it is rebuilt with CLI 0.18.0 or later, at any
+  compatibility date.
+- The edge's per-response safety limit is 512 MiB instead of 10 MiB. Responses
+  stream through the edge, and the limit applies to service-binding calls too
+  (#296).
+- Edge connections stay open 5 seconds past the request deadline, up to Bun's
+  maximum of 255 seconds, so a slow sprout gets the edge's 504 instead of a
+  dropped connection after 10 seconds (#294).
+
+### Fixed
+
+- KV and R2 `list()` prefixes match exactly, as in Workers (`@sproutboat/wire`
+  0.15.0 and 0.16.0). They used SQL `LIKE`, which ignored case and read `_` and
+  `%` as wildcards: the prefix `a` also listed `AB`, and `a_` also listed `ab`.
+  The dashboard and the KV export already matched exactly.
+- Restoring a backup brings back the backed-up control data. The restore left
+  the target install's `sproutboat.sqlite-wal` beside the restored database,
+  and SQLite replayed it over the restored file. Control came back with the new
+  install's users and no projects. The restore now deletes each restored
+  database's `-wal`, `-shm` and `-journal` files first. It refuses archive
+  members outside the state dir, keeps the install's directories, and leaves
+  binding data writable by the edge, which had failed with `EACCES` (#139).
+- At narrow widths, a long dashboard breadcrumb is cut off with an ellipsis
+  instead of pushing the account menu off-screen.
+- The Admin › Backups page names everything a backup holds, including binding
+  data, and gives the `sbctl restore` command.
+- A sprout no longer fails to start with "Is port N in use?" when another local
+  address holds the port. The supervisor checks the wildcard address too, and
+  tries each port in the range at most once (#300).
+- The control version in `x-sproutboat-control` reads `0.10.0`. It had read
+  `0.5.3` since v0.5.3.
+
 ## [0.9.2] - 2026-10-11
 
 ### Changed
