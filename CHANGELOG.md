@@ -30,6 +30,18 @@ Changes to the self-hosted Sproutboat platform are recorded here. Read the
 - The edge removes `x-sb-edge-secret`, `x-sb-edge-token`, `x-sb-binding-call`
   and `x-sb-url` from every incoming request, and `x-sb-uncaught` from every
   response a client receives.
+- Roll back with `SB_REF=v0.9.2 sbctl update` only before apps are rebuilt at
+  compatibility date `2026-10-25` or later. On v0.9.2 such an app's KV `list()`
+  returns no keys and its metadata reads `null`, without an error. The command
+  also pins the install to v0.9.2: remove `SPROUTBOAT_UPDATE_REF` from
+  `/etc/sproutboat/update.env` to follow releases again.
+- Known issue, present since 0.9.0: the restore runbook in `infra/README.md`
+  leaves the new install's `sproutboat.sqlite-wal` beside the restored database,
+  so SQLite replays it and control comes back with the new install's users and
+  no projects. It also restores binding data that the edge cannot write. Until
+  this is fixed, stop the services, delete `sproutboat.sqlite-wal` and
+  `sproutboat.sqlite-shm`, restore, then run
+  `chgrp -R sproutboat` and `chmod -R g+rwX` on `brokers/` and `resources/`.
 - `MIN_CLI_VERSION` stays `0.0.0`: the control API is unchanged, and older CLIs
   keep working. CLI 0.28.0 is the release tested with this platform version.
 
@@ -67,6 +79,13 @@ Changes to the self-hosted Sproutboat platform are recorded here. Read the
   | `2026-10-26` | R2 follows the Workers API (Promises, MD5 etags, ranges, conditionals, `uploadPart()` bodies)                                          |
   | `2026-10-27` | Request bodies stream; `SB_REQUEST_BODY_MAX` defaults to 100 MiB (1 MiB before)                                                        |
 
+- The compatibility suite reads 32/32 compile, 3/32 match. Every handler's
+  status and body match Bun, including the two date-parsing cases that failed
+  in 0.9.2. The 29 mismatches are `Content-Type` alone: since runtime 0.17.0,
+  string bodies default to `text/plain;charset=UTF-8` and `Response.json` sets
+  `application/json`, as in the Fetch spec and workerd, where Bun differs. This
+  reaches an app only when it is rebuilt with CLI 0.18.0 or later, at any
+  compatibility date.
 - The edge's per-response safety limit is 512 MiB instead of 10 MiB. Responses
   stream through the edge, and the limit applies to service-binding calls too
   (#296).
