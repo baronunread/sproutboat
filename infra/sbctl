@@ -8,6 +8,7 @@
 set -euo pipefail
 
 ROOT=/opt/sproutboat
+STATE=/var/lib/sproutboat
 TOKEN_FILE=/root/sproutboat-admin.env
 UPDATER=/usr/local/lib/sproutboat/update
 SERVICES=(sproutboat-control sproutboat-egress sproutboat-edge caddy)
@@ -30,6 +31,7 @@ sbctl — Sproutboat single-VPS control
   sbctl token              print the admin API URL + token
   sbctl preflight          re-run the runtime sandbox checks
   sbctl update             stage a fresh release, then run its installer
+  sbctl restore <archive> [--force]  stop control + edge, restore a backup, fix owners, start
   sbctl uninstall [args]   hand off to install.sh --uninstall
 EOF
 }
@@ -67,6 +69,29 @@ case "$cmd" in
   update)
     [ -x "$UPDATER" ] || die "$UPDATER missing: re-run the installer once"
     exec "$UPDATER" "$@" ;;
+  restore)
+    archive=${1:-}; force=${2:-}
+    [ -f "$archive" ] || die "usage: sbctl restore <backup.tar.gz> [--force]"
+    [ -z "$force" ] || [ "$force" = --force ] || die "usage: sbctl restore <backup.tar.gz> [--force]"
+    archive=$(realpath "$archive")
+    # Nothing may hold the databases open while they are replaced.
+    systemctl stop sproutboat-backup.timer sproutboat-control sproutboat-edge
+    rc=0
+    ( cd "$ROOT" && "$ROOT/bun/bin/bun" apps/control/src/backups.ts restore "$archive" ${force:+"$force"} ) || rc=$?
+    # Owners and modes as install.sh sets them: control owns its database, routes
+    # and artifacts; the edge owns binding data, which both share through the group.
+    for f in sproutboat.sqlite routes.json deployments.json secrets.key artifacts; do
+      [ -e "$STATE/$f" ] && chown -R sproutboat-control:sproutboat "$STATE/$f"
+    done
+    for d in brokers resources; do
+      [ -d "$STATE/$d" ] || continue
+      chown -R sproutboat-edge:sproutboat "$STATE/$d"
+      chmod -R g+rwX "$STATE/$d"
+    done
+    systemctl start sproutboat-control sproutboat-edge sproutboat-backup.timer
+    [ "$rc" = 0 ] || die "restore failed (exit $rc); the services were restarted on the state as it was"
+    printf '%s✓%s restored %s\n' "$OK" "$Z" "$archive"
+    exec "$0" status ;;
   uninstall)
     [ -x "$ROOT/install.sh" ] || die "$ROOT/install.sh missing"
     exec "$ROOT/install.sh" --uninstall "$@" ;;

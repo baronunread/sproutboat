@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, expect, test } from "bun:test";
 import { Database } from "bun:sqlite";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import * as mod from "./backups";
@@ -128,9 +128,27 @@ test("createBackup + restoreBackup: binding data survives onto an empty install 
     expect(read(join(fresh, "resources", "kv_1.sqlite"))).toBe("resource-value");
     expect(read(join(fresh, "brokers", "abc123", "d1", "DB.sqlite"))).toBe("broker-value");
     expect(await Bun.file(join(fresh, "resources", "r2-blobs", "obj.blob")).text()).toBe("BYTES");
+    // The edge shares the group with control and must be able to write the stores.
+    expect((await stat(join(fresh, "resources", "kv_1.sqlite"))).mode & 0o060).toBe(0o060);
     // A second restore onto the now-populated dir needs --force.
     await expect(mod.restoreBackup(archive)).rejects.toThrow(/already has a sproutboat.sqlite/);
+
+    // The install being restored over has its own -wal beside sproutboat.sqlite.
+    // Left in place, SQLite replays it over the restored file on the next open.
+    const target = join(fresh, "sproutboat.sqlite");
+    const live = new Database(target);
+    live.exec("PRAGMA journal_mode = WAL; CREATE TABLE stale_install (x); INSERT INTO stale_install VALUES (1);");
+    const staleWal = await Bun.file(`${target}-wal`).bytes();
+    live.close();
+    await writeFile(`${target}-wal`, staleWal);
     expect(await mod.restoreBackup(archive, { force: true })).toEqual([]);
+    expect(await Bun.file(`${target}-wal`).exists()).toBe(false);
+    const restored = new Database(target, { readonly: true });
+    try {
+      expect(restored.query("SELECT name FROM sqlite_master WHERE name = 'stale_install'").get()).toBeNull();
+    } finally {
+      restored.close();
+    }
   } finally {
     await rm(fresh, { recursive: true, force: true });
     await rm(archive, { force: true });

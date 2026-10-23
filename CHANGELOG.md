@@ -13,12 +13,9 @@ Changes to the self-hosted Sproutboat platform are recorded here. Read the
   response limit and restarts the services. No new units, env files or
   secrets. If you set `SPROUTBOAT_RESPONSE_MAX_BYTES` yourself, your value
   still applies.
-- **KV and R2 `list()` prefixes match exactly, at every compatibility date**
-  (`@sproutboat/wire` 0.15.0 and 0.16.0). They used SQL `LIKE`, which ignored
-  case and read `_` and `%` as wildcards. For example, the prefix `a` also
-  listed `AB`, and `a_` also listed `ab`. The broker runs on the platform, so
-  deployed apps get this without a rebuild. The dashboard and the KV export
-  already matched exactly.
+- Deployed apps get the KV and R2 `list()` prefix fix (see Fixed) without a
+  rebuild, at every compatibility date. An app that passes a prefix containing
+  uppercase letters, `_` or `%` can list fewer keys than before.
 - When a broker first opens a KV or R2 store after the update, it adds a
   `metadata` column to KV and an `md5` column to R2. Existing values, objects,
   etags and D1 rows are unchanged, and v0.9.2 reads the migrated stores as
@@ -35,13 +32,9 @@ Changes to the self-hosted Sproutboat platform are recorded here. Read the
   returns no keys and its metadata reads `null`, without an error. The command
   also pins the install to v0.9.2: remove `SPROUTBOAT_UPDATE_REF` from
   `/etc/sproutboat/update.env` to follow releases again.
-- Known issue, present since 0.9.0: the restore runbook in `infra/README.md`
-  leaves the new install's `sproutboat.sqlite-wal` beside the restored database,
-  so SQLite replays it and control comes back with the new install's users and
-  no projects. It also restores binding data that the edge cannot write. Until
-  this is fixed, stop the services, delete `sproutboat.sqlite-wal` and
-  `sproutboat.sqlite-shm`, restore, then run
-  `chgrp -R sproutboat` and `chmod -R g+rwX` on `brokers/` and `resources/`.
+- Restore a backup with `sudo sbctl restore <archive> --force` (see Fixed). The
+  restore runbook in `infra/README.md` used before this release can lose control
+  data.
 - `MIN_CLI_VERSION` stays `0.0.0`: the control API is unchanged, and older CLIs
   keep working. CLI 0.28.0 is the release tested with this platform version.
 
@@ -57,6 +50,9 @@ Changes to the self-hosted Sproutboat platform are recorded here. Read the
   fidelity cases (#293, #298, #301).
 - `tools/with-local-packages.ts` runs one command against a local
   `sproutboat-packages` checkout (#300).
+- `sbctl restore <archive> [--force]` stops control, the edge and the backup
+  timer, then restores a backup. It gives each service its files back with the
+  owners and modes `install.sh` sets, then starts the services again.
 
 ### Changed
 
@@ -95,6 +91,21 @@ Changes to the self-hosted Sproutboat platform are recorded here. Read the
 
 ### Fixed
 
+- KV and R2 `list()` prefixes match exactly, as in Workers (`@sproutboat/wire`
+  0.15.0 and 0.16.0). They used SQL `LIKE`, which ignored case and read `_` and
+  `%` as wildcards: the prefix `a` also listed `AB`, and `a_` also listed `ab`.
+  The dashboard and the KV export already matched exactly.
+- Restoring a backup brings back the backed-up control data. The restore left
+  the target install's `sproutboat.sqlite-wal` beside the restored database,
+  and SQLite replayed it over the restored file. Control came back with the new
+  install's users and no projects. The restore now deletes each restored
+  database's `-wal`, `-shm` and `-journal` files first. It refuses archive
+  members outside the state dir, keeps the install's directories, and leaves
+  binding data writable by the edge, which had failed with `EACCES` (#139).
+- At narrow widths, a long dashboard breadcrumb is cut off with an ellipsis
+  instead of pushing the account menu off-screen.
+- The Admin › Backups page names everything a backup holds, including binding
+  data, and gives the `sbctl restore` command.
 - A sprout no longer fails to start with "Is port N in use?" when another local
   address holds the port. The supervisor checks the wildcard address too, and
   tries each port in the range at most once (#300).

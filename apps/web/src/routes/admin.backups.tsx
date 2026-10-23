@@ -77,7 +77,7 @@ function AdminBackups() {
     <Panel variant="wide">
       <PanelHeading
         title="Backups"
-        description="The SQLite metadata store plus the artifact directory and route snapshot, one gzipped archive each. A timer takes one daily; the last seven are kept."
+        description="The control database, binding data (KV, D1, R2, queues, Durable Objects), artifacts and route snapshot, one gzipped archive each. A timer takes one daily; the last seven are kept."
         action={
           <Button busy={busy} busyLabel="Backing up…" onClick={() => void backUpNow()}>
             Back up now
@@ -153,9 +153,8 @@ function AdminBackups() {
 
       <p className="mt-3 text-[0.75rem] text-muted-foreground">
         Off-box upload runs when <code>SPROUTBOAT_BACKUP_S3_*</code> is set in <code>/etc/sproutboat/control.env</code>{" "}
-        (any S3-compatible store). Restore on the box: stop the services, replace{" "}
-        <code>/var/lib/sproutboat/sproutboat.sqlite</code> and <code>artifacts/</code> from the archive, then start
-        again. See <code>infra/README.md</code>.
+        (any S3-compatible store). To restore, run <code>sudo sbctl restore &lt;archive&gt; --force</code> on the box.
+        It stops the services, restores the archive and starts them again. See <code>infra/README.md</code>.
       </p>
     </Panel>
   );

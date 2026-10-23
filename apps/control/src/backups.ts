@@ -16,7 +16,7 @@
  */
 import { S3Client } from "bun";
 import { Database } from "bun:sqlite";
-import { copyFile, link, mkdir, readdir, rm, stat } from "node:fs/promises";
+import { chmod, copyFile, link, mkdir, readdir, rm, stat } from "node:fs/promises";
 import { basename, dirname, resolve } from "node:path";
 
 const NAME_RE = /^sproutboat-\d{8}-\d{6}\.tar\.gz$/;
@@ -271,6 +271,21 @@ async function pruneOldBackups(): Promise<void> {
 }
 
 /**
+ * Restored binding data must be writable by the edge, which shares the
+ * `sproutboat` group with control (install.sh gives these trees group rw).
+ * tar applies the archived modes, which for SQLite stores are 0644, so the
+ * edge's brokers failed with EACCES. Best-effort: `sbctl restore` also resets
+ * owners as root.
+ */
+async function shareBindingData(root: string, members: string[]): Promise<void> {
+  const share = async (path: string) => {
+    const info = await stat(path).catch(() => null);
+    if (info) await chmod(path, info.mode | (info.isDirectory() ? 0o2070 : 0o060)).catch(() => {});
+  };
+  await Promise.all(members.flatMap((m) => (/^(resources|brokers)\//.test(m) ? [share(resolve(root, m))] : [])));
+}
+
+/**
  * #139: unpack an archive into the state dir. Refuses a dir that already holds
  * a control database unless `force`, so a mistyped path can't overwrite a live
  * install. Returns warnings the operator must act on.
@@ -288,8 +303,23 @@ export async function restoreBackup(archive: string, { force = false } = {}): Pr
   if (!members.includes("sproutboat.sqlite")) throw new Error(`${archive} has no sproutboat.sqlite; not a backup`);
   if (!force && (await exists(dbPath())))
     throw new Error(`${stateDir()} already has a sproutboat.sqlite; restore onto an empty install or pass --force`);
-  await mkdir(stateDir(), { recursive: true });
-  await run(["tar", "-xzf", archive, "-C", stateDir()]);
+  const root = resolve(stateDir());
+  const outside = members.find((m) => m && !resolve(root, m).startsWith(root + "/"));
+  if (outside !== undefined) throw new Error(`${archive} has a member outside the state dir: ${outside}`);
+  await mkdir(root, { recursive: true });
+  // A database restored beside the install's own -wal is not the backup: SQLite
+  // replays that log over it on the next open, so control came back with the new
+  // install's users and no projects. Remove every restored database's sidecars.
+  const sidecars = ["-wal", "-shm", "-journal"];
+  await Promise.all(
+    members.flatMap((m) =>
+      m.endsWith(".sqlite") ? sidecars.map((suffix) => rm(resolve(root, m + suffix), { force: true })) : [],
+    ),
+  );
+  // GNU tar fails on the install's directories that another service user owns
+  // (it can't set their mode or times). Keep those as install.sh made them.
+  await run(["tar", "-xzf", archive, "-C", root, ...(process.platform === "linux" ? ["--no-overwrite-dir"] : [])]);
+  await shareBindingData(root, members);
   const warnings: string[] = [];
   if (!members.includes("secrets.key") && !process.env.SPROUTBOAT_SECRETS_KEY)
     warnings.push(
