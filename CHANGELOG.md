@@ -5,6 +5,83 @@ Changes to the self-hosted Sproutboat platform are recorded here. Read the
 
 ## [Unreleased]
 
+## [0.10.0] - 2026-10-23
+
+### Breaking and operator actions
+
+- Update with `sbctl update`. It reinstalls the edge unit with the new
+  response limit and restarts the services. No new units, env files or
+  secrets. If you set `SPROUTBOAT_RESPONSE_MAX_BYTES` yourself, your value
+  still applies.
+- **KV and R2 `list()` prefixes match exactly, at every compatibility date**
+  (`@sproutboat/wire` 0.15.0 and 0.16.0). They used SQL `LIKE`, which ignored
+  case and read `_` and `%` as wildcards. For example, the prefix `a` also
+  listed `AB`, and `a_` also listed `ab`. The broker runs on the platform, so
+  deployed apps get this without a rebuild. The dashboard and the KV export
+  already matched exactly.
+- When a broker first opens a KV or R2 store after the update, it adds a
+  `metadata` column to KV and an `md5` column to R2. Existing values, objects,
+  etags and D1 rows are unchanged, and v0.9.2 reads the migrated stores as
+  before, so rolling back keeps the data.
+- A D1 statement that only reads now reports `meta.changes` as 0, at every
+  date. It repeated the previous write's count.
+- A client that disconnects now stops the sprout's request. The edge logs it as
+  499 with `errorKind: "client-closed"`. Before, the request ran to the end.
+- The edge removes `x-sb-edge-secret`, `x-sb-edge-token`, `x-sb-binding-call`
+  and `x-sb-url` from every incoming request, and `x-sb-uncaught` from every
+  response a client receives.
+- `MIN_CLI_VERSION` stays `0.0.0`: the control API is unchanged, and older CLIs
+  keep working. CLI 0.28.0 is the release tested with this platform version.
+
+### Added
+
+- Service-binding calls are vouched for by the edge (#295). With a sprout built
+  by CLI 0.20.0 or later, the callee sees the caller's URL as `request.url`, and
+  a callee that throws makes the caller's `fetch()` reject with its error, as in
+  workerd. Brokers get a per-boot edge secret and each sprout its own token.
+  Clients can forge neither.
+- `tests/service-bindings`: a service-binding conformance and reliability suite
+  compared against workerd, including streaming, Workers RPC and Request
+  fidelity cases (#293, #298, #301).
+- `tools/with-local-packages.ts` runs one command against a local
+  `sproutboat-packages` checkout (#300).
+
+### Changed
+
+- Adopt `@sproutboat/runtime` 0.28.0, `@sproutboat/toolchain` 0.14.0 (Porffor
+  Alpha 19) and `@sproutboat/wire` 0.17.0 (#288 to #303). The broker can stream
+  `fetch()` and service-binding responses and request bodies, honours aborts,
+  and no longer resends a call it may already have run. It falls back to whole
+  bodies for sprouts that don't ask for streaming.
+- New behaviour is gated by each app's compiled `compatibility_date`. A deployed
+  sprout carries the runtime it was built with, so existing deployments keep
+  their behaviour until they are rebuilt with a newer CLI at a later date:
+
+  | From date    | Behaviour                                                                                                                              |
+  | ------------ | -------------------------------------------------------------------------------------------------------------------------------------- |
+  | `2026-10-21` | `Request.body` and `Response.body` are `ReadableStream`s; `fetch()` and service-binding responses stream                               |
+  | `2026-10-22` | `fetch()` and binding calls return Promises and run off the event loop; redirects follow Fetch; opt-in LTX capture (`SB_LTX_ENABLE=1`) |
+  | `2026-10-23` | `fetch(Request)` and `new Request(request, init)` follow workerd (GET and HEAD refuse a body, immutable headers)                       |
+  | `2026-10-24` | D1 returns Promises and follows workerd's rules (types, parameter counts, foreign keys, errors)                                        |
+  | `2026-10-25` | KV follows the Workers API (Promises, types, metadata, expirations, errors)                                                            |
+  | `2026-10-26` | R2 follows the Workers API (Promises, MD5 etags, ranges, conditionals, `uploadPart()` bodies)                                          |
+  | `2026-10-27` | Request bodies stream; `SB_REQUEST_BODY_MAX` defaults to 100 MiB (1 MiB before)                                                        |
+
+- The edge's per-response safety limit is 512 MiB instead of 10 MiB. Responses
+  stream through the edge, and the limit applies to service-binding calls too
+  (#296).
+- Edge connections stay open 5 seconds past the request deadline, up to Bun's
+  maximum of 255 seconds, so a slow sprout gets the edge's 504 instead of a
+  dropped connection after 10 seconds (#294).
+
+### Fixed
+
+- A sprout no longer fails to start with "Is port N in use?" when another local
+  address holds the port. The supervisor checks the wildcard address too, and
+  tries each port in the range at most once (#300).
+- The control version in `x-sproutboat-control` reads `0.10.0`. It had read
+  `0.5.3` since v0.5.3.
+
 ## [0.9.2] - 2026-10-11
 
 ### Changed
