@@ -5,6 +5,96 @@ Changes to the self-hosted Sproutboat platform are recorded here. Read the
 
 ## [Unreleased]
 
+## [0.11.0] - 2026-10-24
+
+### Breaking and operator actions
+
+- Update with `sbctl update`. There are no new units, env files, secrets or
+  migrations. Take a backup first (`sudo systemctl start sproutboat-backup`):
+  it is the only way back for Durable Object data written after the update
+  (see the rollback limit below).
+- Deployed apps get two broker changes without a rebuild, at every
+  compatibility date:
+  - A Durable Object `storage.list({ prefix })` matches the prefix exactly, as
+    in Workers. It used SQL `LIKE`, which ignored case and read `_` and `%` as
+    wildcards: the prefix `item:a_` also listed `item:ab`. An app that relied
+    on that can list fewer keys than before.
+  - The broker accepts the `do.sql` op. Apps built before this release never
+    send it.
+- Everything else reaches an app only when it is rebuilt with CLI 0.30.0 or
+  later, and most of it only at a later compatibility date (see Changed).
+- **Platform rollback limit.** `SB_REF=v0.10.0 sbctl update` is safe while no
+  app has been rebuilt at compatibility date `2026-10-29`. On v0.10.0 (wire
+  0.17), an app built at `2026-10-29` or later loses:
+  - `ctx.storage.sql`: every `exec()`, `databaseSize` and `transactionSync()`
+    throws `sproutboat do.sql: unknown op: do.sql`, and the request fails
+    unless the app catches it. The databases stay on disk under
+    `resources/<store>.do-sql/` and are reachable again after updating back to
+    0.11.0 (checked in a VM);
+  - `storage.list({ reverse: true })`: keys come back in ascending order, and
+    with `limit` they are the wrong keys.
+
+  Measured in a VM, do.js at `2026-10-29` goes from 93/105 on 0.11.0 to 81/105
+  on v0.10.0: those 12 cases, nothing else. An app built at `2026-10-28` loses
+  only `reverse`. Durable Object key-value data, alarms, the 64-hex ids, RPC
+  and the input gate run in the app's own build, so they keep working, as do
+  the `start`, `startAfter` and `end` ranges and exact prefixes, which that
+  build filters itself. Apps built before `2026-10-28` go back to `LIKE`
+  prefix matching. The command also pins the install to v0.10.0: remove
+  `SPROUTBOAT_UPDATE_REF` from `/etc/sproutboat/update.env` to follow
+  releases again.
+
+- **App rollback limit (any platform version).** The first time an app built at
+  `2026-10-29` creates an object named with `idFromName`, it moves that
+  object's keys and alarm from the old `name:NAME` id to the new 64-hex id.
+  After that, `sproutboat rollback` to a deployment built at an earlier date
+  finds the object empty, because its data is under the new id. Nothing is
+  lost: rolling forward again shows the data. But keys the older build writes
+  while it is active replace the same keys when the newer build comes back
+  (checked in a VM). Roll forward instead of back, or restore a backup taken
+  before the move.
+- `MIN_CLI_VERSION` stays `0.0.0`: the control API is unchanged. CLI 0.31.0 is
+  the release tested with this platform version.
+
+### Added
+
+- Durable Objects `ctx.storage.sql` for apps built with CLI 0.31.0 at
+  compatibility date `2026-10-29` (`@sproutboat/wire` 0.19.0, `do.sql`). Each
+  object has its own SQLite database in
+  `resources/<store>.do-sql/CLASS/<id>.sqlite`, beside the project's Durable
+  Object store, so it survives redeploys. Backups already archive these files
+  and `sbctl restore` brings them back writable by the edge; tests now cover
+  both. One broker keeps at most 64 of these databases open and closes the
+  least recently used, which bounds its file descriptors (about 200) and
+  memory (measured at +17 MB with 64 open).
+
+### Changed
+
+- Adopt `@sproutboat/runtime` 0.30.0, `@sproutboat/wire` 0.19.0 and
+  `@sproutboat/toolchain` 0.15.0, the versions CLI 0.31.0 builds with.
+- New behaviour, gated by each app's compiled `compatibility_date` as before:
+
+  | From date    | Behaviour                                                                                                                                                                                                         |
+  | ------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+  | `2026-10-28` | Durable Objects: an input gate (concurrent read-then-write updates are no longer lost), Promise storage, `transaction()`, `sync()`, typed values, `list()` ranges; `sendBatch({ delaySeconds })` delays the batch |
+  | `2026-10-29` | Durable Objects: RPC on stubs, 64-hex ids with `equals()`, `getByName`, `ctx.storage.sql`; an exception in the object rejects `stub.fetch()` instead of returning a 500                                           |
+
+- Durable Object data written at an earlier date survives the move to
+  `2026-10-29`: objects named with `idFromName` move to their new id on first
+  use, and `idFromString` still accepts the old `name:` and `uid:` ids.
+- The compatibility suite still reads 32/32 compile, 3/32 match. The median
+  sprout binary grows from 2.90 MB to 3.23 MB with the new prelude.
+
+### Fixed
+
+- Queues: a consumer whose `queue()` handler throws gets every message it did
+  not ack or retry redelivered, as on Workers. Before, the broker transport
+  delivered such a batch once and dropped it. This applies at every
+  compatibility date, once the app is rebuilt with CLI 0.30.0 or later.
+  (`sendBatch()` bodies arriving as `"[object Object]"` affected only
+  standalone executables and sproutd, not the platform.)
+- The control version in `x-sproutboat-control` reads `0.11.0`.
+
 ## [0.10.0] - 2026-10-23
 
 ### Breaking and operator actions
