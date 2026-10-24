@@ -10,22 +10,22 @@ Changes to the self-hosted Sproutboat platform are recorded here. Read the
 ### Breaking and operator actions
 
 - Update with `sbctl update`. There are no new units, env files, secrets or
-  migrations. Take a backup first (`sudo systemctl start sproutboat-backup`):
-  it is the only way back for Durable Object data written after the update
-  (see the rollback limit below).
+  migrations. Take a backup first (`sudo systemctl start sproutboat-backup`)
+  and copy it off the box.
 - Deployed apps get two broker changes without a rebuild, at every
   compatibility date:
   - A Durable Object `storage.list({ prefix })` matches the prefix exactly, as
     in Workers. It used SQL `LIKE`, which ignored case and read `_` and `%` as
     wildcards: the prefix `item:a_` also listed `item:ab`. An app that relied
     on that can list fewer keys than before.
-  - The broker accepts the `do.sql` op. Apps built before this release never
-    send it.
+  - The broker accepts the `do.sql` op. Only apps built with CLI 0.31.0 at
+    `2026-10-29` or later send it.
 - Everything else reaches an app only when it is rebuilt with CLI 0.30.0 or
   later, and most of it only at a later compatibility date (see Changed).
-- **Platform rollback limit.** `SB_REF=v0.10.0 sbctl update` is safe while no
-  app has been rebuilt at compatibility date `2026-10-29`. On v0.10.0 (wire
-  0.17), an app built at `2026-10-29` or later loses:
+- **Platform rollback limit.** `SB_REF=v0.10.0 sbctl update` is safe only while
+  no app has been rebuilt at compatibility date `2026-10-28` or later. No data
+  is lost, but on v0.10.0 (wire 0.17) such an app loses features. An app
+  built at `2026-10-29` or later loses:
   - `ctx.storage.sql`: every `exec()`, `databaseSize` and `transactionSync()`
     throws `sproutboat do.sql: unknown op: do.sql`, and the request fails
     unless the app catches it. The databases stay on disk under
