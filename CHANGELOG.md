@@ -65,8 +65,13 @@ Changes to the self-hosted Sproutboat platform are recorded here. Read the
   Object store, so it survives redeploys. Backups already archive these files
   and `sbctl restore` brings them back writable by the edge; tests now cover
   both. One broker keeps at most 64 of these databases open and closes the
-  least recently used, which bounds its file descriptors (about 200) and
-  memory (measured at +17 MB with 64 open).
+  least recently used. That bounds its file descriptors at about 200. It
+  also bounds memory, but not tightly: in a Linux VM, 64 open databases
+  added about 40 MB to the broker when small and about 175 MB when each held
+  4 MB and was read in full (SQLite's page cache per connection). That memory
+  counts against the edge unit's `MemoryMax`. The platform runs one broker
+  per deployment and no shared SQL pool, so the uncapped pool path in wire
+  0.19 is not used.
 
 ### Changed
 
