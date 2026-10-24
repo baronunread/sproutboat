@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { createBroker, type Frame } from "@sproutboat/wire";
@@ -87,5 +87,47 @@ test("list ops honour a bound LIMIT (do.storage.list, ae.query, r2.list)", async
     expect(r2.truncated).toBe(true);
   } finally {
     broker.close();
+  }
+});
+
+// v0.11.0 — Durable Object storage.sql (`do.sql`, wire 0.19, compat 2026-10-29) with the
+// layout the supervisor gives a broker: the project's Durable Object store at
+// `resources/<doStoreId>.sqlite`, so each object's database lands in
+// `resources/<doStoreId>.do-sql/CLASS/<64-hex id>.sqlite`, where backups and restores
+// already walk. The platform spawns one dedicated broker per deployment (no SQL pool), so
+// at most 64 of these databases stay open per broker; more objects than that must keep
+// their rows across the least-recently-used close and a redeploy.
+test("do.sql under the platform layout: per-object files in resources/, past the open cap, across a redeploy", async () => {
+  const root = mkdtempSync(join(tmpdir(), "sb-broker-do-sql-"));
+  try {
+    const resourceDir = join(root, "resources");
+    for (const dir of [resourceDir, join(root, "brokers", "a"), join(root, "brokers", "b")])
+      mkdirSync(dir, { recursive: true });
+    const doDb = join(resourceDir, "do_0123456789abcdef01234567.sqlite");
+    const bindings = { do: [{ binding: "ROOM", className: "Room" }] };
+    const open = (dep: string) =>
+      createBroker({ db: join(root, "brokers", dep, "state.sqlite"), resourceDir, doDb, bindings });
+    const id = (i: number) => i.toString(16).padStart(64, "0");
+    const sql = (b: ReturnType<typeof open>, i: number, text: string, params: number[] = []) =>
+      b.dispatch({ op: "do.sql", cls: "Room", file: id(i), sql: text, params });
+
+    const first = open("a");
+    for (let i = 0; i < 80; i++) {
+      await sql(first, i, "CREATE TABLE t (v)");
+      await sql(first, i, "INSERT INTO t VALUES (?)", [i]);
+    }
+    // Object 0 was closed to make room; it reopens with its row.
+    expect((await sql(first, 0, "SELECT v FROM t")).rows).toEqual([[0]]);
+    first.close();
+    expect(existsSync(join(resourceDir, "do_0123456789abcdef01234567.do-sql", "Room", `${id(79)}.sqlite`))).toBe(true);
+
+    const second = open("b");
+    try {
+      expect((await sql(second, 79, "SELECT v FROM t")).rows).toEqual([[79]]);
+    } finally {
+      second.close();
+    }
+  } finally {
+    rmSync(root, { recursive: true, force: true });
   }
 });
