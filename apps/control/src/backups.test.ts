@@ -97,17 +97,24 @@ test("createBackup + restoreBackup: binding data survives onto an empty install 
   await mkdir(join(dir, "brokers", "abc123", "d1"), { recursive: true });
   const kv = walStore(join(dir, "resources", "kv_1.sqlite"), "resource-value");
   const d1 = walStore(join(dir, "brokers", "abc123", "d1", "DB.sqlite"), "broker-value");
+  // Durable Object storage.sql (wire 0.19, compat 2026-10-29): one database per object,
+  // under `<doStoreId>.do-sql/CLASS/` beside the project's Durable Object store.
+  const doSqlPath = join("resources", "do_0123456789abcdef01234567.do-sql", "Room", `${"a".repeat(64)}.sqlite`);
+  await mkdir(join(dir, doSqlPath, ".."), { recursive: true });
+  const doSql = walStore(join(dir, doSqlPath), "do-sql-value");
   await writeFile(join(dir, "resources", "r2-blobs", "obj.blob"), "BYTES");
   await writeFile(join(dir, "resources", "r2-blobs", "upload.tmp"), "partial");
   await writeFile(join(dir, "secrets.key"), Buffer.alloc(32, 7));
   const entry = await mod.createBackup();
   kv.close();
   d1.close();
+  doSql.close();
 
   const members = await tarList(join(dir, "backups", entry.name));
   expect(members).toContain("resources/kv_1.sqlite");
   expect(members).toContain("resources/r2-blobs/obj.blob");
   expect(members).toContain("brokers/abc123/d1/DB.sqlite");
+  expect(members).toContain(doSqlPath);
   expect(members.some((m) => /-(wal|shm)$|\.tmp$/.test(m))).toBe(false);
 
   const archive = join(tmpdir(), entry.name);
@@ -127,6 +134,8 @@ test("createBackup + restoreBackup: binding data survives onto an empty install 
     };
     expect(read(join(fresh, "resources", "kv_1.sqlite"))).toBe("resource-value");
     expect(read(join(fresh, "brokers", "abc123", "d1", "DB.sqlite"))).toBe("broker-value");
+    expect(read(join(fresh, doSqlPath))).toBe("do-sql-value");
+    expect((await stat(join(fresh, doSqlPath))).mode & 0o060).toBe(0o060);
     expect(await Bun.file(join(fresh, "resources", "r2-blobs", "obj.blob")).text()).toBe("BYTES");
     // The edge shares the group with control and must be able to write the stores.
     expect((await stat(join(fresh, "resources", "kv_1.sqlite"))).mode & 0o060).toBe(0o060);
