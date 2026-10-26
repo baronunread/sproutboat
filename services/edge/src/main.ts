@@ -8,6 +8,7 @@ import { serveActivations } from "./activation";
 import { EdgeCache, cacheRequestEligible, cacheResponseEligible } from "./cache";
 import { cacheControlFor } from "./asset-cache-control";
 import { edgeIdleTimeoutSeconds } from "./idle-timeout";
+import { isWebSocketUpgrade, relayHandlers, relayWebSocket, type RelayData } from "./websocket";
 
 type JsonValue = string | number | boolean | null | EdgeJsonObject | JsonValue[];
 
@@ -381,11 +382,12 @@ async function refreshRoutes(): Promise<void> {
   if (currentMtimeMs > routesMtimeMs) swapRoutes(await loadRoutes(routesPath), currentMtimeMs);
 }
 
-const server = Bun.serve({
+const server = Bun.serve<RelayData>({
   port,
   hostname: bindHost,
   maxRequestBodySize: edgeMaxBodyBytes,
   idleTimeout: edgeIdleTimeoutSeconds(requestTimeoutMs),
+  websocket: relayHandlers,
   async fetch(request, server) {
     const started = performance.now();
     const elapsed = () => Math.round(performance.now() - started);
@@ -571,6 +573,45 @@ const server = Bun.serve({
       forwarded.set("x-sb-edge-token", edgeToken);
       const callerUrl = request.headers.get("x-sb-url");
       if (callerUrl) forwarded.set("x-sb-url", callerUrl);
+    }
+
+    // A WebSocket handshake: the sprout accepts a socket of its own first, then the client is
+    // upgraded and messages are relayed (websocket.ts). The sprout is kept warm while it is open.
+    if (!directTransfer && isWebSocketUpgrade(request)) {
+      const result = await relayWebSocket({
+        request,
+        server,
+        url: `${base.replace(/^http/, "ws")}${target.pathname}${target.search}`,
+        headers: forwarded,
+        keepAlive: () => pool.touch(sproutPath, route.secretsPath, route.services, route.r2),
+      });
+      if ("upgraded" in result) {
+        log({
+          hostname: host,
+          method: request.method,
+          status: 101,
+          durationMs: elapsed(),
+          reqBytes,
+          coldStart,
+          startupMs,
+          bootMs,
+        });
+        // Bun answers an upgraded connection itself: the handler returns nothing.
+        return undefined;
+      }
+      log({
+        hostname: host,
+        method: request.method,
+        status: result.refused.status,
+        durationMs: elapsed(),
+        reqBytes,
+        coldStart,
+        startupMs,
+        bootMs,
+        error: "websocket refused",
+        errorKind: "websocket-refused",
+      });
+      return result.refused;
     }
 
     try {
