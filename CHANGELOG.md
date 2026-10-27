@@ -5,6 +5,71 @@ Changes to the self-hosted Sproutboat platform are recorded here. Read the
 
 ## [Unreleased]
 
+## [0.12.0] - 2026-10-27
+
+Adopts `@sproutboat/runtime` 0.34.2 and `@sproutboat/toolchain` 0.19.2, the versions CLI 0.38.0 builds with.
+
+### Breaking and operator actions
+
+- Update with `sbctl update`. There are no new units, env files, secrets or
+  migrations. Take a backup first (`sudo systemctl start sproutboat-backup`)
+  and copy it off the box.
+- Everything except the edge's WebSocket proxy reaches an app only when it is
+  rebuilt with CLI 0.32.0 or later, and most of it only at a later
+  compatibility date (see Added and Changed). Deployed apps keep running as
+  built.
+- **Platform rollback.** `SB_REF=v0.11.0 sbctl update` stays safe for apps built
+  before `2026-10-28`. The 0.11.0 limits for apps built at `2026-10-28` or
+  later still apply (see 0.11.0). An app built at `2026-11-01` that accepts a
+  WebSocket loses it on v0.11.0, whose edge does not proxy upgrades.
+- `MIN_CLI_VERSION` stays `0.0.0`: the control API is unchanged. CLI 0.38.0 is
+  the release tested with this platform version.
+
+### Added
+
+- **WebSockets through the edge (#306).** The edge proxies a client's upgrade
+  request to the sprout: it opens the sprout's socket first, so a refusal is a
+  plain HTTP error, then upgrades the client and relays text and binary
+  messages and closes both ways, with the subprotocol the sprout chose. It
+  keeps the sprout warm while a socket is open. Messages up to 32 MiB. Apps
+  need CLI 0.36.0 or later at compatibility date `2026-11-01`; before that
+  date a 101 answers 501. From `2026-10-30` (CLI 0.34.0) a socket pair whose
+  two ends both stay in the app, such as a Worker and its Durable Object,
+  works on the platform. Outbound sockets and hibernation (`2026-11-01`) run
+  on standalone executables and sproutd; the platform's broker transport
+  rejects `fetch` upgrades for now.
+- Streamed request uploads from compatibility date `2026-10-27` (sproutd).
+- Background work: cron, queue and Durable Object alarm triggers, including
+  Workers that export only `scheduled()` or `queue()` (CLI 0.32.0).
+- Versions and rollback: deployments keep their versions and
+  `sproutboat rollback` returns to an earlier one.
+
+### Changed
+
+- **Queues like Cloudflare's from compatibility date `2026-10-31`**: queue
+  conformance goes from 17/46 to 41/46 (CLI 0.33.0). `send()`, `sendBatch()` and
+  `metrics()` return Promises, bodies keep their content type, messages carry
+  `timestamp` and `retry({ delaySeconds })`, the first of `ack()` and `retry()`
+  wins, and a message is retried at most 3 times by default.
+- **Faster string building** in compiled apps (toolchain 0.18.0): about 43% more
+  heavy-workload throughput on sproutd. Apps rebuild once.
+- **A request costs about a quarter of the CPU** (toolchain 0.19.2, CLI 0.38.0).
+  Porffor's `globalThis` no longer rebuilds the whole global object on every
+  read: a 404 from a standalone binary costs about 89 µs of CPU instead of 319.
+- **Memory:** 1,000 apps fit in 1,536 MiB (runtime 0.34.x).
+- Adopt `@sproutboat/runtime` ^0.34.2 and `@sproutboat/toolchain` ^0.19.2
+  (`@sproutboat/wire` ^0.20.2, `@sproutboat/config` ^0.6.0). `COMPAT.md` and
+  `report.json` are regenerated: 32/32 compile, 3/32 match as before (the 29 differ
+  only in `Content-Type`). The median binary is 3.23 MB → 3.68 MB.
+
+### Fixed
+
+- **A failed binding call you do not await no longer ends the process.** An
+  unhandled rejection (D1, KV, R2 and the other bindings) is logged as
+  `Uncaught (in promise) ...`, fires `unhandledrejection` when the app listens
+  for it, and the process and other requests keep going, as on Workers (CLI
+  0.37.0).
+
 ## [0.11.0] - 2026-10-24
 
 ### Breaking and operator actions
