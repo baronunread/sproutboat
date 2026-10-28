@@ -39,6 +39,7 @@ Cloudflare semantics (developers.cloudflare.com/d1/best-practices/read-replicati
 **Retention.** Keep the current epoch's snapshot plus later files; cut a new snapshot (new epoch) at a size or age threshold; drop old epochs once no follower or backup needs them. It must be accounted against the quota.
 
 **Per transport.**
+
 - sproutd: spool at stable paths, relay in the daemon, follower in the replica worker, config like `replica ID DB from NODE`. First target.
 - standalone: same embedded code, but no daemon or control plane: manual lease, opt-in listener. Defer.
 - broker: no capture, pooled non-exclusive connections. Not in v1; later by capturing in `d1.ts`.

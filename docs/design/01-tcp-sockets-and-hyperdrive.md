@@ -10,22 +10,22 @@ Status: design, not implemented. Paths are relative to the repo named in the pre
 
 ## Current state
 
-| Claim | Evidence |
-|---|---|
-| No `cloudflare:sockets`, `startTls`, `Hyperdrive` anywhere in runtime, toolchain, wire, config. `rg` finds only unrelated uWebSockets text. | `pkgs/packages/**` |
-| Only `cloudflare:workers` survives bundling as an external; any other specifier fails the bundle. | `cli/src/bundle.ts:84` |
-| After bundling, `require(`, `Buffer.`, `process.`, `new Buffer(` and any `"node:` string are build errors. | `pkgs/packages/runtime/src/source.ts:12,23,27` |
-| `nodejs_compat` is "refused at build"; target P2. | `sd/PARITY.md:27` |
-| Bun's browser-target polyfills supply most `node:*`; only `node:path`, `node:querystring`, `node:url` are overridden. | `cli/src/bundle.ts:38-41`, `cli/src/node-shims.ts:374-377` |
-| Web Streams (web-streams-polyfill 4.3.0), `structuredClone`, `crypto.subtle` (SHA-2, HMAC only) are in the prelude. No Buffer global, no MD5, no PBKDF2. | `pkgs/packages/runtime/src/gen-streams.ts:25`, `native-fetch-prelude.js:3911,3977` |
-| Binding kinds in config: kv, secrets, d1, r2, queues, AE, DO, services. | `pkgs/packages/config/src/config.ts:106-123` |
-| Broker op switch (`secret.get`, `fetch`, `service.fetch`, `d1.*`): request/reply frames over one loopback connection, one I/O thread for async. | `pkgs/packages/wire/src/broker.ts:1586-1600`, `transport-broker.js:19,664` |
-| The broker already has a bounded pool pattern (D1 lanes, queue limit, per-owner limit). | `pkgs/packages/wire/src/d1-pool.ts:12-37` |
-| Outbound policy: resolve, vet every address, connect to the vetted IP, `SB_EGRESS_ALLOW`. Egress can run as a separate unit outside the sandbox cgroup. | `pkgs/packages/wire/src/egress.ts:2-16,37-60` |
-| sproutd: apps cannot create sockets (seccomp) or connect (Landlock). Frontend resolves, vets, connects and hands the open fd to the app, which does TLS itself. Max 8 threads, 32 MiB per app. | `sd/README.md:63-74` |
-| Precedent for a long-lived outbound stream: outbound WebSocket = a thread per connection through the egress policy (embedded transport) or the frontend's egress socket (sproutd), loop woken by the async pipe. Not on the broker transport. | `sd/docs/websockets.md:142-153`, `native-fetch-prelude.js:4362-4364` |
-| `fetch` is a blocking call made async with up to 8 worker threads; requests per app capped at 8. | `sd/ASYNC-IO.md:15-35` |
-| BearSSL is linked in standalone but not in deployed sprouts. | `native-fetch-prelude.js:4368-4370` |
+| Claim                                                                                                                                                                                                                                         | Evidence                                                                           |
+| --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------- |
+| No `cloudflare:sockets`, `startTls`, `Hyperdrive` anywhere in runtime, toolchain, wire, config. `rg` finds only unrelated uWebSockets text.                                                                                                   | `pkgs/packages/**`                                                                 |
+| Only `cloudflare:workers` survives bundling as an external; any other specifier fails the bundle.                                                                                                                                             | `cli/src/bundle.ts:84`                                                             |
+| After bundling, `require(`, `Buffer.`, `process.`, `new Buffer(` and any `"node:` string are build errors.                                                                                                                                    | `pkgs/packages/runtime/src/source.ts:12,23,27`                                     |
+| `nodejs_compat` is "refused at build"; target P2.                                                                                                                                                                                             | `sd/PARITY.md:27`                                                                  |
+| Bun's browser-target polyfills supply most `node:*`; only `node:path`, `node:querystring`, `node:url` are overridden.                                                                                                                         | `cli/src/bundle.ts:38-41`, `cli/src/node-shims.ts:374-377`                         |
+| Web Streams (web-streams-polyfill 4.3.0), `structuredClone`, `crypto.subtle` (SHA-2, HMAC only) are in the prelude. No Buffer global, no MD5, no PBKDF2.                                                                                      | `pkgs/packages/runtime/src/gen-streams.ts:25`, `native-fetch-prelude.js:3911,3977` |
+| Binding kinds in config: kv, secrets, d1, r2, queues, AE, DO, services.                                                                                                                                                                       | `pkgs/packages/config/src/config.ts:106-123`                                       |
+| Broker op switch (`secret.get`, `fetch`, `service.fetch`, `d1.*`): request/reply frames over one loopback connection, one I/O thread for async.                                                                                               | `pkgs/packages/wire/src/broker.ts:1586-1600`, `transport-broker.js:19,664`         |
+| The broker already has a bounded pool pattern (D1 lanes, queue limit, per-owner limit).                                                                                                                                                       | `pkgs/packages/wire/src/d1-pool.ts:12-37`                                          |
+| Outbound policy: resolve, vet every address, connect to the vetted IP, `SB_EGRESS_ALLOW`. Egress can run as a separate unit outside the sandbox cgroup.                                                                                       | `pkgs/packages/wire/src/egress.ts:2-16,37-60`                                      |
+| sproutd: apps cannot create sockets (seccomp) or connect (Landlock). Frontend resolves, vets, connects and hands the open fd to the app, which does TLS itself. Max 8 threads, 32 MiB per app.                                                | `sd/README.md:63-74`                                                               |
+| Precedent for a long-lived outbound stream: outbound WebSocket = a thread per connection through the egress policy (embedded transport) or the frontend's egress socket (sproutd), loop woken by the async pipe. Not on the broker transport. | `sd/docs/websockets.md:142-153`, `native-fetch-prelude.js:4362-4364`               |
+| `fetch` is a blocking call made async with up to 8 worker threads; requests per app capped at 8.                                                                                                                                              | `sd/ASYNC-IO.md:15-35`                                                             |
+| BearSSL is linked in standalone but not in deployed sprouts.                                                                                                                                                                                  | `native-fetch-prelude.js:4368-4370`                                                |
 
 Per transport today: standalone, broker and sproutd all lack `connect()`. What works as plumbing: egress vetting, fd hand-off (sproutd), async wake pipe, ReadableStream/WritableStream. What is missing: everything socket-shaped (`startTls`, half-close, backpressure are all unimplemented, not partial).
 
@@ -42,11 +42,11 @@ Runtime: `cloudflare:sockets` is inlined like `cloudflare:workers` (add to `bund
 - Half-close: `writable.close()` does `shutdown(SHUT_WR)`. With `allowHalfOpen:false`, EOF on read closes the writer. `close()` destroys both.
 - Limits: 6 sockets per request and 16 per app (Cloudflare gives no number; we choose), within the 8-thread cap, so reads use one poll thread per app, not one per socket.
 
-| Transport | open/vet | TLS (`on`, `startTls`) | Notes |
-|---|---|---|---|
-| standalone | in-process thread, same egress table as `fetch` | BearSSL in the binary (already linked) | Add a BearSSL client-over-fd wrapper; `sb_http_request` has the handshake code to reuse |
-| sproutd | frontend vets and passes the fd (as for `fetch`) | in-app BearSSL, certificates checked in the app (as HTTPS today) | Needs a new frontend request type; sandbox unchanged |
-| broker | broker opens it after the same vet; app opens a second loopback connection with the broker token and speaks raw bytes after a handshake | TLS terminates in the broker (Bun `tls`); the broker sees plaintext, as it already does for `fetch` | Avoids multiplexing frames on the one RPC connection |
+| Transport  | open/vet                                                                                                                                | TLS (`on`, `startTls`)                                                                              | Notes                                                                                   |
+| ---------- | --------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------- |
+| standalone | in-process thread, same egress table as `fetch`                                                                                         | BearSSL in the binary (already linked)                                                              | Add a BearSSL client-over-fd wrapper; `sb_http_request` has the handshake code to reuse |
+| sproutd    | frontend vets and passes the fd (as for `fetch`)                                                                                        | in-app BearSSL, certificates checked in the app (as HTTPS today)                                    | Needs a new frontend request type; sandbox unchanged                                    |
+| broker     | broker opens it after the same vet; app opens a second loopback connection with the broker token and speaks raw bytes after a handshake | TLS terminates in the broker (Bun `tls`); the broker sees plaintext, as it already does for `fetch` | Avoids multiplexing frames on the one RPC connection                                    |
 
 Compat gate: a new compatibility date, as outbound WebSockets did (`source.ts:31`).
 
@@ -55,6 +55,7 @@ Compat gate: a new compatibility date, as outbound WebSockets did (`source.ts:31
 What each driver imports (from memory of their sources, not verified in this checkout; step 1 of the milestone is to bundle each driver and list the actual specifiers): `pg` uses `net`, `tls`, `events`, `stream`, `crypto` (md5, SCRAM needs HMAC, PBKDF2, random), `dns`, `util`, `Buffer`, `process.nextTick`; `postgres` uses `net`, `tls`, `crypto`, `stream`, `os`, `fs` (passfile only), `Buffer`; `mysql2` uses `net`, `tls`, `crypto` (sha1, sha256), `Buffer`, `events`, `stream`, `zlib` (optional) and, in its default code path, `eval`-style generated parsers (Cloudflare needs `disableEval: true`; we need the same since Porffor has no `eval`).
 
 Shims (new `node-shims.ts` entries, bundled into the app only when imported):
+
 - `node:net` Socket/`connect` as a Duplex over `cloudflare:sockets`; `node:tls` `connect({socket})` as `startTls()`. Prefer the drivers' own Workers entry points (`pg-cloudflare`, `postgres/cf`) when present: they already use `cloudflare:sockets` and need no `net` shim. Unverified which versions ship them.
 - `Buffer` as a global subclass of `Uint8Array`, replacing the `Buffer.` and `new Buffer(` bans only under the compat flag. `process` stays banned except `process.nextTick` and `process.env` (empty) as a minimal stub.
 - `node:crypto`: add MD5, SHA-1, PBKDF2, `randomBytes` to the C SHA-2/HMAC block (`native-fetch-prelude.js:4368+`).
@@ -68,6 +69,7 @@ Config: `hyperdrive: [{ binding, id }]` beside `config.ts:108-123`; CLI `sproutb
 What the app is given is a lie by design: `host` is a virtual name (`<id>.hyperdrive.sb`), `user/password` are a per-app scoped credential, `database` is the origin name. `connect()` recognises the virtual host and bypasses egress vetting and TLS: it reaches the pooler directly. Origin credentials never enter app memory; they live in the pooler's config, like `secrets` at `broker.ts:1586-1591`.
 
 Pooler (one Bun module in `pkgs/packages/wire`, next to `d1-pool.ts`):
+
 - Speaks the Postgres wire protocol to the app (answers `SSLRequest` with `N`, authenticates the scoped credential), and a real client to the origin (TLS to origin via Bun, origin verified by default).
 - Transaction-mode pooling per config: an origin connection is borrowed at `BEGIN`/first statement and returned at idle-in-transaction end. Cap `max_origin` (default 20, hard 100, matching Cloudflare's Free/Paid ~20/~100). Waiters queue with a 10 s timeout (D1 pool uses 10 s too, `d1-pool.ts:12-37`).
 - Session state (`SET`, `LISTEN`, advisory locks, named prepared statements): the pooler tracks named statements per client and re-prepares on the borrowed connection; `LISTEN`/session `SET` are refused with a clear error. Whether Cloudflare's own behaviour matches is unverified.
@@ -108,6 +110,7 @@ Recommendation: do not adopt for production or as a platform dependency now. Tre
 ## Effort
 
 Rough: 10 to 14 engineer-weeks.
+
 - M1 (2-3 wk): bundle each driver, list real imports; `cloudflare:sockets` plaintext on standalone; echo test.
 - M2 (3-4 wk): TLS and `startTls`, sproutd fd path, broker second connection, Buffer/crypto/net shims; `pg`, `postgres`, `mysql2` pass a smoke suite against a real origin.
 - M3 (3-4 wk): Postgres pooler, scoped credentials, config and CLI, limits.

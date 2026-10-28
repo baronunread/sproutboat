@@ -14,11 +14,13 @@ Recommendation: do not add threads or isolates. Harden and certify the existing 
 How workerd does it (Cloudflare docs, fetched 2026-10-28): "a single Workers instance may handle multiple requests including concurrent requests in a single-threaded event loop" (how-workers-works); 128 MB per isolate, shared by all its requests; "up to six connections simultaneously waiting for response headers" per invocation, a seventh queues (platform/limits); `AsyncLocalStorage` supported minus `enterWith()`/`disable()`, with `snapshot()` and `bind()`; `nodejs_compat` is on by default from 2026-08-04. I did not read workerd's IoContext source; I rely on the docs only.
 
 sproutd (frontend):
+
 - Up to `MAX_INFLIGHT=8` requests per worker, replies in any order, by id: `src/native-host.cpp:1166-1171`, dispatch loop `:1459-1464`. Queue cap 32 requests / 8 MiB: `:1680`. The comment at `:49` ("one in-flight call per app ... measure before adding multiplexing") is stale.
 - Per-request wall deadline, but the CPU budget is per process: `cpu_of(pid)-progress_cpu > spec.cpu` (`:1526`), and `progress_cpu` resets only when nothing is in flight (`:1462`). Under overlap, one spinner kills its neighbours (concurrency-smoke checks "spinner killed, neighbour keeps serving", `test/concurrency-smoke.py` header).
 - Blue/green swap waits for `inflight.empty()` (`:1320`, `:1660`).
 
 Worker bridge and shim:
+
 - `dispatch()` calls the handler, drains microtasks, and if the promise is pending attaches a reaction and returns (`src/native-host-bridge.c:293-313`). Each request has its own `Pending` with GC roots (`:53`). So the bridge is not a one-at-a-time lock.
 - `body_current` is a single static slot for the streamed request body handed to the next `dispatch` (`:129`, `:138`, `:296`): correct only because frames are processed in order.
 - Every reply runs a full `porf_native_fetch_collect_normal_from` (`:104`), even while others are in flight; `quiet()` collects only when `!inflight` (`:319`).
@@ -26,12 +28,14 @@ Worker bridge and shim:
 - Porffor: `await` compiles to a coroutine `Await` (`compiler/codegen.js:3975-3979`); top-level await drains jobs synchronously. GC is conservative over the C stack with a native root table over one linear heap (`compiler/render.js:2061-2071`). A single jobs queue is drained by `porf_native_fetch_drain_microtasks` (`render.js:2077`).
 
 Prelude (`rt/native-fetch-prelude.js`):
+
 - The CPU stamp uses process CPU time and says so: "One fetch turn per process (serial) ... ponytail: serial-turn assumption" (`:9395-9398`, `__sbCpuMs` `:3095`). With overlap, `x-sb-cpu-ms` counts neighbours' work.
 - Compat date and env are process globals set once (`:3-18`), fine (per app, not per request). `__sbReqId` is a global counter (`:5154`), fine. Per-request lists (`__sbTasks`, `ctx`) are locals (`:9400-9404`), fine.
 - ALS: `rg AsyncLocalStorage|async_hooks` over runtime, toolchain and Porffor `compiler/` found nothing. I did not test whether `node:async_hooks` imports fail at build or at run time.
 - Durable Object input gate exists from 2026-10-28 (`:7321-7370`), per object, via `setTimeout` hold. It is the only existing per-context scheduling primitive.
 
 Compat dates and blocking:
+
 - D1 strict shape from 2026-10-24 (`:5293`), KV promises from 2026-10-25 (`:5169`), R2 2026-10-26 (`:5632`), fetch promises 2026-10-22 (`:6820`). Embedded transport: `fetch` is async at every date (`__sbAsyncAtAnyDate` true, `rt/transport-embedded.js:4188`).
 - The date changes the return shape, not the blocking. D1 strict wraps a synchronous core in `Promise.resolve` (`:5405-5410`, core `:5326-5337`, `__sbCallDirect` into in-process SQLite). So on sproutd every binding call blocks the loop at every date; `busy_timeout=5000` (`rt/transport-embedded.js:1244`) can stall it up to 5 s if another copy holds the WAL write lock.
 - Broker transport: binding ops go through `__sbRpc` -> `__sbCall` (`:5141-5146`), a blocking exchange; only `fetch`/upstream is async, and only from 2026-10-22 (`rt/transport-broker.js:1055`).

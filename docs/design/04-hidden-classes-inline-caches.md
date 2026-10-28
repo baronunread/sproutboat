@@ -24,13 +24,13 @@ Recommendation: do not build shapes for this workload now. Build a property-heav
 
 ### Where time goes (othello, `perf record -F 2999`, per-endpoint flat self shares)
 
-| | feed | post | like | create |
-| --- | ---: | ---: | ---: | ---: |
-| object get/set/hash/underlying/appendEntry | 2.0% | 5.4% | 4.4% | 3.5% |
-| JSON (serialize + parseValue) | 7.9% | 2.6% | 1.4% | 1.4% |
-| memset/memcpy/memmove/malloc/free | 15.0% | 4.2% | 3.2% | 3.8% |
-| Porffor GC | 6.9% | 5.0% | 2.8% | 2.2% |
-| SQLite and page cache | 13.4% | 5.0% | 5.6% | 7.2% |
+|                                            |  feed | post | like | create |
+| ------------------------------------------ | ----: | ---: | ---: | -----: |
+| object get/set/hash/underlying/appendEntry |  2.0% | 5.4% | 4.4% |   3.5% |
+| JSON (serialize + parseValue)              |  7.9% | 2.6% | 1.4% |   1.4% |
+| memset/memcpy/memmove/malloc/free          | 15.0% | 4.2% | 3.2% |   3.8% |
+| Porffor GC                                 |  6.9% | 5.0% | 2.8% |   2.2% |
+| SQLite and page cache                      | 13.4% | 5.0% | 5.6% |   7.2% |
 
 Percentages are of all samples; the flat files list only about 43-66% of them, kernel time is one unresolved bucket (24% of the mix in PR 54). `p_builtins___Porffor_json_serialize` alone is 6.6% of feed and `memset` 5.7%; those, not property lookup, are the Porffor-side costs. The D1 binding path is 32% inclusive but only about 6 points beyond SQLite (PR 54, section 4). Go's feed handler costs about 75 us user against about 390 us for ours (`cmp-*.out`, `cpu-1.out`); the gap is spread over JSON, allocation, the D1 round trip and SQLite, not property access. Caveats: lookup loops may be inlined into callers and not show under the object symbols, there is no PMU on this VM (task-clock sampling), and 5% run-to-run noise.
 
