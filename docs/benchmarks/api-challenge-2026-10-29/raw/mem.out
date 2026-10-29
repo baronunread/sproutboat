@@ -1,0 +1,18 @@
+locks held 2026-10-29T01:09:03Z load: 1.06 1.36 1.96
+standalone idle  rss_kb=6052 pss_kb=6040 anon_kb=1340 file_kb=4712 shmem_kb=0 cg_current_kb=1648 cg_peak_kb=2044
+standalone idle_cpu_ms_per_s=0 (user 0 sys 0)
+standalone warm  rss_kb=11140 pss_kb=11128 anon_kb=6184 file_kb=4956 shmem_kb=0 cg_current_kb=13140 cg_peak_kb=15528
+standalone load  rss_kb=11192 pss_kb=11180 anon_kb=6236 file_kb=4956 shmem_kb=0 cg_current_kb=19352 cg_peak_kb=22376 :: offered=2000 achieved=1998 req/s errors=0.00% p50=2.4ms p95=17.4ms p99=46.5ms max=84.0ms loadgen_cpu=33%
+sproutd idle  rss_kb=21420 pss_kb=10000 anon_kb=4480 file_kb=16484 shmem_kb=456 cg_current_kb=3872 cg_peak_kb=3872
+sproutd idle_cpu_ms_per_s=1 (user 0 sys 0)
+sproutd warm  rss_kb=24208 pss_kb=12951 anon_kb=7252 file_kb=16500 shmem_kb=456 cg_current_kb=13204 cg_peak_kb=15424
+sproutd load  rss_kb=24264 pss_kb=13015 anon_kb=7308 file_kb=16500 shmem_kb=456 cg_current_kb=19188 cg_peak_kb=21700 :: offered=2000 achieved=1998 req/s errors=2.38% p50=4.3ms p95=20.1ms p99=27.9ms max=82.3ms loadgen_cpu=30%
+workerd idle  rss_kb=194212 pss_kb=188385 anon_kb=99536 file_kb=94580 shmem_kb=96 cg_current_kb=103140 cg_peak_kb=103140
+workerd idle_cpu_ms_per_s=0 (user 0 sys 0)
+workerd warm  rss_kb=507472 pss_kb=501701 anon_kb=402116 file_kb=105260 shmem_kb=96 cg_current_kb=412140 cg_peak_kb=412416
+workerd load  rss_kb=1115444 pss_kb=1109612 anon_kb=1009588 file_kb=105760 shmem_kb=96 cg_current_kb=1032760 cg_peak_kb=1048332 :: offered=2000 achieved=356 req/s errors=10.24% p50=55233.1ms p95=104826.1ms p99=109446.7ms max=110701.0ms loadgen_cpu=5%
+workerd-bare idle  rss_kb=193788 pss_kb=187815 anon_kb=99276 file_kb=94416 shmem_kb=96 cg_current_kb=105664 cg_peak_kb=105664
+workerd-bare idle_cpu_ms_per_s=0 (user 0 sys 0)
+workerd-bare warm  rss_kb=418452 pss_kb=412480 anon_kb=314628 file_kb=103728 shmem_kb=96 cg_current_kb=327828 cg_peak_kb=331216
+workerd-bare load  rss_kb=949208 pss_kb=943241 anon_kb=843648 file_kb=105464 shmem_kb=96 cg_current_kb=863388 cg_peak_kb=865756 :: offered=2000 achieved=422 req/s errors=5.55% p50=47963.1ms p95=96180.0ms p99=100681.6ms max=105261.3ms loadgen_cpu=5%
+done 2026-10-29T01:17:08Z load: 1.25 1.19 1.61

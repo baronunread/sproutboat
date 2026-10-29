@@ -1,0 +1,14 @@
+locks held 2026-10-29T00:17:02Z load: 0.45 0.66 0.46
+1 standalone feed rate=400 user=4358e-1 sys=1348e-1 total=5706e-1 :: offered=400 achieved=399 req/s errors=0.00% p50=3.8ms p95=4.7ms p99=6.8ms max=11.7ms loadgen_cpu=20%
+1 standalone post rate=400 user=2362e-1 sys=1547e-1 total=3910e-1 :: offered=400 achieved=399 req/s errors=0.00% p50=3.6ms p95=4.4ms p99=6.9ms max=19.2ms loadgen_cpu=20%
+1 standalone like rate=400 user=3786e-1 sys=2183e-1 total=5970e-1 :: offered=400 achieved=399 req/s errors=0.00% p50=3.8ms p95=4.8ms p99=9.5ms max=35.2ms loadgen_cpu=21%
+1 standalone create rate=400 user=4338e-1 sys=2079e-1 total=6417e-1 :: offered=400 achieved=399 req/s errors=0.00% p50=4.0ms p95=6.9ms p99=12.9ms max=27.2ms loadgen_cpu=22%
+1 workerd feed rate=400 user=22616e-1 sys=2452e-1 total=25068e-1 :: offered=400 achieved=399 req/s errors=0.00% p50=23.1ms p95=71.9ms p99=93.7ms max=112.0ms loadgen_cpu=17%
+1 workerd post rate=400 user=21726e-1 sys=2826e-1 total=24553e-1 :: offered=400 achieved=399 req/s errors=0.00% p50=8.9ms p95=44.6ms p99=71.6ms max=99.9ms loadgen_cpu=17%
+1 workerd like rate=400 user=50862e-1 sys=5100e-1 total=55962e-1 :: offered=400 achieved=267 req/s errors=0.16% p50=1828.0ms p95=9478.1ms p99=9777.9ms max=9854.1ms loadgen_cpu=8%
+1 workerd create rate=400 user=23333e-1 sys=2304e-1 total=25638e-1 :: offered=400 achieved=397 req/s errors=0.00% p50=21.9ms p95=94.7ms p99=147.8ms max=182.4ms loadgen_cpu=17%
+1 sproutd feed rate=400 user=8656e-1 sys=2285e-1 total=10942e-1 :: offered=400 achieved=399 req/s errors=0.00% p50=4.0ms p95=4.9ms p99=9.9ms max=45.5ms loadgen_cpu=20%
+1 sproutd post rate=400 user=3612e-1 sys=2468e-1 total=6081e-1 :: offered=400 achieved=399 req/s errors=0.00% p50=3.8ms p95=4.7ms p99=8.9ms max=18.7ms loadgen_cpu=21%
+1 sproutd like rate=400 user=7190e-1 sys=4622e-1 total=11813e-1 :: offered=400 achieved=399 req/s errors=0.00% p50=4.8ms p95=17.0ms p99=49.3ms max=62.6ms loadgen_cpu=21%
+1 sproutd create rate=400 user=5201e-1 sys=2877e-1 total=8078e-1 :: offered=400 achieved=399 req/s errors=0.00% p50=4.1ms p95=5.5ms p99=8.8ms max=24.7ms loadgen_cpu=21%
+done 2026-10-29T00:20:22Z load: 1.33 0.96 0.62

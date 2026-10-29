@@ -1,0 +1,8 @@
+locks held 2026-10-29T01:31:21Z load: 1.36 1.78 1.69
+sproutd run1 800 HELD cpu_us_per_req=665 offered=800 achieved=799 req/s errors=0.00% p50=2.8ms p95=4.8ms p99=12.9ms max=33.5ms loadgen_cpu=22%
+sproutd run1 1200 HELD cpu_us_per_req=600 offered=1200 achieved=1198 req/s errors=0.12% p50=3.0ms p95=8.7ms p99=23.5ms max=42.7ms loadgen_cpu=27%
+sproutd run1 1600 HELD cpu_us_per_req=502 offered=1600 achieved=1598 req/s errors=0.25% p50=2.7ms p95=6.8ms p99=17.3ms max=36.5ms loadgen_cpu=27%
+sproutd run1 2000 MISS cpu_us_per_req=483 offered=2000 achieved=1992 req/s errors=3.30% p50=4.1ms p95=22.1ms p99=28.8ms max=87.1ms loadgen_cpu=32%
+sproutd run1 2400 MISS cpu_us_per_req=415 offered=2400 achieved=2396 req/s errors=6.22% p50=11.5ms p95=18.7ms p99=29.6ms max=124.1ms loadgen_cpu=31%
+sproutd run1 3000 MISS cpu_us_per_req=332 offered=3000 achieved=2994 req/s errors=14.83% p50=12.1ms p95=17.5ms p99=27.7ms max=93.0ms loadgen_cpu=38%
+done 2026-10-29T01:33:55Z load: 1.52 1.62 1.64

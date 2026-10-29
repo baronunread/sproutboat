@@ -1,0 +1,6 @@
+locks held 2026-10-29T01:02:51Z load: 1.03 1.62 2.31
+1 standalone like rate=100 user=5649e-1 sys=2779e-1 total=8428e-1 :: offered=100 achieved=100 req/s errors=0.00% p50=11.7ms p95=14.6ms p99=18.2ms max=27.8ms loadgen_cpu=11%
+1 sproutd like rate=100 user=5962e-1 sys=4079e-1 total=10042e-1 :: offered=100 achieved=100 req/s errors=0.00% p50=11.7ms p95=12.5ms p99=15.9ms max=30.5ms loadgen_cpu=10%
+1 workerd like rate=100 user=49694e-1 sys=6045e-1 total=55740e-1 :: offered=100 achieved=100 req/s errors=0.00% p50=15.9ms p95=21.5ms p99=37.2ms max=54.8ms loadgen_cpu=11%
+1 workerd-bare like rate=100 user=46640e-1 sys=5861e-1 total=52501e-1 :: offered=100 achieved=100 req/s errors=0.00% p50=15.7ms p95=21.4ms p99=41.8ms max=58.4ms loadgen_cpu=11%
+done 2026-10-29T01:04:18Z load: 0.97 1.43 2.18

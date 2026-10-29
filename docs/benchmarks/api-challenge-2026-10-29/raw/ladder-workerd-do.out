@@ -1,0 +1,6 @@
+locks held 2026-10-29T01:45:09Z load: 1.17 1.06 1.28
+workerd-do run1 400 HELD cpu_us_per_req=1426 offered=400 achieved=400 req/s errors=0.00% p50=4.7ms p95=8.8ms p99=35.0ms max=65.5ms loadgen_cpu=16%
+workerd-do run1 800 HELD cpu_us_per_req=1065 offered=800 achieved=794 req/s errors=0.00% p50=3.9ms p95=69.8ms p99=210.7ms max=395.2ms loadgen_cpu=21%
+workerd-do run1 1200 MISS cpu_us_per_req=888 offered=1200 achieved=1159 req/s errors=0.00% p50=85.5ms p95=342.0ms p99=525.0ms max=825.6ms loadgen_cpu=23%
+workerd-do run1 1600 MISS cpu_us_per_req=1105 offered=1600 achieved=1200 req/s errors=0.51% p50=1852.9ms p95=4010.0ms p99=4516.6ms max=10333.2ms loadgen_cpu=24%
+done 2026-10-29T01:47:02Z load: 1.77 1.25 1.32

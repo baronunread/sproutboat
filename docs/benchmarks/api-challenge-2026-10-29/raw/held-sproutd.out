@@ -1,0 +1,10 @@
+locks held 2026-10-29T04:38:25Z load: 0.88 1.07 0.60
+sproutd run1 1200 MISS cpu_us_per_req=583 offered=1200 achieved=1199 req/s errors=1.37% p50=3.0ms p95=16.7ms p99=40.1ms max=143.8ms loadgen_cpu=24%
+sproutd run1 1600 HELD cpu_us_per_req=506 offered=1600 achieved=1599 req/s errors=0.40% p50=2.8ms p95=8.6ms p99=21.9ms max=47.1ms loadgen_cpu=25%
+sproutd run1 1800 MISS cpu_us_per_req=505 offered=1800 achieved=1799 req/s errors=4.87% p50=3.5ms p95=25.3ms p99=43.9ms max=103.6ms loadgen_cpu=31%
+sproutd run1 2000 MISS cpu_us_per_req=468 offered=2000 achieved=1999 req/s errors=1.29% p50=3.6ms p95=17.2ms p99=24.4ms max=67.9ms loadgen_cpu=29%
+sproutd run2 1200 HELD cpu_us_per_req=568 offered=1200 achieved=1199 req/s errors=0.08% p50=2.7ms p95=5.2ms p99=13.3ms max=57.0ms loadgen_cpu=24%
+sproutd run2 1600 HELD cpu_us_per_req=518 offered=1600 achieved=1599 req/s errors=0.22% p50=2.9ms p95=9.2ms p99=17.4ms max=56.6ms loadgen_cpu=27%
+sproutd run2 1800 HELD cpu_us_per_req=484 offered=1800 achieved=1799 req/s errors=0.28% p50=3.0ms p95=10.5ms p99=18.7ms max=64.5ms loadgen_cpu=28%
+sproutd run2 2000 HELD cpu_us_per_req=458 offered=2000 achieved=1999 req/s errors=0.53% p50=3.1ms p95=11.1ms p99=18.7ms max=50.3ms loadgen_cpu=28%
+done 2026-10-29T04:43:50Z load: 2.02 1.64 1.01

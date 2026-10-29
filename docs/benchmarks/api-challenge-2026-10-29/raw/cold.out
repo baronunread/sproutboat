@@ -1,0 +1,22 @@
+locks held 2026-10-29T01:19:22Z load: 0.96 1.20 1.57
+1 standalone start_to_health_ms=159 feed_s=[0.002597 0.001127 0.000825 ] post_s=[0.000979 0.000772 0.000723 ] rss_kb=6700 pss_kb=6688 anon_kb=1988 file_kb=4712 shmem_kb=0 cg_current_kb=2668 cg_peak_kb=2672
+1 sproutd start_to_health_ms=187 feed_s=[0.001939 0.001100 0.001049 ] post_s=[0.001019 0.000883 0.000854 ] rss_kb=21724 pss_kb=10295 anon_kb=4748 file_kb=16520 shmem_kb=456 cg_current_kb=4564 cg_peak_kb=4572
+1 workerd start_to_health_ms=1847 feed_s=[0.006164 0.006711 0.006231 ] post_s=[0.005844 0.005454 0.005070 ] rss_kb=195592 pss_kb=189817 anon_kb=100420 file_kb=95076 shmem_kb=96 cg_current_kb=104172 cg_peak_kb=104172
+1 workerd-bare start_to_health_ms=1380 feed_s=[0.004409 0.005825 0.006857 ] post_s=[0.005739 0.004788 0.003549 ] rss_kb=195872 pss_kb=190059 anon_kb=101200 file_kb=94576 shmem_kb=96 cg_current_kb=104892 cg_peak_kb=104892
+2 standalone start_to_health_ms=139 feed_s=[0.001839 0.001096 0.000873 ] post_s=[0.000964 0.000934 0.001029 ] rss_kb=6696 pss_kb=6684 anon_kb=1984 file_kb=4712 shmem_kb=0 cg_current_kb=2692 cg_peak_kb=2692
+2 sproutd start_to_health_ms=182 feed_s=[0.001937 0.001121 0.001146 ] post_s=[0.001338 0.001036 0.001154 ] rss_kb=21604 pss_kb=10278 anon_kb=4748 file_kb=16400 shmem_kb=456 cg_current_kb=4368 cg_peak_kb=4372
+2 workerd start_to_health_ms=1480 feed_s=[0.005987 0.006443 0.005080 ] post_s=[0.006498 0.005940 0.004865 ] rss_kb=195940 pss_kb=190097 anon_kb=99984 file_kb=95860 shmem_kb=96 cg_current_kb=103672 cg_peak_kb=103672
+2 workerd-bare start_to_health_ms=1444 feed_s=[0.004812 0.004686 0.005083 ] post_s=[0.005027 0.003192 0.004835 ] rss_kb=195716 pss_kb=189859 anon_kb=100156 file_kb=95464 shmem_kb=96 cg_current_kb=103928 cg_peak_kb=103928
+3 standalone start_to_health_ms=101 feed_s=[0.001721 0.000990 0.001461 ] post_s=[0.000902 0.000801 0.000801 ] rss_kb=6700 pss_kb=6688 anon_kb=1988 file_kb=4712 shmem_kb=0 cg_current_kb=2688 cg_peak_kb=2688
+3 sproutd start_to_health_ms=171 feed_s=[0.001843 0.001099 0.001349 ] post_s=[0.001193 0.000904 0.000970 ] rss_kb=21660 pss_kb=10270 anon_kb=4744 file_kb=16460 shmem_kb=456 cg_current_kb=4368 cg_peak_kb=4380
+3 workerd start_to_health_ms=1383 feed_s=[0.005125 0.006709 0.005784 ] post_s=[0.008490 0.004209 0.006221 ] rss_kb=194956 pss_kb=189101 anon_kb=100380 file_kb=94480 shmem_kb=96 cg_current_kb=104168 cg_peak_kb=104168
+3 workerd-bare start_to_health_ms=1450 feed_s=[0.005301 0.005840 0.005082 ] post_s=[0.006873 0.003889 0.006382 ] rss_kb=195792 pss_kb=190080 anon_kb=100548 file_kb=95148 shmem_kb=96 cg_current_kb=104184 cg_peak_kb=104184
+4 standalone start_to_health_ms=113 feed_s=[0.002571 0.001028 0.001116 ] post_s=[0.000852 0.000697 0.000904 ] rss_kb=6700 pss_kb=6688 anon_kb=1988 file_kb=4712 shmem_kb=0 cg_current_kb=2512 cg_peak_kb=2688
+4 sproutd start_to_health_ms=193 feed_s=[0.002397 0.001710 0.001169 ] post_s=[0.001143 0.000961 0.000987 ] rss_kb=21756 pss_kb=10274 anon_kb=4736 file_kb=16564 shmem_kb=456 cg_current_kb=4376 cg_peak_kb=4388
+4 workerd start_to_health_ms=1710 feed_s=[0.006515 0.007517 0.007476 ] post_s=[0.006912 0.006733 0.007464 ] rss_kb=195620 pss_kb=189789 anon_kb=100072 file_kb=95452 shmem_kb=96 cg_current_kb=103748 cg_peak_kb=103748
+4 workerd-bare start_to_health_ms=2317 feed_s=[0.005335 0.005511 0.006182 ] post_s=[0.006712 0.005550 0.005680 ] rss_kb=195468 pss_kb=189563 anon_kb=99876 file_kb=95496 shmem_kb=96 cg_current_kb=103664 cg_peak_kb=103664
+5 standalone start_to_health_ms=165 feed_s=[0.002058 0.003660 0.001403 ] post_s=[0.001712 0.000855 0.001042 ] rss_kb=6696 pss_kb=6708 anon_kb=1984 file_kb=4712 shmem_kb=0 cg_current_kb=2684 cg_peak_kb=2684
+5 sproutd start_to_health_ms=185 feed_s=[0.002042 0.001454 0.001449 ] post_s=[0.001260 0.000959 0.000991 ] rss_kb=21388 pss_kb=10251 anon_kb=4736 file_kb=16196 shmem_kb=456 cg_current_kb=4364 cg_peak_kb=4376
+5 workerd start_to_health_ms=1566 feed_s=[0.006107 0.006914 0.005612 ] post_s=[0.006199 0.004540 0.005190 ] rss_kb=195396 pss_kb=189550 anon_kb=100084 file_kb=95216 shmem_kb=96 cg_current_kb=103660 cg_peak_kb=103668
+5 workerd-bare start_to_health_ms=1538 feed_s=[0.004730 0.005219 0.004373 ] post_s=[0.005581 0.004966 0.004896 ] rss_kb=195436 pss_kb=189564 anon_kb=99888 file_kb=95452 shmem_kb=96 cg_current_kb=103664 cg_peak_kb=103664
+done 2026-10-29T01:20:16Z load: 1.22 1.23 1.56

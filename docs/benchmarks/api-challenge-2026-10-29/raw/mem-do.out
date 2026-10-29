@@ -1,0 +1,6 @@
+locks held 2026-10-29T01:43:23Z load: 0.86 1.03 1.31
+workerd-do idle  rss_kb=189324 pss_kb=183425 anon_kb=94768 file_kb=94460 shmem_kb=96 cg_current_kb=98220 cg_peak_kb=98292
+workerd-do idle_cpu_ms_per_s=0 (user 0 sys 0)
+workerd-do warm  rss_kb=274672 pss_kb=268775 anon_kb=170748 file_kb=103828 shmem_kb=96 cg_current_kb=180916 cg_peak_kb=183612
+workerd-do load  rss_kb=460432 pss_kb=454540 anon_kb=354232 file_kb=106104 shmem_kb=96 cg_current_kb=368604 cg_peak_kb=376228 :: offered=2000 achieved=1091 req/s errors=1.88% p50=12039.7ms p95=21442.1ms p99=22128.5ms max=28808.5ms loadgen_cpu=22%
+done 2026-10-29T01:44:51Z load: 1.04 1.03 1.28
