@@ -3,6 +3,7 @@ import { authFile, chooseOption } from "./helpers";
 
 // Body rows of the request log. Anchored on the table's caption and on table
 // semantics rather than class names, which are free to change with the styling.
+const history = (page: Page) => page.getByRole("region", { name: "Request logs" });
 const logRows = (page: Page) => page.getByRole("table", { name: /request log/i }).locator("tbody tr");
 
 test.use({ storageState: authFile("test-admin") });
@@ -24,14 +25,18 @@ test("log history filters and live tail toggles", async ({ page }) => {
   await page.goto("/projects/blog/logs");
   await expect(logRows(page).first()).toBeVisible();
 
-  await chooseOption(page, page.getByRole("combobox", { name: "Status" }), "5xx");
+  await chooseOption(page, history(page).getByRole("combobox", { name: "Status" }), "5xx");
   await expect(logRows(page).first().getByRole("cell").nth(2)).toHaveText(/^5\d\d$/);
 
-  await chooseOption(page, page.getByRole("combobox", { name: "Status" }), "All statuses");
-  await page.getByRole("button", { name: /start live tail/i }).click();
-  await expect(page.getByText("Live", { exact: true })).toBeVisible();
-  await page.getByRole("button", { name: /stop live tail/i }).click();
-  await expect(page.getByText("Paused", { exact: true })).toBeVisible();
+  await chooseOption(page, history(page).getByRole("combobox", { name: "Status" }), "All statuses");
+  const live = page.getByRole("region", { name: "Live tail" });
+  await live.getByRole("button", { name: /start live tail/i }).click();
+  await expect(live.getByText("Live", { exact: true })).toBeVisible();
+  await live.getByRole("button", { name: "Pause" }).click();
+  await expect(live.getByText("Paused", { exact: true })).toBeVisible();
+  await live.getByRole("button", { name: "Resume" }).click();
+  await live.getByRole("button", { name: /stop live tail/i }).click();
+  await expect(live.getByText("Off", { exact: true })).toBeVisible();
 });
 
 // #76 — the query builder's field filters, and the sprout output panel that
@@ -41,12 +46,14 @@ test("method and cold-start filters narrow the log, and clear resets them", asyn
   const rows = logRows(page);
   await expect(rows.first()).toBeVisible();
 
-  await chooseOption(page, page.getByRole("combobox", { name: "Method" }), "POST");
+  await chooseOption(page, history(page).getByRole("combobox", { name: "Method" }), "POST");
   await expect(rows.first().getByRole("cell").nth(1)).toHaveText("POST");
 
-  await page.getByRole("button", { name: /^clear$/i }).click();
+  await history(page)
+    .getByRole("button", { name: /^clear$/i })
+    .click();
   // A listbox has no value; the trigger shows the chosen label instead.
-  await expect(page.getByRole("combobox", { name: "Method" })).toHaveText("All methods");
+  await expect(history(page).getByRole("combobox", { name: "Method" })).toHaveText("All methods");
   await expect(rows.first()).toBeVisible();
 });
 

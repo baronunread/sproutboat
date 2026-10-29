@@ -97,8 +97,37 @@ cd hello
 sproutboat deploy          # → https://hello.<user>.<your-domain>
 sproutboat versions list
 sproutboat rollback <id>
-sproutboat tail
+sproutboat tail            # live: requests, console output, uncaught errors
+sproutboat tail --recent   # the last 100 request records
 ```
+
+## Live tail
+
+`GET /api/projects/<name>/tail` streams one app's events (Server-Sent Events,
+`x-api-key` or a dashboard session, same ownership checks as the other log
+routes). Query parameters: `status` (`ok`, `error`, `500`, `5xx`),
+`method`, `outcome`, `sampling-rate` (0 to 1), `search`; the first three
+repeat or take commas. Frames are JSON: `ready`, `event`, `dropped` and
+`closed`.
+
+- Request events come from the edge log; console output and uncaught
+  exceptions from the sprout's own output file, so they need a running sprout
+  with `SPROUTBOAT_LOG_PATH` set.
+- **Console lines are not tied to a request.** One sprout serves concurrent
+  requests, the runtime does not tag a line with a request id, and the output
+  file has no timestamps (lines are stamped when the control plane reads them,
+  about one second of resolution). They arrive as their own events with
+  `event: null`. Levels are not marked either: everything is `log` except an
+  `Uncaught (in ...)` line, which becomes an exception.
+- Outcomes: `ok`, `exception` (the handler threw; the runtime answers a bare 500 with no
+  content-type and the body `Internal Server Error`, which the edge recognises by that
+  signature, so a handler's own 500 stays `ok`), `exceededWallTime`
+  (edge timeout), `canceled` (client went away), plus the platform's own:
+  `unavailable`, `noRoute`, `proxyError`, `responseTooLarge`,
+  `websocketRefused`. `exceededCpu` is accepted but the edge enforces no CPU
+  limit yet.
+- Bounds: new data only, 256 KiB per source per second, 50 events per second
+  (the rest counted in a `dropped` frame), ten minutes per connection.
 
 ## What stays off
 
