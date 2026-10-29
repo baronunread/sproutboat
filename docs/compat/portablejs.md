@@ -1,5 +1,7 @@
 # PortableJS as a conformance corpus
 
+> **One-off experiment, not a supported integration.** PortableJS was run once as a source of test cases to find gaps in the runtime. No `@portable/*` package is a dependency, devDependency or vendored copy of any sproutboat repository, the clone and harness lived in a scratch directory, and the fixes linked below are ordinary Web API and runtime fixes with tests that do not import `@portable/*`.
+
 Run on 2026-10-29. [PortableJS](https://github.com/portablejs/portable) (MIT, created 2026-10-20) is about 40 small `@portable/*` ESM packages built only on web-standard APIs, with no polyfills and no `nodejs_compat`, and every package is checked in workerd. This page scores its conformance tests on sproutboat and lists what they expose.
 
 ## Method
