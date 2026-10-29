@@ -5,6 +5,29 @@ Changes to the self-hosted Sproutboat platform are recorded here. Read the
 
 ## [Unreleased]
 
+### Added
+
+- **Live tail for one app: `GET /api/projects/:name/tail`.** A Server-Sent Events stream in the shape of a
+  Workers tail event (`scriptName`, `outcome`, `eventTimestamp`, `event.request`/`response`, `cpuTime`,
+  `wallTime`, `logs`, `exceptions`). It merges the edge request log (status, CPU ms, wall ms, outcome from the
+  failure class) with the sprout's console output and uncaught exceptions. Server-side filters: `status`
+  (`ok`, `error`, `500`, `5xx`; repeatable), `method` (repeatable), `sampling-rate` (0 to 1), `search`
+  (substring over URL, console text and exception text) and `outcome`. Same authentication and ownership checks
+  as the other log routes. It tails only data written after connect, reads at most 256 KiB per source per
+  second, stops after ten minutes, and sends at most 50 events a second, reporting the rest in a `dropped`
+  frame. The existing `/logs`, `/logs/tail`, `/logs/recent` and `/logs/sprout` routes are unchanged.
+  Console lines are separate events and are never attached to a request: concurrent requests share one process,
+  the runtime does not tag a line with a request id, and the sprout's output file has no timestamps.
+  The runtime also writes `console.log`, `warn` and `error` to one stream without a level, so only an uncaught
+  exception (`Uncaught (in fetch) ...`) is recognised as an error. Needs CLI with `sproutboat tail` live
+  streaming (the CLI change ships separately); older CLIs keep working against `/logs/recent`.
+- **The dashboard's live tail uses it.** The logs page has a Live tail panel with status, method, sampling and
+  search filters, pause and resume, clear, and a 500 row bound, with console lines and exceptions inline.
+- The edge request log gained two optional fields, `path` (the request pathname, never the query string) and
+  `uncaught` (the handler threw: the runtime's bare 500, recognised by its signature or by `x-sb-uncaught`), which feed
+  the tail. Older lines without them
+  still read; their events show the host without a path and outcome `ok`.
+
 ## [0.12.1] - 2026-10-29
 
 Adopts `@sproutboat/runtime` 0.35.0 and `@sproutboat/toolchain` 0.20.1 (from 0.34.2 and 0.19.2), the versions CLI 0.43.0 builds with.

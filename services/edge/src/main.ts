@@ -21,6 +21,8 @@ type EdgeInput = JsonValue | undefined;
 interface LogEvent {
   readonly hostname?: string | null;
   readonly method?: string;
+  /** Request pathname (no query string, so tokens in it never reach the log), capped at 512 chars. Feeds `tail`. */
+  readonly path?: string;
   readonly status: number;
   readonly durationMs: number;
   /** Time to the upstream response headers; null when the sprout never answered. */
@@ -40,6 +42,8 @@ interface LogEvent {
   /** Coarse failure taxonomy: no-route | sprout-unavailable | proxy | timed-out
    *  | response-too-large | upstream-5xx | client-closed. Absent on a clean response. */
   readonly errorKind?: string;
+  /** The sprout's handler threw and the runtime answered 500 (marker or signature, see the fetch handler). Feeds `tail`'s outcome. */
+  readonly uncaught?: true;
   /** Edge cache outcome for a GET: hit | miss | dynamic | bypass. */
   readonly cacheStatus?: string;
 }
@@ -312,7 +316,16 @@ if (logPath) {
   }
 }
 
-function log(event: LogEvent): void {
+/** Pathname only, capped; `undefined` when the URL does not parse. */
+function requestPath(url: string): string | undefined {
+  try {
+    return new URL(url).pathname.slice(0, 512);
+  } catch {
+    return undefined;
+  }
+}
+
+function writeLog(event: LogEvent): void {
   logStream?.write(`${JSON.stringify({ at: new Date().toISOString(), ...event })}\n`);
 }
 
@@ -392,6 +405,8 @@ const server = Bun.serve<RelayData>({
     const started = performance.now();
     const elapsed = () => Math.round(performance.now() - started);
     const reqBytes = Number(request.headers.get("content-length")) || 0;
+    const reqPath = requestPath(request.url);
+    const log = (event: LogEvent): void => writeLog({ ...event, path: reqPath });
     try {
       await refreshRoutes();
     } catch (error) {
@@ -665,6 +680,15 @@ const server = Bun.serve<RelayData>({
       // #31 — log once the response body has actually finished streaming, so
       // durationMs is the full request duration and resBytes is the real count.
       const headers = new Headers(upstream.headers);
+      // The runtime's answer to a handler that threw: the `x-sb-uncaught` marker (service-binding
+      // calls only), or else its signature, a bare 500 with no content-type whose body is
+      // "Internal Server Error" (21 bytes). A handler's own string response always carries a
+      // content-type, so a deliberate 500 does not match. Feeds `tail`'s `exception` outcome.
+      const uncaught =
+        upstream.headers.has("x-sb-uncaught") ||
+        (upstream.status === 500 &&
+          !upstream.headers.has("content-type") &&
+          upstream.headers.get("content-length") === "21");
       // A callee's error, for the caller's broker only: it carries the message.
       if (!bindingCall) headers.delete("x-sb-uncaught");
       headers.delete("x-sb-cpu-ms");
@@ -709,6 +733,7 @@ const server = Bun.serve<RelayData>({
             bootMs,
             cpuMs,
             errorKind: upstream.status >= 500 ? "upstream-5xx" : undefined,
+            uncaught: uncaught || undefined,
             cacheStatus,
           });
         },

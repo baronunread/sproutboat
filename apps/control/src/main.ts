@@ -15,6 +15,7 @@ import {
   projectLogHistory,
   projectLogs,
   projectLogTail,
+  projectTail,
   projectMetrics,
   projectSproutLog,
 } from "./deployments";
@@ -254,6 +255,8 @@ async function handle(request: Request): Promise<Response> {
   if (request.method === "GET" && logsHistory) return projectLogHistory(request, logsHistory[1]);
   const logsTail = /^\/api\/projects\/([a-z0-9-]+)\/logs\/tail$/.exec(url.pathname);
   if (request.method === "GET" && logsTail) return projectLogTail(request, logsTail[1]);
+  const appTail = /^\/api\/projects\/([a-z0-9-]+)\/tail$/.exec(url.pathname);
+  if (request.method === "GET" && appTail) return projectTail(request, appTail[1]);
   const logsRecent = /^\/api\/projects\/([a-z0-9-]+)\/logs\/recent$/.exec(url.pathname);
   if (request.method === "GET" && logsRecent) return projectLogs(request, logsRecent[1]);
   const logsSprout = /^\/api\/projects\/([a-z0-9-]+)\/logs\/sprout$/.exec(url.pathname);

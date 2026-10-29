@@ -13,6 +13,7 @@ import {
   TextField,
 } from "../components";
 import { relativeTime, useProject } from "../dashboard-data";
+import { LiveTail } from "../live-tail";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/projects_/$name/logs")({ component: ProjectLogs });
@@ -29,7 +30,6 @@ type LogRecord = {
   statusClass: StatusClass;
 };
 type LogPage = { events: LogRecord[]; nextBefore: string | null; windowTruncated: boolean };
-type TailFrame = { type: "ready" | "event" | "closed"; event?: LogRecord; reason?: string };
 type Row = { key: number; record: LogRecord; title: string };
 
 const LOG_STATUS = {
@@ -69,7 +69,6 @@ const COLD_OPTIONS = [
   ["all", "All requests"],
   ["true", "Cold starts only"],
 ] as const;
-const MAX_ROWS = 500;
 
 type Filters = { statusClass: string; method: string; minDuration: string; coldStart: string; query: string };
 const EMPTY: Filters = { statusClass: "all", method: "all", minDuration: "0", coldStart: "all", query: "" };
@@ -81,8 +80,6 @@ function ProjectLogs() {
   const [nextBefore, setNextBefore] = useState<string | null>(null);
   const [truncated, setTruncated] = useState(false);
   const [state, setState] = useState<"loading" | "ready" | "error">("loading");
-  const [tailing, setTailing] = useState(false);
-  const [tailNote, setTailNote] = useState("");
   const nextKey = useRef(0);
 
   const set = <K extends keyof Filters>(key: K, value: Filters[K]) =>
@@ -113,27 +110,6 @@ function ProjectLogs() {
     },
     [name, filters],
   );
-
-  // The live tail is unfiltered on the wire, so the same predicate is applied
-  // client-side to incoming frames - otherwise a filtered view would fill with
-  // rows that the history call would never have returned.
-  const matches = useCallback(
-    (record: LogRecord) => {
-      if (filters.statusClass !== "all" && record.statusClass !== filters.statusClass) return false;
-      if (filters.method !== "all" && record.method?.toUpperCase() !== filters.method) return false;
-      if (Number(filters.minDuration) > 0 && record.durationMs < Number(filters.minDuration)) return false;
-      if (filters.coldStart === "true" && !record.coldStart) return false;
-      const needle = filters.query.trim().toLowerCase();
-      return (
-        !needle || `${record.status} ${record.method ?? ""} ${record.failure ?? ""}`.toLowerCase().includes(needle)
-      );
-    },
-    [filters],
-  );
-  const matchesRef = useRef(matches);
-  useEffect(() => {
-    matchesRef.current = matches;
-  }, [matches]);
 
   const loadFirst = useCallback(async () => {
     setState("loading");
@@ -175,56 +151,14 @@ function ProjectLogs() {
     void loadFirst();
   }, [loadFirst]);
 
-  // The live tail's whole lifecycle is this effect: it opens the stream while
-  // `tailing` is on and closes it on toggle-off, section change, or unmount.
-  useEffect(() => {
-    if (!tailing) return;
-    setTailNote("");
-    const stream = new EventSource(`/api/projects/${encodeURIComponent(name)}/logs/tail`);
-    stream.onmessage = (message) => {
-      // SAFETY: the tail endpoint sends one TailFrame JSON object per message.
-      const frame = JSON.parse(message.data) as TailFrame;
-      const record = frame.event;
-      if (frame.type === "event" && record) {
-        if (matchesRef.current(record)) {
-          const row = { key: nextKey.current++, record, title: FULL_TIME.format(new Date(record.at)) };
-          setRows((current) => [row, ...current].slice(0, MAX_ROWS));
-        }
-      } else if (frame.type === "closed") {
-        setTailNote(frame.reason ?? "Live tail ended.");
-        setTailing(false);
-      }
-    };
-    stream.onerror = () => {
-      setTailNote("Live tail disconnected. Resume to reconnect.");
-      setTailing(false);
-    };
-    return () => stream.close();
-  }, [tailing, name]);
-
   return (
     <>
-      <Panel variant="wide">
+      <LiveTail name={name} active={Boolean(active)} />
+
+      <Panel variant="wide" aria-label="Request logs">
         <PanelHeading
           title="Request logs"
-          description="Edge events for this project's route, newest first."
-          action={
-            <div className="flex items-center gap-2.5">
-              <span
-                className={cn(
-                  "text-[0.75rem]",
-                  tailing
-                    ? "text-brand before:mr-1.5 before:inline-block before:size-1.5 before:rounded-full before:bg-brand before:content-['']"
-                    : "text-muted-foreground",
-                )}
-              >
-                {tailing ? "Live" : "Paused"}
-              </span>
-              <Button variant={tailing ? "danger" : "quiet"} onClick={() => setTailing((on) => !on)}>
-                {tailing ? "Stop live tail" : "Start live tail"}
-              </Button>
-            </div>
-          }
+          description="Edge events for this project's route, newest first. Use the live tail above to watch new ones."
         />
 
         {!active && (
@@ -273,7 +207,6 @@ function ProjectLogs() {
           </Button>
         </search>
 
-        {tailNote && <StatusMessage>{tailNote}</StatusMessage>}
         {truncated && (
           <StatusMessage>Showing the most recent window of activity; older history is not retained here.</StatusMessage>
         )}
@@ -320,7 +253,7 @@ function ProjectLogs() {
                 </tr>
               ))}
             </DataTable>
-            {nextBefore && !tailing && (
+            {nextBefore && (
               <div className="mt-4">
                 <Button variant="quiet" onClick={() => void loadOlder()}>
                   Load older

@@ -5,7 +5,16 @@ import { stageCandidate } from "./activation";
 import { validateArtifactDirectory, type ResourceBindingRef } from "./artifact";
 import { actorFor, purgeUser, type Actor } from "./identity";
 import { guardDeploy, guardNewProject, LIMITS } from "./limits";
-import { aggregateLogs, readLogHistory, readLogTailText, readSproutLogText, routeTraffic, tailLogs } from "./logs";
+import {
+  aggregateLogs,
+  readLogHistory,
+  readLogTailText,
+  readSproutLogText,
+  routeTraffic,
+  sproutLogFile,
+  tailLogs,
+} from "./logs";
+import { parseTailFilters, tailEvents } from "./tail";
 import {
   activateDeployment as storeActivate,
   activeProjects,
@@ -262,6 +271,27 @@ export async function projectLogTail(request: Request, project: string): Promise
   if (actor instanceof Response) return actor;
   const hostname = deploymentHostname(project, actor.username);
   return tailLogs(hostname, request.signal);
+}
+
+/**
+ * Per-app live tail (SSE): request events from the edge log merged with the
+ * sprout's console output and uncaught exceptions, in Workers tail shape, with
+ * server-side filters. See tail.ts for the bounds and the request-correlation
+ * limitation. Auth and ownership are the same as the other log routes.
+ */
+export async function projectTail(request: Request, project: string): Promise<Response> {
+  const actor = await authorized(request);
+  if (actor instanceof Response) return actor;
+  const parsed = parseTailFilters(new URL(request.url).searchParams);
+  if ("error" in parsed) return Response.json({ error: parsed.error }, { status: 400 });
+  const { filters } = parsed;
+  const hostname = deploymentHostname(project, actor.username);
+  // Deploys can happen while a tail is open; re-resolve the active sprout each poll.
+  const sproutLog = () => {
+    const active = projectDeployments(actor.id, project).find((deployment) => deployment.active);
+    return active ? sproutLogFile(basename(dirname(active.sproutPath))) : null;
+  };
+  return tailEvents({ hostname, scriptName: project, sproutLog, filters, signal: request.signal });
 }
 
 /** stdout/stderr of the active deployment's running sprout + broker (plain text). */

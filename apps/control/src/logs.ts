@@ -15,7 +15,7 @@ import { dirname, resolve } from "node:path";
  * fine for a single-VPS POC; revisit if the log surface gets heavy use.
  */
 
-const logPath = () => resolve(process.env.SPROUTBOAT_LOG_PATH || "/var/lib/sproutboat/logs/requests.ndjson");
+export const logPath = () => resolve(process.env.SPROUTBOAT_LOG_PATH || "/var/lib/sproutboat/logs/requests.ndjson");
 
 const SCAN_CAP = 1 << 20; // 1 MiB
 const MAX_LIMIT = 200;
@@ -28,6 +28,8 @@ export type StatusClass = "2xx" | "3xx" | "4xx" | "5xx" | "other";
 export type LogRecord = {
   at: string;
   method: string | null;
+  /** Request pathname (no query string); null on lines from before the edge logged it. */
+  path: string | null;
   status: number;
   durationMs: number;
   ttfbMs: number | null;
@@ -39,6 +41,8 @@ export type LogRecord = {
   cpuMs: number | null;
   failure: string | null;
   errorKind: string | null;
+  /** The sprout threw (or rejected) and the runtime turned it into a 500. */
+  uncaught: boolean;
   cacheStatus: string | null;
   statusClass: StatusClass;
 };
@@ -65,7 +69,7 @@ function isFiniteNumber(value: LogJson | undefined): value is number {
   return Object(value) !== value && value === Number(value) && Number.isFinite(value);
 }
 
-function parseLine(line: string, hostname?: string): LogRecord | undefined {
+export function parseLine(line: string, hostname?: string): LogRecord | undefined {
   if (!line) return undefined;
   let value: LogJson;
   try {
@@ -90,6 +94,7 @@ function parseLine(line: string, hostname?: string): LogRecord | undefined {
   return {
     at: value.at,
     method: isText(value.method) ? value.method : null,
+    path: isText(value.path) ? value.path : null,
     status,
     durationMs: value.durationMs,
     ttfbMs: num(value.ttfbMs),
@@ -101,6 +106,7 @@ function parseLine(line: string, hostname?: string): LogRecord | undefined {
     cpuMs: num(value.cpuMs),
     failure,
     errorKind: isText(value.errorKind) ? value.errorKind : null,
+    uncaught: value.uncaught === true,
     cacheStatus: isText(value.cacheStatus) ? value.cacheStatus : null,
     statusClass: statusClassOf(status),
   };
@@ -439,9 +445,11 @@ export async function readLogTailText(hostname: string, limit = 100): Promise<st
  * or produced no output. `digest` is the artifact-dir name, i.e.
  * `basename(dirname(sproutPath))`.
  */
+export const sproutLogFile = (digest: string): string => resolve(dirname(logPath()), "sprouts", `${digest}.log`);
+
 export async function readSproutLogText(digest: string, maxBytes = 64 * 1024): Promise<string> {
   try {
-    const file = Bun.file(resolve(dirname(logPath()), "sprouts", `${digest}.log`));
+    const file = Bun.file(sproutLogFile(digest));
     const size = file.size;
     return await file.slice(Math.max(0, size - maxBytes), size).text();
   } catch {
