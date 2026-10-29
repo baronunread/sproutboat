@@ -1,0 +1,8 @@
+{
+  "name": "libsql",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@libsql/client": "0.18.0"
+  }
+}

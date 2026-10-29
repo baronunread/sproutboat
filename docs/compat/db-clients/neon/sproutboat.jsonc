@@ -1,0 +1,5 @@
+{
+  "name": "dbc-neon",
+  "main": "src/index.js",
+  "compatibility_date": "2026-11-15",
+}

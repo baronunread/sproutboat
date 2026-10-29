@@ -1,0 +1,9 @@
+{
+  "name": "planetscale",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@planetscale/database": "2.0.0",
+    "sql-escaper": "1.5.2"
+  }
+}
