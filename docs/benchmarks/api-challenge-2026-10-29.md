@@ -2,7 +2,7 @@
 
 One app (`sb-12dollar/src/index.js`: D1 `.raw()` reads, HS256 JWT through `crypto.subtle`, hand-built JSON), one 250 MB seed
 (500,000 posts, about 2 M likes), the same pinned core, three runtimes. Raw outputs are in
-`api-challenge-2026-10-29/raw/`, the harness in `api-challenge-2026-10-29/scripts/`.
+`api-challenge-2026-10-29/raw/`, the harness in `api-challenge-2026-10-29/scripts/` (the two worker files and `agg.ts` carry a `.txt` suffix so the repo linter skips them; strip it to run them).
 
 ## Setup
 
