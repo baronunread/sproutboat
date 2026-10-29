@@ -19,4 +19,7 @@ const mf = new Miniflare({
 });
 await mf.ready;
 console.log(JSON.stringify({ ready: true, port: Number(port), pid: process.pid }));
-process.on("SIGTERM", async () => { await mf.dispose(); process.exit(0); });
+process.on("SIGTERM", async () => {
+  await mf.dispose();
+  process.exit(0);
+});
