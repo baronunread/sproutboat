@@ -10,7 +10,7 @@
         "@sproutboat/assets": "^0.3.0",
         "@sproutboat/config": "^0.6.0",
         "@sproutboat/runtime": "^0.35.0",
-        "@sproutboat/toolchain": "^0.20.0",
+        "@sproutboat/toolchain": "^0.20.1",
         "@sproutboat/wire": "^0.20.2",
         "@tanstack/charts": "^0.16.0",
         "@tanstack/react-router": "^1.170.32",
@@ -518,7 +518,7 @@
 
     "@sproutboat/runtime": ["@sproutboat/runtime@0.35.0", "", {}, "sha512-cmd2hBuRQU+gdWtEZzRv0jTPbjTcUtFRwX8/3eAHjjZL36Djqc9hCV5hxoXeKZOdTiLwPkGjL5Ksw+nVp8UNCw=="],
 
-    "@sproutboat/toolchain": ["@sproutboat/toolchain@0.20.0", "", {}, "sha512-neRhs8auoilA1afjzzye8rkINyfn2FyBXl+awOGsvuhQGfrjPfhWX+ZVMKxkyOauPoM/81to81x5mG8z5MFztQ=="],
+    "@sproutboat/toolchain": ["@sproutboat/toolchain@0.20.1", "", {}, "sha512-A5n4Nag+xSn9sZVxStgfN1+ISklY+ARDj8rzYsvY/YN7xH0CtnJ4g01koehvTdKj8XSz1vuefzfrDJOtHgCegA=="],
 
     "@sproutboat/wire": ["@sproutboat/wire@0.20.2", "", { "dependencies": { "@sproutboat/assets": "^0.3.0", "@sproutboat/runtime": "^0.34.0" } }, "sha512-rZMcEujNXm8vG6BpMufcSdYePY1bEjFgdLOzI4SBfjnOaReLoR5Q1JyXa9QwrJlZ/xhaRPa2sMD9w59vLzTTQw=="],
 
