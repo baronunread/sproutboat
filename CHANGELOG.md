@@ -5,6 +5,77 @@ Changes to the self-hosted Sproutboat platform are recorded here. Read the
 
 ## [Unreleased]
 
+## [0.12.1] - 2026-10-29
+
+Adopts `@sproutboat/runtime` 0.35.0 and `@sproutboat/toolchain` 0.20.1 (from 0.34.2 and 0.19.2), the versions CLI 0.43.0 builds with.
+
+### Breaking and operator actions
+
+- Update with `sbctl update`. There are no new units, env files, secrets or
+  migrations. Take a backup first (`sudo systemctl start sproutboat-backup`)
+  and copy it off the box.
+- **Rebuild your apps with CLI 0.43.0** to get the fixes and the speed-ups
+  below. They are in the compiled app, so deployed apps keep running as built.
+  The garbage-collection fix matters most: an app built before it can, rarely
+  and silently, read back a changed string or array after an `await`.
+- **A standalone binary opens its SQLite databases in EXCLUSIVE locking mode by
+  default** (CLI 0.42.0). While the binary runs, no other process can open its
+  databases, so the `sqlite3` shell and `sproutboat kv|d1 --local --data-dir`
+  are locked out. Set `SB_SQLITE_EXCLUSIVE=0` to keep shared locking. The
+  platform's broker and sproutd are unchanged.
+- **Platform rollback.** `SB_REF=v0.12.0 sbctl update` is safe: nothing here
+  changes stored data or a frozen contract.
+- `MIN_CLI_VERSION` stays `0.0.0`: the control API is unchanged. CLI 0.43.0 is
+  the release tested with this platform version.
+
+### Fixed
+
+- **A collection no longer frees Promise's pending-rejections array (CLI
+  0.43.0, toolchain 0.20.1).** Once enough rejections had grown that array
+  past its static capacity, the collector skipped it as malformed and freed its
+  entries at every collection. The next rejection then wrote into memory that
+  belonged to another object, so a string or array of a request suspended at an
+  `await` could change silently. A standalone binary showed it in about 1
+  fresh process in 5 under interleaved requests; sproutd's concurrent smoke
+  failed 4 runs in 16. The regression test failed 60 of 60 runs before the fix
+  and passes 60 of 60.
+- **A chunked upload's end reaches the worker** when sproutd's window was full
+  as the last chunk arrived, so a large `ws` or HTTP upload no longer loses its
+  connection at the end.
+
+### Performance
+
+- **JWT verification in C (CLI 0.40.0).** `atob`, `TextEncoder.encode`, the
+  `ArrayBuffer` copy of `crypto.subtle.sign` and `digest`, and the
+  constant-time compare behind `verify` no longer run as JavaScript loops: a
+  typical `authenticate()` goes from 21.5 to 7 µs.
+- **`JSON.stringify` and `atob` read characters directly** and return an
+  8-bit string when they can (CLI 0.39.0 and 0.41.0).
+- **D1 is cheaper in standalone builds.** Calls skip the JSON text hop around
+  the in-process dispatch, strict rows are built as JS arrays in C with their
+  text in one arena, and a strict query takes a direct lane with no statement
+  closures. No 88 KiB `mmap` per statement that builds a temporary table
+  (`INSERT ... RETURNING`, sorts).
+- **The client address is folded once per distinct address**, not on every
+  request.
+- **A standalone binary collects every 8 requests** and after about 50 ms of
+  quiet, instead of after every response (`SB_GC_EVERY=<n>`; `1` restores the
+  old behaviour). It costs about 2 MiB more resident memory. sproutd's collector
+  and density are untouched.
+- **A request's fixed cost drops its text round trips**, regular expressions and
+  repeated lookups, and a response's ASCII headers and body are written straight
+  from the heap (CLI 0.42.0).
+- Together, on the API-challenge mix on one pinned x86 core, CLI 0.41.0 held
+  3,200 req/s or more at the bar (p95 under 500 ms, p99 under 1 s, errors under
+  1%) where the release before it held 2,800. sproutd still keeps 1,000 apps in
+  1,536 MiB.
+
+### Changed
+
+- Adopt `@sproutboat/runtime` ^0.35.0 and `@sproutboat/toolchain` ^0.20.1
+  (`@sproutboat/wire` ^0.20.2). `COMPAT.md` and `report.json` are regenerated: 32/32 compile, 3/32 match as
+  before (the 29 differ only in `Content-Type`). The median binary is 3.68 MB → 3.70 MB.
+
 ## [0.12.0] - 2026-10-27
 
 Adopts `@sproutboat/runtime` 0.34.2 and `@sproutboat/toolchain` 0.19.2, the versions CLI 0.38.0 builds with.
