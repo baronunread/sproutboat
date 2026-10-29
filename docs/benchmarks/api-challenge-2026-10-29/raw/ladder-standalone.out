@@ -1,0 +1,5 @@
+locks held 2026-10-29T01:33:55Z load: 1.52 1.62 1.64
+standalone run1 3000 HELD cpu_us_per_req=242 offered=3000 achieved=2997 req/s errors=0.00% p50=2.2ms p95=7.3ms p99=23.4ms max=45.2ms loadgen_cpu=39%
+standalone run1 3300 HELD cpu_us_per_req=232 offered=3300 achieved=3294 req/s errors=0.00% p50=2.2ms p95=6.1ms p99=20.7ms max=34.8ms loadgen_cpu=41%
+standalone run1 3600 HELD cpu_us_per_req=250 offered=3600 achieved=3595 req/s errors=0.00% p50=3.3ms p95=87.4ms p99=135.5ms max=152.0ms loadgen_cpu=47%
+done 2026-10-29T01:35:11Z load: 1.58 1.61 1.63

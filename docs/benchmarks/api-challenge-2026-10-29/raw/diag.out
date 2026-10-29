@@ -1,0 +1,19 @@
+locks held 2026-10-29T05:47:41Z load: 1.49 4.11 3.04
+offered=2400 achieved=2390 req/s errors=13.28% p50=13.4ms p95=24.3ms p99=38.2ms max=97.0ms loadgen_cpu=30%
+side-sampler status codes:
+    267 200
+     33 503
+--- app log
+--- daemon log
+Hint: You are currently not seeing messages from other users and the system.
+      Users in groups 'adm', 'systemd-journal' can see all messages.
+      Pass -q to turn off this notice.
+Oct 29 05:36:51 othello node[1105558]: {"ready":true,"port":3000,"pid":1105558}
+Oct 29 05:37:32 othello node[1105765]: {"ready":true,"port":3000,"pid":1105765}
+Oct 29 05:38:14 othello node[1106034]: {"ready":true,"port":3000,"pid":1106034}
+Oct 29 05:38:56 othello node[1106257]: {"ready":true,"port":3000,"pid":1106257}
+Oct 29 05:39:38 othello node[1106511]: {"ready":true,"port":3000,"pid":1106511}
+Oct 29 05:40:20 othello node[1106834]: {"ready":true,"port":3000,"pid":1106834}
+Oct 29 05:41:02 othello node[1107050]: {"ready":true,"port":3000,"pid":1107050}
+Oct 29 05:47:43 othello native-host[1116183]: {"port":3000,"apps":1,"backend":"native-host-process-abi","sandbox":"landlock+cgroup","reapMs":0}
+done 2026-10-29T05:48:19Z load: 1.54 3.83 2.99

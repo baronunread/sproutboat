@@ -1,0 +1,10 @@
+locks held 2026-10-29T04:30:50Z load: 0.27 0.13 0.10
+standalone run1 3300 HELD cpu_us_per_req=237 offered=3300 achieved=3298 req/s errors=0.00% p50=2.3ms p95=12.9ms p99=35.7ms max=88.6ms loadgen_cpu=41%
+standalone run1 3600 HELD cpu_us_per_req=230 offered=3600 achieved=3598 req/s errors=0.00% p50=2.4ms p95=34.1ms p99=101.7ms max=187.2ms loadgen_cpu=45%
+standalone run1 3900 HELD cpu_us_per_req=217 offered=3900 achieved=3898 req/s errors=0.00% p50=2.3ms p95=9.1ms p99=30.7ms max=46.9ms loadgen_cpu=46%
+standalone run1 4200 HELD cpu_us_per_req=215 offered=4200 achieved=4197 req/s errors=0.00% p50=2.6ms p95=287.8ms p99=329.0ms max=457.5ms loadgen_cpu=48%
+standalone run2 3300 HELD cpu_us_per_req=240 offered=3300 achieved=3298 req/s errors=0.00% p50=2.4ms p95=20.3ms p99=65.4ms max=91.7ms loadgen_cpu=43%
+standalone run2 3600 HELD cpu_us_per_req=226 offered=3600 achieved=3598 req/s errors=0.00% p50=2.3ms p95=7.6ms p99=19.7ms max=46.5ms loadgen_cpu=44%
+standalone run2 3900 HELD cpu_us_per_req=227 offered=3900 achieved=3897 req/s errors=0.00% p50=2.5ms p95=276.5ms p99=325.1ms max=459.3ms loadgen_cpu=46%
+standalone run2 4200 HELD cpu_us_per_req=221 offered=4200 achieved=4197 req/s errors=0.00% p50=5.0ms p95=328.8ms p99=373.1ms max=489.6ms loadgen_cpu=48%
+done 2026-10-29T04:36:13Z load: 1.64 1.01 0.49

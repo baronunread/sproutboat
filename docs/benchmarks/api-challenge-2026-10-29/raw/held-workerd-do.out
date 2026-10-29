@@ -1,0 +1,10 @@
+locks held 2026-10-29T05:36:06Z load: 1.26 2.22 1.69
+workerd-do run1 800 HELD cpu_us_per_req=974 offered=800 achieved=800 req/s errors=0.00% p50=3.5ms p95=41.4ms p99=173.2ms max=378.7ms loadgen_cpu=20%
+workerd-do run1 1000 HELD cpu_us_per_req=890 offered=1000 achieved=999 req/s errors=0.00% p50=4.2ms p95=97.6ms p99=272.6ms max=562.9ms loadgen_cpu=21%
+workerd-do run1 1100 MISS cpu_us_per_req=859 offered=1100 achieved=1089 req/s errors=0.54% p50=9.0ms p95=600.6ms p99=918.1ms max=6417.5ms loadgen_cpu=23%
+workerd-do run1 1200 HELD cpu_us_per_req=790 offered=1200 achieved=1199 req/s errors=0.00% p50=9.2ms p95=230.0ms p99=463.3ms max=1127.1ms loadgen_cpu=23%
+workerd-do run2 800 HELD cpu_us_per_req=978 offered=800 achieved=799 req/s errors=0.00% p50=3.6ms p95=39.1ms p99=176.9ms max=353.9ms loadgen_cpu=20%
+workerd-do run2 1000 HELD cpu_us_per_req=910 offered=1000 achieved=999 req/s errors=0.00% p50=5.3ms p95=303.8ms p99=379.5ms max=656.4ms loadgen_cpu=23%
+workerd-do run2 1100 HELD cpu_us_per_req=827 offered=1100 achieved=1096 req/s errors=0.00% p50=4.3ms p95=90.9ms p99=187.5ms max=419.0ms loadgen_cpu=22%
+workerd-do run2 1200 HELD cpu_us_per_req=799 offered=1200 achieved=1198 req/s errors=0.00% p50=9.5ms p95=147.0ms p99=321.9ms max=601.3ms loadgen_cpu=24%
+done 2026-10-29T05:41:42Z load: 1.35 1.60 1.56

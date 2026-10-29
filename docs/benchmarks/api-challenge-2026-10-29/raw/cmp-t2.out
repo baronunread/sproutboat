@@ -1,0 +1,30 @@
+locks held 2026-10-29T00:32:55Z load: 3.84 2.47 1.46
+1 standalone feed rate=100 user=5545e-1 sys=1836e-1 total=7382e-1 :: offered=100 achieved=100 req/s errors=0.00% p50=11.7ms p95=13.9ms p99=17.8ms max=34.4ms loadgen_cpu=12%
+1 standalone post rate=100 user=2712e-1 sys=1993e-1 total=4705e-1 :: offered=100 achieved=100 req/s errors=0.00% p50=11.4ms p95=12.4ms p99=13.2ms max=15.7ms loadgen_cpu=12%
+1 standalone like rate=100 user=4861e-1 sys=2768e-1 total=7630e-1 :: offered=100 achieved=100 req/s errors=0.00% p50=11.7ms p95=13.3ms p99=16.0ms max=21.4ms loadgen_cpu=12%
+1 standalone create rate=100 user=5031e-1 sys=2486e-1 total=7517e-1 :: offered=100 achieved=100 req/s errors=0.00% p50=11.8ms p95=15.2ms p99=19.1ms max=49.0ms loadgen_cpu=13%
+1 standalone feed rate=250 user=4929e-1 sys=1356e-1 total=6286e-1 :: offered=250 achieved=250 req/s errors=0.00% p50=5.4ms p95=6.6ms p99=9.0ms max=21.3ms loadgen_cpu=16%
+1 standalone post rate=250 user=2662e-1 sys=1591e-1 total=4253e-1 :: offered=250 achieved=250 req/s errors=0.00% p50=5.2ms p95=6.1ms p99=7.5ms max=11.6ms loadgen_cpu=15%
+1 standalone create rate=250 user=4963e-1 sys=2935e-1 total=7899e-1 :: offered=250 achieved=250 req/s errors=0.00% p50=5.7ms p95=9.4ms p99=13.1ms max=20.1ms loadgen_cpu=17%
+1 sproutd feed rate=100 user=10075e-1 sys=3176e-1 total=13251e-1 :: offered=100 achieved=100 req/s errors=0.00% p50=11.8ms p95=12.8ms p99=15.1ms max=32.7ms loadgen_cpu=11%
+1 sproutd post rate=100 user=4618e-1 sys=3099e-1 total=7717e-1 :: offered=100 achieved=100 req/s errors=0.00% p50=11.6ms p95=12.4ms p99=14.0ms max=20.3ms loadgen_cpu=12%
+1 sproutd like rate=100 user=8152e-1 sys=4902e-1 total=13055e-1 :: offered=100 achieved=100 req/s errors=0.00% p50=12.1ms p95=15.8ms p99=22.5ms max=38.0ms loadgen_cpu=12%
+1 sproutd create rate=100 user=6436e-1 sys=3481e-1 total=9917e-1 :: offered=100 achieved=100 req/s errors=0.00% p50=11.8ms p95=12.8ms p99=14.6ms max=43.8ms loadgen_cpu=11%
+1 sproutd feed rate=250 user=9798e-1 sys=2895e-1 total=12693e-1 :: offered=250 achieved=250 req/s errors=0.00% p50=5.6ms p95=6.5ms p99=8.7ms max=25.0ms loadgen_cpu=15%
+1 sproutd post rate=250 user=4223e-1 sys=2871e-1 total=7095e-1 :: offered=250 achieved=250 req/s errors=0.00% p50=5.5ms p95=6.8ms p99=9.8ms max=43.3ms loadgen_cpu=16%
+1 sproutd create rate=250 user=5792e-1 sys=3306e-1 total=9098e-1 :: offered=250 achieved=250 req/s errors=0.00% p50=5.7ms p95=6.9ms p99=10.6ms max=36.5ms loadgen_cpu=15%
+1 workerd feed rate=100 user=41835e-1 sys=5091e-1 total=46926e-1 :: offered=100 achieved=57 req/s errors=42.67% p50=14.9ms p95=19.4ms p99=29.5ms max=46.6ms loadgen_cpu=13%
+1 workerd post rate=100 user=37452e-1 sys=6026e-1 total=43479e-1 :: offered=100 achieved=57 req/s errors=42.67% p50=14.6ms p95=17.7ms p99=25.5ms max=34.1ms loadgen_cpu=13%
+1 workerd like rate=100 user=54480e-1 sys=6262e-1 total=60743e-1 :: offered=100 achieved=57 req/s errors=42.67% p50=16.4ms p95=25.3ms p99=47.8ms max=87.8ms loadgen_cpu=13%
+1 workerd create rate=100 user=41289e-1 sys=5651e-1 total=46941e-1 :: offered=100 achieved=57 req/s errors=42.67% p50=15.0ms p95=18.4ms p99=28.8ms max=36.3ms loadgen_cpu=13%
+1 workerd feed rate=250 user=31433e-1 sys=2956e-1 total=34390e-1 :: offered=250 achieved=250 req/s errors=0.00% p50=8.7ms p95=47.9ms p99=103.3ms max=151.4ms loadgen_cpu=15%
+1 workerd post rate=250 user=28278e-1 sys=3286e-1 total=31565e-1 :: offered=250 achieved=249 req/s errors=0.00% p50=8.0ms p95=20.9ms p99=40.7ms max=76.9ms loadgen_cpu=15%
+1 workerd create rate=250 user=29973e-1 sys=3961e-1 total=33934e-1 :: offered=250 achieved=250 req/s errors=0.00% p50=8.5ms p95=31.6ms p99=55.9ms max=110.6ms loadgen_cpu=16%
+1 workerd-bare feed rate=100 user=34310e-1 sys=4988e-1 total=39299e-1 :: offered=100 achieved=57 req/s errors=42.67% p50=14.4ms p95=17.8ms p99=28.9ms max=44.4ms loadgen_cpu=13%
+1 workerd-bare post rate=100 user=31190e-1 sys=5309e-1 total=36499e-1 :: offered=100 achieved=57 req/s errors=42.67% p50=14.0ms p95=16.7ms p99=37.1ms max=62.8ms loadgen_cpu=13%
+1 workerd-bare like rate=100 user=52601e-1 sys=7221e-1 total=59822e-1 :: offered=100 achieved=57 req/s errors=42.67% p50=16.2ms p95=26.3ms p99=46.2ms max=59.4ms loadgen_cpu=14%
+1 workerd-bare create rate=100 user=34924e-1 sys=5770e-1 total=40694e-1 :: offered=100 achieved=57 req/s errors=42.67% p50=14.4ms p95=17.7ms p99=30.2ms max=49.8ms loadgen_cpu=14%
+1 workerd-bare feed rate=250 user=25224e-1 sys=2960e-1 total=28185e-1 :: offered=250 achieved=250 req/s errors=0.00% p50=7.6ms p95=12.1ms p99=24.5ms max=57.8ms loadgen_cpu=15%
+1 workerd-bare post rate=250 user=26634e-1 sys=3763e-1 total=30398e-1 :: offered=250 achieved=250 req/s errors=0.00% p50=8.1ms p95=22.3ms p99=40.5ms max=79.3ms loadgen_cpu=17%
+1 workerd-bare create rate=250 user=25382e-1 sys=3438e-1 total=28820e-1 :: offered=250 achieved=250 req/s errors=0.00% p50=7.7ms p95=15.7ms p99=31.4ms max=47.3ms loadgen_cpu=15%
+done 2026-10-29T00:42:27Z load: 0.98 1.34 1.32

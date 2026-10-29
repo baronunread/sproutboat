@@ -1,0 +1,8 @@
+locks held 2026-10-29T01:40:43Z load: 1.26 1.16 1.40
+1 standalone feed rate=250 user=5035e-1 sys=1616e-1 total=6651e-1 :: offered=250 achieved=249 req/s errors=0.00% p50=5.5ms p95=7.1ms p99=10.2ms max=27.7ms loadgen_cpu=16%
+1 standalone post rate=250 user=2553e-1 sys=1830e-1 total=4384e-1 :: offered=250 achieved=250 req/s errors=0.00% p50=5.2ms p95=6.0ms p99=8.0ms max=20.3ms loadgen_cpu=16%
+1 standalone create rate=250 user=3926e-1 sys=2035e-1 total=5961e-1 :: offered=250 achieved=250 req/s errors=0.00% p50=5.4ms p95=6.4ms p99=8.0ms max=11.3ms loadgen_cpu=16%
+1 workerd-do feed rate=250 user=14613e-1 sys=2361e-1 total=16974e-1 :: offered=250 achieved=250 req/s errors=0.00% p50=6.3ms p95=8.2ms p99=19.2ms max=50.9ms loadgen_cpu=16%
+1 workerd-do post rate=250 user=12282e-1 sys=2773e-1 total=15055e-1 :: offered=250 achieved=250 req/s errors=0.00% p50=6.1ms p95=8.4ms p99=24.4ms max=49.7ms loadgen_cpu=15%
+1 workerd-do create rate=250 user=14747e-1 sys=2748e-1 total=17496e-1 :: offered=250 achieved=250 req/s errors=0.00% p50=6.3ms p95=7.8ms p99=11.5ms max=34.9ms loadgen_cpu=15%
+done 2026-10-29T01:42:43Z load: 0.85 1.05 1.33

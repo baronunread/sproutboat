@@ -1,0 +1,4 @@
+locks held 2026-10-29T01:42:43Z load: 0.85 1.05 1.33
+1 standalone like rate=100 user=4765e-1 sys=2339e-1 total=7105e-1 :: offered=100 achieved=100 req/s errors=0.00% p50=11.4ms p95=12.5ms p99=15.3ms max=21.3ms loadgen_cpu=11%
+1 workerd-do like rate=100 user=18403e-1 sys=4081e-1 total=22484e-1 :: offered=100 achieved=100 req/s errors=0.00% p50=12.8ms p95=14.2ms p99=19.1ms max=38.6ms loadgen_cpu=10%
+done 2026-10-29T01:43:23Z load: 0.86 1.03 1.31

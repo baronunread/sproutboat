@@ -1,0 +1,7 @@
+locks held 2026-10-29T01:44:51Z load: 1.04 1.03 1.28
+1 workerd-do start_to_health_ms=1533 feed_s=[0.003358 0.003536 0.002245 ] post_s=[0.002871 0.002838 0.002666 ] rss_kb=190720 pss_kb=184855 anon_kb=96548 file_kb=94076 shmem_kb=96 cg_current_kb=100224 cg_peak_kb=100224
+2 workerd-do start_to_health_ms=1423 feed_s=[0.003188 0.002617 0.002660 ] post_s=[0.002667 0.002282 0.002328 ] rss_kb=190528 pss_kb=184645 anon_kb=96544 file_kb=93888 shmem_kb=96 cg_current_kb=100220 cg_peak_kb=100220
+3 workerd-do start_to_health_ms=1641 feed_s=[0.003080 0.003385 0.002642 ] post_s=[0.002829 0.002857 0.002059 ] rss_kb=190912 pss_kb=185083 anon_kb=95880 file_kb=94936 shmem_kb=96 cg_current_kb=99564 cg_peak_kb=99564
+4 workerd-do start_to_health_ms=1860 feed_s=[0.003481 0.004775 0.003613 ] post_s=[0.012213 0.003260 0.004428 ] rss_kb=190168 pss_kb=184377 anon_kb=95936 file_kb=94136 shmem_kb=96 cg_current_kb=99456 cg_peak_kb=99456
+5 workerd-do start_to_health_ms=1609 feed_s=[0.003217 0.003049 0.002555 ] post_s=[0.003288 0.002231 0.002157 ] rss_kb=191484 pss_kb=185647 anon_kb=96284 file_kb=95104 shmem_kb=96 cg_current_kb=99824 cg_peak_kb=99824
+done 2026-10-29T01:45:09Z load: 1.17 1.06 1.28

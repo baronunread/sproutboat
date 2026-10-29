@@ -1,0 +1,8 @@
+locks held 2026-10-29T05:50:09Z load: 0.87 2.92 2.75
+standalone run1 4600 HELD cpu_us_per_req=212 offered=4600 achieved=4595 req/s errors=0.00% p50=27.2ms p95=139.2ms p99=164.6ms max=232.7ms loadgen_cpu=49%
+standalone run1 5000 MISS cpu_us_per_req=227 offered=5000 achieved=4664 req/s errors=0.00% p50=2180.0ms p95=2451.2ms p99=2471.7ms max=2573.1ms loadgen_cpu=46%
+standalone run1 5400 MISS cpu_us_per_req=226 offered=5400 achieved=4865 req/s errors=0.00% p50=1008.0ms p95=3187.4ms p99=3274.5ms max=3352.3ms loadgen_cpu=47%
+standalone run2 4600 HELD cpu_us_per_req=209 offered=4600 achieved=4596 req/s errors=0.00% p50=6.1ms p95=143.3ms p99=159.6ms max=269.5ms loadgen_cpu=49%
+standalone run2 5000 MISS cpu_us_per_req=203 offered=5000 achieved=4934 req/s errors=0.00% p50=821.7ms p95=1294.6ms p99=1321.6ms max=1373.1ms loadgen_cpu=48%
+standalone run2 5400 MISS cpu_us_per_req=243 offered=5400 achieved=4688 req/s errors=0.00% p50=2739.9ms p95=4371.8ms p99=4513.9ms max=4587.9ms loadgen_cpu=47%
+done 2026-10-29T05:54:23Z load: 1.72 2.34 2.56
