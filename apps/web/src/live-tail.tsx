@@ -121,7 +121,12 @@ export function LiveTail({ name, active }: { name: string; active: boolean }) {
   // Follow the newest row, unless the reader has scrolled up to look at something.
   useEffect(() => {
     const element = scroller.current;
-    if (element && following.current) element.scrollTop = element.scrollHeight;
+    if (!element) return;
+    // An emptied list has nothing to be behind on: follow again and drop the jump button.
+    if (state.rows.length === 0) {
+      following.current = true;
+      setBehind(false);
+    } else if (following.current) element.scrollTop = element.scrollHeight;
   }, [state.rows]);
 
   const onScroll = () => {
@@ -364,10 +369,10 @@ function RequestLine({ event, when }: { event: TailEvent; when: React.ReactNode 
       >
         {response.status}
       </span>
-      <span className="w-[7.5rem] shrink-0">
+      <span className={cn("shrink-0 sm:w-[7.5rem]", event.outcome === "ok" && "max-sm:hidden")}>
         {event.outcome !== "ok" && <span className={cn(BADGE, "text-coral")}>{event.outcome}</span>}
       </span>
-      <span className="w-[8.5rem] shrink-0 text-end text-[0.72rem] text-muted-foreground tabular-nums">
+      <span className="shrink-0 text-[0.72rem] max-sm:basis-full sm:w-[8.5rem] sm:text-end text-muted-foreground tabular-nums">
         {cpu ? `${cpu}, ` : ""}
         {event.wallTime} ms
       </span>
