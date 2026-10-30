@@ -307,3 +307,29 @@ each sprout gets its own `systemd-run --scope`:
 The edge unit still carries aggregate caps (`MemoryMax`/`CPUQuota`/`TasksMax`) as
 a backstop. Verify `systemd-run` is reachable for the `sproutboat-edge` user
 before enabling per-sprout scopes.
+
+## sproutd runtime (private, staging only)
+
+Design 05, phase 1: a project can run on sproutd, a shared-runtime host, instead of the supervisor. It is off
+unless `SPROUTBOAT_SPROUTD_*` is set (see sproutd's `deploy/README.md`), not installed by `install.sh`, and never
+touched by `sbctl update`. The supervisor stays the default; nothing changes for a project that does not opt in.
+
+- **Choose the runtime before the first deploy:** `PUT /api/projects/<name>/runtime`
+  `{"runtime":"sproutd","limits":{"memoryMb":128}}` (`GET` shows it). Only owners named in
+  `SPROUTBOAT_SPROUTD_OWNERS` may. Limits are `memoryMb`, `cpuMs` (per request), `wallMs`; unset ones default to
+  128 MiB, `SPROUTBOAT_REQUEST_TIMEOUT_MS` and sproutd's own. There is no CPU cgroup limit yet.
+- **Deploy a hand-built module:** `POST /api/projects/<name>/deployments` with a multipart `module` field (an
+  `app.so` built for the generation sproutd runs; `sproutd/build/compile-app.ts`). Control keeps its own copy,
+  uploads module, secrets and limits through sproutd's adapter, and only records and routes the version sproutd
+  reports. `POST .../deployments/<id>/activate` rolls back, with sproutd's `rollback` when it still stores the
+  version and control's copy when it does not. Building from a project is phase 2.
+- **Routing:** the route entry gets `backend: {kind:"sproutd", url}`; the edge forwards there with the original
+  `Host`, keeps its request log, caps and timeouts, and starts no sprout. No edge asset serving or GET cache for
+  these routes yet.
+- **Secrets** are rendered into sproutd's `NAME=VALUE` file by the adapter. A value with a line break and the
+  names `SB_*`/`SPROUTBOAT_*` cannot be stored there, so `secrets put` refuses them for a sproutd project.
+- **Reconcile:** at startup, after every routes sync and every `SPROUTBOAT_SPROUTD_RECONCILE_MS` (60 s), control
+  makes sproutd serve what it believes (redeploys what sproutd lost, pushes hosts, limits and changed secrets) and
+  logs apps sproutd has that no project maps to. `POST /api/admin/sproutd/reconcile` runs it on demand.
+- **Try it:** `tools/sproutd-staging.sh` provisions a staging copy (own prefix, users, ports and `sbstg-*` units, no
+  Caddy) and `tools/sproutd-e2e.sh` runs the phase 1 exit criteria against it. Never run either on a production host.

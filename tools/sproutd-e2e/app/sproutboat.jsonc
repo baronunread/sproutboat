@@ -1,0 +1,8 @@
+{
+  // The fixture app for tools/sproutd-e2e.sh: a hand-built module for design 05, phase 1.
+  // __VERSION__ is replaced by build-modules.sh, so two builds are two different versions.
+  "name": "phase1",
+  "main": "src/index.js",
+  "compatibility_date": "2026-10-29",
+  "secrets": ["TOKEN", "GREETING"],
+}

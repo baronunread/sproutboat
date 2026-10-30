@@ -15,6 +15,8 @@ import {
   tailLogs,
 } from "./logs";
 import { parseTailFilters, tailEvents } from "./tail";
+import { activateSproutd, deploySproutd, describeRuntime, setRuntime } from "./sproutd-deploy";
+import { forgetSproutdProject, sproutdClient } from "./sproutd";
 import {
   activateDeployment as storeActivate,
   activeProjects,
@@ -31,7 +33,9 @@ import {
   type ProjectSummary,
   projectDeployment,
   projectDeployments,
+  projectRuntime,
   pruneProjectDeployments,
+  sproutdProjects,
   recordDeployment,
   resourceById,
   syncRoutes,
@@ -108,6 +112,22 @@ async function authorized(request: Request): Promise<Actor | Response> {
   }
 }
 
+/** GET /api/projects/:project/runtime: which runtime serves the project, and what this box offers. */
+export async function getProjectRuntime(request: Request, project: string): Promise<Response> {
+  const actor = await authorized(request);
+  if (actor instanceof Response) return actor;
+  return Response.json(describeRuntime(actor, project));
+}
+
+/** PUT /api/projects/:project/runtime { runtime: "supervisor" | "sproutd", limits? } */
+export async function putProjectRuntime(request: Request, project: string): Promise<Response> {
+  const actor = await authorized(request);
+  if (actor instanceof Response) return actor;
+  if (!/^[a-z0-9](?:[a-z0-9-]{1,30}[a-z0-9])?$/.test(project))
+    return Response.json({ error: "invalid project name" }, { status: 400 });
+  return setRuntime(actor, request, project);
+}
+
 export async function listDeployments(request: Request, project: string): Promise<Response> {
   const actor = await authorized(request);
   if (actor instanceof Response) return actor;
@@ -181,6 +201,25 @@ export async function deploymentDetail(request: Request, project: string, id: st
   if (actor instanceof Response) return actor;
   const found = projectDeployment(actor.id, project, id);
   if (!found) return Response.json({ error: "deployment not found" }, { status: 404 });
+  if (found.vid) {
+    // A sproutd module has no manifest or bindings sidecar; sproutd holds those.
+    return Response.json({
+      id: found.id,
+      project: found.project,
+      hostname: found.hostname,
+      artifact: found.artifact,
+      sproutPath: found.sproutPath,
+      deployedAt: found.deployedAt,
+      active: found.active,
+      deployedBy: found.username,
+      runtime: "sproutd",
+      vid: found.vid,
+      bindings: null,
+      resources: [],
+      manifest: null,
+      manifestError: "sproutd module: no artifact manifest",
+    });
+  }
   const validation = await validateArtifactDirectory(resolve(artifactRoot, found.artifact));
   return Response.json({
     id: found.id,
@@ -226,6 +265,7 @@ export async function activateDeployment(request: Request, project: string, id: 
   if (actor instanceof Response) return actor;
   const target = projectDeployment(actor.id, project, id);
   if (!target) return Response.json({ error: "deployment not found" }, { status: 404 });
+  if (projectRuntime(actor.id, project).runtime === "sproutd") return activateSproutd(actor, project, target);
   // #141: a rollback target must start too; otherwise the current version stays.
   try {
     await stageCandidate(await candidateRoute(target));
@@ -300,6 +340,19 @@ export async function projectSproutLog(request: Request, project: string): Promi
   if (actor instanceof Response) return actor;
   const active = projectDeployments(actor.id, project).find((deployment) => deployment.active);
   if (!active) return Response.json({ error: "no active deployment" }, { status: 404 });
+  if (active.vid) {
+    // sproutd keeps each app's console and uncaught errors in its own log; the adapter returns the last lines.
+    const client = sproutdClient();
+    const lines = client
+      ? await client.logs(actor.id, project, 200).then(
+          (r) => r.lines,
+          () => null,
+        )
+      : null;
+    return new Response(lines ? lines.join("\n") + "\n" : "(sproutd is unavailable)\n", {
+      headers: { "content-type": "text/plain; charset=utf-8" },
+    });
+  }
   const text = await readSproutLogText(basename(dirname(active.sproutPath)));
   return new Response(text || "(no sprout output — the deployment has not started, or its handler logs nothing)\n", {
     headers: { "content-type": "text/plain; charset=utf-8" },
@@ -327,9 +380,19 @@ export async function deleteProject(request: Request, project: string): Promise<
   if (confirm !== project)
     return Response.json({ error: "add ?confirm=<project name> to delete a project" }, { status: 400 });
 
+  const onSproutd = projectRuntime(actor.id, project).runtime === "sproutd";
   const result = storeDeleteProject(actor.id, project);
-  if (result.removed === 0) return Response.json({ error: "project not found" }, { status: 404 });
+  if (result.removed === 0 && !onSproutd) return Response.json({ error: "project not found" }, { status: 404 });
   await syncRoutes();
+  if (onSproutd) {
+    forgetSproutdProject(actor.id, project);
+    // Stop it in sproutd too. If the adapter is down the app is orphaned there (reconcile reports it) but unrouted.
+    await sproutdClient()
+      ?.remove(actor.id, project)
+      .catch((error) =>
+        console.error(`sproutd remove failed: ${error instanceof Error ? error.message : String(error)}`),
+      );
+  }
   const cleanup = await collectArtifacts(result.orphanedArtifacts);
   const body = {
     deleted: project,
@@ -411,6 +474,8 @@ export async function deployArtifact(request: Request, project: string): Promise
   } catch {
     return Response.json({ error: "expected multipart artifact upload" }, { status: 400 });
   }
+  if (projectRuntime(actor.id, project).runtime === "sproutd")
+    return deploySproutd(actor, project, deploymentHostname(project, actor.username), form);
   const manifest = form.get("manifest");
   const sprout = form.get("sprout");
   if (!(manifest instanceof File) || !(sprout instanceof File))
@@ -562,8 +627,12 @@ export async function deleteAccount(request: Request): Promise<Response> {
   if (actor.authentication !== "session")
     return Response.json({ error: "account deletion requires an interactive session" }, { status: 403 });
 
+  const sproutdProjectNames = sproutdProjects().flatMap((p) => (p.ownerId === actor.id ? [p.project] : []));
   const result = deleteOwner(actor.id);
   await syncRoutes();
+  const sproutd = sproutdClient();
+  for (const name of sproutdProjectNames) forgetSproutdProject(actor.id, name);
+  await Promise.all(sproutdProjectNames.map((name) => sproutd?.remove(actor.id, name).catch(() => undefined)));
   const cleanup = await collectArtifacts(result.orphanedArtifacts);
   const identity = purgeUser(actor.id);
 
