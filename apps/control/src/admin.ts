@@ -2,6 +2,7 @@ import { getAuth } from "./auth";
 import { backupPath, createBackup, deleteBackup, listBackups } from "./backups";
 import { actorFor, reserveUsername, validUsername } from "./identity";
 import { globalLogTotals } from "./logs";
+import { reconcileSproutd, sproutdEnabled } from "./sproutd";
 import { banOwner, globalStats, ownerDeployments, ownerRollups, syncRoutes, unbanOwner } from "./store";
 
 /**
@@ -12,6 +13,14 @@ import { banOwner, globalStats, ownerDeployments, ownerRollups, syncRoutes, unba
  * the user's routes — `banOwner` + `syncRoutes` drop their hostnames from the
  * snapshot; `unbanOwner` restores them.
  */
+
+/** POST /api/admin/sproutd/reconcile: make sproutd serve what control says, and report what changed. */
+export async function adminSproutdReconcile(request: Request): Promise<Response> {
+  const denied = await requireAdmin(request);
+  if (denied) return denied;
+  if (!sproutdEnabled()) return Response.json({ error: "this host has no sproutd configured" }, { status: 409 });
+  return Response.json(await reconcileSproutd({ force: true }));
+}
 
 async function requireAdmin(request: Request): Promise<Response | null> {
   const actor = await actorFor(request).catch(() => undefined);

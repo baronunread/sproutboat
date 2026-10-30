@@ -5,6 +5,8 @@ import { adminEmail, ensureAdminSeeded, getAuth, githubSignInConfigured } from "
 import {
   activateDeployment,
   dashboardOverview,
+  getProjectRuntime,
+  putProjectRuntime,
   deleteAccount,
   deleteDeployment,
   deleteProject,
@@ -42,8 +44,10 @@ import {
   revokeAllCliCredentials,
   revokeCliCredential,
 } from "./cli-authorization";
+import { startSproutdReconciler } from "./sproutd";
 import {
   adminBackups,
+  adminSproutdReconcile,
   adminCreateBackup,
   adminCreateUser,
   adminDeleteBackup,
@@ -224,6 +228,8 @@ async function handle(request: Request): Promise<Response> {
         if (request.method === "GET") return await adminBackups(request);
         if (request.method === "POST") return await adminCreateBackup(request);
       }
+      if (request.method === "POST" && url.pathname === "/api/admin/sproutd/reconcile")
+        return await adminSproutdReconcile(request);
       const backup = /^\/api\/admin\/backups\/([^/]+)$/.exec(url.pathname);
       if (request.method === "GET" && backup) return await adminDownloadBackup(request, backup[1]);
       if (request.method === "DELETE" && backup) return await adminDeleteBackup(request, backup[1]);
@@ -240,6 +246,9 @@ async function handle(request: Request): Promise<Response> {
   if (request.method === "GET" && url.pathname === "/api/overview") return dashboardOverview(request);
   if (request.method === "POST" && deployment) return deployArtifact(request, deployment[1]);
   if (request.method === "GET" && deployment) return listDeployments(request, deployment[1]);
+  const runtimeSetting = /^\/api\/projects\/([a-z0-9-]+)\/runtime$/.exec(url.pathname);
+  if (request.method === "GET" && runtimeSetting) return getProjectRuntime(request, runtimeSetting[1]);
+  if (request.method === "PUT" && runtimeSetting) return putProjectRuntime(request, runtimeSetting[1]);
   const project = /^\/api\/projects\/([a-z0-9-]+)$/.exec(url.pathname);
   if (request.method === "DELETE" && project) return deleteProject(request, project[1]);
   const activation = /^\/api\/projects\/([a-z0-9-]+)\/deployments\/([a-z0-9-]+)\/activate$/.exec(url.pathname);
@@ -354,6 +363,9 @@ async function handle(request: Request): Promise<Response> {
 }
 
 console.log(`Sproutboat control listening on http://${hostname}:${server.port}`);
+
+// Design 05: when sproutd is configured, make it serve what the database says, now and after every routes sync.
+startSproutdReconciler();
 
 // Seed the single admin credential account so the dashboard is usable without
 // GitHub OAuth. Safe to run every boot; no-op once the account exists.
