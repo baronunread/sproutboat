@@ -38,7 +38,7 @@
     "@sproutboat/runtime": "^0.39.0",
     "@sproutboat/toolchain": "^0.21.3",
     "@sproutboat/wire": "^0.21.2",
-    "@tanstack/charts": "^0.16.0",
+    "@tanstack/charts": "^1.1.0",
     "@tanstack/react-router": "^1.170.32",
     "@tanstack/react-start": "^1.168.49",
     "better-auth": "^1.7.1",
