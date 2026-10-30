@@ -142,7 +142,7 @@ eq "sproutd's console log is reachable through control" "$(api_code GET /api/pro
 eq "the adapter keeps owners apart: another owner has no such app" "$(adapter -H 'X-Sb-Owner: bootstrap:someone-else' http://adapter/v1/projects/phase1 | jq -r .exists)" false
 
 section "Secrets map onto sproutd's file format"
-SECRET_TOKEN='s3cr3t=value with  spaces  '
+SECRET_TOKEN=$'s3cr3t=value with  spaces  \nsecond line\\n not an escape\r\nend'
 SECRET_GREETING='héllo wörld #not-a-comment'
 eq "set TOKEN" "$(api_code PUT /api/projects/phase1/secrets/TOKEN -d "$(jq -nc --arg v "$SECRET_TOKEN" '{value: $v}')")" 201
 eq "set GREETING" "$(api_code PUT /api/projects/phase1/secrets/GREETING -d "$(jq -nc --arg v "$SECRET_GREETING" '{value: $v}')")" 201
@@ -150,8 +150,8 @@ secrets_applied() { [ "$(edge /secrets | jq -r .TOKEN)" = "$SECRET_TOKEN" ]; }
 check "the running app sees both values byte for byte, within seconds" "$(wait_for 20 secrets_applied; echo $?)" "$(edge /secrets)"
 got=$(edge /secrets | jq -r .GREETING)
 if [ "$got" = "$SECRET_GREETING" ]; then pass "GREETING (UTF-8, '#', spaces) arrives intact"; else info "FINDING: a non-ASCII secret arrives as bytes read as Latin-1: sent '$SECRET_GREETING', the app sees '$got' (same when sproutd is handed the file directly, so it is the runtime's env, not control or the adapter)"; fi
-eq "a value with a newline is refused when set" "$(api_code PUT /api/projects/phase1/secrets/MULTI -d '{"value":"a\nb"}')" 400
-info "newline refusal says: $(jq -r .error </tmp/sbd-e2e-body)"
+eq "a value with a NUL is refused when set" "$(api_code PUT /api/projects/phase1/secrets/NUL -d '{"value":"a\u0000b"}')" 400
+info "NUL refusal says: $(jq -r .error </tmp/sbd-e2e-body)"
 eq "a reserved SB_ name is refused" "$(api_code PUT /api/projects/phase1/secrets/SB_TOKEN -d '{"value":"x"}')" 400
 eq "a secret removed from control disappears from the app" "$(api_code DELETE /api/projects/phase1/secrets/GREETING)" 200
 greeting_gone() { [ "$(edge /secrets | jq -r .GREETING)" = null ]; }
@@ -242,6 +242,7 @@ cp "$MODULE_V1" "$tmpd/app.so"; chmod 644 "$tmpd/app.so"
 # (a) a secrets value with a newline, handed to sproutd directly, in its own file format
 printf 'A=one\nB=two\nthird line\n' >"$tmpd/newline.env"
 printf 'A=x\nSB_X=1\n' >"$tmpd/reserved.env"
+printf '#sproutd-secrets-v2\nTOKEN=a\\nb\\\\c\\r\nGREETING=plain\n' >"$tmpd/v2.env"
 printf 'TOKEN= a=b #c \nGREETING=h\xc3\xa9llo\n' >"$tmpd/edgecases.env"
 chown -R $SDUSER "$tmpd"
 probe() { # NAME ENVFILE
@@ -253,6 +254,9 @@ probe() { # NAME ENVFILE
 }
 info "newline value:   $(probe nl newline.env)"
 info "reserved name:   $(probe res reserved.env)"
+v2out=$(probe v2 v2.env)
+info "v2 file with escapes: $v2out"
+case $v2out in *'{"TOKEN":"a\nb\\c\r","GREETING":"plain"}'*) pass "a v2 secrets file carries a newline, a backslash and a CRLF";; *) fail "a v2 secrets file carries a newline, a backslash and a CRLF" "$v2out";; esac
 info "edge-case values: $(probe edge edgecases.env)"
 # (b) a module from another generation
 if [ -n "${MODULE_OTHER_GENERATION:-}" ]; then

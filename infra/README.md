@@ -326,8 +326,9 @@ touched by `sbctl update`. The supervisor stays the default; nothing changes for
 - **Routing:** the route entry gets `backend: {kind:"sproutd", url}`; the edge forwards there with the original
   `Host`, keeps its request log, caps and timeouts, and starts no sprout. No edge asset serving or GET cache for
   these routes yet.
-- **Secrets** are rendered into sproutd's `NAME=VALUE` file by the adapter. A value with a line break and the
-  names `SB_*`/`SPROUTBOAT_*` cannot be stored there, so `secrets put` refuses them for a sproutd project.
+- **Secrets** are rendered into sproutd's secrets file (format v2, which escapes line breaks and backslashes) by the
+  adapter, so any value works as on the supervisor. A NUL byte and the names `SB_*`/`SPROUTBOAT_*` cannot be stored,
+  so `secrets put` refuses them for a sproutd project. Needs a sproutd host that reads v2.
 - **Reconcile:** at startup, after every routes sync and every `SPROUTBOAT_SPROUTD_RECONCILE_MS` (60 s), control
   makes sproutd serve what it believes (redeploys what sproutd lost, pushes hosts, limits and changed secrets) and
   logs apps sproutd has that no project maps to. `POST /api/admin/sproutd/reconcile` runs it on demand.
