@@ -254,7 +254,7 @@ test("rollback restores the module with the project's current secrets, not the o
   expect(app.versions.find((v) => v.active)).toMatchObject({ id: vid(v1), secrets: secretsTwo });
 });
 
-test("secrets that sproutd cannot carry are refused when set, with the reason", async () => {
+test("secrets that sproutd cannot carry are refused when set, with the reason; line breaks are accepted", async () => {
   await putRuntime("blog", { runtime: "sproutd" });
   await deploy("blog", elf("v1"));
   const put = (name: string, value: string) =>
@@ -263,10 +263,12 @@ test("secrets that sproutd cannot carry are refused when set, with the reason", 
       "blog",
       name,
     );
-  const multi = await put("MULTI", "a\nb");
-  expect(multi.status).toBe(400);
-  const reason: { error: string } = await multi.json();
-  expect(reason.error).toContain("line break");
+  // Line breaks are carried by sproutd's escaped secrets format; a NUL and the reserved names are not.
+  expect((await put("MULTI", "a\nb\\c\r\nd")).status).toBe(201);
+  const nul = await put("NUL", "a\0b");
+  expect(nul.status).toBe(400);
+  const reason: { error: string } = await nul.json();
+  expect(reason.error).toContain("NUL");
   expect((await put("SB_TOKEN", "x")).status).toBe(400);
   const ok = await put("PLAIN", "x");
   expect(ok.status).toBe(201);

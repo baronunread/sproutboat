@@ -101,14 +101,14 @@ export function parseLimits(input: Json | undefined): { limits: RuntimeLimits } 
 }
 
 /**
- * What sproutd's secrets file cannot carry (resolved 2026-10-30 against native-host.cpp's
- * load_secrets): a newline in a value, a NUL, and the host-owned SB_ / SPROUTBOAT_ names.
- * Rejecting at `secrets put` tells the user when they set it, not when the app fails to start.
+ * What sproutd's secrets file cannot carry: a NUL in a value, and the host-owned SB_ / SPROUTBOAT_ names. Line
+ * breaks and backslashes are fine: the adapter writes sproutd's escaped format (secrets file v2, sproutd
+ * native-host.cpp load_secrets). Rejecting at `secrets put` tells the user when they set it, not when the app
+ * fails to start. Needs a sproutd host that reads v2; one that does not would fail such an app closed.
  */
 export function sproutdSecretProblem(name: string, value: string): string | null {
   if (name.startsWith("SB_") || name.startsWith("SPROUTBOAT_"))
     return "names starting with SB_ or SPROUTBOAT_ are reserved on sproutd";
-  if (value.includes("\n")) return "a value with a line break cannot be stored on sproutd";
   if (value.includes("\0")) return "a value with a NUL byte cannot be stored on sproutd";
   return null;
 }
