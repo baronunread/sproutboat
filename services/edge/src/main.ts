@@ -9,6 +9,7 @@ import { EdgeCache, cacheRequestEligible, cacheResponseEligible } from "./cache"
 import { cacheControlFor } from "./asset-cache-control";
 import { edgeIdleTimeoutSeconds } from "./idle-timeout";
 import { isWebSocketUpgrade, relayHandlers, relayWebSocket, type RelayData } from "./websocket";
+import { type Backend, parseBackend, proxyToBackend } from "./backend";
 
 type JsonValue = string | number | boolean | null | EdgeJsonObject | JsonValue[];
 
@@ -68,6 +69,8 @@ type Route = {
   secretsHash: string | null;
   services: Record<string, string> | null;
   r2: { ownerId: string; resourceIds: string[]; doStoreId?: string } | null;
+  /** Design 05, option A: forward to sproutd instead of running a sprout. Null for every supervisor route. */
+  backend: Backend | null;
 };
 
 type TimedBindings = {
@@ -100,7 +103,7 @@ function timedSprouts(current: Map<string, Route>) {
     r2: { ownerId: string; resourceIds: string[]; doStoreId?: string } | null;
   }> = [];
   for (const route of current.values()) {
-    if (!hasTimedBindings(route.sproutPath)) continue;
+    if (route.backend || !hasTimedBindings(route.sproutPath)) continue; // sproutd runs its own crons, queues and alarms
     // The pool de-duplicates identical runtime contexts. Keep different secret
     // and service snapshots separate even if a content-addressed artifact is
     // attached to more than one custom hostname.
@@ -158,12 +161,16 @@ async function loadRoutes(path: string): Promise<Map<string, Route>> {
       r2 = { ownerId, resourceIds };
       if (isString(route.doStoreId) && /^do_[a-f0-9]{24}$/.test(route.doStoreId)) r2.doStoreId = route.doStoreId;
     }
+    // A backend that is present but not a loopback sproutd URL fails the whole snapshot, like any other bad entry.
+    const backend = route.backend === undefined ? null : parseBackend(route.backend);
+    if (route.backend !== undefined && !backend) throw new TypeError("invalid route snapshot");
     result.set(route.hostname, {
       sproutPath: route.sproutPath,
       secretsPath,
       secretsHash: isString(route.secretsHash) ? route.secretsHash : null,
       services,
       r2,
+      backend,
     });
   }
   return result;
@@ -367,6 +374,11 @@ function swapRoutes(nextRoutes: Map<string, Route>, nextMtimeMs: number): void {
     const next = nextRoutes.get(hostname);
     // A changed sprout path OR a changed secrets hash (#2) means the running
     // worker is stale — dispose it so the next request respawns it fresh.
+    if (route.backend) {
+      // Nothing of ours runs for it: no sprout to dispose, no asset manifest, nothing cached.
+      if (!next || JSON.stringify(next.backend) !== JSON.stringify(route.backend)) cache?.purgeHost(hostname);
+      continue;
+    }
     if (
       !next ||
       next.sproutPath !== route.sproutPath ||
@@ -430,6 +442,20 @@ const server = Bun.serve<RelayData>({
         errorKind: "no-route",
       });
       return new Response("unknown deployment", { status: 404 });
+    }
+    if (route.backend) {
+      return proxyToBackend({
+        request,
+        server,
+        backend: route.backend,
+        host,
+        requestTimeoutMs,
+        responseMaxBytes,
+        reqBytes,
+        elapsed,
+        log,
+        cappedBody,
+      });
     }
     const sproutPath = route.sproutPath;
 
@@ -816,6 +842,7 @@ const activationTimer = activationDir
       void serveActivations(activationDir, async (request) => {
         const [route] = (await loadRoutes(request)).values();
         if (!route) throw new Error("empty activation request");
+        if (route.backend) return; // sproutd loads and checks the version itself (deploy is the activation)
         await pool.endpoint(route.sproutPath, route.secretsPath, route.services, route.r2, true);
       }).catch((error) => {
         console.error(`activation request failed: ${error instanceof Error ? error.message : String(error)}`);

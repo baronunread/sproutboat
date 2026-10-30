@@ -9,7 +9,16 @@
  */
 import { actorFor, type Actor } from "./identity";
 import { LIMITS } from "./limits";
-import { deleteSecret, projectDeployments, secretCount, secretNames, setSecret, syncRoutes } from "./store";
+import {
+  deleteSecret,
+  projectDeployments,
+  projectRuntime,
+  secretCount,
+  secretNames,
+  setSecret,
+  syncRoutes,
+} from "./store";
+import { sproutdSecretProblem } from "./sproutd";
 
 type JsonInput = string | number | boolean | null | undefined | JsonInput[] | { readonly [key: string]: JsonInput };
 const asText = (value: JsonInput): string => (Object(value) !== value && value === String(value) ? String(value) : "");
@@ -50,6 +59,12 @@ export async function putSecret(request: Request, project: string, name: string)
   if (!value) return Response.json({ error: "a non-empty string `value` is required" }, { status: 400 });
   if (Buffer.byteLength(value, "utf8") > MAX_VALUE_BYTES)
     return Response.json({ error: `value exceeds ${MAX_VALUE_BYTES} bytes` }, { status: 413 });
+  const onSproutd = projectRuntime(actor.id, project).runtime === "sproutd";
+  if (onSproutd) {
+    // sproutd's secrets file has no escape for a newline: say so now, not when the app fails to start.
+    const problem = sproutdSecretProblem(name, value);
+    if (problem) return Response.json({ error: problem }, { status: 400 });
+  }
   const isNew = !secretNames(actor.id, project).includes(name);
   if (isNew && secretCount(actor.id, project) >= LIMITS.secretsPerProject()) {
     return Response.json(
@@ -60,7 +75,10 @@ export async function putSecret(request: Request, project: string, name: string)
 
   setSecret(actor.id, project, name, value);
   await syncRoutes();
-  return Response.json({ name, set: true, appliesOn: "next deploy or sprout restart" }, { status: isNew ? 201 : 200 });
+  return Response.json(
+    { name, set: true, appliesOn: onSproutd ? "the running version, within seconds" : "next deploy or sprout restart" },
+    { status: isNew ? 201 : 200 },
+  );
 }
 
 export async function removeSecret(request: Request, project: string, name: string): Promise<Response> {

@@ -37,6 +37,8 @@ export type Deployment = {
   active: boolean;
   binarySize: number | null;
   compileMs: number | null;
+  /** sproutd version id (first 16 hex of the module's SHA-256). Present only on sproutd deployments. */
+  vid?: string;
 };
 export type ProjectSummary = { name: string; hostname: string; activeDeploymentId: string; deployedAt: string };
 
@@ -52,21 +54,27 @@ type DeploymentRow = {
   active: number;
   binary_size: number | null;
   compile_ms: number | null;
+  sproutd_vid?: string | null;
 };
 
-const toDeployment = (row: DeploymentRow): Deployment => ({
-  id: row.id,
-  project: row.project,
-  ownerId: row.owner_id,
-  username: row.username,
-  hostname: row.hostname,
-  artifact: row.artifact_digest,
-  sproutPath: row.sprout_path,
-  deployedAt: row.deployed_at,
-  active: row.active === 1,
-  binarySize: row.binary_size,
-  compileMs: row.compile_ms,
-});
+const toDeployment = (row: DeploymentRow): Deployment => {
+  const deployment: Deployment = {
+    id: row.id,
+    project: row.project,
+    ownerId: row.owner_id,
+    username: row.username,
+    hostname: row.hostname,
+    artifact: row.artifact_digest,
+    sproutPath: row.sprout_path,
+    deployedAt: row.deployed_at,
+    active: row.active === 1,
+    binarySize: row.binary_size,
+    compileMs: row.compile_ms,
+  };
+  // Supervisor rows keep exactly the shape they always had.
+  if (row.sproutd_vid) deployment.vid = row.sproutd_vid;
+  return deployment;
+};
 
 let db: Database | undefined;
 let dbConnectedPath: string | undefined;
@@ -192,6 +200,16 @@ function connection(): Database {
   if (addedBinarySize) database.run("ALTER TABLE deployments ADD COLUMN binary_size INTEGER");
   if (!cols.some((column) => column.name === "compile_ms"))
     database.run("ALTER TABLE deployments ADD COLUMN compile_ms INTEGER");
+  // Design 05, phase 1: which runtime serves a project, and the sproutd version of a deployment.
+  // They default to "supervisor" and NULL, which is what every existing row already is.
+  // SAFETY: PRAGMA table_info rows always expose a string `name` column.
+  const projectCols = database.query("PRAGMA table_info(projects)").all() as Array<{ name: string }>;
+  if (!projectCols.some((column) => column.name === "runtime"))
+    database.run("ALTER TABLE projects ADD COLUMN runtime TEXT NOT NULL DEFAULT 'supervisor'");
+  if (!projectCols.some((column) => column.name === "runtime_limits"))
+    database.run("ALTER TABLE projects ADD COLUMN runtime_limits TEXT");
+  if (!cols.some((column) => column.name === "sproutd_vid"))
+    database.run("ALTER TABLE deployments ADD COLUMN sproutd_vid TEXT");
   db = database;
   dbConnectedPath = dbPath();
   importLegacyDeployments();
@@ -410,7 +428,7 @@ export function recordDeployment(
     resourceIds?: string[];
   },
 ): Deployment {
-  const { resourceIds = [], ...fields } = input;
+  const { resourceIds = [], vid, ...fields } = input;
   const deployment = { ...fields, binarySize: fields.binarySize ?? null, compileMs: fields.compileMs ?? null };
   return connection().transaction(() => {
     run(
@@ -427,8 +445,8 @@ export function recordDeployment(
     );
     run("UPDATE deployments SET active = 0 WHERE owner_id = ? AND project = ?", deployment.ownerId, deployment.project);
     run(
-      `INSERT INTO deployments (id, owner_id, project, username, hostname, artifact_digest, sprout_path, deployed_at, active, binary_size, compile_ms)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)`,
+      `INSERT INTO deployments (id, owner_id, project, username, hostname, artifact_digest, sprout_path, deployed_at, active, binary_size, compile_ms, sproutd_vid)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?)`,
       deployment.id,
       deployment.ownerId,
       deployment.project,
@@ -439,6 +457,7 @@ export function recordDeployment(
       deployment.deployedAt,
       deployment.binarySize,
       deployment.compileMs,
+      vid ?? null,
     );
     for (const resourceId of new Set(resourceIds)) {
       run(
@@ -447,7 +466,9 @@ export function recordDeployment(
         resourceId,
       );
     }
-    return { ...deployment, active: true };
+    const recorded: Deployment = { ...deployment, active: true };
+    if (vid) recorded.vid = vid;
+    return recorded;
   })();
 }
 
@@ -785,6 +806,119 @@ export function deleteResource(ownerId: string, id: string): boolean {
   return run("DELETE FROM resources WHERE id = ? AND owner_id = ?", id, ownerId) > 0;
 }
 
+// --- project runtime (design 05, phase 1) ---------------------------------
+
+export type ProjectRuntime = "supervisor" | "sproutd";
+/** What control maps onto sproutd's `limits` verb. Unset fields use control's defaults (sproutd.ts). */
+export type RuntimeLimits = { memoryMb?: number; cpuMs?: number; wallMs?: number };
+
+/** Where the edge forwards sproutd projects; empty when this box has no sproutd. */
+export const sproutdUrl = (): string => (process.env.SPROUTBOAT_SPROUTD_URL || "").replace(/\/$/, "");
+
+export function projectExists(ownerId: string, project: string): boolean {
+  return q1("SELECT 1 FROM projects WHERE owner_id = ? AND name = ?", ownerId, project) !== undefined;
+}
+
+export type RuntimeSetting = { runtime: ProjectRuntime; limits: RuntimeLimits };
+
+export function projectRuntime(ownerId: string, project: string): RuntimeSetting {
+  const row = q1<{ runtime: string; runtime_limits: string | null }>(
+    "SELECT runtime, runtime_limits FROM projects WHERE owner_id = ? AND name = ?",
+    ownerId,
+    project,
+  );
+  if (!row || row.runtime !== "sproutd") return { runtime: "supervisor", limits: {} };
+  let limits: RuntimeLimits = {};
+  if (row.runtime_limits) {
+    try {
+      // SAFETY: written by setProjectRuntime from a validated RuntimeLimits.
+      limits = JSON.parse(row.runtime_limits) as RuntimeLimits;
+    } catch {
+      /* a corrupt value means defaults */
+    }
+  }
+  return { runtime: "sproutd", limits };
+}
+
+/** Creates the project row if needed. The caller has checked that the project has no deployments. */
+export function setProjectRuntime(
+  actor: { id: string; username: string },
+  project: string,
+  runtime: ProjectRuntime,
+  limits: RuntimeLimits,
+): void {
+  connection().transaction(() => {
+    run(
+      "INSERT OR IGNORE INTO projects (owner_id, name, username, created_at) VALUES (?, ?, ?, ?)",
+      actor.id,
+      project,
+      actor.username,
+      new Date().toISOString(),
+    );
+    run(
+      "UPDATE projects SET runtime = ?, runtime_limits = ? WHERE owner_id = ? AND name = ?",
+      runtime,
+      runtime === "sproutd" && Object.keys(limits).length > 0 ? JSON.stringify(limits) : null,
+      actor.id,
+      project,
+    );
+  })();
+}
+
+/** Changes limits of a project that already runs on sproutd. */
+export function setProjectLimits(ownerId: string, project: string, limits: RuntimeLimits): boolean {
+  return (
+    run(
+      "UPDATE projects SET runtime_limits = ? WHERE owner_id = ? AND name = ? AND runtime = 'sproutd'",
+      Object.keys(limits).length > 0 ? JSON.stringify(limits) : null,
+      ownerId,
+      project,
+    ) > 0
+  );
+}
+
+export type SproutdProject = {
+  ownerId: string;
+  username: string;
+  project: string;
+  limits: RuntimeLimits;
+  /** The active deployment, if the project has one yet. */
+  active: Deployment | undefined;
+};
+
+/** Every project that runs on sproutd, with its active deployment. Reconcile walks this. */
+export function sproutdProjects(): SproutdProject[] {
+  return q<{ owner_id: string; name: string; username: string }>(
+    "SELECT owner_id, name, username FROM projects WHERE runtime = 'sproutd' ORDER BY owner_id, name",
+  ).map((row) => ({
+    ownerId: row.owner_id,
+    username: row.username,
+    project: row.name,
+    limits: projectRuntime(row.owner_id, row.name).limits,
+    active: projectDeployments(row.owner_id, row.name).find((deployment) => deployment.active),
+  }));
+}
+
+/** The hostnames sproutd must answer for: the generated one and every verified custom domain. */
+export function projectHosts(ownerId: string, project: string): string[] {
+  const generated = q<{ hostname: string }>(
+    "SELECT hostname FROM deployments WHERE owner_id = ? AND project = ? AND active = 1",
+    ownerId,
+    project,
+  ).map((row) => row.hostname);
+  const custom = q<{ hostname: string }>(
+    "SELECT hostname FROM custom_domains WHERE owner_id = ? AND project = ? AND verified_at IS NOT NULL",
+    ownerId,
+    project,
+  ).map((row) => row.hostname);
+  return [...new Set([...generated, ...custom])].sort();
+}
+
+/** Decrypted `{ NAME: value }` for one project: what sproutd's secrets file is rendered from. */
+export function projectSecrets(ownerId: string, project: string): Record<string, string> {
+  return projectSecretValues(ownerId, project);
+}
+
 // --- routes snapshot + artifact GC --------------------------------------
 
 /**
@@ -795,8 +929,19 @@ export function deleteResource(ownerId: string, id: string): boolean {
  */
 let routeSync: Promise<void> = Promise.resolve();
 export function syncRoutes(): Promise<void> {
-  routeSync = routeSync.catch(() => {}).then(writeRouteSnapshot);
+  routeSync = routeSync
+    .catch(() => {})
+    .then(writeRouteSnapshot)
+    .then(notifyRoutesSynced);
   return routeSync;
+}
+const routeListeners: Array<() => void> = [];
+/** Called (not awaited) after each routes.json write; the sproutd reconciler uses it to push host changes. */
+export function onRoutesSynced(listener: () => void): void {
+  routeListeners.push(listener);
+}
+function notifyRoutesSynced(): void {
+  for (const listener of routeListeners) listener();
 }
 const secretsDir = () => resolve(dirname(routesPath()), "secrets");
 const secretsFile = (ownerId: string, project: string) =>
@@ -844,8 +989,12 @@ export type RouteEntry = {
   ownerId: string;
   r2ResourceIds: string[];
   doStoreId: string;
+  /** Present only for projects whose runtime is sproutd: the edge forwards there instead of starting a sprout. */
+  backend?: RouteBackend;
 };
-type RouteRow = { hostname: string; sprout_path: string; owner_id: string; project: string };
+/** Where the edge sends a request: sproutd's frontend, which routes by the Host header. */
+export type RouteBackend = { kind: "sproutd"; url: string };
+type RouteRow = { hostname: string; sprout_path: string; owner_id: string; project: string; runtime?: string };
 
 /**
  * One routes.json entry per row: the runtime context the edge starts a sprout
@@ -867,6 +1016,18 @@ function routeContext() {
   const r2Resources = new Map<string, string[]>();
   return {
     async entry(row: RouteRow): Promise<RouteEntry> {
+      // A sproutd project has no sprout to start, no secrets file for the supervisor to hand a broker, and no
+      // bindings sidecar: sproutd holds all of that. The edge only needs to know where to forward.
+      if (row.runtime === "sproutd") {
+        return {
+          hostname: row.hostname,
+          sproutPath: row.sprout_path,
+          ownerId: row.owner_id,
+          r2ResourceIds: [],
+          doStoreId: `do_${createHash("sha256").update(`${row.owner_id}\0${row.project}`).digest("hex").slice(0, 24)}`,
+          backend: { kind: "sproutd", url: sproutdUrl() },
+        };
+      }
       const key = `${row.owner_id}\0${row.project}`;
       if (!written.has(key)) {
         await mkdir(secretsDir(), { recursive: true, mode: 0o700 });
@@ -933,17 +1094,20 @@ async function writeRouteSnapshot(): Promise<void> {
   // owner_id/project ride along so each route can carry its decrypted secrets
   // file path (#2) — the supervisor hands it to the per-deployment broker.
   const rows = q<RouteRow>(
-    `SELECT hostname, sprout_path, owner_id, project FROM deployments
-       WHERE active = 1 AND owner_id NOT IN (SELECT owner_id FROM banned_owners)
+    `SELECT d.hostname AS hostname, d.sprout_path AS sprout_path, d.owner_id AS owner_id, d.project AS project, p.runtime AS runtime
+       FROM deployments d
+       JOIN projects p ON p.owner_id = d.owner_id AND p.name = d.project
+       WHERE d.active = 1 AND d.owner_id NOT IN (SELECT owner_id FROM banned_owners)
      UNION
-     SELECT cd.hostname AS hostname, d.sprout_path AS sprout_path, d.owner_id AS owner_id, d.project AS project
+     SELECT cd.hostname AS hostname, d.sprout_path AS sprout_path, d.owner_id AS owner_id, d.project AS project, p.runtime AS runtime
        FROM custom_domains cd
        JOIN deployments d
          ON d.owner_id = cd.owner_id AND d.project = cd.project AND d.active = 1
+       JOIN projects p ON p.owner_id = d.owner_id AND p.name = d.project
        WHERE cd.verified_at IS NOT NULL
          AND cd.owner_id NOT IN (SELECT owner_id FROM banned_owners)
      ORDER BY hostname`,
-  );
+  ).filter((row) => row.runtime !== "sproutd" || sproutdUrl() !== ""); // nowhere to forward: no route, not a broken one
 
   const context = routeContext();
   const routes = await Promise.all(rows.map((row) => context.entry(row)));
