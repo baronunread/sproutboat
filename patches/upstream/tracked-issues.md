@@ -5,11 +5,11 @@ locally: each is a language or platform gap that only makes sense in the
 compiler. Recorded here so the next person checks the issue before writing a
 workaround.
 
-| #                                                        | What            | Why it matters here                                    |
-| -------------------------------------------------------- | --------------- | ------------------------------------------------------ |
-| [#145](https://github.com/CanadaHonk/porffor/issues/145) | `Proxy` support | Resolved in alpha-16; native regression coverage added |
-| [#347](https://github.com/CanadaHonk/porffor/issues/347) | Web Crypto      | AES and asymmetric algorithms still missing            |
-| [#349](https://github.com/CanadaHonk/porffor/issues/349) | Streams         | a response body is one whole string                    |
+| #                                                        | What            | Why it matters here                                            |
+| -------------------------------------------------------- | --------------- | -------------------------------------------------------------- |
+| [#145](https://github.com/CanadaHonk/porffor/issues/145) | `Proxy` support | Resolved in alpha-16; native regression coverage added         |
+| [#347](https://github.com/CanadaHonk/porffor/issues/347) | Web Crypto      | AES and asymmetric: shipped on embedded transports (see below) |
+| [#349](https://github.com/CanadaHonk/porffor/issues/349) | Streams         | a response body is one whole string                            |
 
 ## Proxy support (#145), resolved in alpha-16
 
@@ -49,6 +49,19 @@ without `--standalone`. Pure C is transport-independent and also lets a handler
 drop a vendored pure-JS SHA-256. Verified against NIST vectors on both
 transports. Keep the surface exactly standard so it deletes when upstream lands
 Web Crypto.
+
+**Asymmetric and AES `crypto.subtle` (sproutboat-packages, from a new compatibility date).**
+RSASSA-PKCS1-v1_5, RSA-PSS, RSA-OAEP, ECDSA, ECDH, Ed25519, X25519, AES-GCM/CBC/CTR/KW,
+HKDF, all-hash PBKDF2, `jwk`/`spki`/`pkcs8` import and export and wrap/unwrap follow workerd.
+The primitives are BearSSL's (MIT) plus Monocypher's (BSD-2-Clause or CC0, vendored, for
+Ed25519 and X25519), so this tier is **embedded transport only**: standalone binaries and
+sproutd, which both link BearSSL. The broker transport does not, and a link dependency there
+would break `sproutboat build` without `--standalone`; on it the same calls reject with
+`NotSupportedError`, and digest, HMAC and the old PBKDF2 subset stay on the dependency-free
+inline-C SHA-2 above and work on all three transports. Open decision: either vendor a pure-C
+subset of BearSSL into the shared inline C (about 10k lines, paid by every broker build) or give
+the broker an RPC to the Bun broker's `node:crypto`. The JavaScript surface is exactly standard,
+so it deletes when #347 lands.
 
 ## Alpha 17 and downstream compatibility fixes
 
