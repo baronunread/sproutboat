@@ -1,8 +1,8 @@
 # Database clients that need only fetch or WebSocket
 
-Draft, 2026-10-30. Question: do the HTTP and WebSocket database clients run unmodified on a Sproutboat standalone binary, with workerd (`wrangler dev`) as the reference?
+2026-10-30, re-run 2026-10-31 on the released build. Question: do the HTTP and WebSocket database clients run unmodified on a Sproutboat standalone binary, with workerd (`wrangler dev`) as the reference?
 
-Short answer: with the published CLI, two of five compile and one of those runs. With the packages PR that accompanies this document, all five compile and run, 96 of 98 comparisons match workerd, and the two that do not are the wording of a network error.
+Short answer: with the published CLI, two of five compile and one of those runs. With the packages change (sproutboat-packages #224, released as runtime 0.39.0 and toolchain 0.21.3, CLI 0.48.0), all five compile and run, and the comparisons with workerd that do not match are the wording of a network error. The first run (96 of 98) was on runtime 0.36.0; the re-run on the rebased build, with the Supabase and Upstash default-entry variants, matches 113 of 117 (neon 24/24, libsql 19/19, planetscale 18/18, supabase 17/18, upstash `/cloudflare` 18/19, upstash default 17/19).
 
 ## Setup
 
@@ -92,7 +92,7 @@ Number 4 is not filed upstream; another agent is drafting the Porffor issues.
 
 ## Changes in the packages PR
 
-Draft PR on `baronunread/sproutboat-packages`, branch `fix/db-client-compat`. No CLI PR is needed: the CLI reads all of this from `@sproutboat/runtime` and `@sproutboat/toolchain`.
+Merged as `baronunread/sproutboat-packages` #224. The CLI needs only a dependency bump to reach it (`sproutboat` 0.48.0).
 
 | Change                                                                                                         | Where                                                                                | Gate                                                                                       |
 | -------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------ |
@@ -102,7 +102,7 @@ Draft PR on `baronunread/sproutboat-packages`, branch `fix/db-client-compat`. No
 | `Error.captureStackTrace(target)` sets `stack` to the first line, as `Error.stack` already is                  | `__sbSetCompat`                                                                      | proposed 2026-11-15                                                                        |
 | A typed array with an underlying object shadows builtin methods                                                | `patchTypedArrayShadow` in `toolchain/src/patch.ts`, taken from the TCP spike (#214) | none possible: it is a compile-time Porffor patch, and only affects typed array subclasses |
 
-Proposed compatibility date: **2026-11-15** for both gated changes. They share one date because an app that needs one needs the other (Neon and Supabase both need the validator change and Neon needs `captureStackTrace`). Two things to decide:
+Compatibility date: **2026-11-15** (chosen 2026-10-30) for both gated changes. They share one date because an app that needs one needs the other (Neon and Supabase both need the validator change and Neon needs `captureStackTrace`). Two things to decide:
 
 - The typed array patch cannot be date-gated. It only changes behaviour for a typed array that has its own or subclass methods of a builtin name, where the old result was wrong.
 - The TCP spike (#214) also gates `Error.captureStackTrace` and allows `Buffer`/`process` in bundles, at 2026-11-02. If it lands first, drop those two hunks from this PR and the proposed date becomes unnecessary for Neon.
@@ -115,7 +115,7 @@ By clients stopped, before the PR:
 
 1. Build check on feature-tested Node globals: 4 of 5 clients (fixed, gated).
 2. Everything else costs one client each: `fetch()` promise (libsql), null-body responses (Supabase), typed array dispatch (Neon WebSocket), `Error.captureStackTrace` (Neon WebSocket).
-3. Not fixed, affects all five as latency: the standalone host blocks on `fetch()`. A page that makes `n` HTTP queries in parallel pays `n` times the latency. Enabling the async host (`sb_async_enable`, which only sproutd's host calls today) in the standalone binary is native work, not a prelude change.
+3. Not fixed, affects all five as latency: the standalone host blocks on `fetch()`. A page that makes `n` HTTP queries in parallel pays `n` times the latency. Proposed fix: sproutboat-packages #232, from compatibility date 2026-11-16 (`http:concurrent-20` for Neon: 2.2 s blocking, 0.6 s with it, workerd 0.6 s).
 4. Cosmetic: network error text.
 
 After the PR nothing stops a client; what is left is items 3 and 4, and the untested parts (Supabase Realtime and auth).
