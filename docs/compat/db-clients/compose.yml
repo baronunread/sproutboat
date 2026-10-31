@@ -1,0 +1,49 @@
+name: dbc
+services:
+  libsql:
+    image: ghcr.io/tursodatabase/libsql-server:latest
+    ports: ["18080:8080"]
+  pg:
+    image: postgres:16-alpine
+    environment: { POSTGRES_PASSWORD: postgres, POSTGRES_DB: main }
+    healthcheck: { test: ["CMD", "pg_isready", "-U", "postgres"], interval: 2s, retries: 30 }
+  neon:
+    image: ghcr.io/timowilhelm/local-neon-http-proxy:main
+    environment: { PG_CONNECTION_STRING: "postgres://postgres:postgres@pg:5432/main" }
+    ports: ["14444:4444"]
+    depends_on: { pg: { condition: service_healthy } }
+  mysql:
+    image: mysql:8.0
+    command: ["--max-connections=2000"]
+    environment: { MYSQL_ALLOW_EMPTY_PASSWORD: "yes", MYSQL_DATABASE: app }
+    healthcheck: { test: ["CMD", "mysqladmin", "ping"], interval: 3s, retries: 40 }
+  psim:
+    image: ghcr.io/mattrobenolt/ps-http-sim:latest
+    command:
+      [
+        "-listen-addr=0.0.0.0",
+        "-listen-port=3900",
+        "-mysql-addr=mysql",
+        "-mysql-no-pass",
+        "-mysql-idle-timeout=1s",
+        "-mysql-dbname=app",
+      ]
+    ports: ["13900:3900"]
+    depends_on: { mysql: { condition: service_healthy } }
+  pgrst:
+    image: postgrest/postgrest:latest
+    environment:
+      PGRST_DB_URI: postgres://postgres:postgres@pg:5432/main
+      PGRST_DB_SCHEMAS: public
+      PGRST_DB_ANON_ROLE: postgres
+      PGRST_SERVER_PORT: "3000"
+      PGRST_JWT_SECRET: dbc-test-jwt-secret-at-least-32-chars-long
+    ports: ["13000:3000"]
+    depends_on: { pg: { condition: service_healthy } }
+  redis:
+    image: redis:7-alpine
+  srh:
+    image: hiett/serverless-redis-http:latest
+    environment: { SRH_MODE: env, SRH_TOKEN: dbc_token, SRH_CONNECTION_STRING: "redis://redis:6379" }
+    ports: ["18079:80"]
+    depends_on: [redis]
