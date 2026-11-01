@@ -115,10 +115,10 @@ By clients stopped, before the PR:
 
 1. Build check on feature-tested Node globals: 4 of 5 clients (fixed, gated).
 2. Everything else costs one client each: `fetch()` promise (libsql), null-body responses (Supabase), typed array dispatch (Neon WebSocket), `Error.captureStackTrace` (Neon WebSocket).
-3. Not fixed, affects all five as latency: the standalone host blocks on `fetch()`. A page that makes `n` HTTP queries in parallel pays `n` times the latency. Proposed fix: sproutboat-packages #232, from compatibility date 2026-11-16 (`http:concurrent-20` for Neon: 2.2 s blocking, 0.6 s with it, workerd 0.6 s).
+3. Fixed from compatibility date 2026-11-16; before it affected all five as latency: the standalone host blocks on `fetch()`. A page that makes `n` HTTP queries in parallel pays `n` times the latency. Fixed in sproutboat-packages #232 (runtime 0.40.0), from compatibility date 2026-11-16 (`http:concurrent-20` for Neon: 2.2 s blocking, 0.6 s with it, workerd 0.6 s).
 4. Cosmetic: network error text.
 
-After the PR nothing stops a client; what is left is items 3 and 4, and the untested parts (Supabase Realtime and auth).
+After the PRs nothing stops a client; what is left is item 4, and the untested parts (Supabase Realtime and auth).
 
 ## Test artifacts
 
@@ -137,3 +137,11 @@ bun run.ts libsql dbc-libsql
 ```
 
 `run.ts` expects `wrangler` in `/tmp/dbc/wr/node_modules/.bin`, the binary in `<app>/dist/<name>`, and ports 19001 and 19002 free. Create the Supabase tables first: `wd_items` and `sb_items` as `(id serial primary key, name text unique, score float8, meta jsonb)`, plus `create function add_numbers(a int, b int) returns int language sql as 'select a+b'`, then `notify pgrst, 'reload schema'`. Stop with `docker compose down -v`.
+
+## Compatibility dates in this document
+
+| Date       | What                                                                                                                                                                                                                                       | Where                 |
+| ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | --------------------- |
+| 2026-10-22 | `fetch()` returns a promise on the standalone binary                                                                                                                                                                                       | runtime 0.39.0 (#224) |
+| 2026-11-15 | Node/Bun/Deno global check skips guarded uses; `Error.captureStackTrace`                                                                                                                                                                   | runtime 0.39.0 (#224) |
+| 2026-11-16 | Standalone `fetch()` runs off the event loop: 20 concurrent fetches to a 100 ms endpoint take about 105 ms (about 2,040 ms before), Neon `http:concurrent-20` 0.6 s (2.2 s), workerd 0.6 s. Requests now interleave across `await fetch()` | runtime 0.40.0 (#232) |
