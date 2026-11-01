@@ -140,8 +140,8 @@ bun run.ts libsql dbc-libsql
 
 ## Compatibility dates in this document
 
-| Date | What | Where |
-| --- | --- | --- |
-| 2026-10-22 | `fetch()` returns a promise on the standalone binary | runtime 0.39.0 (#224) |
-| 2026-11-15 | Node/Bun/Deno global check skips guarded uses; `Error.captureStackTrace` | runtime 0.39.0 (#224) |
+| Date       | What                                                                                                                                                                                                                                       | Where                 |
+| ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | --------------------- |
+| 2026-10-22 | `fetch()` returns a promise on the standalone binary                                                                                                                                                                                       | runtime 0.39.0 (#224) |
+| 2026-11-15 | Node/Bun/Deno global check skips guarded uses; `Error.captureStackTrace`                                                                                                                                                                   | runtime 0.39.0 (#224) |
 | 2026-11-16 | Standalone `fetch()` runs off the event loop: 20 concurrent fetches to a 100 ms endpoint take about 105 ms (about 2,040 ms before), Neon `http:concurrent-20` 0.6 s (2.2 s), workerd 0.6 s. Requests now interleave across `await fetch()` | runtime 0.40.0 (#232) |
