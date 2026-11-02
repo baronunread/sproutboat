@@ -5,8 +5,52 @@ Changes to the self-hosted Sproutboat platform are recorded here. Read the
 
 ## [Unreleased]
 
+## [0.13.0] - 2026-11-02
+
+Adopts `@sproutboat/runtime` 0.41.0, `@sproutboat/toolchain` 0.21.3 and `@sproutboat/wire` 0.21.4 (from 0.35.0, 0.20.1
+and 0.20.2). CLI 0.50.0 builds with runtime 0.41.0 and wire 0.21.4 (and toolchain 0.22.0); it is the release tested
+with this platform version.
+
+### Breaking and operator actions
+
+- Update with `sbctl update`. There are no new units, env files, secrets or migrations for the existing services.
+  Take a backup first (`sudo systemctl start sproutboat-backup`) and copy it off the box.
+- **Rebuild your apps with CLI 0.50.0** to get the fixes and features below. They are in the compiled app, so
+  deployed apps keep running as built (checked: apps built with CLI 0.43.0 at compatibility dates 2026-10-20 and
+  2026-10-29 kept their KV, D1, R2 and Durable Object data and answered unchanged after the update).
+- Behaviour changes are gated by the compiled `compatibility_date`, so an app only sees them when you rebuild it
+  with a later date:
+  - `2026-11-03` D1, `2026-11-04` Durable Objects, `2026-11-05` Queues: closer to workerd (see Added).
+  - `2026-11-06` `crypto.subtle` beyond digests (RSA, ECDSA, ECDH, AES and more).
+  - `2026-11-07` secrets from the environment decode as UTF-8 on a standalone binary.
+  - `2026-11-15` database clients that need only `fetch` or WebSocket (`@libsql/client` and similar) run unmodified.
+  - `2026-11-16` `fetch()` on a standalone binary runs off the event loop.
+- **A garbage-collector crash (SIGBUS) when an object grew is fixed** (toolchain 0.21.3, sproutboat-packages #226).
+  An app built before it can crash in that case; rebuild to be covered.
+- **Platform rollback.** `SB_REF=v0.12.1 sbctl update` is safe: tested from this release with KV, D1, R2 and
+  Durable Object data (data intact, control schema identical, apps built by the newer CLI keep serving) and rolled
+  forward again. An explicit `SB_REF` is persisted as the installation pin, so after a downgrade `sbctl update` stays
+  on that tag until you run `SB_REF=<newer tag> sbctl update`. The downgraded runtime is 0.35.0, so build new apps
+  with CLI 0.43.0 while it runs.
+- **Durable Object storage is asynchronous from compatibility date `2026-10-28`** (not new in 0.13.0, but apps
+  rebuilt on a newer date meet it): `storage.get()` returns a Promise, as on Workers. Code that adds to the result
+  without `await` computes `[object Promise]1`, the same result as on workerd.
+- `MIN_CLI_VERSION` stays `0.0.0`: the control API only gained routes. Older CLIs keep working; `sproutboat tail`
+  live streaming needs CLI 0.45.0 or later.
+
 ### Added
 
+- **Runtime 0.36.0 to 0.41.0, through the dependency pins (#319, #323, #326, #327, #328, #329):**
+  - `AsyncLocalStorage` from `node:async_hooks` and a per-request `x-sb-cpu-ms` when requests interleave in one
+    process.
+  - `crypto.subtle` like workerd from 2026-11-06; ES256 signs 2.2x and verifies 3.1x faster than BearSSL 0.6.
+  - D1, Durable Objects and Queues parity with workerd from 2026-11-03, 11-04 and 11-05. Against miniflare
+    4.20260730 on the broker: D1 111/116, Durable Objects 254/261 (RPC 18/18), Queues 105/112.
+  - Database clients that need only `fetch` or WebSocket from 2026-11-15; `fetch()` returns a promise from
+    2026-10-22 and runs off the event loop on a standalone binary from 2026-11-16.
+  - `DOMException` constructible, `TextDecoder` UTF-16 and windows-1252, `Blob.prototype.stream()`.
+- Documentation: database clients on standalone (#322), Web Crypto tracked issues (#321), the API-challenge app on
+  workerd, sproutd and standalone (#318).
 - **A per-project `runtime`: `supervisor` (default) or `sproutd` (private, off unless configured).** Design 05,
   phase 1. `PUT /api/projects/:name/runtime` chooses it before the first deploy; a sproutd project is deployed with a
   hand-built `app.so` (`module` field of `POST .../deployments`), rolled back with the existing activate call, and routed
@@ -33,6 +77,17 @@ Changes to the self-hosted Sproutboat platform are recorded here. Read the
   `uncaught` (the handler threw: the runtime's bare 500, recognised by its signature or by `x-sb-uncaught`), which feed
   the tail. Older lines without them
   still read; their events show the host without a path and outcome `ok`.
+
+### Fixed
+
+- The object-growth collector crash above, a second collector crash (a minor collection scanning the entries block an
+  array left behind), `crypto.getRandomValues` filling every byte of a wider view, a fetched 204, 205 or 304
+  response throwing, and a `Uint8Array` subclass that redefines a builtin method.
+
+### Known differences (not regressions)
+
+- The median compiled binary in the compatibility run is 4.00 MB (0.12.1: 3.70 MB, +8%), from the larger runtime. The
+  compatibility result is unchanged: 32/32 compile, 3/32 match (the 29 differ only in `Content-Type`).
 
 ## [0.12.1] - 2026-10-29
 
