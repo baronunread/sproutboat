@@ -7,6 +7,12 @@ Changes to the self-hosted Sproutboat platform are recorded here. Read the
 
 ### Added
 
+- **A per-project `runtime`: `supervisor` (default) or `sproutd` (private, off unless configured).** Design 05,
+  phase 1. `PUT /api/projects/:name/runtime` chooses it before the first deploy; a sproutd project is deployed with a
+  hand-built `app.so` (`module` field of `POST .../deployments`), rolled back with the existing activate call, and routed
+  by the edge to sproutd's frontend through a new route `backend` entry. Secrets and per-project limits are mapped onto
+  sproutd's own, and control reconciles sproutd at startup and after route changes. Existing projects, routes and API
+  shapes are unchanged. Not installed by `install.sh` and not touched by `sbctl update`; see `infra/README.md`.
 - **Live tail for one app: `GET /api/projects/:name/tail`.** A Server-Sent Events stream in the shape of a
   Workers tail event (`scriptName`, `outcome`, `eventTimestamp`, `event.request`/`response`, `cpuTime`,
   `wallTime`, `logs`, `exceptions`). It merges the edge request log (status, CPU ms, wall ms, outcome from the
