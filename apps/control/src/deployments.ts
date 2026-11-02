@@ -33,6 +33,7 @@ import {
   type ProjectSummary,
   projectDeployment,
   projectDeployments,
+  projectHosts,
   projectRuntime,
   pruneProjectDeployments,
   sproutdProjects,
@@ -146,7 +147,8 @@ export async function dashboardOverview(request: Request): Promise<Response> {
 
   const deployments = ownerDeployments(actor.id);
   const projects = activeProjects(actor.id);
-  const hostnames = new Set(projects.map((project) => project.hostname));
+  const projectHostnames = new Map(projects.map((project) => [project.name, logHostnames(actor, project.name)]));
+  const hostnames = new Set([...projectHostnames.values()].flatMap((set) => [...set]));
   const { requests, successes, buckets, byHostname } = await routeTraffic(hostnames);
 
   // #78 — the Sprouts list is one row per project, so each carries its own
@@ -157,14 +159,19 @@ export async function dashboardOverview(request: Request): Promise<Response> {
   }
   const domainCounts = ownerDomainCounts(actor.id);
   const rows: ProjectRow[] = projects.map((project) => {
-    const traffic = byHostname[project.hostname];
+    // Custom domains count toward their project; the median comes from its busiest host.
+    const seen = [...(projectHostnames.get(project.name) ?? [])].flatMap((host) => byHostname[host] ?? []);
+    const busiest = seen.reduce<(typeof seen)[number] | undefined>(
+      (best, entry) => (!best || entry.requests > best.requests ? entry : best),
+      undefined,
+    );
     return {
       ...project,
       versions: versionCounts.get(project.name) ?? 0,
       domains: domainCounts.get(project.name) ?? 0,
-      requests24h: traffic?.requests ?? 0,
-      errors24h: traffic?.errors ?? 0,
-      latencyP50: traffic?.latencyP50 ?? null,
+      requests24h: seen.reduce((sum, entry) => sum + entry.requests, 0),
+      errors24h: seen.reduce((sum, entry) => sum + entry.errors, 0),
+      latencyP50: busiest?.latencyP50 ?? null,
     };
   });
 
@@ -278,11 +285,21 @@ export async function activateDeployment(request: Request, project: string, id: 
   return Response.json({ id, project, active: true, url: `https://${deployment.hostname}` });
 }
 
+/**
+ * Every hostname the edge routes to this project: its generated hostname plus
+ * each verified custom domain. The request log is keyed by the host a request
+ * arrived on, so the log and tail readers filter on this whole set. Scoped by
+ * owner and project, so another project's hostnames never appear.
+ */
+function logHostnames(actor: Actor, project: string): Set<string> {
+  return new Set([deploymentHostname(project, actor.username), ...projectHosts(actor.id, project)]);
+}
+
 /** CLI `tail`: chronological last 100 records as NDJSON (bounded tail read). */
 export async function projectLogs(request: Request, project: string): Promise<Response> {
   const actor = await authorized(request);
   if (actor instanceof Response) return actor;
-  const hostname = deploymentHostname(project, actor.username);
+  const hostname = logHostnames(actor, project);
   const body = await readLogTailText(hostname, 100);
   return new Response(body, { headers: { "content-type": "application/x-ndjson" } });
 }
@@ -292,7 +309,7 @@ export async function projectLogHistory(request: Request, project: string): Prom
   const actor = await authorized(request);
   if (actor instanceof Response) return actor;
   const params = new URL(request.url).searchParams;
-  const hostname = deploymentHostname(project, actor.username);
+  const hostname = logHostnames(actor, project);
   const page = await readLogHistory(hostname, {
     before: params.get("before") || undefined,
     limit: Number(params.get("limit")) || undefined,
@@ -309,7 +326,7 @@ export async function projectLogHistory(request: Request, project: string): Prom
 export async function projectLogTail(request: Request, project: string): Promise<Response> {
   const actor = await authorized(request);
   if (actor instanceof Response) return actor;
-  const hostname = deploymentHostname(project, actor.username);
+  const hostname = logHostnames(actor, project);
   return tailLogs(hostname, request.signal);
 }
 
@@ -325,7 +342,7 @@ export async function projectTail(request: Request, project: string): Promise<Re
   const parsed = parseTailFilters(new URL(request.url).searchParams);
   if ("error" in parsed) return Response.json({ error: parsed.error }, { status: 400 });
   const { filters } = parsed;
-  const hostname = deploymentHostname(project, actor.username);
+  const hostname = logHostnames(actor, project);
   // Deploys can happen while a tail is open; re-resolve the active sprout each poll.
   const sproutLog = () => {
     const active = projectDeployments(actor.id, project).find((deployment) => deployment.active);
@@ -364,7 +381,7 @@ export async function projectMetrics(request: Request, project: string): Promise
   const actor = await authorized(request);
   if (actor instanceof Response) return actor;
   const range = new URL(request.url).searchParams.get("range") ?? "24h";
-  const hostname = deploymentHostname(project, actor.username);
+  const hostname = logHostnames(actor, project);
   return Response.json(await aggregateLogs(hostname, range));
 }
 

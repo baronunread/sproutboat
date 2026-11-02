@@ -8,6 +8,7 @@ let logFile: string;
 let logs: typeof import("./logs");
 
 const HOST = "app.alice.test";
+const HOSTS = new Set([HOST]);
 type LineOverride = Partial<{
   at: string;
   hostname: string;
@@ -46,7 +47,7 @@ test("filters by hostname, status class, and free text; drops malformed lines", 
     logFile,
     [
       line({ at: "2026-01-01T00:00:01.000Z", status: 200 }),
-      line({ at: "2026-01-01T00:00:02.000Z", status: 404 }),
+      line({ at: "2026-01-01T00:00:02.000Z", status: 404, errorKind: "no-route" }),
       line({ at: "2026-01-01T00:00:03.000Z", status: 503, error: "sprout failure" }),
       line({ hostname: "other.bob.test", status: 500 }),
       "not json\n",
@@ -54,18 +55,18 @@ test("filters by hostname, status class, and free text; drops malformed lines", 
     ].join(""),
   );
 
-  const all = await logs.readLogHistory(HOST, {});
+  const all = await logs.readLogHistory(HOSTS, {});
   expect(all.events.map((event) => event.status)).toEqual([503, 404, 200]); // newest first, other tenant + junk gone
 
-  const server = await logs.readLogHistory(HOST, { statusClass: "5xx" });
+  const server = await logs.readLogHistory(HOSTS, { statusClass: "5xx" });
   expect(server.events.map((event) => event.status)).toEqual([503]);
   expect(server.events[0].failure).toBe("sprout failure");
   expect(server.events[0].statusClass).toBe("5xx");
 
-  const text = await logs.readLogHistory(HOST, { q: "sprout failure" });
+  const text = await logs.readLogHistory(HOSTS, { q: "sprout failure" });
   expect(text.events).toHaveLength(1);
 
-  const missing = await logs.readLogHistory(HOST, { statusClass: "4xx" });
+  const missing = await logs.readLogHistory(HOSTS, { statusClass: "4xx" });
   expect(missing.events[0].failure).toBe("no route");
 });
 
@@ -79,24 +80,24 @@ test("#3 — filters by method, minimum duration, and cold start", async () => {
     ].join(""),
   );
 
-  const posts = await logs.readLogHistory(HOST, { method: "POST" });
+  const posts = await logs.readLogHistory(HOSTS, { method: "POST" });
   expect(posts.events.map((event) => event.at)).toEqual(["2026-01-01T00:00:02.000Z"]);
 
-  const gets = await logs.readLogHistory(HOST, { method: "get" }); // case-insensitive both ways
+  const gets = await logs.readLogHistory(HOSTS, { method: "get" }); // case-insensitive both ways
   expect(gets.events).toHaveLength(2);
 
-  const slow = await logs.readLogHistory(HOST, { minDurationMs: 250 });
+  const slow = await logs.readLogHistory(HOSTS, { minDurationMs: 250 });
   expect(slow.events.map((event) => event.durationMs)).toEqual([900, 250]);
 
-  const cold = await logs.readLogHistory(HOST, { coldStart: true });
+  const cold = await logs.readLogHistory(HOSTS, { coldStart: true });
   expect(cold.events.map((event) => event.at)).toEqual(["2026-01-01T00:00:03.000Z"]);
 
-  const combined = await logs.readLogHistory(HOST, { method: "GET", minDurationMs: 250, coldStart: true });
+  const combined = await logs.readLogHistory(HOSTS, { method: "GET", minDurationMs: 250, coldStart: true });
   expect(combined.events).toHaveLength(1);
 
   // An omitted filter must not narrow anything.
-  expect((await logs.readLogHistory(HOST, { method: "all" })).events).toHaveLength(3);
-  expect((await logs.readLogHistory(HOST, { coldStart: undefined })).events).toHaveLength(3);
+  expect((await logs.readLogHistory(HOSTS, { method: "all" })).events).toHaveLength(3);
+  expect((await logs.readLogHistory(HOSTS, { coldStart: undefined })).events).toHaveLength(3);
 });
 
 test("paginates with nextBefore and caps the limit", async () => {
@@ -105,18 +106,18 @@ test("paginates with nextBefore and caps the limit", async () => {
   );
   await writeFile(logFile, many.join(""));
 
-  const first = await logs.readLogHistory(HOST, { limit: 4 });
+  const first = await logs.readLogHistory(HOSTS, { limit: 4 });
   expect(first.events.map((event) => event.status)).toEqual([209, 208, 207, 206]);
   expect(first.nextBefore).toBe("2026-01-01T00:00:06.000Z");
 
-  const second = await logs.readLogHistory(HOST, { limit: 4, before: first.nextBefore ?? undefined });
+  const second = await logs.readLogHistory(HOSTS, { limit: 4, before: first.nextBefore ?? undefined });
   expect(second.events.map((event) => event.status)).toEqual([205, 204, 203, 202]);
 });
 
 test("read window is bounded to the tail of a large file", async () => {
   const filler = line({ status: 200 }).repeat(20000); // ~2 MiB, past the 1 MiB scan cap
   await writeFile(logFile, filler + line({ at: "2026-06-01T00:00:00.000Z", status: 201 }));
-  const page = await logs.readLogHistory(HOST, { limit: 500 });
+  const page = await logs.readLogHistory(HOSTS, { limit: 500 });
   expect(page.windowTruncated).toBe(true);
   expect(page.events.length).toBeLessThanOrEqual(500);
   expect(page.events[0].status).toBe(201); // newest line still seen
@@ -129,7 +130,7 @@ test("readLogTailText returns chronological NDJSON", async () => {
       "",
     ),
   );
-  const out = await logs.readLogTailText(HOST, 10);
+  const out = await logs.readLogTailText(HOSTS, 10);
   const parsed = out
     .trim()
     .split("\n")
@@ -151,7 +152,7 @@ test("aggregateLogs: 24 buckets over the range, right bucket, errors, distributi
     ].join(""),
   );
 
-  const metrics = await logs.aggregateLogs(HOST, "24h");
+  const metrics = await logs.aggregateLogs(HOSTS, "24h");
   expect(metrics.buckets).toHaveLength(24);
   expect(metrics.bucketMs).toBe(3_600_000);
   expect(metrics.sampleCount).toBe(4); // the >24h line dropped
@@ -199,7 +200,7 @@ test("aggregateLogs: cold starts, startup/ttfb percentiles, byte totals, method 
     ].join(""),
   );
 
-  const metrics = await logs.aggregateLogs(HOST, "1h");
+  const metrics = await logs.aggregateLogs(HOSTS, "1h");
   expect(metrics.invocationStatus).toEqual({ ok: 3 });
   expect(metrics.cacheHitRate).toBeNull(); // no cacheStatus on these lines
   expect(metrics.coldStarts).toBe(2);
@@ -229,7 +230,7 @@ test("aggregateLogs: invocationStatus classifies errorKind and bare 5xx (#27/#33
     ].join(""),
   );
 
-  const metrics = await logs.aggregateLogs(HOST, "1h");
+  const metrics = await logs.aggregateLogs(HOSTS, "1h");
   expect(metrics.invocationStatus).toEqual({
     ok: 2,
     "timed-out": 1,
@@ -254,7 +255,7 @@ test("aggregateLogs: cache hit rate over cacheable GETs (#38)", async () => {
     ].join(""),
   );
 
-  const metrics = await logs.aggregateLogs(HOST, "1h");
+  const metrics = await logs.aggregateLogs(HOSTS, "1h");
   expect(metrics.cacheHits).toBe(3);
   expect(metrics.cacheHitRate).toBe(75); // 3 hits / (3 hits + 1 miss)
 });
@@ -278,26 +279,26 @@ test("aggregateLogs: previous-window totals for delta chips (#37)", async () => 
     ].join(""),
   );
 
-  const metrics = await logs.aggregateLogs(HOST, "1h");
+  const metrics = await logs.aggregateLogs(HOSTS, "1h");
   expect(metrics.sampleCount).toBe(3);
   expect(metrics.previous).toEqual({ requests: 2, errors: 0, latencyP50: 7 });
 });
 
 test("aggregateLogs: empty window and unknown range", async () => {
   await writeFile(logFile, "");
-  const empty = await logs.aggregateLogs(HOST, "6h");
+  const empty = await logs.aggregateLogs(HOSTS, "6h");
   expect(empty.sampleCount).toBe(0);
   expect(empty.latencyMs).toBeNull();
   expect(empty.buckets.every((bucket) => bucket.count === 0)).toBe(true);
 
-  const fallback = await logs.aggregateLogs(HOST, "bogus");
+  const fallback = await logs.aggregateLogs(HOSTS, "bogus");
   expect(fallback.range).toBe("24h");
   expect(fallback.bucketMs).toBe(3_600_000);
 });
 
 test("tailLogs emits a ready frame, streams new lines, and closes on abort", async () => {
   const controller = new AbortController();
-  const response = logs.tailLogs(HOST, controller.signal);
+  const response = logs.tailLogs(HOSTS, controller.signal);
   expect(response.headers.get("content-type")).toBe("text/event-stream");
   const reader = response.body!.getReader();
   const decoder = new TextDecoder();
@@ -341,4 +342,25 @@ test("#76 — routeTraffic buckets the window and counts only the given routes",
   expect(traffic.buckets.reduce((sum, bucket) => sum + bucket.errors, 0)).toBe(1); // only the 503
   expect(traffic.buckets.filter((bucket) => bucket.count > 0)).toHaveLength(2); // two distinct hours
   expect(traffic.buckets.at(-1)?.count).toBe(2); // newest bucket holds the recent pair
+});
+
+test("an app 404 is not labelled no route; only the edge's no-route errorKind is", async () => {
+  await writeFile(
+    logFile,
+    [
+      line({ at: "2026-01-01T00:00:01.000Z", status: 404, cpuMs: 3 }),
+      line({ at: "2026-01-01T00:00:02.000Z", status: 404, errorKind: "no-route" }),
+    ].join(""),
+  );
+  const page = await logs.readLogHistory(HOSTS, {});
+  expect(page.events.map((event) => event.failure)).toEqual(["no route", null]); // newest first
+});
+
+test("a set of hostnames matches each of them and nothing else", async () => {
+  await writeFile(
+    logFile,
+    [line({ hostname: HOST }), line({ hostname: "custom.test" }), line({ hostname: "other.bob.test" })].join(""),
+  );
+  const page = await logs.readLogHistory(new Set([HOST, "custom.test"]), {});
+  expect(page.events).toHaveLength(2);
 });

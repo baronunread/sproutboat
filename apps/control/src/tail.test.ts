@@ -34,7 +34,7 @@ const edgeLine = (over: Record<string, string | number | boolean>) =>
   `${JSON.stringify({ at: "2026-01-01T00:00:10.000Z", hostname: HOST, method: "GET", path: "/", status: 200, durationMs: 5, ...over })}\n`;
 
 function record(over: Record<string, string | number | boolean>): LogRecord {
-  const parsed = logs.parseLine(edgeLine(over).trim(), HOST);
+  const parsed = logs.parseLine(edgeLine(over).trim(), new Set([HOST]));
   if (!parsed) throw new Error("fixture did not parse");
   return parsed;
 }
@@ -243,7 +243,7 @@ async function collect(
 ): Promise<TailFrame[]> {
   const controller = new AbortController();
   const response = tail.tailEvents({
-    hostname: HOST,
+    hostname: new Set([HOST]),
     scriptName: "app",
     sproutLog: () => sproutFile,
     filters: tail.NO_FILTERS,
