@@ -9,9 +9,9 @@
         "@sproutboat/artifact": "^0.3.0",
         "@sproutboat/assets": "^0.3.0",
         "@sproutboat/config": "^0.6.0",
-        "@sproutboat/runtime": "^0.40.0",
+        "@sproutboat/runtime": "^0.41.0",
         "@sproutboat/toolchain": "^0.21.3",
-        "@sproutboat/wire": "^0.21.3",
+        "@sproutboat/wire": "^0.21.4",
         "@tanstack/charts": "^0.16.0",
         "@tanstack/react-router": "^1.170.32",
         "@tanstack/react-start": "^1.168.49",
@@ -516,11 +516,11 @@
 
     "@sproutboat/config": ["@sproutboat/config@0.6.0", "", {}, "sha512-fx7B412Sy4YEDXMSaUx07+GyAOQDOaGSW7kO4hmA1SZBUsRX3evx+zH7tyFv6b0PHxP+htkySl+8wZUdWc0vjA=="],
 
-    "@sproutboat/runtime": ["@sproutboat/runtime@0.40.0", "", {}, "sha512-MNjLQWxEI6Z24Y7swURUPrCsDAQXRZpaGDe20TpjGqL2Kp8pl8ufWy7UT8bih4s7Vo1EXaIOqwNicRYG8kkqjA=="],
+    "@sproutboat/runtime": ["@sproutboat/runtime@0.41.0", "", {}, "sha512-HEvLE24U1WwqGwZ5nwvGE6irvL9eWtv+Ltl4cPbYhvKef34y64KalYR6jXVdi/u4KrAXOAYK+kN9wUt4Sgvqlw=="],
 
     "@sproutboat/toolchain": ["@sproutboat/toolchain@0.21.3", "", {}, "sha512-OTB0tBiJGf1EBCAUg02S5wc8+eiSG6Lm5y0ZJfamzblFjhpbm1G+pawMAvR6o2tlymL4PY+fYoOpk747fAUhVQ=="],
 
-    "@sproutboat/wire": ["@sproutboat/wire@0.21.3", "", { "dependencies": { "@sproutboat/assets": "^0.3.0", "@sproutboat/runtime": "^0.40.0" } }, "sha512-aQ6RJ4f0iFc9QySdx/F5JjAQbgoTBTpAFZ90EXxqmGQM9d0FjsTQGyXjB6gV/I6uycD7u95ZMATU0ZTvvGWYVw=="],
+    "@sproutboat/wire": ["@sproutboat/wire@0.21.4", "", { "dependencies": { "@sproutboat/assets": "^0.3.0", "@sproutboat/runtime": "^0.41.0" } }, "sha512-nmGeTDQyMo70XuoJsGw6Pz/mIgaDmKS7ePN+1qxvnLItXW62rbsKhiIQLUntRgBMPGU3lGXvI9jCKBr0RCCGhQ=="],
 
     "@standard-schema/spec": ["@standard-schema/spec@1.1.0", "", {}, "sha512-l2aFy5jALhniG5HgqrD6jXLi/rUWrKvqN/qJx6yoJsgKhblVd+iqqU4RCXavm/jPityDo5TCvKMnpjKnOriy0w=="],
 
