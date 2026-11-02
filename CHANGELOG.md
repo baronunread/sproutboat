@@ -5,6 +5,15 @@ Changes to the self-hosted Sproutboat platform are recorded here. Read the
 
 ## [Unreleased]
 
+## [0.13.1] - 2026-11-02
+
+### Breaking and operator actions
+
+- Update with `sbctl update`. Only the control service changes: no new units, env files, secrets, migrations or
+  dependency versions, and apps do not need a rebuild. Take a backup first (`sudo systemctl start sproutboat-backup`)
+  and copy it off the box.
+- **Platform rollback.** `SB_REF=v0.13.0 sbctl update` is safe: nothing here changes stored data or the log format.
+
 ### Fixed
 
 - Requests to a project's custom domains now appear in its Request logs, Live tail (`/logs`, `/logs/recent`,
