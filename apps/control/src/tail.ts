@@ -1,5 +1,5 @@
 import { Buffer } from "node:buffer";
-import { logPath, parseLine, type LogRecord } from "./logs";
+import { logPath, parseLineWithHost, type HostFilter, type LogRecord } from "./logs";
 
 /**
  * Per-app live tail, in the shape of a Workers tail event. Two sources merge:
@@ -353,7 +353,8 @@ function passes(event: TailEvent, filters: TailFilters, random: () => number): b
 // --- stream ----------------------------------------------------------------
 
 export type TailOptions = {
-  hostname: string;
+  /** The hostname(s) routed to the project; requests to any of them are tailed. */
+  hostname: HostFilter;
   scriptName: string;
   /** Absolute path of the active deployment's sprout output file, or null. Re-read every poll. */
   sproutLog: () => string | null;
@@ -527,14 +528,14 @@ export function tailEvents(options: TailOptions): Response {
           }
           const next = await requests.next();
           skippedBytes += next.skipped;
-          const records: LogRecord[] = [];
+          const records: Array<{ record: LogRecord; hostname: string }> = [];
           for (const line of next.text.split("\n")) {
-            const record = parseLine(line, hostname);
-            if (record) records.push(record);
+            const parsed = parseLineWithHost(line, hostname);
+            if (parsed) records.push(parsed);
           }
-          records.sort((a, b) => a.at.localeCompare(b.at));
+          records.sort((a, b) => a.record.at.localeCompare(b.record.at));
           // Console output predates the completion of the request that printed it.
-          batch.push(...records.map((record) => requestEvent(record, scriptName, hostname)));
+          batch.push(...records.map((entry) => requestEvent(entry.record, scriptName, entry.hostname)));
 
           if (closed) return;
           emit(batch);

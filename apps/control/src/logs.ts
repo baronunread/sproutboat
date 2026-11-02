@@ -69,7 +69,18 @@ function isFiniteNumber(value: LogJson | undefined): value is number {
   return Object(value) !== value && value === Number(value) && Number.isFinite(value);
 }
 
-export function parseLine(line: string, hostname?: string): LogRecord | undefined {
+/** Every hostname routed to a project (generated + verified custom domains). */
+export type HostFilter = ReadonlySet<string>;
+
+export function parseLine(line: string, hostname?: HostFilter): LogRecord | undefined {
+  return parseLineWithHost(line, hostname)?.record;
+}
+
+/** As parseLine, plus the request's own hostname (a custom domain, not just the project's default). */
+export function parseLineWithHost(
+  line: string,
+  hostname?: HostFilter,
+): { record: LogRecord; hostname: string } | undefined {
   if (!line) return undefined;
   let value: LogJson;
   try {
@@ -79,19 +90,21 @@ export function parseLine(line: string, hostname?: string): LogRecord | undefine
   } catch {
     return undefined;
   }
-  if (!isRecord(value) || !isText(value.hostname) || (hostname !== undefined && value.hostname !== hostname))
+  if (!isRecord(value) || !isText(value.hostname) || (hostname !== undefined && !hostname.has(value.hostname)))
     return undefined;
   if (!isText(value.at) || !isFiniteNumber(value.status) || !isFiniteNumber(value.durationMs)) return undefined;
   const status = value.status;
+  // "no route" is only the edge having no route for the host. A 404 the app
+  // answered itself carries no errorKind and is not a failure.
   const failure = isText(value.error)
     ? value.error
     : status >= 500
       ? "upstream error"
-      : status === 404
+      : value.errorKind === "no-route"
         ? "no route"
         : null;
   const num = (v: LogJson | undefined): number | null => (isFiniteNumber(v) ? v : null);
-  return {
+  const record: LogRecord = {
     at: value.at,
     method: isText(value.method) ? value.method : null,
     path: isText(value.path) ? value.path : null,
@@ -110,6 +123,7 @@ export function parseLine(line: string, hostname?: string): LogRecord | undefine
     cacheStatus: isText(value.cacheStatus) ? value.cacheStatus : null,
     statusClass: statusClassOf(status),
   };
+  return { record, hostname: value.hostname };
 }
 
 async function tailBytes(from: number, to: number): Promise<string> {
@@ -137,7 +151,7 @@ async function tailLines(): Promise<{ lines: string[]; windowTruncated: boolean 
 
 /** Newest-first page of matching records, scanning only the last SCAN_CAP bytes. */
 export async function readLogHistory(
-  hostname: string,
+  hostname: HostFilter,
   options: {
     before?: string;
     limit?: number;
@@ -240,7 +254,7 @@ function percentilesOf(sorted: number[]): Percentiles | null {
  * ponytail: on a very busy route a wide range can exceed the 1 MiB window —
  * `windowTruncated` says so; the numbers then cover the recent slice only.
  */
-export async function aggregateLogs(hostname: string, range: string): Promise<Metrics> {
+export async function aggregateLogs(hostname: HostFilter, range: string): Promise<Metrics> {
   const resolved = resolveRange(range);
   const rangeMs = RANGE_MS[resolved];
   const bucketMs = Math.floor(rangeMs / BUCKET_COUNT);
@@ -428,7 +442,7 @@ export async function globalLogTotals(
 }
 
 /** Chronological last-N records as NDJSON text — backs the CLI `tail` endpoint. */
-export async function readLogTailText(hostname: string, limit = 100): Promise<string> {
+export async function readLogTailText(hostname: HostFilter, limit = 100): Promise<string> {
   const page = await readLogHistory(hostname, { limit });
   return page.events.length
     ? `${page.events
@@ -460,7 +474,7 @@ export async function readSproutLogText(digest: string, maxBytes = 64 * 1024): P
 /** Server-Sent Events stream of new matching records; stops on disconnect or the time cap. */
 type TailFrame = { type: "ready" } | { type: "closed"; reason: string } | { type: "event"; event: LogRecord };
 
-export function tailLogs(hostname: string, signal: AbortSignal): Response {
+export function tailLogs(hostname: HostFilter, signal: AbortSignal): Response {
   const encoder = new TextEncoder();
   const stream = new ReadableStream<Uint8Array>({
     start(controller) {

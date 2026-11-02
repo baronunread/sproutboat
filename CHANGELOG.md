@@ -5,6 +5,16 @@ Changes to the self-hosted Sproutboat platform are recorded here. Read the
 
 ## [Unreleased]
 
+### Fixed
+
+- Requests to a project's custom domains now appear in its Request logs, Live tail (`/logs`, `/logs/recent`,
+  `/logs/tail`, `/tail`), traffic charts and Sprouts list counts. The readers filtered the edge request log by the
+  project's generated hostname only, so a project served mostly on its own domain showed almost nothing. They now
+  match every hostname routed to the project, and only that project's. Tail events carry the host the request
+  arrived on.
+- A 404 that the app answered itself is no longer labelled "no route" in the Request logs. That label now means only
+  that the edge had no route for the host (errorKind `no-route`). The log line format is unchanged.
+
 ## [0.13.0] - 2026-11-02
 
 Adopts `@sproutboat/runtime` 0.41.0, `@sproutboat/toolchain` 0.21.3 and `@sproutboat/wire` 0.21.4 (from 0.35.0, 0.20.1
