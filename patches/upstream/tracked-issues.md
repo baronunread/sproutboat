@@ -80,3 +80,14 @@ The unreleased upstream TextEncoder commit 0342e06 passes our native Unicode
 regression without the encoder patch, so that patch can be reconsidered when
 it ships. Alpha 17 still needs the stream ponyfill scope adaptation.
 See the [Alpha 17 audit](https://github.com/baronunread/sproutboat-packages/blob/main/packages/toolchain/PORFFOR_ALPHA17.md).
+
+## Porffor gaps found by the `connect()` work (not filed)
+
+Local toolchain patches, drafts only; filing upstream needs a human decision.
+
+- A binding named like a libc macro (`S_IRWXG`, `EINVAL`) is rendered as a C declaration the preprocessor rewrites, so the C does not compile (`pg` bundles pgpass, which declares them). Patched: `patchMacroNames`.
+- A call whose later argument assigns passes the updated value of an earlier identifier argument: `f(i, i += n)` (`postgres` read every column as `""`). Patched: `patchCallArgOrder`.
+- `crypto-browserify` (Bun's `crypto` polyfill, pulled in by `pg`) fails the C compile: an `f64` assigned to a `jsval`. Worked around in the CLI with a Web Crypto `node:crypto` shim; the miscompile itself is open.
+- `navigator` is frozen. Patched writable: `patchNavigatorWritable`.
+
+See [TCP sockets](../../docs/compat/tcp-sockets.md).
