@@ -51,6 +51,16 @@ function adapterFailure(error: Error, activated: boolean): Response {
   return Response.json({ error: `sproutd is unavailable: ${error.message}`, activated }, { status: 503 });
 }
 
+/**
+ * sproutd refused to load the module: its admin `deploy` answers `error rejected; ...` when the new worker does not
+ * come up (the module's shared-prelude ABI does not match the runtime's generation, or it crashes at init), which
+ * the adapter passes on as a 409. Busy, in-progress and app-limit replies are not a verdict on the module.
+ */
+const loadRefusal = (error: Error): string | undefined =>
+  error instanceof AdapterError && error.status === 409 && /^rejected\b/.test(error.message)
+    ? error.message
+    : undefined;
+
 /** Project runtime for the API: the stored choice plus what this box can do. */
 export function describeRuntime(actor: Actor, project: string) {
   const { runtime, limits } = projectRuntime(actor.id, project);
@@ -109,12 +119,20 @@ export async function setRuntime(actor: Actor, request: Request, project: string
   return Response.json(describeRuntime(actor, project), { status: 200 });
 }
 
-/** POST /api/projects/:project/deployments for a sproutd project: multipart with a `module` file. */
+/**
+ * POST /api/projects/:project/deployments for a sproutd project: multipart with a `module` file.
+ *
+ * If sproutd refuses to load the module and the upload also carries the supervisor artifact (`manifest` and
+ * `sprout`), the version runs on the supervisor instead: `runOnSupervisor` records and routes it, saying why.
+ * The project stays on sproutd, so the next deploy tries sproutd again. Without that artifact the deploy fails as
+ * before, and says what to upload to get the fallback.
+ */
 export async function deploySproutd(
   actor: Actor,
   project: string,
   hostname: string,
   form: FormData,
+  runOnSupervisor: (reason: string) => Promise<Response>,
 ): Promise<Response> {
   const client = sproutdClient();
   if (!client) return Response.json({ error: "this host has no sproutd configured" }, { status: 409 });
@@ -154,14 +172,32 @@ export async function deploySproutd(
   }
   // sproutd loads it first (blue/green: if it does not load, the old version keeps serving).
   // Nothing is recorded or routed unless it does, as with the supervisor's staged candidate.
+  let loaded = false;
   try {
     const result = await client.deploy(actor.id, project, bytes, vid, secrets, limits);
+    loaded = true;
     if (result.vid !== vid) throw new Error(`sproutd serves ${result.vid}, expected ${vid}`);
     // Map the hostnames before the route goes live, or the edge would forward to a sproutd that answers 404 for a moment.
     await client.setHosts(actor.id, project, [...new Set([hostname, ...projectHosts(actor.id, project)])].sort());
   } catch (error) {
     if (stored.placed) await rm(stored.path.replace(/\/app\.so$/, ""), { recursive: true, force: true });
-    return adapterFailure(error instanceof Error ? error : new Error(String(error)), false);
+    const failure = error instanceof Error ? error : new Error(String(error));
+    const refusal = loaded ? undefined : loadRefusal(failure);
+    if (refusal === undefined) return adapterFailure(failure, false);
+    const reason = `sproutd refused to load the module (${refusal})`;
+    if (!(form.get("manifest") instanceof File && form.get("sprout") instanceof File)) {
+      const failed = await adapterFailure(failure, false).json();
+      return Response.json(
+        {
+          ...failed,
+          fallback: "unavailable",
+          hint: "upload the supervisor artifact (manifest and sprout) with the module so a refused version can run on the supervisor",
+        },
+        { status: 409 },
+      );
+    }
+    console.warn(`sproutd: ${actor.username}/${project}: ${reason}; running this version on the supervisor`);
+    return runOnSupervisor(reason);
   }
   const deployment = recordDeployment({
     id: randomUUID(),

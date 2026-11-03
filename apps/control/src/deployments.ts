@@ -44,7 +44,7 @@ import {
 
 export type { Deployment, ProjectSummary } from "./store";
 
-const artifactRoot = resolve(process.env.SPROUTBOAT_ARTIFACTS_DIR || "/var/lib/sproutboat/artifacts");
+const artifactRoot = () => resolve(process.env.SPROUTBOAT_ARTIFACTS_DIR || "/var/lib/sproutboat/artifacts");
 
 /** #78 — what one row of the Sprouts list needs, beyond the route itself. */
 export type ProjectRow = ProjectSummary & {
@@ -95,7 +95,7 @@ export function isDeploymentHostname(hostname: string): boolean {
 async function activePorfforVersion(ownerId: string, project: string): Promise<string | null> {
   const active = projectDeployments(ownerId, project).find((deployment) => deployment.active);
   if (!active) return null;
-  const validation = await validateArtifactDirectory(resolve(artifactRoot, active.artifact));
+  const validation = await validateArtifactDirectory(resolve(artifactRoot(), active.artifact));
   return validation.ok ? validation.value.manifest.porfforVersion : null;
 }
 
@@ -221,13 +221,14 @@ export async function deploymentDetail(request: Request, project: string, id: st
       deployedBy: found.username,
       runtime: "sproutd",
       vid: found.vid,
+      fallbackReason: null,
       bindings: null,
       resources: [],
       manifest: null,
       manifestError: "sproutd module: no artifact manifest",
     });
   }
-  const validation = await validateArtifactDirectory(resolve(artifactRoot, found.artifact));
+  const validation = await validateArtifactDirectory(resolve(artifactRoot(), found.artifact));
   return Response.json({
     id: found.id,
     project: found.project,
@@ -239,6 +240,9 @@ export async function deploymentDetail(request: Request, project: string, id: st
     // #76 — the dashboard's version + bindings views: who shipped it, what the
     // artifact declares, and which owned resources it was recorded against.
     deployedBy: found.username,
+    // A sproutd project's version that sproutd refused: it runs on the supervisor, and this says why.
+    runtime: "supervisor",
+    fallbackReason: found.fallbackReason ?? null,
     bindings: validation.ok ? validation.value.bindings : null,
     resources: deploymentResources(actor.id, found.id),
     manifest: validation.ok ? validation.value.manifest : null,
@@ -272,7 +276,8 @@ export async function activateDeployment(request: Request, project: string, id: 
   if (actor instanceof Response) return actor;
   const target = projectDeployment(actor.id, project, id);
   if (!target) return Response.json({ error: "deployment not found" }, { status: 404 });
-  if (projectRuntime(actor.id, project).runtime === "sproutd") return activateSproutd(actor, project, target);
+  // A version runs where it was loaded: a sproutd version has a vid; a fallback version runs on the supervisor.
+  if (target.vid) return activateSproutd(actor, project, target);
   // #141: a rollback target must start too; otherwise the current version stays.
   try {
     await stageCandidate(await candidateRoute(target));
@@ -492,7 +497,30 @@ export async function deployArtifact(request: Request, project: string): Promise
     return Response.json({ error: "expected multipart artifact upload" }, { status: 400 });
   }
   if (projectRuntime(actor.id, project).runtime === "sproutd")
-    return deploySproutd(actor, project, deploymentHostname(project, actor.username), form);
+    return deploySproutd(actor, project, deploymentHostname(project, actor.username), form, (reason) =>
+      deploySupervisor(actor, project, form, reason),
+    );
+  return deploySupervisor(actor, project, form);
+}
+
+/**
+ * The supervisor deploy: a `manifest` and `sprout` (and sidecars) in `form`. `fallbackReason` is set when the
+ * project asked for sproutd and sproutd refused the version (sproutd-deploy.ts): the version is recorded
+ * with that reason and the response says it runs on the supervisor.
+ */
+async function deploySupervisor(
+  actor: Actor,
+  project: string,
+  form: FormData,
+  fallbackReason?: string,
+): Promise<Response> {
+  const fallback = fallbackReason
+    ? {
+        runtime: "supervisor",
+        fallback: { from: "sproutd", reason: fallbackReason },
+        message: `sproutd refused this version (${fallbackReason}); it runs on the supervisor instead`,
+      }
+    : {};
   const manifest = form.get("manifest");
   const sprout = form.get("sprout");
   if (!(manifest instanceof File) || !(sprout instanceof File))
@@ -511,7 +539,7 @@ export async function deployArtifact(request: Request, project: string): Promise
   if (assetFiles.reduce((sum, file) => sum + file.size, 0) > 64 * 1024 * 1024)
     return Response.json({ error: "assets exceed the 64 MiB limit" }, { status: 413 });
 
-  const temporary = resolve(artifactRoot, `.upload-${randomUUID()}`);
+  const temporary = resolve(artifactRoot(), `.upload-${randomUUID()}`);
   await mkdir(temporary, { recursive: true, mode: 0o750 });
   try {
     await Promise.all([
@@ -561,6 +589,7 @@ export async function deployArtifact(request: Request, project: string): Promise
           artifact: digest,
           activated: false,
           unchanged: true,
+          ...fallback,
         },
         { status: 200 },
       );
@@ -568,7 +597,7 @@ export async function deployArtifact(request: Request, project: string): Promise
 
     // #55: capture the outgoing version's Porffor pin before it is replaced.
     const previousPorffor = await activePorfforVersion(actor.id, project);
-    const destination = resolve(artifactRoot, digest);
+    const destination = resolve(artifactRoot(), digest);
     let placed = false;
     try {
       await rename(temporary, destination);
@@ -612,6 +641,7 @@ export async function deployArtifact(request: Request, project: string): Promise
       binarySize: validation.value.manifest.binarySize,
       compileMs: validation.value.manifest.compileMs ?? null,
       resourceIds: resolvedResources,
+      fallbackReason,
     });
     await syncRoutes();
     // #25 — keep the retained-versions cap; GC any artifact it orphans.
@@ -623,7 +653,15 @@ export async function deployArtifact(request: Request, project: string): Promise
         ? { from: previousPorffor, to: incomingPorffor }
         : undefined;
     return Response.json(
-      { id: deployment.id, hostname, url: `https://${hostname}`, artifact: digest, activated: true, porfforDrift },
+      {
+        id: deployment.id,
+        hostname,
+        url: `https://${hostname}`,
+        artifact: digest,
+        activated: true,
+        porfforDrift,
+        ...fallback,
+      },
       { status: 201 },
     );
   } catch (error) {

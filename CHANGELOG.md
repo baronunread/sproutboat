@@ -10,6 +10,7 @@ Changes to the self-hosted Sproutboat platform are recorded here. Read the
 - Documentation for `connect()` from `cloudflare:sockets` (compatibility date 2026-11-17), with the Postgres and Redis
   driver results (`docs/compat/tcp-sockets.md`, `docs/compat/db-clients.md`). Docs only: the platform's pinned runtime
   (0.41.0) does not have it yet, so it reaches deployed apps with the release that adopts `@sproutboat/runtime` 0.42.0.
+- A project set to `runtime: sproutd` whose module sproutd refuses to load now runs that version on the supervisor, when the upload also carries `manifest` and `sprout`. The deployment records why, the deploy response and the version page say so, and the project stays on sproutd so the next deploy tries again. Routes now follow each deployment's own runtime. No migration beyond one nullable column; nothing changes for supervisor projects.
 
 ## [0.13.1] - 2026-11-02
 
