@@ -323,6 +323,18 @@ touched by `sbctl update`. The supervisor stays the default; nothing changes for
   uploads module, secrets and limits through sproutd's adapter, and only records and routes the version sproutd
   reports. `POST .../deployments/<id>/activate` rolls back, with sproutd's `rollback` when it still stores the
   version and control's copy when it does not. Building from a project is phase 2.
+- **Fallback to the supervisor:** if sproutd refuses to load a module (its admin `deploy` answers `error rejected; ...`:
+  the shared-prelude ABI does not match its generation, or the module crashes at init) and the same upload also has
+  the supervisor artifact (`manifest` and `sprout`, as for any project), control runs that version on the
+  supervisor instead of failing. The deployment records the reason (`fallbackReason`), the deploy response carries
+  `runtime: "supervisor"`, `fallback` and a `message`, the version page in the dashboard shows it, and control logs
+  a `sproutd: <user>/<project>: sproutd refused ...` line. The route follows the version: a deployment with a sproutd
+  version id is forwarded to sproutd, any other goes to the supervisor, and rolling back picks the runtime of the
+  version it activates. The project setting stays `sproutd`, so the next deploy tries sproutd again. Without the
+  supervisor artifact the deploy fails as before, with `fallback: "unavailable"` and a hint. A busy or unreachable
+  sproutd does not fall back. A client that could not build a module at all (compile-time `abi_rejected`) uploads the
+  supervisor artifact without `module`, plus a `sproutdRefusal` text field (e.g. `abi_rejected: <detail>`); that is
+  recorded as a fallback with the reason `no sproutd module: <detail>`, and sproutd is not contacted.
 - **Routing:** the route entry gets `backend: {kind:"sproutd", url}`; the edge forwards there with the original
   `Host`, keeps its request log, caps and timeouts, and starts no sprout. No edge asset serving or GET cache for
   these routes yet.

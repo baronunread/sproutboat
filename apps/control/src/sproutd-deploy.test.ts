@@ -41,6 +41,39 @@ const deploy = (project: string, bytes: Uint8Array<ArrayBuffer>) =>
     request(`/api/projects/${project}/deployments`, { method: "POST", body: moduleForm(bytes) }),
     project,
   );
+/** A minimal valid supervisor artifact (manifest + sprout) for `project`, next to the sproutd module. */
+const supervisorParts = (project: string, tag: string, form: FormData) => {
+  const header = Buffer.alloc(64);
+  header.set([0x7f, 0x45, 0x4c, 0x46, 2, 1], 0);
+  header.writeUInt16LE(62, 18);
+  header.write(tag, 32);
+  const sprout = new Uint8Array(header);
+  const manifest = {
+    schemaVersion: 2,
+    project,
+    target: "linux-x86_64",
+    runtime: "native-fetch",
+    capabilityProfile: "http-sync-v0",
+    porfforVersion: "alpha-19 (test)",
+    esbuildVersion: "0.28.2",
+    buildImage: "stamp",
+    sourceHash: "sha256:" + "0".repeat(64),
+    binaryHash: "sha256:" + createHash("sha256").update(sprout).digest("hex"),
+    binarySize: sprout.length,
+    builtAt: new Date().toISOString(),
+  };
+  form.set("manifest", new File([JSON.stringify(manifest)], "manifest.json"));
+  form.set("sprout", new File([sprout], "sprout"));
+  return form;
+};
+const deployBoth = (project: string, bytes: Uint8Array<ArrayBuffer>, tag: string) =>
+  deployments.deployArtifact(
+    request(`/api/projects/${project}/deployments`, {
+      method: "POST",
+      body: supervisorParts(project, tag, moduleForm(bytes)),
+    }),
+    project,
+  );
 type RouteJson = { hostname: string; backend?: { kind: string; url: string }; secretsPath?: string };
 const routes = async (): Promise<RouteJson[]> => JSON.parse(await readFile(join(dir, "routes.json"), "utf8"));
 
@@ -187,6 +220,128 @@ test("a module sproutd refuses leaves the previous version active and records no
   expect(rows.length).toBe(1);
   expect(rows[0].vid).toBe(vid(elf("v1")));
   expect((await readdir(join(dir, "artifacts"))).filter((n) => !n.startsWith("."))).toEqual([rows[0].artifact]);
+});
+
+test("a module sproutd refuses runs on the supervisor when the upload carries its artifact, and the project stays on sproutd", async () => {
+  await putRuntime("blog", { runtime: "sproutd" });
+  const v1 = elf("v1");
+  expect((await deployBoth("blog", v1, "s1")).status).toBe(201);
+  adapter.failNextDeploy(409, "rejected; previous worker retained");
+  const res = await deployBoth("blog", elf("v2"), "s2");
+  expect(res.status).toBe(201);
+  const body: {
+    id: string;
+    activated: boolean;
+    runtime: string;
+    fallback: { from: string; reason: string };
+    message: string;
+  } = await res.json();
+  expect(body).toMatchObject({ activated: true, runtime: "supervisor", fallback: { from: "sproutd" } });
+  expect(body.fallback.reason).toContain("rejected; previous worker retained");
+  expect(body.message).toContain("runs on the supervisor");
+  // Recorded as a supervisor version with the reason; sproutd's version is no longer the active one.
+  const rows = store.projectDeployments(OWNER, "blog");
+  const active = rows.find((d) => d.active)!;
+  expect(active).toMatchObject({ id: body.id, fallbackReason: body.fallback.reason });
+  expect(active.vid).toBeUndefined();
+  expect(rows.find((d) => !d.active)!.vid).toBe(vid(v1));
+  // The edge starts a sprout for it; nothing is forwarded to sproutd.
+  const [route] = await routes();
+  expect(route.backend).toBeUndefined();
+  expect(route.hostname).toBe("blog.alice.sb.test");
+  // The setting is untouched, and the API says what happened.
+  expect(store.projectRuntime(OWNER, "blog").runtime).toBe("sproutd");
+  const detail = await (
+    await deployments.deploymentDetail(request(`/api/projects/blog/deployments/${body.id}`), "blog", body.id)
+  ).json();
+  expect(detail).toMatchObject({ runtime: "supervisor", fallbackReason: body.fallback.reason });
+  // Reconcile leaves the fallback version alone (nothing for sproutd to serve).
+  expect((await sproutd.reconcileSproutd({ force: true })).errors).toEqual([]);
+  // The same artifact again, refused again, is a no-op that still says why.
+  adapter.failNextDeploy(409, "rejected; previous worker retained");
+  const again = await deployBoth("blog", elf("v2"), "s2");
+  expect(await again.json()).toMatchObject({ unchanged: true, runtime: "supervisor" });
+  expect(store.projectDeployments(OWNER, "blog").length).toBe(2);
+  // A later deploy that sproutd accepts goes back to sproutd, and the route follows.
+  const v3 = elf("v3");
+  const back = await deployBoth("blog", v3, "s3");
+  expect(await back.json()).toMatchObject({ activated: true, vid: vid(v3) });
+  const [again2] = await routes();
+  expect(again2.backend).toMatchObject({ kind: "sproutd" });
+  const latest = store.projectDeployments(OWNER, "blog").find((d) => d.active)!;
+  expect(latest.fallbackReason).toBeUndefined();
+  // Rolling back to the fallback version runs it on the supervisor again; to a sproutd one, on sproutd.
+  const activate = (id: string) =>
+    deployments.activateDeployment(
+      request(`/api/projects/blog/deployments/${id}/activate`, { method: "POST" }),
+      "blog",
+      id,
+    );
+  expect((await activate(body.id)).status).toBe(200);
+  expect((await routes())[0].backend).toBeUndefined();
+  const first = store.projectDeployments(OWNER, "blog").find((d) => d.vid === vid(v1))!;
+  expect((await activate(first.id)).status).toBe(200);
+  expect((await routes())[0].backend).toMatchObject({ kind: "sproutd" });
+});
+
+test("no module plus a sproutdRefusal reason runs the supervisor artifact as a fallback, recorded like a load refusal", async () => {
+  await putRuntime("blog", { runtime: "sproutd" });
+  const form = supervisorParts("blog", "s1", new FormData());
+  form.set("sproutdRefusal", "abi_rejected: __Porffor_connect changed the prelude");
+  const res = await deployments.deployArtifact(
+    request("/api/projects/blog/deployments", { method: "POST", body: form }),
+    "blog",
+  );
+  expect(res.status).toBe(201);
+  const body: { id: string; runtime: string; fallback: { reason: string } } = await res.json();
+  expect(body).toMatchObject({ runtime: "supervisor" });
+  expect(body.fallback.reason).toBe("no sproutd module: abi_rejected: __Porffor_connect changed the prelude");
+  const [row] = store.projectDeployments(OWNER, "blog");
+  expect(row).toMatchObject({ id: body.id, fallbackReason: body.fallback.reason });
+  expect(row.vid).toBeUndefined();
+  expect((await routes())[0].backend).toBeUndefined();
+  expect(adapter.apps.size).toBe(0); // sproutd was never asked
+  expect(store.projectRuntime(OWNER, "blog").runtime).toBe("sproutd");
+  // A reason without the supervisor artifact, or an empty one, is still the old refusal.
+  const bare = new FormData();
+  bare.set("sproutdRefusal", "abi_rejected: x");
+  const refused = await deployments.deployArtifact(
+    request("/api/projects/blog/deployments", { method: "POST", body: bare }),
+    "blog",
+  );
+  expect(refused.status).toBe(400);
+  const blank = supervisorParts("blog", "s2", new FormData());
+  blank.set("sproutdRefusal", "  ");
+  expect(
+    (
+      await deployments.deployArtifact(
+        request("/api/projects/blog/deployments", { method: "POST", body: blank }),
+        "blog",
+      )
+    ).status,
+  ).toBe(400);
+});
+
+test("a refused module without a supervisor artifact still fails, and says what to upload", async () => {
+  await putRuntime("blog", { runtime: "sproutd" });
+  adapter.failNextDeploy(409, "rejected; app not added");
+  const res = await deploy("blog", elf("v1"));
+  expect(res.status).toBe(409);
+  expect(await res.json()).toMatchObject({
+    activated: false,
+    fallback: "unavailable",
+    error: "rejected; app not added",
+  });
+  expect(store.projectDeployments(OWNER, "blog")).toEqual([]);
+});
+
+test("only a refusal to load falls back: a busy or unreachable sproutd fails the deploy", async () => {
+  await putRuntime("blog", { runtime: "sproutd" });
+  adapter.failNextDeploy(409, "deploy in progress");
+  expect((await deployBoth("blog", elf("v1"), "s1")).status).toBe(409);
+  adapter.failNextDeploy(503, "sproutd admin socket unavailable");
+  expect((await deployBoth("blog", elf("v1"), "s1")).status).toBe(503);
+  expect(store.projectDeployments(OWNER, "blog")).toEqual([]);
 });
 
 test("not an ELF module, no module, and a supervisor upload to a sproutd project are refused", async () => {

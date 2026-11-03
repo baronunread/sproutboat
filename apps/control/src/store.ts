@@ -39,6 +39,11 @@ export type Deployment = {
   compileMs: number | null;
   /** sproutd version id (first 16 hex of the module's SHA-256). Present only on sproutd deployments. */
   vid?: string;
+  /**
+   * Set when the project asked for sproutd but sproutd refused this version, so it runs on the supervisor
+   * instead: why it was refused. Absent on every other deployment.
+   */
+  fallbackReason?: string;
 };
 export type ProjectSummary = { name: string; hostname: string; activeDeploymentId: string; deployedAt: string };
 
@@ -55,6 +60,7 @@ type DeploymentRow = {
   binary_size: number | null;
   compile_ms: number | null;
   sproutd_vid?: string | null;
+  fallback_reason?: string | null;
 };
 
 const toDeployment = (row: DeploymentRow): Deployment => {
@@ -73,6 +79,7 @@ const toDeployment = (row: DeploymentRow): Deployment => {
   };
   // Supervisor rows keep exactly the shape they always had.
   if (row.sproutd_vid) deployment.vid = row.sproutd_vid;
+  if (row.fallback_reason) deployment.fallbackReason = row.fallback_reason;
   return deployment;
 };
 
@@ -210,6 +217,9 @@ function connection(): Database {
     database.run("ALTER TABLE projects ADD COLUMN runtime_limits TEXT");
   if (!cols.some((column) => column.name === "sproutd_vid"))
     database.run("ALTER TABLE deployments ADD COLUMN sproutd_vid TEXT");
+  // A sproutd project's version that sproutd refused and the supervisor runs instead: why.
+  if (!cols.some((column) => column.name === "fallback_reason"))
+    database.run("ALTER TABLE deployments ADD COLUMN fallback_reason TEXT");
   db = database;
   dbConnectedPath = dbPath();
   importLegacyDeployments();
@@ -428,7 +438,7 @@ export function recordDeployment(
     resourceIds?: string[];
   },
 ): Deployment {
-  const { resourceIds = [], vid, ...fields } = input;
+  const { resourceIds = [], vid, fallbackReason, ...fields } = input;
   const deployment = { ...fields, binarySize: fields.binarySize ?? null, compileMs: fields.compileMs ?? null };
   return connection().transaction(() => {
     run(
@@ -445,8 +455,8 @@ export function recordDeployment(
     );
     run("UPDATE deployments SET active = 0 WHERE owner_id = ? AND project = ?", deployment.ownerId, deployment.project);
     run(
-      `INSERT INTO deployments (id, owner_id, project, username, hostname, artifact_digest, sprout_path, deployed_at, active, binary_size, compile_ms, sproutd_vid)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?)`,
+      `INSERT INTO deployments (id, owner_id, project, username, hostname, artifact_digest, sprout_path, deployed_at, active, binary_size, compile_ms, sproutd_vid, fallback_reason)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?)`,
       deployment.id,
       deployment.ownerId,
       deployment.project,
@@ -458,6 +468,7 @@ export function recordDeployment(
       deployment.binarySize,
       deployment.compileMs,
       vid ?? null,
+      fallbackReason ?? null,
     );
     for (const resourceId of new Set(resourceIds)) {
       run(
@@ -468,6 +479,7 @@ export function recordDeployment(
     }
     const recorded: Deployment = { ...deployment, active: true };
     if (vid) recorded.vid = vid;
+    if (fallbackReason) recorded.fallbackReason = fallbackReason;
     return recorded;
   })();
 }
@@ -1093,13 +1105,14 @@ async function writeRouteSnapshot(): Promise<void> {
   // domain (#2) pointed at whatever version of its project is active right now.
   // owner_id/project ride along so each route can carry its decrypted secrets
   // file path (#2) — the supervisor hands it to the per-deployment broker.
+  // The runtime is the deployment's own: a version sproutd loaded has a vid; one it refused (and the supervisor runs) has none.
   const rows = q<RouteRow>(
-    `SELECT d.hostname AS hostname, d.sprout_path AS sprout_path, d.owner_id AS owner_id, d.project AS project, p.runtime AS runtime
+    `SELECT d.hostname AS hostname, d.sprout_path AS sprout_path, d.owner_id AS owner_id, d.project AS project, CASE WHEN d.sproutd_vid IS NOT NULL THEN 'sproutd' ELSE 'supervisor' END AS runtime
        FROM deployments d
        JOIN projects p ON p.owner_id = d.owner_id AND p.name = d.project
        WHERE d.active = 1 AND d.owner_id NOT IN (SELECT owner_id FROM banned_owners)
      UNION
-     SELECT cd.hostname AS hostname, d.sprout_path AS sprout_path, d.owner_id AS owner_id, d.project AS project, p.runtime AS runtime
+     SELECT cd.hostname AS hostname, d.sprout_path AS sprout_path, d.owner_id AS owner_id, d.project AS project, CASE WHEN d.sproutd_vid IS NOT NULL THEN 'sproutd' ELSE 'supervisor' END AS runtime
        FROM custom_domains cd
        JOIN deployments d
          ON d.owner_id = cd.owner_id AND d.project = cd.project AND d.active = 1
