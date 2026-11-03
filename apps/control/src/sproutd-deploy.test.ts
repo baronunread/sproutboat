@@ -284,6 +284,44 @@ test("a module sproutd refuses runs on the supervisor when the upload carries it
   expect((await routes())[0].backend).toMatchObject({ kind: "sproutd" });
 });
 
+test("no module plus a sproutdRefusal reason runs the supervisor artifact as a fallback, recorded like a load refusal", async () => {
+  await putRuntime("blog", { runtime: "sproutd" });
+  const form = supervisorParts("blog", "s1", new FormData());
+  form.set("sproutdRefusal", "abi_rejected: __Porffor_connect changed the prelude");
+  const res = await deployments.deployArtifact(
+    request("/api/projects/blog/deployments", { method: "POST", body: form }),
+    "blog",
+  );
+  expect(res.status).toBe(201);
+  const body: { id: string; runtime: string; fallback: { reason: string } } = await res.json();
+  expect(body).toMatchObject({ runtime: "supervisor" });
+  expect(body.fallback.reason).toBe("no sproutd module: abi_rejected: __Porffor_connect changed the prelude");
+  const [row] = store.projectDeployments(OWNER, "blog");
+  expect(row).toMatchObject({ id: body.id, fallbackReason: body.fallback.reason });
+  expect(row.vid).toBeUndefined();
+  expect((await routes())[0].backend).toBeUndefined();
+  expect(adapter.apps.size).toBe(0); // sproutd was never asked
+  expect(store.projectRuntime(OWNER, "blog").runtime).toBe("sproutd");
+  // A reason without the supervisor artifact, or an empty one, is still the old refusal.
+  const bare = new FormData();
+  bare.set("sproutdRefusal", "abi_rejected: x");
+  const refused = await deployments.deployArtifact(
+    request("/api/projects/blog/deployments", { method: "POST", body: bare }),
+    "blog",
+  );
+  expect(refused.status).toBe(400);
+  const blank = supervisorParts("blog", "s2", new FormData());
+  blank.set("sproutdRefusal", "  ");
+  expect(
+    (
+      await deployments.deployArtifact(
+        request("/api/projects/blog/deployments", { method: "POST", body: blank }),
+        "blog",
+      )
+    ).status,
+  ).toBe(400);
+});
+
 test("a refused module without a supervisor artifact still fails, and says what to upload", async () => {
   await putRuntime("blog", { runtime: "sproutd" });
   adapter.failNextDeploy(409, "rejected; app not added");

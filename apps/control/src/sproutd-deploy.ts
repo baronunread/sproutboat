@@ -56,6 +56,9 @@ function adapterFailure(error: Error, activated: boolean): Response {
  * come up (the module's shared-prelude ABI does not match the runtime's generation, or it crashes at init), which
  * the adapter passes on as a 409. Busy, in-progress and app-limit replies are not a verdict on the module.
  */
+const hasSupervisorArtifact = (form: FormData): boolean =>
+  form.get("manifest") instanceof File && form.get("sprout") instanceof File;
+
 const loadRefusal = (error: Error): string | undefined =>
   error instanceof AdapterError && error.status === 409 && /^rejected\b/.test(error.message)
     ? error.message
@@ -125,7 +128,8 @@ export async function setRuntime(actor: Actor, request: Request, project: string
  * If sproutd refuses to load the module and the upload also carries the supervisor artifact (`manifest` and
  * `sprout`), the version runs on the supervisor instead: `runOnSupervisor` records and routes it, saying why.
  * The project stays on sproutd, so the next deploy tries sproutd again. Without that artifact the deploy fails as
- * before, and says what to upload to get the fallback.
+ * before, and says what to upload to get the fallback. A client that could not build a module at all (compile-time
+ * `abi_rejected`) sends the supervisor artifact and a `sproutdRefusal` reason instead of `module`.
  */
 export async function deploySproutd(
   actor: Actor,
@@ -139,11 +143,20 @@ export async function deploySproutd(
   if (!sproutdOwnerAllowed(actor.username))
     return Response.json({ error: "this account is not allowed to run projects on sproutd" }, { status: 403 });
   const file = form.get("module");
+  // The client could not build a module for sproutd's generation (compile-app.ts: abi_rejected, compile_failed) and
+  // says why: with the supervisor artifact that is a fallback decided before upload, recorded the same way.
+  const sent = form.get("sproutdRefusal");
+  const refusal = sent === null || sent instanceof File ? "" : sent.trim();
+  if (!(file instanceof File) && refusal !== "" && hasSupervisorArtifact(form)) {
+    const reason = `no sproutd module: ${refusal.slice(0, 500)}`;
+    console.warn(`sproutd: ${actor.username}/${project}: ${reason}; running this version on the supervisor`);
+    return runOnSupervisor(reason);
+  }
   if (!(file instanceof File))
     return Response.json(
       {
         error:
-          "this project runs on sproutd: upload an app.so as the `module` field (building one from a project is a later phase)",
+          "this project runs on sproutd: upload an app.so as the `module` field, or the supervisor artifact with a `sproutdRefusal` reason if no module could be built",
       },
       { status: 400 },
     );
@@ -185,7 +198,7 @@ export async function deploySproutd(
     const refusal = loaded ? undefined : loadRefusal(failure);
     if (refusal === undefined) return adapterFailure(failure, false);
     const reason = `sproutd refused to load the module (${refusal})`;
-    if (!(form.get("manifest") instanceof File && form.get("sprout") instanceof File)) {
+    if (!hasSupervisorArtifact(form)) {
       const failed = await adapterFailure(failure, false).json();
       return Response.json(
         {

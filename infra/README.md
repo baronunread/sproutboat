@@ -332,7 +332,9 @@ touched by `sbctl update`. The supervisor stays the default; nothing changes for
   version id is forwarded to sproutd, any other goes to the supervisor, and rolling back picks the runtime of the
   version it activates. The project setting stays `sproutd`, so the next deploy tries sproutd again. Without the
   supervisor artifact the deploy fails as before, with `fallback: "unavailable"` and a hint. A busy or unreachable
-  sproutd does not fall back.
+  sproutd does not fall back. A client that could not build a module at all (compile-time `abi_rejected`) uploads the
+  supervisor artifact without `module`, plus a `sproutdRefusal` text field (e.g. `abi_rejected: <detail>`); that is
+  recorded as a fallback with the reason `no sproutd module: <detail>`, and sproutd is not contacted.
 - **Routing:** the route entry gets `backend: {kind:"sproutd", url}`; the edge forwards there with the original
   `Host`, keeps its request log, caps and timeouts, and starts no sprout. No edge asset serving or GET cache for
   these routes yet.
