@@ -1,9 +1,19 @@
 import { closeSync, existsSync, mkdirSync, openSync, readFileSync, rmSync } from "node:fs";
-import { randomBytes, timingSafeEqual } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import { basename, dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { connect } from "node:net";
 import { sproutCommand } from "./sandbox";
+import {
+  brokerBwrapArgs,
+  brokerEnv,
+  brokerSandboxMode,
+  nodeModulesOf,
+  planBrokerSandbox,
+  prepareBrokerHostFiles,
+  type BrokerEnv,
+  type BrokerPlanInput,
+} from "./broker-sandbox";
 
 const positiveEnv = (name: string, fallback: number): number => {
   const value = Number(process.env[name]);
@@ -56,16 +66,24 @@ export type SproutChild = {
 
 /**
  * Service-binding calls go from a sprout through its broker to this edge, which routes
- * them to the callee like any request. Brokers (never sprouts) get this secret as
- * SB_EDGE_SECRET and send it with each call; the edge checks it with `isEdgeSecret`
+ * them to the callee like any request. Each broker gets its own credential (in the
+ * `SB_EDGE_SECRET` variable it already reads) and sends it with every call. The
+ * credential is random per broker, is good only for the hostnames in that broker's own
+ * `services` map, and dies with the broker. The edge checks it with `verifyBindingCall`
  * and vouches for the call to the callee with the callee's own SB_EDGE_TOKEN. A client
- * can forge neither, so only real binding calls see the caller's URL and rethrow the
- * callee's errors.
+ * can forge none of this, and a broker that leaks or is taken over can impersonate the
+ * edge to nobody but the services its app was already allowed to call.
+ *
+ * Stored by hash, so a lookup compares nothing secret.
  */
-const EDGE_SECRET = randomBytes(32).toString("hex");
-export function isEdgeSecret(value: string | null): boolean {
-  if (value === null || value.length !== EDGE_SECRET.length) return false;
-  return timingSafeEqual(Buffer.from(value), Buffer.from(EDGE_SECRET));
+const bindingCredentials = new Map<string, ReadonlySet<string>>();
+const credentialKey = (credential: string): string => createHash("sha256").update(credential).digest("hex");
+const hostOnly = (host: string): string => host.split(":")[0]!.toLowerCase();
+
+/** Whether `credential` is a live broker credential allowed to call `host`. */
+export function verifyBindingCall(credential: string | null, host: string): boolean {
+  if (!credential) return false;
+  return bindingCredentials.get(credentialKey(credential))?.has(hostOnly(host)) ?? false;
 }
 /** Account context the broker needs to enforce shared R2 storage limits. */
 export type R2Runtime = {
@@ -149,9 +167,12 @@ function runtimeKey(
   return `${resolve(sproutPath)}\0${secretsPath ?? ""}\0${JSON.stringify(servicePairs)}\0${r2Key}`;
 }
 
-// The broker runs as a subprocess (not an import): resolve the shared
-// package's broker module to a path Bun can spawn.
-const brokerEntry = fileURLToPath(import.meta.resolve("@sproutboat/wire/broker"));
+// The broker runs as a subprocess (not an import). `broker-main.ts` starts
+// @sproutboat/wire's broker and adds a stdin control channel, because a signal
+// cannot reach a broker inside its sandbox. `brokerModules` is the node_modules
+// directory it resolves the package from; the sandbox mounts it read only.
+const brokerEntry = resolve(import.meta.dir, "broker-main.ts");
+const brokerModules = nodeModulesOf(fileURLToPath(import.meta.resolve("@sproutboat/wire/broker")));
 
 /**
  * Whether the OS will let a sprout bind this port right now. Bun throws from
@@ -290,7 +311,8 @@ function spawnWithBroker(
 ): SproutChild {
   const workerDir = dirname(sproutPath);
   const bindingsPath = resolve(workerDir, "bindings.json");
-  let broker: Bun.Subprocess | null = null;
+  let broker: Bun.Subprocess<"pipe", number | "ignore", number | "ignore"> | null = null;
+  let brokerCredential: string | null = null;
   const edgeToken = randomBytes(24).toString("hex");
   const sproutEnv: SproutEnv = { SB_EDGE_TOKEN: edgeToken };
 
@@ -366,9 +388,52 @@ function spawnWithBroker(
       doDb,
       dispatchDisabled,
     });
+    // The broker's own edge credential, only when it can call services at all.
+    if (services && Object.keys(services).length > 0 && process.env.SPROUTBOAT_EDGE_URL) {
+      brokerCredential = randomBytes(24).toString("hex");
+      bindingCredentials.set(credentialKey(brokerCredential), new Set(Object.values(services).map(hostOnly)));
+    }
+    const mode = brokerSandboxMode();
+    let command = args;
+    let env: BrokerEnv;
+    if (mode === "bwrap") {
+      const plan: BrokerPlanInput = {
+        bun: process.execPath,
+        entry: brokerEntry,
+        nodeModules: brokerModules,
+        stateDir,
+        resourceDir,
+        bindingsPath,
+        secretsPath: secretsPath && existsSync(secretsPath) ? secretsPath : null,
+        assetsDir,
+        r2,
+        doDb,
+      };
+      const mounts = planBrokerSandbox(plan);
+      prepareBrokerHostFiles(plan, mounts);
+      env = brokerEnv(process.env, brokerCredential, { PATH: "/usr/bin:/bin", HOME: "/tmp", TMPDIR: "/tmp" });
+      command = [...brokerBwrapArgs(mounts, env), ...args];
+    } else {
+      if (process.platform === "linux" && process.env.SPROUTBOAT_UNSAFE_NO_SANDBOX !== "1") {
+        throw new Error(
+          "refusing to run a bindings broker unsandboxed on Linux; set SPROUTBOAT_BROKER_SANDBOX=bwrap (or SPROUTBOAT_UNSAFE_NO_SANDBOX=1 for a trusted local test)",
+        );
+      }
+      env = brokerEnv(process.env, brokerCredential, {
+        PATH: process.env.PATH ?? "/usr/bin:/bin",
+        HOME: process.env.HOME ?? "/tmp",
+        TMPDIR: process.env.TMPDIR ?? "/tmp",
+      });
+    }
     const brokerFd = openLog("w");
-    broker = Bun.spawn(args, { ...withLog(brokerFd), env: { ...process.env, SB_EDGE_SECRET: EDGE_SECRET } });
-    closeLog(brokerFd);
+    try {
+      broker = Bun.spawn(command, { ...withLog(brokerFd), stdin: "pipe", env });
+    } catch (cause) {
+      if (brokerCredential) bindingCredentials.delete(credentialKey(brokerCredential));
+      throw cause;
+    } finally {
+      closeLog(brokerFd);
+    }
     sproutEnv.SB_BROKER_PORT = String(brokerPort);
     sproutEnv.SB_BROKER_TOKEN = token;
   }
@@ -388,6 +453,7 @@ function spawnWithBroker(
     stopped = true;
     sprout?.kill(9);
     capturedBroker?.kill(9);
+    if (brokerCredential) bindingCredentials.delete(credentialKey(brokerCredential));
   };
 
   // The broker is a Bun process; a freshly compiled native sprout is ready in
@@ -435,9 +501,15 @@ function spawnWithBroker(
   return {
     exited,
     kill: stop,
-    // SAFETY: Bun's signal type omits SIGUSR1; the broker treats it as "enable
-    // dispatch", and sending it twice is harmless.
-    enableDispatch: () => capturedBroker?.kill("SIGUSR1" as never),
+    // The broker reads `enable` on stdin (broker-main.ts); sending it twice is harmless.
+    enableDispatch: () => {
+      try {
+        capturedBroker?.stdin.write("enable\n");
+        void capturedBroker?.stdin.flush();
+      } catch {
+        // The broker already exited; the pair is being torn down.
+      }
+    },
     edgeToken,
   };
 }

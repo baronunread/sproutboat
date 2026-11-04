@@ -122,6 +122,13 @@ request to `sproutboat-egress.service`, a token-gated loopback service that
 makes the same checks (#252). An operator allows specific private addresses
 with `SB_EGRESS_ALLOW` in `/etc/sproutboat/egress.env`.
 
+On Linux each broker also runs under `bubblewrap`, in its own sandbox. It sees
+its deployment's state directory, the resource files its app is bound to (one
+SQLite file each, not the shared directory), its owner's R2 bodies, and loopback.
+It does not get the edge's environment. A broker that calls another app holds
+a credential of its own, good only for the hostnames its app may call, and the
+edge verifies that credential on each call.
+
 Cron, queue consumers and Durable Object alarms are different from HTTP-only
 handlers: their active route generation is started by the edge even with no
 incoming request and remains resident with its broker. The edge notices route

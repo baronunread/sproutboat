@@ -17,6 +17,24 @@ Changes to the self-hosted Sproutboat platform are recorded here. Read the
   `deployments.sproutd_vid` and `deployments.fallback_reason` are dropped. Rolling back to 0.13.x re-adds them.
   A database that holds a project set to sproutd, or a version sproutd loaded, keeps the columns and logs a warning:
   Community cannot serve those, so redeploy them on the supervisor.
+- **Bindings brokers now run in their own sandbox (Linux).** Update with `sbctl update` and restart the edge
+  (`sbctl update` does). Take a backup first. No new units, env files or secrets, and apps do not need a rebuild.
+  The first start of each account's broker moves that account's R2 object bodies from `resources/r2-blobs/` and
+  `resources/r2-parts/` into `resources/owners/<owner>/`; it is a rename per object, so a very large store adds a
+  moment to that first start. The R2 quota ledger is now one file per account in the same place (a fresh ledger: only
+  in-flight upload reservations are lost). `D1 backup()` for a resource-backed database now writes to
+  `brokers/<deployment>/d1-backups/` instead of the platform `backups/` directory. Keep `bwrap` installed, as for
+  sprouts. **Rollback** to the previous release is safe for data: older brokers look for bodies in `resources/r2-blobs/`,
+  so move `resources/owners/*/r2-blobs/*` back first (`mv`, same filesystem) or those objects read as missing.
+
+### Fixed
+
+- **Security: a broker could reach other accounts' data and impersonate the edge.** The per-app Bun broker ran outside
+  the sandbox as the edge's user, with the edge's whole environment, the edge secret for service bindings and the
+  shared `resources/` directory. It now runs under bubblewrap and sees only its deployment's state, the resource
+  files its app is bound to, its own account's R2 bodies, and loopback. The shared edge secret is gone: a broker that
+  calls another app holds a credential of its own, valid for that app's declared service hostnames and revoked when
+  the broker exits.
 
 ### Added
 

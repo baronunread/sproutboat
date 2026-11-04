@@ -177,11 +177,36 @@ sbctl status   # sproutboat-egress should be active
 curl -s -o /dev/null -w "%{http_code}\n" http://127.0.0.1:8070/   # 401 without the token
 ```
 
+### Broker sandbox
+
+Each deployment's broker runs in its own `bwrap` sandbox, started by the
+supervisor (`services/supervisor/src/broker-sandbox.ts`), with no new unit or
+env file. It sees:
+
+| Path or value                                                                                                 | Access      |
+| ------------------------------------------------------------------------------------------------------------- | ----------- |
+| `bun`, the checkout's `node_modules`, `broker-main.ts`                                                        | read only   |
+| the deployment's `bindings.json`, secrets file, `assets/`, `assets.json`                                      | read only   |
+| `/var/lib/sproutboat/brokers/<deployment>/`                                                                   | read write  |
+| `/var/lib/sproutboat/resources/<id>.sqlite` (plus `-wal`, `-shm`) for each resource the app is bound to       | read write  |
+| `/var/lib/sproutboat/resources/owners/<owner>/` mounted as `r2-blobs`, `r2-parts`, `r2-quota.sqlite`          | read write  |
+| loopback: its sprout, the edge, `sproutboat-egress`                                                           | network     |
+| `SB_EGRESS_URL`, `SB_EGRESS_TOKEN`, `SB_EGRESS_ALLOW`, `SB_R2_TRANSFER_MAX_BYTES`, `SB_FETCH_MAX_BYTES`, `TZ` | environment |
+| a per-app credential in `SB_EDGE_SECRET`, only when the app has service bindings                              | environment |
+
+The shared `resources/` directory, other deployments' state, the control
+database and the rest of the edge's environment are not there. `SPROUTBOAT_BROKER_SANDBOX`
+(`bwrap` or `none`) overrides the mode; by default it follows `SPROUTBOAT_SPROUT_SANDBOX`.
+Like the sprout, an unsandboxed broker on Linux needs `SPROUTBOAT_UNSAFE_NO_SANDBOX=1`.
+The first broker start for an account moves its R2 bodies from the old shared
+`resources/r2-blobs/` into `resources/owners/<owner>/r2-blobs/`.
+
 ### Local development
 
 Off Linux the sandbox is skipped and the sprout is spawned directly. On a Linux
 dev box that is fine to trust, `SPROUTBOAT_SPROUT_SANDBOX=none` plus
-`SPROUTBOAT_UNSAFE_NO_SANDBOX=1` does the same; anything else is refused.
+`SPROUTBOAT_UNSAFE_NO_SANDBOX=1` does the same (for the sprout and its broker);
+anything else is refused.
 
 ## First deploy
 
