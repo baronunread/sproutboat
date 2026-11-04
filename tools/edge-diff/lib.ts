@@ -22,6 +22,9 @@ import { readAssetRules, walkAssets, type AssetManifest } from "@sproutboat/asse
 export const ROOT = resolve(import.meta.dir, "../..");
 export const FAKE_APP = join(import.meta.dir, "fake-app.ts");
 export const BUN_EDGE_MAIN = join(ROOT, "services/edge/src/main.ts");
+/** Wrappers that register the case's scoped binding credentials first (see credentials-sync.ts). */
+export const BUN_EDGE_WITH_CREDENTIALS = join(import.meta.dir, "bun-edge-main.ts");
+export const SIDECAR_WITH_CREDENTIALS = join(import.meta.dir, "sidecar-main.ts");
 export const DEFAULT_RUST_BIN = join(ROOT, "services/edge-rs/target/release/sproutboat-edge");
 
 export type Json = null | boolean | number | string | Json[] | { [key: string]: Json };
@@ -316,7 +319,8 @@ export async function startEdge(opts: {
   /** Wait for the process to die instead of for the listening line. */
   expectFailure?: boolean;
 }): Promise<EdgeHandle | StartFailure> {
-  const cmd = opts.kind === "bun" ? ["bun", BUN_EDGE_MAIN] : [opts.bin];
+  const entry = opts.env.EDGE_DIFF_CREDENTIALS_FILE ? BUN_EDGE_WITH_CREDENTIALS : BUN_EDGE_MAIN;
+  const cmd = opts.kind === "bun" ? ["bun", entry] : [opts.bin];
   const proc = track(Bun.spawn(cmd, { env: opts.env, cwd: opts.cwd, stdin: "ignore", stdout: "pipe", stderr: "pipe" }));
   const stdout: string[] = [];
   const stderr = { text: "" };

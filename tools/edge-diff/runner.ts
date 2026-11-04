@@ -2,6 +2,7 @@
 import { existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import {
+  SIDECAR_WITH_CREDENTIALS,
   Fixture,
   makeTempDir,
   openWebSocket,
@@ -42,6 +43,8 @@ export interface Case {
    * exit code unless the assertion does.
    */
   intentional?: { reason: string; assertRust: (rust: RunResult, helpers: AssertHelpers) => string[] };
+  /** Scoped binding credentials registered at start: credential -> hostnames it may call (see credentials-sync.ts). */
+  credentials?: Record<string, string[]>;
   /** Default Host header for requests. */
   host?: string;
   /** Build the fixture; returns the initial routes.json content (null = no file, string = raw text). */
@@ -64,6 +67,8 @@ export interface Ctx {
   /** Rewrite routes.json (atomically via rename unless `atomic` is false). */
   writeRoutes(routes: Json[] | string, atomic?: boolean): void;
   removeRoutes(): void;
+  /** Replace the registered binding credentials (a broker exited, or a new one started) and wait until the edge has them. */
+  setCredentials(credentials: Record<string, string[]>): Promise<void>;
   hup(): void;
   sleep(ms: number): Promise<void>;
   waitFor(predicate: () => boolean | Promise<boolean>, deadlineMs?: number, stepMs?: number): Promise<boolean>;
@@ -113,6 +118,10 @@ function edgeEnv(c: Case, fx: Fixture, routesPath: string, logPath: string) {
     SPROUTBOAT_BROKER_STATE_DIR: join(fx.dir, "brokers"),
     SPROUTBOAT_RESOURCE_DIR: join(fx.dir, "resources"),
   });
+  if (c.credentials) {
+    env.EDGE_DIFF_CREDENTIALS_FILE = join(fx.dir, "credentials.json");
+    env.SPROUTBOAT_SIDECAR_SCRIPT = SIDECAR_WITH_CREDENTIALS;
+  }
   const extra = c.env instanceof Function ? c.env(fx) : (c.env ?? {});
   for (const [key, value] of Object.entries(extra)) {
     if (value === null) delete env[key];
@@ -166,6 +175,8 @@ export async function runCase(c: Case, kind: EdgeKind, bin: string, timeoutMs: n
     const routes = c.setup
       ? await c.setup(fx)
       : [{ hostname: c.host ?? "app.test", sproutPath: await fx.makeSprout("app") }];
+    if (c.credentials)
+      writeFileSync(join(dir, "credentials.json"), JSON.stringify({ version: 1, credentials: c.credentials }));
     if (routes !== null) writeFileSync(routesPath, Array.isArray(routes) ? JSON.stringify(routes) : routes);
     const started = await startEdge({
       kind,
@@ -186,6 +197,8 @@ export async function runCase(c: Case, kind: EdgeKind, bin: string, timeoutMs: n
       return;
     }
     edge = started;
+    const credentialsFile = join(dir, "credentials.json");
+    let credentialsVersion = 1;
     const host = c.host ?? "app.test";
     const ctx: Ctx = {
       fx,
@@ -208,6 +221,16 @@ export async function runCase(c: Case, kind: EdgeKind, bin: string, timeoutMs: n
         else writeFileSync(routesPath, text);
       },
       removeRoutes: () => rmSync(routesPath, { force: true }),
+      setCredentials: async (credentials) => {
+        credentialsVersion += 1;
+        writeFileAtomic(credentialsFile, JSON.stringify({ version: credentialsVersion, credentials }));
+        // The Rust edge's sidecar starts lazily; one that is not up yet reads the file when it starts.
+        const ack = `${credentialsFile}.${kind === "bun" ? "bun" : "sidecar"}.ack`;
+        const seen = () => existsSync(ack) && readFileSync(ack, "utf8") === String(credentialsVersion);
+        if (kind === "bun" || existsSync(ack)) {
+          if (!(await ctx.waitFor(seen, 3000, 10))) throw new Error("the edge did not pick up the credentials");
+        }
+      },
       hup: () => process.kill(started.pid, "SIGHUP"),
       sleep,
       waitFor: async (predicate, deadlineMs = 3000, stepMs = 20) => {

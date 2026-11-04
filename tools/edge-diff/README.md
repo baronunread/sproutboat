@@ -26,6 +26,10 @@ summary (also `--json`). Exit code is 1 when a case is DIFFERENT or ERROR and no
 `known-differences.json` (`{ "<case id>": "<reason>" }`); allowlisted cases print as
 `KNOWN DIFFERENCE` with their reason.
 
+## Service-binding calls
+
+The real credentials are random per process, so a case that sets `credentials` (credential -> hostnames it may call) starts both edges through a wrapper (`bun-edge-main.ts`, and `sidecar-main.ts` as the Rust edge's `SPROUTBOAT_SIDECAR_SCRIPT`) that registers them in the supervisor's registry (`services/supervisor/src/binding-credentials.ts`) from a file; `ctx.setCredentials()` rewrites the file mid-case and waits for the acknowledgement, which is how a broker's exit is simulated. The `binding-*` cases call the edge directly the way a broker would, or run a chain client -> app A -> edge -> app B where the fake app's `/call` endpoint is A's broker. The callee's random edge token is compared by presence only.
+
 ## Layout
 
 - `run.ts` CLI and report; `runner.ts` one case on one edge; `compare.ts` normalisation and diffs.
@@ -47,5 +51,4 @@ tmpdir and the tool removes them after each case and on exit. Each case has a ti
 
 ## Not covered
 
-Service-binding calls (`x-sb-edge-secret` is a per-process random secret the harness cannot know) and
-idle eviction of sprouts. The suite covers a forged `x-sb-edge-secret`: the edge must strip it.
+Idle eviction of sprouts, and a mid-body upstream failure behind a binding call (the Rust edge logs it, the Bun edge does not; see `intentional-more-events-logged`).

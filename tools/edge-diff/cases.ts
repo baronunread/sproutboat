@@ -3,6 +3,7 @@ import { assetCases } from "./cases-assets";
 import { cacheCases } from "./cases-cache";
 import { coreCases } from "./cases-core";
 import { intentionalCases } from "./cases-intentional";
+import { bindingCases } from "./cases-bindings";
 import { reloadCases } from "./cases-reload";
 import { wsCases } from "./cases-ws";
 
@@ -11,6 +12,7 @@ export const cases: Case[] = [
   ...cacheCases,
   ...assetCases,
   ...wsCases,
+  ...bindingCases,
   ...reloadCases,
   ...intentionalCases,
 ];

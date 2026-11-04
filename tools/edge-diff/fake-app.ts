@@ -7,7 +7,7 @@
  * Env: PORT, APP_NAME, EDGE_DIFF_PIDDIR (write a pid file so the harness can sweep leftovers),
  * EDGE_DIFF_LIFETIME_MS (self-destruct guard, default 3 minutes).
  */
-import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
+import { createServer, request as httpRequest, type IncomingMessage, type ServerResponse } from "node:http";
 import { createHash } from "node:crypto";
 import { gzipSync } from "node:zlib";
 import { mkdirSync, writeFileSync } from "node:fs";
@@ -60,6 +60,43 @@ async function http(req: IncomingMessage, res: ServerResponse): Promise<void> {
   const q = url.searchParams;
   const text = { "content-type": "text/plain" };
 
+  if (path === "/call") {
+    // Acts as this app's broker: calls another app through the edge the way a service binding does,
+    // with the credential named by ?cred= (from the EDGE_DIFF_CRED_<NAME> env the case set), and relays
+    // the answer as it arrives. ?to= is the callee's hostname, ?path= what to ask it for.
+    const credential = process.env[`EDGE_DIFF_CRED_${q.get("cred") ?? ""}`];
+    const edge = new URL(process.env.SPROUTBOAT_EDGE_URL ?? "http://127.0.0.1:1/");
+    const headers = new Map([
+      ["host", q.get("to") ?? ""],
+      ["x-sb-url", `https://${name}.example/caller`],
+    ]);
+    if (credential !== undefined) headers.set("x-sb-edge-secret", credential);
+    const call = httpRequest({
+      host: edge.hostname,
+      port: edge.port,
+      path: q.get("path") ?? "/",
+      method: req.method,
+      headers: Object.fromEntries(headers),
+    });
+    call.on("response", (answer) => {
+      const relayed = new Map([["x-callee-status", String(answer.statusCode)]]);
+      for (const [key, as] of [
+        ["content-type", "content-type"],
+        ["content-length", "content-length"],
+        ["x-sb-uncaught", "x-callee-uncaught"],
+      ] as const) {
+        const value = answer.headers[key];
+        if (value !== undefined) relayed.set(as, String(value));
+      }
+      res.writeHead(answer.statusCode ?? 502, Object.fromEntries(relayed));
+      answer.pipe(res);
+      answer.on("error", () => res.destroy());
+      answer.on("aborted", () => res.destroy());
+    });
+    call.on("error", () => res.destroy());
+    req.pipe(call);
+    return;
+  }
   if (path === "/seen") {
     const body = await readBody(req);
     return send(
