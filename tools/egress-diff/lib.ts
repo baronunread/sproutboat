@@ -470,3 +470,27 @@ export async function tunnel(
   }
   return { frames, closed };
 }
+
+/** One request written by hand, so that the client adds no headers of its own (no User-Agent). */
+export async function rawStatus(service: Service, headerLines: string[]): Promise<number> {
+  let text = "";
+  let done: () => void = () => {};
+  const finished = new Promise<void>((resolve) => {
+    done = resolve;
+  });
+  const sock = await Bun.connect({
+    hostname: "127.0.0.1",
+    port: service.http,
+    socket: {
+      data(_s, chunk) {
+        text += chunk.toString("latin1");
+      },
+      close: done,
+      error: done,
+      drain() {},
+    },
+  });
+  sock.write(`GET / HTTP/1.1\r\nHost: egress\r\nConnection: close\r\n${headerLines.join("\r\n")}\r\n\r\n`);
+  await Promise.race([finished, sleep(10_000)]);
+  return Number(text.split(" ")[1] ?? 0);
+}

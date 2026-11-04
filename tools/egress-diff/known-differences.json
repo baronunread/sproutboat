@@ -4,5 +4,14 @@
   "tls/name-mismatch-by-ip": "same: certificate-failure wording (both refuse with 502)",
   "tunnel/frame-too-large": "frames pipelined with the open frame: Bun handles them before the connect finishes (error without a connected frame); Rust answers connected, then the same error",
   "tunnel/starttls-on-plain-socket": "same ordering difference (Bun also refuses startTls pipelined before connect even in starttls mode; Rust accepts it)",
-  "tunnel/head-not-json": "Bun tcp.ts throws an uncaught SyntaxError and the egress process dies; Rust answers an 'expected tcp.open' error frame"
+  "tunnel/head-not-json": "Bun tcp.ts throws an uncaught SyntaxError and the egress process dies; Rust answers an 'expected tcp.open' error frame",
+  "ranges/table-pinned": "INTENTIONAL: the Rust table has the 8 ranges added in sproutboat-packages#240; the Bun runtime in use predates it",
+  "intent/default-user-agent": "INTENTIONAL: Bun sends 'User-Agent: Bun/<version>' when the app sent none; Rust sends none (as workerd)",
+  "intent/fetch-port-25": "INTENTIONAL: Rust refuses fetch() to port 25 (as the tunnel does); the Bun service tries to connect",
+  "intent/fetch-port-25-https": "INTENTIONAL: same, https",
+  "allow/*": "INTENTIONAL: Rust parses SB_EGRESS_ALLOW (CIDR ranges, any spelling of an address); Bun compares answer text exactly",
+  "refuse-added/*": "INTENTIONAL when the Bun runtime table predates sproutboat-packages#240 (these only run once it has them, and are then identical)",
+  "rebind/refused/mapped*": "INTENTIONAL (D4): allowing 127.0.0.1 also allows its IPv4-mapped spelling (::ffff:7f00:1, ::ffff:127.0.0.1), the same destination; Bun compared text, so refused it",
+  "tunnel/refuse/v6-mapped*": "INTENTIONAL (D4): same, in the tunnel",
+  "tls/https-to-plain-port": "INTENTIONAL (D5): an https request to a server that never answers the handshake hangs in Bun (no timeout); Rust fails after the 10 s connect timeout"
 }

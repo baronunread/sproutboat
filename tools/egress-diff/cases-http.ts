@@ -1,6 +1,7 @@
 /** The HTTP cases: the same request script goes to the Bun and the Rust egress. */
 import {
   call,
+  rawStatus,
   type Call,
   type Json,
   type Outcome,
@@ -19,7 +20,7 @@ export type Ctx = {
 
 export type Case = {
   id: string;
-  suite: "default" | "loopback" | "tls" | "rebind";
+  suite: "default" | "loopback" | "tls" | "rebind" | "allow" | "added";
   run: (svc: Service, ctx: Ctx) => Promise<Json>;
   /** Headers not compared (framing the two services legitimately differ on). */
   dropHeaders?: string[];
@@ -413,3 +414,40 @@ for (const name of [
 R("unknown-name", (svc, ctx) => observe(svc, ctx, { url: `http://unknown.test:${ctx.up.port}/ok` }));
 
 export { cases };
+
+// --- intentional differences from the Bun service (recorded in known-differences.json) ------
+
+const I = (id: string, suite: Case["suite"], run: Case["run"]) => add({ id, suite, run });
+I("intent/default-user-agent", "loopback", async (svc, ctx) => {
+  const before = ctx.up.seen.length;
+  const status = await rawStatus(svc, [`x-sb-egress-url: ${at(ctx, "/ok")}`, `x-sb-egress-token: ${TOKEN}`]);
+  return { status, defaultUserAgent: ctx.up.seen[before]?.headers["user-agent"] ?? null };
+});
+I("intent/fetch-port-25", "loopback", (svc, ctx) => observe(svc, ctx, { url: "http://127.0.0.1:25/" }));
+I("intent/fetch-port-25-https", "loopback", (svc, ctx) => observe(svc, ctx, { url: "https://127.0.0.1:25/" }));
+I("allow/cidr-range", "allow", (svc, ctx) => observe(svc, ctx, { url: at(ctx, "/ok") }));
+I("allow/cidr-range-other-member", "allow", (svc, ctx) =>
+  observe(svc, ctx, { url: `http://127.0.0.9:${ctx.up.port}/ok` }),
+);
+I("allow/equivalent-spelling-of-mapped-entry", "allow", (svc, ctx) =>
+  observe(svc, ctx, { url: `http://[::ffff:127.0.0.1]:${ctx.up.port}/ok` }),
+);
+I("allow/not-allowed-still-refused", "allow", (svc, ctx) =>
+  observe(svc, ctx, { url: `http://10.0.0.1:${ctx.up.port}/ok` }),
+);
+
+// Addresses the shared table gained in sproutboat-packages#240. Run only when the Bun table has
+// them (otherwise the Bun service would try to connect out to a public-looking address).
+for (const [label, host] of [
+  ["teredo", "[2001:0:4136:e378:8000:63bf:3fff:fdd2]"],
+  ["ietf-protocol-v6", "[2001::1]"],
+  ["siit", "[::ffff:0:7f00:1]"],
+  ["doc-3fff", "[3fff::1]"],
+  ["srv6", "[5f00::1]"],
+  ["anycast-192.88.99", "192.88.99.1"],
+  ["as112", "192.31.196.1"],
+  ["anycast-192.52.193", "192.52.193.1"],
+  ["anycast-192.175.48", "192.175.48.1"],
+] as const) {
+  I(`refuse-added/${label}`, "added", (svc, ctx) => observe(svc, ctx, { url: `http://${host}:${ctx.up.port}/x` }));
+}

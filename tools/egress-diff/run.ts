@@ -38,8 +38,10 @@ const opt = (name: string) => {
   return i >= 0 ? argv[i + 1] : undefined;
 };
 
-type Suite = "default" | "loopback" | "tls" | "rebind" | "tunnel";
+type Suite = "default" | "loopback" | "tls" | "rebind" | "tunnel" | "allow" | "added";
 const LOOPBACK = "127.0.0.1,::1";
+// The allow suite: ranges and another spelling of an address, which only the Rust service parses.
+const ALLOW_FORMS = "127.0.0.0/8,::ffff:127.0.0.1";
 
 const all: Array<{
   id: string;
@@ -98,14 +100,26 @@ const emptyPorts = (): PortMap => ({});
 const results = { ts: emptyRuns(), rust: emptyRuns() };
 const ports = { ts: emptyPorts(), rust: emptyPorts() };
 
-const suites: Suite[] = ["default", "loopback", "tls", "rebind", "tunnel"];
+// The shared address table as each side has it. The Bun runtime in node_modules is what ships;
+// SB_EGRESS_TS_WIRE can point at a checkout that has the newer table.
+const wireDir = process.env.SB_EGRESS_TS_WIRE ?? join(ROOT, "node_modules/@sproutboat/wire");
+const runtimeModule: { BLOCKED_RANGES: readonly string[] } = await import(
+  Bun.resolveSync("@sproutboat/runtime", wireDir)
+);
+const tsTable = [...runtimeModule.BLOCKED_RANGES];
+const rustTable: string[] = tsVsTs ? tsTable : JSON.parse(Bun.spawnSync([rustBin, "--print-ranges"]).stdout.toString());
+const sameTable = JSON.stringify(tsTable) === JSON.stringify(rustTable);
+const tsHasAddedRanges = sameTable;
+
+const suites: Suite[] = ["default", "loopback", "tls", "rebind", "tunnel", "allow", "added"];
 for (const suite of suites) {
   const inSuite = selected.filter((c) => c.suite === suite);
   if (inSuite.length === 0) continue;
+  if (suite === "added" && !tsHasAddedRanges) continue;
   for (const impl of ["ts", "rust"] as const) {
     const dns = suite === "rebind" ? dnsStub(DNS_SCRIPT) : null;
     const env = {
-      SB_EGRESS_ALLOW: suite === "default" ? "" : LOOPBACK,
+      SB_EGRESS_ALLOW: suite === "default" || suite === "added" ? "" : suite === "allow" ? ALLOW_FORMS : LOOPBACK,
       NODE_EXTRA_CA_CERTS: tls.certPath,
       SB_CA_BUNDLE: tls.certPath,
       SB_EGRESS_TEST_RESOLVER: dns ? dns.url : "",
@@ -164,7 +178,27 @@ const rows: Array<{
   reason?: string;
   details?: string[];
 }> = [];
+if (only.length === 0 || only.includes("ranges/table-pinned")) {
+  const id = "ranges/table-pinned";
+  if (sameTable) rows.push({ id, verdict: "SAME" });
+  else if (JSON.stringify(tsTable) === JSON.stringify(rustTable.slice(0, tsTable.length)))
+    rows.push({
+      id,
+      verdict: "KNOWN",
+      reason: knownReason(id),
+      details: [`Bun runtime table has ${tsTable.length} entries, Rust ${rustTable.length}`],
+    });
+  else rows.push({ id, verdict: "DIFFERENT", details: [`ts: ${tsTable.join(" ")}`, `rust: ${rustTable.join(" ")}`] });
+}
 for (const c of selected) {
+  if (c.suite === "added" && !tsHasAddedRanges) {
+    rows.push({
+      id: c.id,
+      verdict: "SKIP",
+      reason: "the Bun runtime table predates sproutboat-packages#240 (would connect out)",
+    });
+    continue;
+  }
   if (results.ts[c.id] === "UNSUPPORTED") {
     rows.push({ id: c.id, verdict: "SKIP", reason: "the Bun wire package in use has no tcp.ts" });
     continue;

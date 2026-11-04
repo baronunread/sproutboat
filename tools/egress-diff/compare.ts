@@ -10,7 +10,7 @@ function normHeaders(headers: JsonObject, drop: string[]): JsonObject {
   for (const [name, value] of Object.entries(headers)) {
     if (HOP.has(name) || drop.includes(name)) continue;
     const text = String(value);
-    entries.push([name, name === "user-agent" && text.startsWith("Bun/") ? "Bun/*" : text]);
+    entries.push([name, text]);
   }
   return Object.fromEntries(entries.sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)));
 }
