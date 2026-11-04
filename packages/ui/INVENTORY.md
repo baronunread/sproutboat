@@ -1,0 +1,80 @@
+# Component inventory
+
+The full list of components `@sproutboat/ui` needs. It starts from the index at <https://kumo-ui.com/llms.txt>, used only as a checklist of what a product UI covers, and adds the Sproutboat-specific pieces. Nothing here copies another library's look, wording or code.
+
+Priority: **P0** is built in phase 1, **P1** is next (needed by the dashboards' first screens), **P2** comes later. "Base UI" names the primitive from `@base-ui/react`; "none" means plain elements.
+
+Common states for every interactive component: rest, hover, focus-visible, active, disabled, plus the ones listed per row. All components take `className` and `ref`, use logical properties, and honour reduced motion (see `DESIGN.md`).
+
+## General components
+
+| Name                             | Base UI primitive                   | States to support                                                                 | Priority | Kumo equivalent                  |
+| -------------------------------- | ----------------------------------- | --------------------------------------------------------------------------------- | -------- | -------------------------------- |
+| Button                           | `button`                            | variants (primary, secondary, ghost, danger), sizes, loading, disabled, icon-only | P0       | Button                           |
+| IconButton                       | `button` + `tooltip`                | label required, loading, disabled                                                 | P0       | Button (icon)                    |
+| Link                             | none                                | external, disabled, current                                                       | P0       | Link                             |
+| Input                            | `input`                             | invalid, disabled, read-only, mono, sizes                                         | P0       | Input                            |
+| Label                            | none                                | required                                                                          | P0       | Label                            |
+| Field                            | `field`                             | description, error, required, invalid                                             | P0       | Label + Input wrappers           |
+| Select                           | `select`                            | open, selected, disabled option, invalid, placeholder                             | P0       | Select                           |
+| Checkbox                         | `checkbox`                          | checked, mixed, disabled, invalid                                                 | P0       | Checkbox                         |
+| Switch                           | `switch`                            | on, off, disabled                                                                 | P0       | Switch                           |
+| Badge                            | none                                | tones (neutral, success, warning, danger, info), dot                              | P0       | Badge                            |
+| StatusDot (with label)           | none                                | tones, pulse, label hidden visually                                               | P0       | none                             |
+| Tooltip                          | `tooltip`                           | open, delay, collision flip                                                       | P0       | Tooltip                          |
+| Popover                          | `popover`                           | open, collision flip, focus return                                                | P0       | Popover                          |
+| Dialog                           | `dialog`                            | open, nested close, destructive, scroll                                           | P0       | Dialog, Layer Dialog             |
+| DropdownMenu                     | `menu`                              | open, highlighted, checked, disabled, destructive, submenu                        | P0       | Dropdown                         |
+| Tabs                             | `tabs`                              | selected, disabled, overflow scroll                                               | P0       | Tabs                             |
+| Toast                            | `toast`                             | tones, action, persistent, stacked, swipe to dismiss                              | P0       | Toast                            |
+| Skeleton                         | none                                | line, block, circle, reduced motion                                               | P0       | Skeleton Line                    |
+| CopyId                           | `tooltip`                           | copied, clipboard unavailable, truncated                                          | P0       | Clipboard Text, Inline Copy Text |
+| Spinner (Loader)                 | none                                | sizes, reduced motion                                                             | P1       | Loader                           |
+| Textarea (InputArea)             | `field`                             | invalid, resize, character count                                                  | P1       | InputArea                        |
+| InputGroup (with keycap hint)    | none                                | prefix, suffix, focus-within                                                      | P1       | InputGroup                       |
+| SensitiveInput                   | `input`                             | masked, revealed, copy, disabled                                                  | P1       | Sensitive Input                  |
+| Radio and RadioGroup             | `radio-group`                       | checked, disabled, invalid                                                        | P1       | Radio                            |
+| Banner                           | none                                | tones, dismissible, action                                                        | P1       | Banner                           |
+| Breadcrumbs                      | none                                | current, collapsed overflow                                                       | P1       | Breadcrumbs                      |
+| Table                            | none                                | row hover, selected, sortable header, empty, loading                              | P1       | Table                            |
+| EmptyState                       | none                                | icon, title, text, one action                                                     | P1       | Empty                            |
+| Combobox                         | `combobox`                          | open, filtering, no results, loading, multiple                                    | P1       | Combobox, Autocomplete           |
+| Sidebar                          | none (`navigation-menu` for groups) | expanded, rail, mobile drawer, current                                            | P1       | Sidebar                          |
+| PageHeader                       | none                                | title, status, actions, tabs slot                                                 | P1       | Page Header                      |
+| ButtonGroup and SegmentedControl | `toggle-group`                      | selected, split-button menu                                                       | P1       | Button Group, Tabs (segmented)   |
+| Collapsible                      | `collapsible`                       | open, closed, disabled                                                            | P1       | Collapsible                      |
+| Meter                            | `meter`                             | normal, near limit (warn), at limit                                               | P1       | Meter                            |
+| Pagination                       | none                                | first, last, disabled, compact                                                    | P2       | Pagination                       |
+| Slider                           | `slider`                            | range, disabled, step marks                                                       | P2       | Slider                           |
+| TagInput                         | `combobox`                          | add, remove, invalid                                                              | P2       | Tag Input                        |
+| DatePicker                       | none                                | range, disabled days, keyboard grid                                               | P2       | Date Picker                      |
+| Toolbar                          | `toolbar`                           | roving focus, overflow                                                            | P2       | Toolbar                          |
+| TableOfContents                  | none                                | current section                                                                   | P2       | Table of Contents                |
+| CodeBlock (highlighted)          | none                                | copy, line numbers, wrap                                                          | P2       | CodeHighlighted                  |
+| DeleteResource (block)           | `alert-dialog`                      | type-to-confirm, pending                                                          | P2       | Delete Resource                  |
+| ResourceListPage (block)         | none                                | empty, loading, error, filtered                                                   | P2       | Resource List                    |
+| Text and Heading                 | none                                | type scale steps                                                                  | P2       | Text                             |
+| Grid                             | none                                | responsive columns                                                                | P2       | Grid                             |
+| Layer Card                       | none                                | nested elevation                                                                  | P2       | Layer Card                       |
+
+## Sproutboat-specific components
+
+| Name                                     | Base UI primitive          | States to support                                                           | Priority | Kumo equivalent      |
+| ---------------------------------------- | -------------------------- | --------------------------------------------------------------------------- | -------- | -------------------- |
+| RuntimeChip (sproutd, supervisor)        | none                       | sproutd (neutral), supervisor (amber), unknown                              | P1       | none                 |
+| FallbackPill ("Fell back to supervisor") | `tooltip`                  | amber only, never red; reason in tooltip; link to details                   | P1       | none                 |
+| TrafficSplitBar                          | none (`meter` semantics)   | single, two versions, three or more, zero traffic, keyboard-readable legend | P1       | none                 |
+| MetricTile with sparkline                | none                       | loading, no data, delta up and down, unit suffix                            | P1       | none                 |
+| UsageMeter                               | `meter`                    | under, near limit (amber), at limit (red only when blocked), unlimited      | P1       | Meter                |
+| ResourceTable with "Used by"             | none                       | rows link to projects, empty "Used by", overflow chips, selection           | P1       | Table, Resource List |
+| CommandPalette                           | `dialog` + `autocomplete`  | open, groups, no results, loading, shortcut hint                            | P1       | Command Palette      |
+| TimeRangePicker                          | `popover` + `toggle-group` | presets, custom range, live, invalid range                                  | P1       | Date Picker          |
+| LogViewer row                            | none                       | level (info, warn, error), expanded, wrapped, selected, new                 | P1       | none                 |
+| LogHistogram                             | none                       | loading, no data, brushed range, level stack                                | P2       | Timeseries           |
+| DeployDiff                               | none                       | added, removed, unchanged, collapsed, binary                                | P2       | none                 |
+| FlowDiagram (inbound, app, bindings)     | none                       | healthy, degraded (amber), failed, empty, focusable nodes                   | P2       | Flow                 |
+| Chart (timeseries, bar)                  | none                       | loading, no data, hover marker, deployment marker                           | P2       | Timeseries, Sankey   |
+
+## Phase 1 scope
+
+P0 rows are built, tested and shown in the playground. Everything else keeps its row here so the API vocabulary (`tone`, `status`, `label`, `size`, `variant`) stays consistent when it lands.

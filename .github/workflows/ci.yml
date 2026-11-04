@@ -22,6 +22,8 @@ jobs:
       # so this can gate now — before that it could never have passed.
       - run: bun run fmt:check
       - run: bun test apps/ services/ tests/
+      - run: bun run test:ui
+      - run: bun run --cwd packages/ui tokens:check
 
   # The Rust egress service (services/egress-rs). Same shape as edge-rs; the
   # differential job runs the Bun egress from node_modules against the Rust one.

@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Sproutboat UI playground</title>
+    <script>
+      // Same contract as apps/web: always stamp "light" or "dark" before first paint.
+      // ?theme=light|dark wins (used by screenshots), then the saved choice, then the OS.
+      (function () {
+        var q = new URLSearchParams(location.search).get("theme");
+        var saved = null;
+        try {
+          saved = localStorage.getItem("sb-theme");
+        } catch (e) {}
+        var os = matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark";
+        var t = q === "light" || q === "dark" ? q : saved === "light" || saved === "dark" ? saved : os;
+        document.documentElement.setAttribute("data-theme", t);
+      })();
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="./main.tsx"></script>
+  </body>
+</html>

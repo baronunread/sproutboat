@@ -2,6 +2,9 @@
   "name": "sproutboat",
   "version": "0.13.1",
   "private": true,
+  "workspaces": [
+    "packages/ui"
+  ],
   "type": "module",
   "scripts": {
     "prepare": "lefthook install || true",
@@ -21,14 +24,17 @@
     "style": "style-doctor --quiet",
     "doctor": "react-doctor apps/web --no-telemetry --blocking warning -y",
     "doctor:staged": "react-doctor . --no-telemetry --blocking warning --staged -y",
-    "typecheck": "tsc --noEmit && tsc -p apps/web --noEmit",
+    "typecheck": "tsc --noEmit && tsc -p apps/web --noEmit && tsc -p packages/ui --noEmit",
     "check": "bun run tools/check.ts",
     "runtime:preflight": "bun run tools/runtime-preflight.ts",
     "sandbox:smoke": "bun run tools/sandbox-smoke.ts",
     "diff": "bun run tools/diff.ts",
     "report": "bun run tools/report.ts",
     "validate": "bun run typecheck && bun run test && bun run tools/check.ts && bun run tools/diff.ts && bun run tools/report.ts",
-    "retest": "bun run validate"
+    "retest": "bun run validate",
+    "test:ui": "bun run --cwd packages/ui test",
+    "tokens": "bun run --cwd packages/ui tokens",
+    "ui:playground": "bun run --cwd packages/ui playground"
   },
   "dependencies": {
     "@better-auth/api-key": "^1.7.1",

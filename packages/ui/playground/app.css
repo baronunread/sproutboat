@@ -1,0 +1,15 @@
+@import "tailwindcss";
+@import "../src/theme.css";
+@source "../src";
+
+@layer base {
+  body {
+    margin: 0;
+    background: var(--color-canvas);
+    color: var(--color-fg);
+    font-size: 14px;
+    line-height: 1.43;
+    -webkit-font-smoothing: antialiased;
+    overflow-wrap: break-word;
+  }
+}
