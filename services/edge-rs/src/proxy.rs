@@ -1,5 +1,5 @@
 //! The request handler: everything the Bun edge's `fetch` does, in the same order
-//! (route refresh, pool stats, host lookup, backend routes, direct transfers,
+//! (route refresh, pool stats, host lookup, direct transfers,
 //! static assets, the GET cache, the supervisor endpoint, service-binding
 //! vouching, WebSockets, and the timed, capped, logged reverse proxy).
 
@@ -41,12 +41,6 @@ const INTERNAL_REQUEST_HEADERS: [&str; 4] = [
     "x-sb-url",
 ];
 const TEXT: &str = "text/plain;charset=utf-8";
-
-#[derive(Clone, Copy, PartialEq)]
-enum Kind {
-    Backend,
-    Sprout,
-}
 
 /// The cold-start fields of the request that triggered a spawn.
 #[derive(Clone)]
@@ -332,44 +326,6 @@ async fn handle_request(
     };
     let host = c.host.clone();
 
-    if let Some(backend) = &route.backend {
-        let target = Target {
-            kind: Kind::Backend,
-            base: backend.url.trim_end_matches('/').to_string(),
-            route: route.clone(),
-            cold: None,
-            edge_token: None,
-            direct_transfer: false,
-        };
-        let mut forwarded = req.headers().clone();
-        for name in INTERNAL_REQUEST_HEADERS {
-            forwarded.remove(name);
-        }
-        if is_websocket_upgrade(req.method(), &forwarded) {
-            return websocket(
-                &c,
-                &ctl,
-                req,
-                &target,
-                &target_string(&pathname, &search),
-                forwarded,
-            )
-            .await;
-        }
-        return proxy_http(
-            c,
-            req,
-            target,
-            &pathname,
-            &search,
-            None,
-            false,
-            None,
-            Vec::new(),
-        )
-        .await;
-    }
-
     let direct_transfer = is_transfer_path(&pathname);
     let mut guards: Vec<Box<dyn std::any::Any + Send>> = Vec::new();
 
@@ -636,7 +592,6 @@ async fn handle_request(
         guards.push(Box::new(TransferGuard::start(app.clone(), route.clone())));
     }
     let target = Target {
-        kind: Kind::Sprout,
         base: base.unwrap_or_default().trim_end_matches('/').to_string(),
         route: route.clone(),
         cold: Some(Cold::of(&endpoint)),
@@ -645,8 +600,8 @@ async fn handle_request(
     };
 
     // #48 - a service-binding call arrives from the caller's broker with a credential the sidecar
-    // vouches for: the broker's own one, good only for the hosts its app declares (or the edge-wide
-    // secret). The edge vouches for the call to the callee with the callee's own token, so the callee
+    // vouches for: the broker's own one, good only for the hosts its app declares. The edge vouches
+    // for the call to the callee with the callee's own token, so the callee
     // sees the caller's URL and reports a thrown error back. Nobody else can send or receive these
     // headers. `Headers#get` joins a repeated field with ", ", so a credential sent twice never matches.
     let secret = header_joined(req.headers(), "x-sb-edge-secret");
@@ -763,7 +718,6 @@ impl Drop for TransferGuard {
 }
 
 struct Target {
-    kind: Kind,
     base: String,
     route: Arc<Route>,
     cold: Option<Cold>,
@@ -773,10 +727,7 @@ struct Target {
 
 impl Target {
     fn error_texts(&self) -> (&'static str, &'static str) {
-        match self.kind {
-            Kind::Backend => ("sproutd failure", "sproutd failed"),
-            Kind::Sprout => ("sprout failure", "sprout failed"),
-        }
+        ("sprout failure", "sprout failed")
     }
 }
 
@@ -891,7 +842,7 @@ async fn websocket(
     let hold = ctl.hold();
     let guard = app.in_flight.enter();
     let shutdown = app.shutdown.subscribe();
-    let keep_alive = (target.kind == Kind::Sprout).then(|| (app.clone(), target.route.clone()));
+    let keep_alive = Some((app.clone(), target.route.clone()));
     let c = c.clone();
     tokio::spawn(async move {
         let _hold: IdleHold = hold;
@@ -1010,7 +961,7 @@ async fn proxy_http(
             Ok(Ok(response)) => break response,
             Ok(Err(error)) => {
                 let connect = error.is_connect();
-                if connect && target.kind == Kind::Sprout {
+                if connect {
                     app.endpoints.invalidate(&target.route.key).await;
                     // The sprout may have just died; nothing was sent, so a body-less request can re-resolve once.
                     if bodyless && attempt == 0 {
@@ -1049,26 +1000,12 @@ async fn proxy_http(
                     }
                 }
                 abort.armed = false;
-                eprintln!(
-                    "{} failure for {host}: {error}",
-                    if target.kind == Kind::Sprout {
-                        "sprout"
-                    } else {
-                        "sproutd"
-                    }
-                );
+                eprintln!("sprout failure for {host}: {error}");
                 return proxy_failure(&c, &target, 502, error_body, error_log_text, "proxy");
             }
             Err(_) => {
                 abort.armed = false;
-                eprintln!(
-                    "{} timed out for {host}: the operation timed out",
-                    if target.kind == Kind::Sprout {
-                        "sprout"
-                    } else {
-                        "sproutd"
-                    }
-                );
+                eprintln!("sprout timed out for {host}: the operation timed out");
                 return proxy_failure(
                     &c,
                     &target,
@@ -1108,27 +1045,25 @@ async fn proxy_http(
     let cache_policy = cache_key
         .as_ref()
         .and_then(|_| cache_response_eligible(&rparts.headers, now_ms()));
-    let cache_status: Option<&'static str> =
-        (parts.method == Method::GET && target.kind == Kind::Sprout).then(|| {
-            if cache_key.is_some() {
-                if cache_policy.is_none() {
-                    "dynamic"
-                } else {
-                    "miss"
-                }
+    let cache_status: Option<&'static str> = (parts.method == Method::GET).then(|| {
+        if cache_key.is_some() {
+            if cache_policy.is_none() {
+                "dynamic"
             } else {
-                "bypass"
+                "miss"
             }
-        });
+        } else {
+            "bypass"
+        }
+    });
 
     // The runtime's answer to a handler that threw: the `x-sb-uncaught` marker (service-binding
     // calls only), or else its signature, a bare 500 with no content-type whose body is
     // "Internal Server Error" (21 bytes). Feeds `tail`'s `exception` outcome.
-    let uncaught = target.kind == Kind::Sprout
-        && (rparts.headers.contains_key("x-sb-uncaught")
-            || (status == 500
-                && !rparts.headers.contains_key("content-type")
-                && header_joined(&rparts.headers, "content-length").as_deref() == Some("21")));
+    let uncaught = rparts.headers.contains_key("x-sb-uncaught")
+        || (status == 500
+            && !rparts.headers.contains_key("content-type")
+            && header_joined(&rparts.headers, "content-length").as_deref() == Some("21"));
     let mut headers = std::mem::take(&mut rparts.headers);
     let hop: Vec<HeaderName> = headers
         .keys()
@@ -1139,7 +1074,7 @@ async fn proxy_http(
         headers.remove(name);
     }
     // A callee's error, for the caller's broker only: it carries the message.
-    if !binding_call || target.kind == Kind::Backend {
+    if !binding_call {
         headers.remove("x-sb-uncaught");
     }
     headers.remove("x-sb-cpu-ms");
@@ -1204,7 +1139,6 @@ async fn proxy_http(
     // full request duration and resBytes the real count.
     let on_end = {
         let (c, cold) = (c.clone(), target.cold.clone());
-        let kind = target.kind;
         move |end: End| {
             let (bytes, how) = match end {
                 End::Done(b) => (b, 0),
@@ -1257,9 +1191,7 @@ async fn proxy_http(
             if uncaught {
                 event = event.bool("uncaught", true);
             }
-            if kind == Kind::Sprout {
-                event = event.undef_str("cacheStatus", cache_status);
-            }
+            event = event.undef_str("cacheStatus", cache_status);
             c.log(event);
         }
     };

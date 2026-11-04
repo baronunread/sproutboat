@@ -134,7 +134,7 @@ async fn handshake(
     let mut request: Vec<u8> = Vec::with_capacity(512);
     request.extend_from_slice(format!("GET {path_and_query} HTTP/1.1\r\n").as_bytes());
     let forwarded = upstream_headers(headers);
-    // The original Host goes through unchanged (sproutd routes by it).
+    // The original Host goes through unchanged (the sprout sees the client's Host).
     if !forwarded.iter().any(|(n, _)| n == "host") {
         request.extend_from_slice(format!("host: {authority}\r\n").as_bytes());
     }

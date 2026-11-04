@@ -1,7 +1,7 @@
 /** Edge-served static assets: resolution, conditional requests, _headers, _redirects, sprout-first, cache-control. */
 import type { AssetsSpec } from "./lib";
 import type { Case } from "./runner";
-import { backendRoute, get, header, pattern, supRoute } from "./helpers";
+import { get, header, pattern, supRoute } from "./helpers";
 
 const G = "assets";
 
@@ -633,14 +633,6 @@ export const assetCases: Case[] = [
       );
       ctx.note("manifest swapped", swapped);
       await get(ctx, "v2", "/index.html");
-    },
-  },
-  {
-    id: "assets-sproutd-route-does-not-serve-assets",
-    group: G,
-    setup: async (fx) => [await backendRoute(fx)],
-    run: async (ctx) => {
-      await get(ctx, "backend answers everything", "/index.html");
     },
   },
 ];

@@ -297,14 +297,6 @@ export async function runCase(c: Case, kind: EdgeKind, bin: string, timeoutMs: n
       result.stdout = [...live.stdout];
       result.stderr = live.stderr.text;
     }
-    for (const app of fx.apps.values()) {
-      try {
-        app.proc.kill("SIGKILL");
-      } catch {
-        // gone
-      }
-    }
-    result.ports = fx.ports();
     if (live) result.ports.edge = live.port;
     result.logs = readLines(logPath).map((line): Json => {
       try {

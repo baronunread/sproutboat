@@ -1,7 +1,7 @@
-/** WebSockets through the edge, via a sproutd-routed backend and via a supervisor route. */
+/** WebSockets through the edge, via a supervisor route. */
 import type { Hdrs, WsConn } from "./lib";
 import type { Case, Ctx } from "./runner";
-import { both, hdrs } from "./helpers";
+import { supCase, hdrs } from "./helpers";
 
 const G = "websocket";
 
@@ -18,7 +18,7 @@ const closedOrTimeout = async (ctx: Ctx, conn: WsConn, ms = 3000) =>
   await Promise.race([conn.closed, ctx.sleep(ms).then(() => ({ code: -1, reason: "<still open>" }))]);
 
 export const wsCases: Case[] = [
-  ...both("ws-echo", G, () => ({
+  ...supCase("ws-echo", G, () => ({
     run: async (ctx) => {
       const c = await ctx.ws("/echo");
       ctx.note("opened", c.opened);
@@ -40,7 +40,7 @@ export const wsCases: Case[] = [
       ctx.note("client close", await closedOrTimeout(ctx, c));
     },
   })),
-  ...both("ws-many-messages-in-order", G, () => ({
+  ...supCase("ws-many-messages-in-order", G, () => ({
     run: async (ctx) => {
       const c = await ctx.ws("/echo");
       for (let i = 0; i < 50; i++) c.send(`m${i}`);
@@ -54,7 +54,7 @@ export const wsCases: Case[] = [
       ctx.note("client close without a code", await closedOrTimeout(ctx, c));
     },
   })),
-  ...both("ws-subprotocol", G, () => ({
+  ...supCase("ws-subprotocol", G, () => ({
     run: async (ctx) => {
       const chosen = await ctx.ws("/proto", { protocols: ["other", "chat"] });
       ctx.note("offered other, chat -> proto", [chosen.opened, chosen.protocol]);
@@ -76,7 +76,7 @@ export const wsCases: Case[] = [
       await closedOrTimeout(ctx, nothing);
     },
   })),
-  ...both("ws-handshake-101-headers", G, () => ({
+  ...supCase("ws-handshake-101-headers", G, () => ({
     run: async (ctx) => {
       await ctx.req("101 on /echo", { path: "/echo", headers: handshake(), upgrade: true });
       await ctx.req("101 on /proto with offered protocols", {
@@ -97,7 +97,7 @@ export const wsCases: Case[] = [
       });
     },
   })),
-  ...both("ws-handshake-variants", G, () => ({
+  ...supCase("ws-handshake-variants", G, () => ({
     run: async (ctx) => {
       const label = (name: string, h: Hdrs) =>
         ctx.req(name, { path: "/echo", headers: h, upgrade: true, timeoutMs: 4000 });
@@ -158,7 +158,7 @@ export const wsCases: Case[] = [
       });
     },
   })),
-  ...both("ws-greeting-before-open", G, () => ({
+  ...supCase("ws-greeting-before-open", G, () => ({
     run: async (ctx) => {
       const c = await ctx.ws("/greet");
       ctx.note("greeting", await c.next());
@@ -166,7 +166,7 @@ export const wsCases: Case[] = [
       await closedOrTimeout(ctx, c);
     },
   })),
-  ...both("ws-forwarded-request-headers", G, () => ({
+  ...supCase("ws-forwarded-request-headers", G, () => ({
     run: async (ctx) => {
       const c = await ctx.ws("/headers?x=1", {
         headers: {
@@ -186,28 +186,28 @@ export const wsCases: Case[] = [
       await closedOrTimeout(ctx, c);
     },
   })),
-  ...both("ws-server-closes-with-code", G, () => ({
+  ...supCase("ws-server-closes-with-code", G, () => ({
     run: async (ctx) => {
       const c = await ctx.ws("/echo");
       c.send("bye");
       ctx.note("close the app sent", await closedOrTimeout(ctx, c));
     },
   })),
-  ...both("ws-server-closes-without-code", G, () => ({
+  ...supCase("ws-server-closes-without-code", G, () => ({
     run: async (ctx) => {
       const c = await ctx.ws("/echo");
       c.send("nocode");
       ctx.note("close frame without a status", await closedOrTimeout(ctx, c));
     },
   })),
-  ...both("ws-server-closes-immediately", G, () => ({
+  ...supCase("ws-server-closes-immediately", G, () => ({
     run: async (ctx) => {
       const c = await ctx.ws("/silent-close");
       ctx.note("opened", c.opened);
       ctx.note("close", await closedOrTimeout(ctx, c));
     },
   })),
-  ...both("ws-client-close-codes", G, () => ({
+  ...supCase("ws-client-close-codes", G, () => ({
     run: async (ctx) => {
       for (const code of [1000, 1001, 3000, 4999]) {
         const c = await ctx.ws("/echo");
@@ -223,7 +223,7 @@ export const wsCases: Case[] = [
       await closedOrTimeout(ctx, alive);
     },
   })),
-  ...both("ws-refused-upstream", G, () => ({
+  ...supCase("ws-refused-upstream", G, () => ({
     run: async (ctx) => {
       await ctx.req("raw handshake to a path the app refuses", {
         path: "/refuse",
@@ -234,7 +234,7 @@ export const wsCases: Case[] = [
       ctx.note("client sees the refusal", [c.opened]);
     },
   })),
-  ...both("ws-unknown-host", G, () => ({
+  ...supCase("ws-unknown-host", G, () => ({
     run: async (ctx) => {
       await ctx.req("handshake to an unknown host", {
         path: "/echo",
@@ -246,7 +246,7 @@ export const wsCases: Case[] = [
       ctx.note("client open", c.opened);
     },
   })),
-  ...both("ws-concurrent-sockets", G, () => ({
+  ...supCase("ws-concurrent-sockets", G, () => ({
     logs: "sorted",
     run: async (ctx) => {
       // Warm first: which of the concurrent sockets starts a cold sprout is a race, and only that one logs coldStart.

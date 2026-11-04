@@ -5,7 +5,6 @@
 mod activation;
 mod app;
 mod assets;
-mod backend;
 mod body;
 mod cache;
 mod config;
@@ -60,9 +59,9 @@ async fn run() -> i32 {
             return 1;
         }
     };
-    // Supervisor routes need the Bun sidecar script. Say so now rather than on the first request;
-    // it is not fatal because sproutd-only deployments never start it.
-    if routes.iter().any(|(_, r)| r.backend.is_none()) {
+    // Routes need the Bun sidecar script. Say so now rather than on the first request;
+    // it is not fatal because a snapshot with no routes never starts it.
+    if routes.iter().next().is_some() {
         if let Err(error) = sidecar::sidecar_script() {
             eprintln!("warning: {error}");
         }
@@ -203,8 +202,5 @@ async fn start_candidate(app: &Arc<App>, request: &std::path::Path) -> Result<()
         .next()
         .map(|(_, r)| r.clone())
         .ok_or("empty activation request")?;
-    if route.backend.is_some() {
-        return Ok(()); // sproutd loads and checks the version itself (deploy is the activation)
-    }
     app.sidecar.endpoint(&route.runtime, true).await.map(|_| ())
 }

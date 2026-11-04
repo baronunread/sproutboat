@@ -103,7 +103,7 @@ fn build_client() -> UpstreamClient {
     connector.set_nodelay(true);
     connector.set_connect_timeout(Some(Duration::from_secs(10)));
     Client::builder(TokioExecutor::new())
-        // Backends are loopback servers that may close idle keep-alive connections early.
+        // Sprouts are loopback servers that may close idle keep-alive connections early.
         .pool_idle_timeout(Duration::from_secs(4))
         .pool_max_idle_per_host(256)
         .build(connector)
@@ -172,13 +172,6 @@ impl App {
         let mut disposals = Vec::new();
         for (hostname, route) in previous.iter() {
             let upcoming = next.get(hostname);
-            if route.backend.is_some() {
-                // Nothing of ours runs for it: no sprout to dispose, no asset manifest, nothing cached.
-                if upcoming.is_none_or(|n| n.backend != route.backend) {
-                    self.purge_cache_host(hostname);
-                }
-                continue;
-            }
             if upcoming.is_none_or(|n| route.runtime_changed(n)) {
                 let path = route.sprout_path.clone();
                 self.endpoints.forget_sprout(&path);

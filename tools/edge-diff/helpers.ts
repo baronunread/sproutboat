@@ -1,10 +1,7 @@
 /** Shared builders for the case files. */
-import { join } from "node:path";
 import type { Fixture, Hdrs, HttpObs, Json, ReqSpec } from "./lib";
 import { bodyText } from "./lib";
 import type { Case, Ctx } from "./runner";
-
-export type Kind = "sup" | "sproutd";
 
 /** A supervisor route: the stand-in sprout runs under the real pool. */
 export async function supRoute(
@@ -16,29 +13,13 @@ export async function supRoute(
   return { hostname: host, sproutPath: await fx.makeSprout(name, opts) };
 }
 
-/** A sproutd route: forwards to a fake backend (`sproutPath` is still required by the loader). */
-export async function backendRoute(fx: Fixture, host = "app.test", name = "app") {
-  const app = fx.apps.get(name) ?? (await fx.startApp(name));
-  return {
-    hostname: host,
-    sproutPath: join(fx.dir, "artifacts", name, "sprout"),
-    backend: { kind: "sproutd", url: app.url },
-  };
-}
-
-export const kindRoute = (fx: Fixture, kind: Kind, host = "app.test", name = "app") =>
-  kind === "sup" ? supRoute(fx, host, name) : backendRoute(fx, host, name);
-
-/** One case per route kind (supervisor sprout, sproutd backend). */
-export function both(
+/** A case on a supervisor route (the stand-in sprout runs under the real pool). */
+export function supCase(
   id: string,
   group: string,
-  make: (kind: Kind) => Omit<Case, "id" | "group" | "setup"> & { setup?: Case["setup"] },
+  make: () => Omit<Case, "id" | "group" | "setup"> & { setup?: Case["setup"] },
 ): Case[] {
-  return (["sup", "sproutd"] as const).map((kind) => {
-    const body = make(kind);
-    return { id: `${id}.${kind}`, group, setup: async (fx: Fixture) => [await kindRoute(fx, kind)], ...body };
-  });
+  return [{ id, group, setup: async (fx: Fixture) => [await supRoute(fx)], ...make() }];
 }
 
 export const text = (obs: HttpObs) => bodyText(obs);

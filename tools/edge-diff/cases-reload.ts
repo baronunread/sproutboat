@@ -14,15 +14,21 @@ import type { Fixture, Json } from "./lib";
 import { sleep } from "./lib";
 import { asRecord, isString } from "./json";
 import type { Case, Ctx } from "./runner";
-import { backendRoute, get, json, supRoute, type Kind } from "./helpers";
+import { get, json, supRoute } from "./helpers";
 
 const G = "reload";
 
-/** Two routable apps "a" and "b" of one kind, each answering `/who` with its name. */
-async function twoApps(fx: Fixture, kind: Kind): Promise<{ a: Json; b: Json }> {
-  if (kind === "sup") return { a: await supRoute(fx, "app.test", "a"), b: await supRoute(fx, "app.test", "b") };
-  return { a: await backendRoute(fx, "app.test", "a"), b: await backendRoute(fx, "app.test", "b") };
+/** Two routable apps "a" and "b", each answering `/who` with its name. */
+async function twoApps(fx: Fixture): Promise<{ a: Json; b: Json }> {
+  return { a: await supRoute(fx, "app.test", "a"), b: await supRoute(fx, "app.test", "b") };
 }
+
+/**
+ * A supervisor route boots the new sprout on the first request after a flip, which on a loaded
+ * machine takes seconds: wait generously and only judge reload latency where no process is
+ * spawned. Every window here is a ceiling for a hung edge, not a speed test.
+ */
+const BOOT_MS = 20_000;
 
 const appOf = (obs: Parameters<typeof json>[0]) => {
   const parsed = asRecord(json(obs));
@@ -40,12 +46,12 @@ async function flipsTo(ctx: Ctx, name: string, deadlineMs = 1500): Promise<{ ok:
   return { ok: false, ms: Date.now() - started };
 }
 
-const trafficLoop = (kind: Kind): Case => ({
-  id: `reload-under-traffic.${kind}`,
+const trafficLoop = (): Case => ({
+  id: "reload-under-traffic",
   group: G,
   logs: "off",
   timeoutMs: 40_000,
-  setup: async (fx) => [(await twoApps(fx, kind)).a],
+  setup: async (fx) => [(await twoApps(fx)).a],
   run: async (ctx) => {
     const seen: { app: string; status: number; at: number }[] = [];
     let stop = false;
@@ -58,11 +64,10 @@ const trafficLoop = (kind: Kind): Case => ({
     })();
     await ctx.sleep(500);
     const b = ctx.fx.sprouts.get("b");
-    const next: Json[] =
-      kind === "sup" ? [{ hostname: "app.test", sproutPath: b! }] : [await backendRoute(ctx.fx, "app.test", "b")];
+    const next: Json[] = [{ hostname: "app.test", sproutPath: b! }];
     const writtenAt = Date.now();
     ctx.writeRoutes(next); // rename: atomic
-    const deadline = Date.now() + 4000;
+    const deadline = Date.now() + BOOT_MS;
     while (Date.now() < deadline && !seen.some((s) => s.app === "b")) await sleep(20);
     await ctx.sleep(300);
     stop = true;
@@ -83,40 +88,31 @@ const trafficLoop = (kind: Kind): Case => ({
   },
 });
 
-const flipCase = (id: string, kind: Kind, how: "rename" | "inplace" | "sighup"): Case => ({
-  id: `${id}.${kind}`,
+const flipCase = (id: string, how: "rename" | "inplace" | "sighup"): Case => ({
+  id,
   group: G,
   logs: "off",
   stdout: how === "sighup",
   timeoutMs: 60_000,
-  setup: async (fx) => [(await twoApps(fx, kind)).a],
+  setup: async (fx) => [(await twoApps(fx)).a],
   run: async (ctx) => {
     ctx.note("before", appOf(await ctx.req("before", { path: "/who" })));
-    const next: Json[] =
-      kind === "sup"
-        ? [{ hostname: "app.test", sproutPath: ctx.fx.sprouts.get("b")! }]
-        : [await backendRoute(ctx.fx, "app.test", "b")];
+    const next: Json[] = [{ hostname: "app.test", sproutPath: ctx.fx.sprouts.get("b")! }];
     await ctx.sleep(30);
     ctx.writeRoutes(next, how !== "inplace");
     if (how === "sighup") ctx.hup();
-    // A supervisor route boots the new sprout on the first request after the flip, which on a
-    // loaded machine takes seconds: wait generously for it and only judge reload latency where no
-    // process is spawned. Every other window below is a ceiling for a hung edge, not a speed test.
-    const flipped = await flipsTo(ctx, "b", kind === "sup" ? 20_000 : 5000);
+    const flipped = await flipsTo(ctx, "b", BOOT_MS);
     ctx.note("flipped to b", flipped.ok);
-    if (kind !== "sup") ctx.note("flipped within 1.5 s", flipped.ms <= 1500);
-    if (kind === "sup") {
-      // The old sprout is disposed when its route goes away.
-      const gone = await ctx.waitFor(
-        async () => {
-          const pool = asRecord(json(await ctx.quiet({ path: "/__sb/pool" })));
-          return pool !== null && pool.live === 1;
-        },
-        15_000,
-        100,
-      );
-      ctx.note("old sprout disposed", gone);
-    }
+    // The old sprout is disposed when its route goes away.
+    const gone = await ctx.waitFor(
+      async () => {
+        const pool = asRecord(json(await ctx.quiet({ path: "/__sb/pool" })));
+        return pool !== null && pool.live === 1;
+      },
+      15_000,
+      100,
+    );
+    ctx.note("old sprout disposed", gone);
   },
 });
 
@@ -144,21 +140,18 @@ const activationCase = (c: Omit<Case, "group">): Case => ({
 });
 
 export const reloadCases: Case[] = [
-  trafficLoop("sup"),
-  trafficLoop("sproutd"),
-  flipCase("reload-flip-on-request", "sup", "rename"),
-  flipCase("reload-flip-on-request", "sproutd", "rename"),
-  flipCase("reload-inplace-rewrite", "sproutd", "inplace"),
-  flipCase("reload-sighup", "sup", "sighup"),
-  flipCase("reload-sighup", "sproutd", "sighup"),
+  trafficLoop(),
+  flipCase("reload-flip-on-request", "rename"),
+  flipCase("reload-inplace-rewrite", "inplace"),
+  flipCase("reload-sighup", "sighup"),
   {
     id: "reload-idle-timer-picks-up-change",
     group: G,
     logs: "off",
-    setup: async (fx) => [(await twoApps(fx, "sproutd")).a],
+    setup: async (fx) => [(await twoApps(fx)).a],
     run: async (ctx) => {
       ctx.note("before", appOf(await ctx.req("before", { path: "/who" })));
-      ctx.writeRoutes([await backendRoute(ctx.fx, "app.test", "b")]);
+      ctx.writeRoutes([await supRoute(ctx.fx, "app.test", "b")]);
       await ctx.sleep(1800); // no traffic: only a timer can notice
       ctx.note("first request after idle", appOf(await ctx.req("after", { path: "/who" })));
     },
@@ -167,18 +160,14 @@ export const reloadCases: Case[] = [
     id: "reload-invalid-keeps-old-routes",
     group: G,
     logs: "off",
-    setup: async (fx) => [(await twoApps(fx, "sproutd")).a],
+    setup: async (fx) => [(await twoApps(fx)).a],
     run: async (ctx) => {
-      const good: Json[] = [await backendRoute(ctx.fx, "app.test", "b")];
+      const good: Json[] = [await supRoute(ctx.fx, "app.test", "b")];
       const attempts: [string, string][] = [
         ["not json", "{{{ nope"],
         ["empty file", ""],
         ["not an array", '{"hostname":"app.test"}'],
         ["bad hostname", '[{"hostname":"APP.test","sproutPath":"/x/sprout"}]'],
-        [
-          "non-loopback backend",
-          '[{"hostname":"app.test","sproutPath":"/x/sprout","backend":{"kind":"sproutd","url":"http://10.0.0.1:80"}}]',
-        ],
         ["relative sproutPath", '[{"hostname":"app.test","sproutPath":"rel/sprout"}]'],
       ];
       for (const [name, text] of attempts) {
@@ -187,7 +176,7 @@ export const reloadCases: Case[] = [
         ctx.note(`after ${name}`, appOf(await ctx.req(name, { path: "/who" })));
       }
       ctx.writeRoutes(good);
-      const flipped = await flipsTo(ctx, "b", 2500);
+      const flipped = await flipsTo(ctx, "b", BOOT_MS);
       ctx.note("valid snapshot applies afterwards", flipped.ok);
       ctx.note("other host is unaffected", (await ctx.req("unknown", { path: "/", host: "nope.test" })).status);
     },
@@ -197,7 +186,7 @@ export const reloadCases: Case[] = [
     group: G,
     logs: "off",
     stdout: true,
-    setup: async (fx) => [(await twoApps(fx, "sproutd")).a],
+    setup: async (fx) => [(await twoApps(fx)).a],
     run: async (ctx) => {
       ctx.note("before", appOf(await ctx.req("before", { path: "/who" })));
       ctx.writeRoutes("{{{ nope");
@@ -213,7 +202,7 @@ export const reloadCases: Case[] = [
     group: G,
     logs: "off",
     stdout: true,
-    setup: async (fx) => [(await twoApps(fx, "sproutd")).a],
+    setup: async (fx) => [(await twoApps(fx)).a],
     run: async (ctx) => {
       ctx.note("before", appOf(await ctx.req("before", { path: "/who" })));
       ctx.removeRoutes();
@@ -234,9 +223,9 @@ export const reloadCases: Case[] = [
     setup: async () => null,
     run: async (ctx) => {
       ctx.note("no file", (await ctx.req("no file", { path: "/who" })).status);
-      const b = await backendRoute(ctx.fx, "app.test", "b");
+      const b = await supRoute(ctx.fx, "app.test", "b");
       ctx.writeRoutes([b]);
-      const flipped = await flipsTo(ctx, "b", 2500);
+      const flipped = await flipsTo(ctx, "b", BOOT_MS);
       ctx.note("file appears", flipped.ok);
     },
   },
@@ -245,16 +234,16 @@ export const reloadCases: Case[] = [
     group: G,
     logs: "off",
     stdout: true,
-    setup: async (fx) => [(await twoApps(fx, "sproutd")).a],
+    setup: async (fx) => [(await twoApps(fx)).a],
     run: async (ctx) => {
       ctx.note("before", appOf(await ctx.req("before", { path: "/who" })));
-      ctx.writeRoutes([await backendRoute(ctx.fx, "app.test", "b")], false);
+      ctx.writeRoutes([await supRoute(ctx.fx, "app.test", "b")], false);
       const past = new Date(Date.now() - 3_600_000);
       utimesSync(ctx.routesPath, past, past);
       await ctx.sleep(1300);
       ctx.note("old mtime: still a", appOf(await ctx.req("after old-mtime write", { path: "/who" })));
       ctx.hup();
-      const flipped = await flipsTo(ctx, "b", 1500);
+      const flipped = await flipsTo(ctx, "b", BOOT_MS);
       ctx.note("SIGHUP reads it regardless", flipped.ok);
     },
   },
@@ -262,7 +251,7 @@ export const reloadCases: Case[] = [
     id: "reload-same-tick-rewrite",
     group: G,
     logs: "off",
-    setup: async (fx) => [await backendRoute(fx, "app.test", "a")],
+    setup: async (fx) => [await supRoute(fx, "app.test", "a")],
     intentional: {
       reason:
         "Linux mtimes are coarse: a rewrite in the same tick as the previous write has an identical mtime (to the nanosecond). Bun reloads only on a strictly newer mtime, so it keeps the old routes until SIGHUP; Rust also compares inode, size and ctime, and a content hash while the loaded snapshot is within 2 s of its mtime, so it picks the rewrite up",
@@ -278,10 +267,10 @@ export const reloadCases: Case[] = [
     run: async (ctx) => {
       const seconds = ctx.pinRoutesMtime(); // an exact timestamp both rewrites below can repeat
       await ctx.sleep(1300); // every poll path has seen the pinned file
-      ctx.writeRoutesAtMtime([await backendRoute(ctx.fx, "app.test", "b")], seconds);
-      ctx.note("in-place rewrite, same mtime: now b", (await flipsTo(ctx, "b", 2500)).ok);
-      ctx.writeRoutesAtMtime([await backendRoute(ctx.fx, "app.test", "a")], seconds, true);
-      ctx.note("atomic rewrite, same mtime: now a", (await flipsTo(ctx, "a", 2500)).ok);
+      ctx.writeRoutesAtMtime([await supRoute(ctx.fx, "app.test", "b")], seconds);
+      ctx.note("in-place rewrite, same mtime: now b", (await flipsTo(ctx, "b", BOOT_MS)).ok);
+      ctx.writeRoutesAtMtime([await supRoute(ctx.fx, "app.test", "a")], seconds, true);
+      ctx.note("atomic rewrite, same mtime: now a", (await flipsTo(ctx, "a", BOOT_MS)).ok);
     },
   },
   {
@@ -289,14 +278,14 @@ export const reloadCases: Case[] = [
     group: G,
     logs: "off",
     setup: async (fx) => {
-      const { a } = await twoApps(fx, "sproutd");
+      const { a } = await twoApps(fx);
       return [a];
     },
     run: async (ctx) => {
       // ctx.writeRoutes always moves the mtime strictly forward, so Bun's strictly-newer check does not
       // depend on how far apart in time the writes are (see reload-same-tick-rewrite for the other case).
-      const a = await backendRoute(ctx.fx, "app.test", "a");
-      const b = await backendRoute(ctx.fx, "second.test", "b");
+      const a = await supRoute(ctx.fx, "app.test", "a");
+      const b = await supRoute(ctx.fx, "second.test", "b");
       ctx.writeRoutes([a, b]);
       const added = await ctx.waitFor(
         async () => (await ctx.quiet({ path: "/who", host: "second.test" })).status === 200,
@@ -307,18 +296,6 @@ export const reloadCases: Case[] = [
       ctx.writeRoutes([b]);
       const removed = await ctx.waitFor(async () => (await ctx.quiet({ path: "/who" })).status === 404, 2500, 50);
       ctx.note("first host disappears", removed);
-    },
-  },
-  {
-    id: "reload-backend-to-sprout-and-back",
-    group: G,
-    logs: "off",
-    setup: async (fx) => [await backendRoute(fx, "app.test", "a"), await supRoute(fx, "other.test", "s")],
-    run: async (ctx) => {
-      ctx.note("backend", appOf(await ctx.req("backend", { path: "/who" })));
-      ctx.writeRoutes([await supRoute(ctx.fx, "app.test", "s")]);
-      const flipped = await flipsTo(ctx, "s", 2500);
-      ctx.note("now a sprout", flipped.ok);
     },
   },
   {
@@ -338,13 +315,6 @@ export const reloadCases: Case[] = [
   },
 
   // ---- activation protocol ----
-  activationCase({
-    id: "activation-backend-route",
-    setup: async (fx) => [await backendRoute(fx)],
-    run: async (ctx) => {
-      ctx.note("reply", await activate(ctx, "backend", [await backendRoute(ctx.fx, "app.test", "app")]));
-    },
-  }),
   activationCase({
     id: "activation-supervisor-route",
     setup: async (fx) => {
@@ -420,14 +390,6 @@ export const reloadCases: Case[] = [
       ctx.note("object instead of array", await activate(ctx, "obj", "{}"));
       ctx.note("bad hostname", await activate(ctx, "host", '[{"hostname":"BAD","sproutPath":"/x/sprout"}]'));
       ctx.note("empty array", await activate(ctx, "empty", "[]"));
-      ctx.note(
-        "non-loopback backend",
-        await activate(
-          ctx,
-          "backend",
-          '[{"hostname":"a.test","sproutPath":"/x/sprout","backend":{"kind":"sproutd","url":"http://8.8.8.8:80"}}]',
-        ),
-      );
       ctx.note("relative sproutPath", await activate(ctx, "rel", '[{"hostname":"a.test","sproutPath":"x"}]'));
       ctx.note("null", await activate(ctx, "null", "null"));
     },

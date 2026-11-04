@@ -141,14 +141,7 @@ function pump(stream: ReadableStream<Uint8Array>, onLine: (line: string) => void
 }
 
 // ---------------------------------------------------------------------------------------------
-// fake backends and sprouts
-
-export interface App {
-  name: string;
-  port: number;
-  url: string;
-  proc: Bun.Subprocess;
-}
+// fake sprouts
 
 export interface AssetsSpec {
   /** Served path (no leading slash needed) -> contents. */
@@ -170,7 +163,6 @@ export interface SproutOpts {
 }
 
 export class Fixture {
-  readonly apps = new Map<string, App>();
   readonly sprouts = new Map<string, string>();
   readonly pidDir: string;
 
@@ -190,47 +182,6 @@ export class Fixture {
     const full = join(this.dir, ...parts);
     mkdirSync(dirname(full), { recursive: true });
     return full;
-  }
-
-  /** Port name -> number, for scrubbing ports out of bodies, headers and logs. */
-  ports() {
-    return Object.fromEntries([...this.apps].map(([name, app]) => [`app:${name}`, app.port]));
-  }
-
-  /** A fake sproutd-style backend on a fresh loopback port. */
-  async startApp(name: string, env: Record<string, string> = {}): Promise<App> {
-    const proc = track(
-      Bun.spawn(["bun", FAKE_APP], {
-        env: {
-          PATH: process.env.PATH ?? "",
-          HOME: process.env.HOME ?? "",
-          APP_NAME: name,
-          PORT: "0",
-          EDGE_DIFF_PIDDIR: this.pidDir,
-          ...env,
-        },
-        stdin: "ignore",
-        stdout: "pipe",
-        stderr: "ignore",
-      }),
-    );
-    const port = await new Promise<number>((done, fail) => {
-      const timer = setTimeout(() => fail(new Error(`fake app ${name} did not announce a port`)), 10_000);
-      pump(proc.stdout, (line) => {
-        const match = /listening on http:\/\/127\.0\.0\.1:(\d+)/.exec(line);
-        if (match) {
-          clearTimeout(timer);
-          done(Number(match[1]));
-        }
-      });
-      void proc.exited.then(() => {
-        clearTimeout(timer);
-        fail(new Error(`fake app ${name} exited early`));
-      });
-    });
-    const app = { name, port, url: `http://127.0.0.1:${port}`, proc };
-    this.apps.set(name, app);
-    return app;
   }
 
   /** A loopback port nothing listens on. */

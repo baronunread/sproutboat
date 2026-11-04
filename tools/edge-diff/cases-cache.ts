@@ -1,6 +1,6 @@
 /** The GET response cache: hit, miss, DYNAMIC, BYPASS, expiry, entry size limit, purge. */
 import type { Case } from "./runner";
-import { backendRoute, get, supRoute } from "./helpers";
+import { get, supRoute } from "./helpers";
 
 const G = "cache";
 const PUB = "public, max-age=60";
@@ -334,15 +334,6 @@ export const cacheCases: Case[] = [
         ...AGE,
       });
       await get(ctx, "hit logged without cold-start fields", q(PUB, "&size=1234"), { headers: { "x-a": "1" }, ...AGE });
-    },
-  },
-  {
-    id: "cache-sproutd-never-caches",
-    group: G,
-    setup: async (fx) => [await backendRoute(fx)],
-    run: async (ctx) => {
-      await get(ctx, "first", q(PUB));
-      await get(ctx, "second (no cache, no sb-cache header)", q(PUB));
     },
   },
 ];

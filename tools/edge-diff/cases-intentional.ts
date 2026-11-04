@@ -7,7 +7,7 @@ import type { Json } from "./lib";
 import type { Case } from "./runner";
 import { asRecord } from "./json";
 import { FILES } from "./cases-assets";
-import { backendRoute, both, get, supRoute } from "./helpers";
+import { supCase, get, supRoute } from "./helpers";
 
 const G = "intentional";
 const text = (obs: { body: Uint8Array }) => Buffer.from(obs.body).toString("utf8");
@@ -104,7 +104,7 @@ export const intentionalCases: Case[] = [
       await get(ctx, "asset missing on disk", "/ghost.html", { loose: { body: true } });
     },
   },
-  ...both("intentional-gzip-passthrough", G, () => ({
+  ...supCase("intentional-gzip-passthrough", G, () => ({
     intentional: {
       reason:
         "an upstream gzip body and its content-encoding are forwarded unchanged (Bun's fetch decodes the body but leaves the header)",
@@ -125,7 +125,7 @@ export const intentionalCases: Case[] = [
       await get(ctx, "gzip without accept-encoding", "/gzip");
     },
   })),
-  ...both("intentional-deadline-covers-headers-only", G, () => ({
+  ...supCase("intentional-deadline-covers-headers-only", G, () => ({
     env: { SPROUTBOAT_REQUEST_TIMEOUT_MS: "1000" },
     timeoutMs: 40_000,
     intentional: {
@@ -156,7 +156,7 @@ export const intentionalCases: Case[] = [
     id: "intentional-sighup-invalid-routes",
     group: G,
     logs: "off",
-    setup: async (fx) => [await backendRoute(fx, "app.test", "a")],
+    setup: async (fx) => [await supRoute(fx, "app.test", "a")],
     intentional: {
       reason:
         "SIGHUP with an invalid routes.json keeps the process alive and the old routes (Bun dies of an unhandled rejection); the error goes to stderr",
@@ -287,7 +287,7 @@ export const intentionalCases: Case[] = [
       await get(ctx, "after services change", q);
     },
   },
-  ...both("intentional-leading-double-slash-path", G, () => ({
+  ...supCase("intentional-leading-double-slash-path", G, () => ({
     intentional: {
       reason:
         "a request path that starts with // is forwarded and logged as received (Bun drops the first slash upstream: //seen//x arrives as /seen//x)",

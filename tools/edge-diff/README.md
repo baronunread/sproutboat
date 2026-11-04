@@ -4,7 +4,7 @@ Black-box differential test of the Bun edge (`services/edge`) against the Rust e
 (`services/edge-rs`, binary `sproutboat-edge`).
 
 For every case the harness starts a fresh edge with identical env, an identical temp
-`routes.json` and a fresh set of identical fake backends, sends the same request script, and
+`routes.json` and a fresh set of identical fake sprouts, sends the same request script, and
 compares status, normalised response headers (`date` ignored, names case-folded and sorted;
 the tool reports missing, extra and different headers separately), body bytes, and the NDJSON
 request log (field set, field order, types and values; the tool only checks that `at` is a plausible
@@ -28,18 +28,18 @@ summary (also `--json`). Exit code is 1 when a case is DIFFERENT or ERROR and no
 
 ## Service-binding calls
 
-The real credentials are random per process, so a case that sets `credentials` (credential -> hostnames it may call) starts both edges through a wrapper (`bun-edge-main.ts`, and `sidecar-main.ts` as the Rust edge's `SPROUTBOAT_SIDECAR_SCRIPT`) that registers them in the supervisor's registry (`services/supervisor/src/binding-credentials.ts`) from a file; `ctx.setCredentials()` rewrites the file mid-case and waits for the acknowledgement, which is how a broker's exit is simulated. The `binding-*` cases call the edge directly the way a broker would, or run a chain client -> app A -> edge -> app B where the fake app's `/call` endpoint is A's broker. The callee's random edge token is compared by presence only.
+The real credentials are random per process, so a case that sets `credentials` (credential -> hostnames it may call) starts both edges through a wrapper (`bun-edge-main.ts`, and `sidecar-main.ts` as the Rust edge's `SPROUTBOAT_SIDECAR_SCRIPT`) that registers them in the supervisor's registry (`registerBindingCredential` in `services/supervisor/src/run.ts`) from a file; `ctx.setCredentials()` rewrites the file mid-case and waits for the acknowledgement, which is how a broker's exit is simulated. The `binding-*` cases call the edge directly the way a broker would, or run a chain client -> app A -> edge -> app B where the fake app's `/call` endpoint is A's broker. The callee's random edge token is compared by presence only.
 
 ## Layout
 
 - `run.ts` CLI and report; `runner.ts` one case on one edge; `compare.ts` normalisation and diffs.
 - `lib.ts` process tracking, fixtures (fake apps, stand-in sprouts, asset manifests), a raw HTTP/1.1
   client (keeps duplicate headers, reports truncated bodies) and a WebSocket client.
-- `fake-app.ts` the fake backend (node:http, because Bun adds a content-type to every response and the
+- `fake-app.ts` the fake sprout (node:http, because Bun adds a content-type to every response and the
   runtime's bare 500 has none). It doubles as the supervisor's stand-in sprout through a tiny
   `#!/bin/sh` wrapper that honours `$PORT`, like `tests/tail.e2e.test.ts`. No bubblewrap needed
   (`SPROUTBOAT_SPROUT_SANDBOX=none`).
-- `cases-*.ts` the cases: core (routing, backend, caps, timeouts, uncaught, cold start, routes.json
+- `cases-*.ts` the cases: core (routing, caps, timeouts, uncaught, cold start, routes.json
   validation), cache, assets, websocket, reload and activation.
 
 ## Safety

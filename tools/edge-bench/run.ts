@@ -26,7 +26,7 @@ const conns = opt("conns", "1,8,32,128")!.split(",").map(Number);
 const duration = Number(opt("duration", "15"));
 const warmup = Number(opt("warmup", "3"));
 const dry = flag("dry-run");
-/** hello: proxied to a trivial upstream; asset: a 4 KiB static file served by the edge; cached: a public response served from the edge cache. */
+/** hello: proxied to a trivial sprout; asset: a 4 KiB static file served by the edge; cached: a public response served from the edge cache. */
 const SCENARIOS = ["hello", "asset", "cached"];
 const scenario = opt("scenario", "hello") ?? "hello";
 if (!SCENARIOS.includes(scenario)) {
@@ -278,23 +278,18 @@ async function main() {
     edgePid = 0,
     caddyPid = 0;
 
-  const upCmd = capped(CAPS.upstream, [upstreamBin, "--sproutd-like"]);
-  /** The route under test: a sproutd backend (hello), or a supervisor route (asset, cached). */
-  const routeFor = (upstreamPort: number) => {
-    if (scenario === "hello")
-      return {
-        hostname: HOST,
-        sproutPath: "/tmp/x/worker",
-        backend: { kind: "sproutd", url: `http://127.0.0.1:${upstreamPort}` },
-      };
+  const upCmd = capped(CAPS.upstream, [upstreamBin, "--any"]);
+  /** The route under test: always a supervisor route. */
+  const routeFor = () => {
     const dir = join(tmp, "artifact");
     mkdirSync(join(dir, "assets"), { recursive: true });
     const sproutPath = join(dir, "sprout");
-    // The asset scenario never starts the sprout; the cached one fills the edge cache once.
+    // The asset scenario never starts the sprout; hello's sprout is the trivial upstream; the cached
+    // one is the same with a cacheable answer, so the edge cache is filled once.
     const script =
-      scenario === "cached"
-        ? `#!/bin/sh\nexec ${upstreamBin} --sproutd-like --cache-control --port "$PORT"\n`
-        : "#!/bin/sh\nexit 1\n";
+      scenario === "asset"
+        ? "#!/bin/sh\nexit 1\n"
+        : `#!/bin/sh\nexec ${upstreamBin} --any${scenario === "cached" ? " --cache-control" : ""} --port "$PORT"\n`;
     writeFileSync(sproutPath, script);
     chmodSync(sproutPath, 0o755);
     if (scenario === "asset") {
@@ -350,9 +345,7 @@ https://${HOST}:${port} {
       `# dry run: edge=${edge} conns=${conns.join(",")} duration=${duration}s warmup=${warmup}s (tmp dir ${tmp})`,
     );
     console.log(`cd ${ROOT}`);
-    console.log(
-      `# routes.json: ${JSON.stringify([{ hostname: HOST, sproutPath: "/tmp/x/worker", backend: { kind: "sproutd", url: "http://127.0.0.1:<UPPORT>" } }])}`,
-    );
+    console.log(`# routes.json: ${JSON.stringify([{ hostname: HOST, sproutPath: "<tmp>/artifact/sprout" }])}`);
     console.log(q(upCmd) + "   # prints 'fake-upstream listening on http://127.0.0.1:PORT'");
     if (inner !== "direct")
       console.log(
@@ -383,8 +376,8 @@ https://${HOST}:${port} {
     if (w.exitCode !== 0) throw new Error(`caddy not found (${caddyBin}); see README for how to fetch it`);
   }
 
-  // Only the hello scenario has a separate upstream (asset: none; cached: the sprout is the upstream).
-  if (scenario === "hello") {
+  // Only the direct baselines have a separate upstream; behind an edge the sprout is the upstream.
+  if (inner === "direct") {
     const up = await spawnProc("upstream", upCmd);
     upPid = up.pid;
     upPort = Number((await waitLine("upstream", up, /listening on http:\/\/[^:\s]+:(\d+)/))[1]);
@@ -392,7 +385,7 @@ https://${HOST}:${port} {
 
   let targetPort = upPort; // what the loadgen (or Caddy) talks to
   if (inner !== "direct") {
-    writeFileSync(routesPath, JSON.stringify([routeFor(upPort)]));
+    writeFileSync(routesPath, JSON.stringify([routeFor()]));
     const e = await spawnProc("edge", edgeCapped, edgeEnv());
     edgePid = e.pid;
     edgePort = Number((await waitLine("edge", e, /edge router listening on http:\/\/[^:\s]+:(\d+)/))[1]);

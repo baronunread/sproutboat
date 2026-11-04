@@ -1,26 +1,26 @@
 # Edge behaviour inventory (Bun edge, for the Rust rewrite)
 
-Subject: `services/edge/src/{main,backend,websocket,cache,activation,asset-cache-control,asset-rules,idle-timeout}.ts` plus
+Subject: `services/edge/src/{main,websocket,cache,activation,asset-cache-control,asset-rules,idle-timeout}.ts` plus
 `services/supervisor/src/run.ts` (the pool the edge embeds), `@sproutboat/assets` (the helpers the edge calls), and the
 control-plane code that writes `routes.json` and reads the request log.
 
 Evidence tags: **[V]** verified by running the Bun edge (Bun 1.4.4 on macOS arm64; production pins Bun 1.4.0 in
 `install.sh`, so Bun-specific details can differ slightly on the box). **[S]** read from source only.
-Probe harness lived in `/tmp/edge-probe` (fake sprouts and sproutd via `Bun.serve`/raw TCP, raw-socket clients, `curl`);
+Probe harness lived in `/tmp/edge-probe` (fake sprouts via `Bun.serve`/raw TCP, raw-socket clients, `curl`);
 it is not part of the repo.
 
 ## Inventory summary
 
 1. One Bun process is edge + supervisor: it routes by `Host` from `routes.json`, serves static assets itself, runs a tiny GET cache, and spawns/owns every sprout (+ broker) via the in-process `SproutPool`. A Rust edge must port or delegate the pool, not just the proxy (section 7.4, 11).
-2. Request order: `/__sb/pool` (any host, no log) -> Host lookup (404 "unknown deployment" / apex 302) -> sproutd backend proxy, else assets (redirect, 304, 200) -> GET cache -> pool.endpoint -> WebSocket relay or fetch proxy.
+2. Request order: `/__sb/pool` (any host, no log) -> Host lookup (404 "unknown deployment" / apex 302) -> assets (redirect, 304, 200) -> GET cache -> pool.endpoint -> WebSocket relay or fetch proxy.
 3. The request log is one JSON object per line, `at` first and `path` last, undefined fields omitted; it is what control builds logs, `tail` and every metric from. Several paths deliberately do not log (pool, apex 302, 413, hung-up clients, mid-stream failures).
 4. `routes.json` is an array validated all-or-nothing; reload = mtime poll (strictly newer only), per-request stat (250 ms throttle), SIGHUP. Bad file at runtime keeps old routes; bad file at boot or on SIGHUP crashes the process (exit 1).
-5. Timed bindings (`bindings.json` with queues/crons/do) pin a sprout resident: reconciled at boot and every swap, two wakes at a time, exponential backoff; the reconcile skips sproutd routes.
+5. Timed bindings (`bindings.json` with queues/crons/do) pin a sprout resident: reconciled at boot and every swap, two wakes at a time, exponential backoff.
 6. The cache is per-process: anonymous GETs only, `public` + max-age/s-maxage required, no Vary/Set-Cookie/Age, statuses 200/203/301/404/410, 500 entries / 64 MiB / 512 KiB per entry, FIFO eviction, purged per host on route change.
 7. The proxy forwards headers verbatim minus four `x-sb-*` internals, drops `x-sb-uncaught` (except for vouched binding calls), re-renders `x-sb-cpu-ms` with 3 decimals, adds `sb-cache` for GET, and enforces a 30 s deadline (which also cuts streaming bodies) and a 512 MiB response cap.
 8. Bun-isms that leak into behaviour: HTML dev error page (50 KB, with cwd) on handler exceptions (malformed `%`, missing Host, missing asset file), `Date` missing on HEAD, auto-decompression with stale `Content-Encoding`, Range on asset GETs, 413 at the server layer, coarse idle timeouts.
 9. Deploy surface: `sproutboat-edge.service` (`ExecStart=bun services/edge/src/main.ts`, `ExecReload=kill -HUP`), Caddy `reverse_proxy 127.0.0.1:8080`, installer rsyncs source (no build step for the edge); a Rust binary needs a build/ship path plus a pinned bun path for brokers (`process.execPath`).
-10. Tests that pin the surface: startup line regex `listening on http://IP:PORT`, `PORT=0`, `/__sb/pool` JSON, unit/installer strings (`tests/contracts.test.ts`, `tests/sproutd-isolation.test.ts`), the activation spool files, and the log field set read by `apps/control/src/logs.ts` and `tail.ts`.
+10. Tests that pin the surface: startup line regex `listening on http://IP:PORT`, `PORT=0`, `/__sb/pool` JSON, unit/installer strings (`tests/contracts.test.ts`), the activation spool files, and the log field set read by `apps/control/src/logs.ts` and `tail.ts`.
 
 ---
 
@@ -107,20 +107,19 @@ Exit code after a normal SIGTERM/SIGINT is 0; in a process that had earlier prod
 
 Top level: a JSON array. Anything else (object, string, ...) throws `invalid route snapshot` [V]. Empty array is valid [V].
 
-| Field           | Type / rule                                                                                                                                          | Result when violated                                                                                                                         |
-| --------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
-| `hostname`      | string matching `^[a-z0-9.-]+$` (lowercase only; no `_`, no port, no `*`)                                                                            | **Whole snapshot rejected** [V: uppercase, underscore, port, missing]                                                                        |
-| `sproutPath`    | string starting with `/`                                                                                                                             | **Whole snapshot rejected** [V]; required even for backend routes [V]; legacy `workerPath` is not read [V]                                   |
-| `secretsPath`   | string starting with `/`                                                                                                                             | else `null` (silently)                                                                                                                       |
-| `secretsHash`   | any string                                                                                                                                           | else `null`                                                                                                                                  |
-| `services`      | object; each pair kept only if key matches `^[A-Z][A-Z0-9_]*$` and value is a string matching `^[a-z0-9.-]+$`                                        | bad pairs dropped; no pairs left -> `null` [V: starts]                                                                                       |
-| `ownerId`       | string, length <= 256, no NUL                                                                                                                        | else `r2 = null` and the edge ignores `r2ResourceIds`/`doStoreId` [V: starts]                                                                |
-| `r2ResourceIds` | array; entries kept if string matching `^r2_[a-f0-9]{24}$`                                                                                           | non-array -> `[]`                                                                                                                            |
-| `doStoreId`     | string matching `^do_[a-f0-9]{24}$`                                                                                                                  | else omitted from `r2`                                                                                                                       |
-| `backend`       | absent/`undefined` -> supervisor route. Present: `{kind: "sproutd", url}` with url matching `^http://(127\.0\.0\.1\|localhost\|\[::1\]):[0-9]{1,5}$` | **Whole snapshot rejected**: https, trailing slash, non-loopback, `null`, wrong kind [V]. Port range is not checked (`:99999` accepted) [V]. |
-| anything else   | ignored                                                                                                                                              | e.g. `junk` field accepted [V]                                                                                                               |
+| Field           | Type / rule                                                                                                   | Result when violated                                                                                               |
+| --------------- | ------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| `hostname`      | string matching `^[a-z0-9.-]+$` (lowercase only; no `_`, no port, no `*`)                                     | **Whole snapshot rejected** [V: uppercase, underscore, port, missing]                                              |
+| `sproutPath`    | string starting with `/`                                                                                      | **Whole snapshot rejected** [V]; legacy `workerPath` is not read [V]                                               |
+| `secretsPath`   | string starting with `/`                                                                                      | else `null` (silently)                                                                                             |
+| `secretsHash`   | any string                                                                                                    | else `null`                                                                                                        |
+| `services`      | object; each pair kept only if key matches `^[A-Z][A-Z0-9_]*$` and value is a string matching `^[a-z0-9.-]+$` | bad pairs dropped; no pairs left -> `null` [V: starts]                                                             |
+| `ownerId`       | string, length <= 256, no NUL                                                                                 | else `r2 = null` and the edge ignores `r2ResourceIds`/`doStoreId` [V: starts]                                      |
+| `r2ResourceIds` | array; entries kept if string matching `^r2_[a-f0-9]{24}$`                                                    | non-array -> `[]`                                                                                                  |
+| `doStoreId`     | string matching `^do_[a-f0-9]{24}$`                                                                           | else omitted from `r2`                                                                                             |
+| anything else   | ignored                                                                                                       | e.g. `junk` field accepted [V]; a `backend` field is one of these: the edge has no route kind but the supervisor's |
 
-Duplicate hostnames: later entry wins (`Map.set`) [V starts; S for winner]. The edge does not require sorted entries. Per-route state kept: `sproutPath, secretsPath, secretsHash, services, r2:{ownerId,resourceIds,doStoreId?}|null, backend|null`.
+Duplicate hostnames: later entry wins (`Map.set`) [V starts; S for winner]. The edge does not require sorted entries. Per-route state kept: `sproutPath, secretsPath, secretsHash, services, r2:{ownerId,resourceIds,doStoreId?}|null`.
 
 Example emitted by control (supervisor route with everything):
 
@@ -137,13 +136,10 @@ Example emitted by control (supervisor route with everything):
 }
 ```
 
-sproutd route (#335): `{hostname, sproutPath, ownerId, r2ResourceIds: [], doStoreId, backend:{kind:"sproutd",url:"http://127.0.0.1:<port>"}}` and no secrets/services keys. [S: `apps/control/src/store.ts` `routeContext().entry`]
-
 ### 3.2 How control writes it [S: `apps/control/src/store.ts`]
 
 - Path `SPROUTBOAT_ROUTE_SNAPSHOT` (default `/var/lib/sproutboat/routes.json`); written to `<path>.<uuid>.tmp` (mode 0640, `JSON.stringify(routes, null, 2)` + newline) then `rename`: atomic and always a fresh mtime. The writer serialises calls.
 - Rows = active deployments (generated `<project>.<user>.<domain>` hosts) UNION verified custom domains (#331: `custom_domains.verified_at IS NOT NULL`, attached to the project's active deployment, so a custom hostname shares `sproutPath` with the generated one), excluding banned owners, `ORDER BY hostname`.
-- Runtime per row: sproutd when the deployment has `sproutd_vid`; the snapshot writer drops sproutd rows entirely when `SPROUTBOAT_SPROUTD_URL` is empty. `backend.url` = `SPROUTBOAT_SPROUTD_URL` with a trailing `/` stripped (staging: `http://127.0.0.1:18600`; the validator rejects a trailing slash). Staging addresses sproutd only through that env in `control.env` and through the route snapshot; the edge never reads a sproutd env itself. [S: `tools/sproutd-staging.sh`]
 - `secretsHash` = first 16 hex of sha256 of the deterministic JSON; `services` only when non-empty and resolved to same-owner active hostnames; `doStoreId` = `do_` + first 24 hex of sha256(`owner\0project`).
 - Stages a candidate (#141) through `candidateRoute()` = same entry shape (section 10).
 
@@ -163,18 +159,17 @@ Observed [V]: the edge picks up an atomically swapped newer file; **the edge ign
 
 Run for each hostname in the OLD map, in order, then the edge replaces the table wholesale and records the new mtime:
 
-1. Old route has `backend`: if the host is gone or `JSON.stringify(next.backend)` differs -> `cache.purgeHost(host)`; `continue` (no pool/asset work).
-2. Else (supervisor route): if the host is gone, or `sproutPath`, `secretsHash`, or `JSON.stringify(r2)` changed -> `pool.dispose(old.sproutPath)` (kills **every** runtime context spawned from that artifact path, including other hostnames sharing it; they cold-start on the next request), `assetManifests.delete(sproutPath)`, `cache.purgeHost(host)`. A change in `services` alone does **not** dispose (the process stays stale until the pool evicts it) [S].
-3. New hostnames need nothing (lazy). Sprouts are never pre-spawned for HTTP-only routes.
-4. `reconcileTimed(newRoutes)` (async; failure -> stderr `timed route reconcile failed: <msg>`).
-5. Route objects are re-created on every load, so an in-flight cache fill that completes after **any** reload sees `routes.get(host) !== route` and the edge discards the fill (even for unchanged hosts). Unchanged hosts keep their existing cache entries.
+1. If the host is gone, or `sproutPath`, `secretsHash`, or `JSON.stringify(r2)` changed -> `pool.dispose(old.sproutPath)` (kills **every** runtime context spawned from that artifact path, including other hostnames sharing it; they cold-start on the next request), `assetManifests.delete(sproutPath)`, `cache.purgeHost(host)`. A change in `services` alone does **not** dispose (the process stays stale until the pool evicts it) [S].
+2. New hostnames need nothing (lazy). Sprouts are never pre-spawned for HTTP-only routes.
+3. `reconcileTimed(newRoutes)` (async; failure -> stderr `timed route reconcile failed: <msg>`).
+4. Route objects are re-created on every load, so an in-flight cache fill that completes after **any** reload sees `routes.get(host) !== route` and the edge discards the fill (even for unchanged hosts). Unchanged hosts keep their existing cache entries.
 
 Verified [V]: after swapping `app.test` to another artifact and dropping `gone.test`, `gone.test` returned 404, the new artifact served `app.test`, and pool stats showed `spawns 3, restarts 1, live 2`.
 
 ### 3.5 Timed bindings reconcile [S unless tagged]
 
 - `hasTimedBindings(sproutPath)`: sync read of `<dirname(sproutPath)>/bindings.json`; true if any of `queues`, `crons`, `do` is a non-empty array; any read/parse error is false.
-- Candidates = supervisor routes only (backend routes skipped, "sproutd runs its own crons, queues and alarms") [V: sproutd route with a cron-bearing artifact was not counted].
+- Candidates = every route whose artifact has timed bindings.
 - One entry per route `{sproutPath, secretsPath, services, r2}`; the pool dedupes by runtime key `resolve(sproutPath) \0 secretsPath \0 JSON(sorted service pairs) \0 ownerId \0 sorted resourceIds \0 doStoreId`.
 - Pool `reconcileTimed` runs serially through one promise chain: removes timed keys no longer present (and disposes their server), stores the new set, calls `enableDispatch()` (SIGUSR1 to the broker) for each live timed runtime, then wakes with **two workers** (pop from the end of the list) via `endpoint()`.
 - Wake failure: `timedWakeFailures++`, stderr `timed sprout <path> did not start: <msg>`, retry with delay `min(30000, 250 * 2^min(attempt-1, 7))` ms; a sprout/broker crash reschedules too. Timed runtimes are exempt from idle eviction.
@@ -196,7 +191,6 @@ Notation: "log" means a request-log line is written (section 9). Status/body str
 | 4   | `host = Host.split(":")[0].toLowerCase()`; `routes.get(host)`                                                                                          | Port stripped, lowercased [V]. IPv6 `[::1]:80` -> host `[` -> no route [V]. Trailing dot `app.test.` -> no route [V].                                                                                                                                                                                                 |                                                    | V   |
 | 5a  | No route and `host === deploymentDomain`                                                                                                               | `302`, `Location: <dashboardUrl>`, empty body, `Content-Length: 0`; any method; no log (also for HEAD)                                                                                                                                                                                                                | none                                               | V   |
 | 5b  | No route otherwise                                                                                                                                     | `404`, `content-type: text/plain;charset=utf-8`, body `unknown deployment` (18 bytes)                                                                                                                                                                                                                                 | `errorKind:"no-route"`, hostname = host            | V   |
-| 6   | `route.backend` set                                                                                                                                    | `proxyToBackend` (section 7.2). Skips steps 7-11 entirely: no assets, no cache, no direct-transfer logic, no cold-start fields.                                                                                                                                                                                       |                                                    | V   |
 | 7   | `directTransfer = /^\/__sb\/r2\/transfer\/[A-Z][A-Z0-9_]*\/[0-9a-f]{24}$/.test(rawPathname)`; if true `server.timeout(request, 0)` (idle timeout off). | Direct transfers skip assets, cache, WS, and the declared-size cap.                                                                                                                                                                                                                                                   |                                                    | S   |
 | 8   | GET/HEAD and not directTransfer: assets (section 5)                                                                                                    | redirect / 304 / 200                                                                                                                                                                                                                                                                                                  | yes, `cacheStatus:"asset"`                         | V   |
 | 9   | Cache lookup if `cache && !directTransfer && cacheRequestEligible` (section 6)                                                                         | hit -> response, no sprout                                                                                                                                                                                                                                                                                            | `cacheStatus:"hit"`                                | V   |
@@ -213,26 +207,25 @@ Notes:
 - The WebSocket check is after assets: a WS upgrade GET whose path resolves to an asset gets the asset as the answer [S].
 - Status/body table for edge-generated responses:
 
-| Status | Body                                       | Content-Type               | When                                           | Logged  |
-| ------ | ------------------------------------------ | -------------------------- | ---------------------------------------------- | ------- |
-| 302    | empty                                      |                            | apex domain without route                      | no      |
-| 404    | `unknown deployment`                       | `text/plain;charset=utf-8` | no route                                       | yes     |
-| 413    | none                                       | none                       | Bun body limit                                 | no      |
-| 499    | none (null body)                           |                            | client aborted before upstream headers         | yes     |
-| 500    | Bun HTML dev error page                    | `text/html;charset=utf-8`  | uncaught handler exception                     | no      |
-| 502    | `sprout failed`                            | text/plain                 | endpoint failure, or proxy error (non-timeout) | yes     |
-| 502    | `response too large`                       | text/plain                 | declared Content-Length > cap                  | yes     |
-| 502    | `the sprout did not accept the WebSocket`  | text/plain                 | upstream WS refused/closed/timeout             | yes     |
-| 400    | `WebSocket upgrade failed`                 | text/plain                 | `server.upgrade()` returned false              | yes (S) |
-| 503    | `direct transfers unavailable`             | text/plain                 | transfer without bindings                      | no      |
-| 504    | `request timed out`                        | text/plain                 | deadline before upstream headers               | yes     |
-| 502    | `sproutd failed` / 504 `request timed out` | text/plain                 | backend proxy errors                           | yes     |
+| Status | Body                                      | Content-Type               | When                                           | Logged  |
+| ------ | ----------------------------------------- | -------------------------- | ---------------------------------------------- | ------- |
+| 302    | empty                                     |                            | apex domain without route                      | no      |
+| 404    | `unknown deployment`                      | `text/plain;charset=utf-8` | no route                                       | yes     |
+| 413    | none                                      | none                       | Bun body limit                                 | no      |
+| 499    | none (null body)                          |                            | client aborted before upstream headers         | yes     |
+| 500    | Bun HTML dev error page                   | `text/html;charset=utf-8`  | uncaught handler exception                     | no      |
+| 502    | `sprout failed`                           | text/plain                 | endpoint failure, or proxy error (non-timeout) | yes     |
+| 502    | `response too large`                      | text/plain                 | declared Content-Length > cap                  | yes     |
+| 502    | `the sprout did not accept the WebSocket` | text/plain                 | upstream WS refused/closed/timeout             | yes     |
+| 400    | `WebSocket upgrade failed`                | text/plain                 | `server.upgrade()` returned false              | yes (S) |
+| 503    | `direct transfers unavailable`            | text/plain                 | transfer without bindings                      | no      |
+| 504    | `request timed out`                       | text/plain                 | deadline before upstream headers               | yes     |
 
 ---
 
 ## 5. Static assets
 
-Only for `GET`/`HEAD` on supervisor routes that are not direct transfers. Backend routes never serve assets. [V]
+Only for `GET`/`HEAD` on supervisor routes that are not direct transfers.
 
 ### 5.1 Manifest [S unless tagged]
 
@@ -269,7 +262,7 @@ Only for `GET`/`HEAD` on supervisor routes that are not direct transfers. Backen
 
 ## 6. GET cache (`cache.ts`)
 
-Per-process, in-memory, supervisor routes only (backend routes never cache [V]).
+Per-process, in-memory, supervisor routes only.
 
 ### 6.1 Request eligibility (`cacheRequestEligible`)
 
@@ -325,22 +318,11 @@ Map keyed by string; `get` deletes an expired entry lazily (no sweeper). `set` r
 - `errorKind: "upstream-5xx"` whenever upstream status >= 500, the status is still forwarded [V].
 - The sprout's response body length: when the upstream length is known and the body completes in one read, Bun answered with `Content-Length`; bigger/slow bodies went out `Transfer-Encoding: chunked` [V]. Not semantically relevant, do not match byte-for-byte.
 
-### 7.2 sproutd backend (`backend.ts`) [V unless tagged]
-
-- Forwarded to `route.backend.url + pathname + search`; sproutd routes by Host so the request goes unchanged: Host header retains the client's (with port) [V]; internal four headers stripped [S for strip, V for `x-sb-edge-secret`/`x-sb-url` not reaching].
-- No pool, no asset serving, no cache, no direct-transfer logic, no binding vouching (no edge token), **no malformed-percent crash** (path never decoded: `/%E0%A4%A` passed through) [V], no cold-start fields in the log.
-- Response: `x-sb-uncaught` always deleted; `x-sb-cpu-ms` normalised as above; **no `sb-cache`**, no `uncaught` log field; other headers (incl. `x-sb-edge-token`) pass [V].
-- Same deadline (`requestTimeoutMs`, covers body), same response cap, same `cappedBody`.
-- Errors: 504 `request timed out` (log `error:"request timed out"`, `errorKind:"timed-out"`); 502 `sproutd failed` (log `error:"sproutd failure"`, `errorKind:"proxy"`); 499 `client-closed`; 502 `response too large`; stderr `sproutd timed out for <host>: ..` / `sproutd failure for <host>: ..` [V].
-- WebSocket: same relay with `ws://` URL, `keepAlive` no-op; log fields for 101 are only `hostname, method, status, durationMs, reqBytes` [V].
-- `JSON.stringify(next.backend)` equality is what decides cache purge on swap (these routes never use the cache anyway).
-
 ### 7.3 Header preparation and service-binding vouching (supervisor routes) [S]
 
 ```
-bindingCall = acceptBindingCall(request.headers.get("x-sb-edge-secret"), host)
+bindingCall = verifyBindingCall(request.headers.get("x-sb-edge-secret"), host)
             // = a live scoped credential whose broker's `services` map contains `host`   (#339: sha256 lookup, per broker, revoked at broker exit)
-            //   OR the per-process edge-wide secret (32-byte hex; timingSafeEqual, length mismatch -> false) until #339 removes it
             // `host` = the Host header, port stripped, lower case; a repeated header is joined with ", " (never matches)
 forwarded   = copy of request headers minus {x-sb-edge-secret, x-sb-edge-token, x-sb-binding-call, x-sb-url}
 if bindingCall && endpoint.edgeToken:
@@ -349,7 +331,7 @@ if bindingCall && endpoint.edgeToken:
     if request["x-sb-url"]: forwarded["x-sb-url"] = that value  // the caller's URL
 ```
 
-- Credentials go only to brokers as `SB_EDGE_SECRET`; clients cannot learn them, so a client can never be a binding call. Stripping works [V: client-sent `x-sb-*` never reached the sprout]. Before #339 the value is one per-process secret shared by every broker; with #339 each broker gets 24 random bytes (hex) valid only for the hostnames in its own `services` map and dropped when it exits. A credential that is wrong, expired or used for another host makes the request an ordinary public one (nothing vouched, headers stripped, `x-sb-uncaught` hidden); it is not an error. [V: tools/edge-diff `binding-*` cases]
+- Credentials go only to brokers as `SB_EDGE_SECRET`; clients cannot learn them, so a client can never be a binding call. Stripping works [V: client-sent `x-sb-*` never reached the sprout]. Each broker gets 24 random bytes (hex) valid only for the hostnames in its own `services` map and dropped when it exits. A credential that is wrong, expired or used for another host makes the request an ordinary public one (nothing vouched, headers stripped, `x-sb-uncaught` hidden); it is not an error. [V: tools/edge-diff `binding-*` cases]
 - Rust edge: the check is `POST /verify-binding-call {credential, host}` on the sidecar for every request carrying the header, uncached because a credential can be revoked.
 - Binding calls travel broker -> `SPROUTBOAT_EDGE_URL` -> same listener, `Host` = target hostname (from `services`), and so pass through the entire pipeline (assets, cache, sprout).
 - Response side: for a binding call `x-sb-uncaught` is kept (the caller's broker reads the callee's error), otherwise deleted.
@@ -365,7 +347,7 @@ if bindingCall && endpoint.edgeToken:
 | `evictIdle()`                                                                                                                               | idle >= 600 s and not timed -> dispose; `idleEvictions += n`. Runs every 60 s.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
 | `reconcileTimed(list)`                                                                                                                      | section 3.5.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
 | `stats()`                                                                                                                                   | the 10-key JSON; `portPoolSize = 10000`. [V]                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
-| `isEdgeSecret(v)` / `acceptBindingCall(v, host)`                                                                                            | section 7.3.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| `verifyBindingCall(v, host)`                                                                                                                | section 7.3.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
 
 Spawn recipe: with `bindings.json`, start the broker first (`<bun> --smol <@sproutboat/wire/broker entry> --port <port+10000> --transfer-port <port-10000> --token <24B hex> --db <stateDir>/state.sqlite --data-dir <stateDir>/d1 --resource-dir ... --bindings ... --sprout-url http://127.0.0.1:<port>/ [--owner-id ... --r2-resource-ids ... --secrets ... --services <json> --edge-url ... --assets-dir ... --do-db ... --dispatch-disabled]`, `SB_EDGE_SECRET` in env), wait up to 5 s for broker and transfer ports; then start the sprout through `sproutCommand` (sandbox launcher) with `PORT`, `SB_STARTUP_FILE`, `SB_EDGE_TOKEN`, `SB_BROKER_PORT`, `SB_BROKER_TOKEN`. Output of both goes to `<dirname(LOG_PATH)>/sprouts/<artifact digest>.log` (truncated per spawn; this is what `tail --sprout` reads). Either exiting kills the other. `dispose` = SIGKILL both. [S: `services/supervisor/src/run.ts`]
 
@@ -377,8 +359,8 @@ Spawn recipe: with `bindings.json`, start the broker first (`<bun> --smol <@spro
 - Order (supervisor): after assets and cache lookup and after `pool.endpoint` (so the cold start already happened and the edge logs its fields), edge opens its own WebSocket **to the sprout first**: URL `base` with `http`->`ws` + path + query; headers = forwarded headers minus `connection, upgrade, sec-websocket-key, sec-websocket-version, sec-websocket-extensions, sec-websocket-protocol, content-length, transfer-encoding`; protocols = the client's `Sec-WebSocket-Protocol` list; `binaryType arraybuffer`; **10 s connect timeout**. Open -> continue; error/close/timeout -> `502 the sprout did not accept the WebSocket` (log `error:"websocket refused"`, `errorKind:"websocket-refused"`). The sprout's own HTTP refusal (e.g. 403/426) is not relayed, the client sees the 502 [V].
 - Then `server.upgrade(request, {data, headers: {sec-websocket-protocol: upstream.protocol} if any})`; false -> close upstream, `400 WebSocket upgrade failed` [S]. 101 headers seen [V]: `Upgrade: websocket`, `Connection: Upgrade`, `Sec-WebSocket-Accept`, `Date`. Extension negotiation not observed (not verified).
 - Relay: text stays text, binary stays binary; the edge buffers messages from the sprout before the client's socket opens (`early`) and flushes them on open; it drops client -> sprout silently if the upstream is not OPEN; no backpressure handling. Close mapping: either side closing closes the other with `sendableCloseCode(code)` valid set `1000, 1001-1003, 1007-1014, 3000-4999` (anything else -> close without a code) and the reason; sprout error -> client `1011 "the sprout's WebSocket failed"`; client opens after the sprout already closed -> `1011 "the sprout's WebSocket closed"`. Observed [V]: subprotocol echoed, `4001 bye` carried, text echo.
-- Limits: client socket `maxPayloadLength` 32 MiB, `idleTimeout` 120 s; keep-alive `touch` every 30 s while open (no-op for sproutd).
-- Logging: one line at upgrade time (`status 101`, `durationMs` = handshake only; supervisor adds `coldStart, startupMs, bootMs`, sproutd does not); refusal line with 502/400; **nothing at close** [V]. Hung-up/closing sockets are never logged.
+- Limits: client socket `maxPayloadLength` 32 MiB, `idleTimeout` 120 s; keep-alive `touch` every 30 s while open.
+- Logging: one line at upgrade time (`status 101`, `durationMs` = handshake only; the request that started the sprout adds `coldStart, startupMs, bootMs`); refusal line with 502/400; **nothing at close** [V]. Hung-up/closing sockets are never logged.
 
 ---
 
@@ -395,18 +377,18 @@ Spawn recipe: with `bindings.json`, start the broker first (`<bun> --smol <@spro
 
 ### 9.2 Emission by path (key order shown, `path` last on every line)
 
-| Path                           | Fields                                                                                                                                                                                                                                            |
-| ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| no route (404)                 | `hostname, method, status:404, durationMs, reqBytes, errorKind:"no-route"` [V]                                                                                                                                                                    |
-| asset redirect / 304 / 200     | `hostname, method, status, durationMs, reqBytes, resBytes (0 / 0 / entry.size), cacheStatus:"asset"` [V]                                                                                                                                          |
-| cache hit                      | `hostname, method:"GET", status, durationMs, reqBytes, resBytes, cacheStatus:"hit"` [V]                                                                                                                                                           |
-| endpoint failure (502)         | `hostname, method, status:502, durationMs, reqBytes, ttfbMs:null, error:"sprout unavailable", errorKind:"sprout-unavailable"` [S]                                                                                                                 |
-| WS upgraded                    | `hostname, method, status:101, durationMs, reqBytes, coldStart, startupMs, bootMs` (sproutd: first five only) [V]                                                                                                                                 |
-| WS refused                     | as above `status` = 502/400, plus `error:"websocket refused", errorKind:"websocket-refused"` [V]                                                                                                                                                  |
-| declared too large             | `hostname, method, status:502, durationMs (= ttfbMs), ttfbMs, reqBytes, resBytes:<declared>, coldStart, startupMs, bootMs, error:"response too large", errorKind:"response-too-large"` (sproutd: no coldStart/startupMs/bootMs) [V]               |
-| normal proxied (body finished) | `hostname, method, status, durationMs, ttfbMs, reqBytes, resBytes, coldStart, startupMs, bootMs, cpuMs, errorKind?, uncaught?, cacheStatus?` (sproutd: `hostname, method, status, durationMs, ttfbMs, reqBytes, resBytes, cpuMs, errorKind?`) [V] |
-| client closed before headers   | `hostname, method, status:499, durationMs, reqBytes, ttfbMs:null, coldStart, startupMs, bootMs, error:"client closed the request", errorKind:"client-closed"` (sproutd: no cold fields) [V]                                                       |
-| proxy error / timeout          | `hostname, method, status:502                                                                                                                                                                                                                     | 504, durationMs, reqBytes, ttfbMs:null, coldStart, startupMs, bootMs, error:"sprout failure" | "request timed out", errorKind:"proxy" | "timed-out"`(sproutd:`"sproutd failure"`, no cold fields) [V] |
+| Path                           | Fields                                                                                                                                                                                     |
+| ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| no route (404)                 | `hostname, method, status:404, durationMs, reqBytes, errorKind:"no-route"` [V]                                                                                                             |
+| asset redirect / 304 / 200     | `hostname, method, status, durationMs, reqBytes, resBytes (0 / 0 / entry.size), cacheStatus:"asset"` [V]                                                                                   |
+| cache hit                      | `hostname, method:"GET", status, durationMs, reqBytes, resBytes, cacheStatus:"hit"` [V]                                                                                                    |
+| endpoint failure (502)         | `hostname, method, status:502, durationMs, reqBytes, ttfbMs:null, error:"sprout unavailable", errorKind:"sprout-unavailable"` [S]                                                          |
+| WS upgraded                    | `hostname, method, status:101, durationMs, reqBytes, coldStart, startupMs, bootMs` [V]                                                                                                     |
+| WS refused                     | as above `status` = 502/400, plus `error:"websocket refused", errorKind:"websocket-refused"` [V]                                                                                           |
+| declared too large             | `hostname, method, status:502, durationMs (= ttfbMs), ttfbMs, reqBytes, resBytes:<declared>, coldStart, startupMs, bootMs, error:"response too large", errorKind:"response-too-large"` [V] |
+| normal proxied (body finished) | `hostname, method, status, durationMs, ttfbMs, reqBytes, resBytes, coldStart, startupMs, bootMs, cpuMs, errorKind?, uncaught?, cacheStatus?` [V]                                           |
+| client closed before headers   | `hostname, method, status:499, durationMs, reqBytes, ttfbMs:null, coldStart, startupMs, bootMs, error:"client closed the request", errorKind:"client-closed"` [V]                          |
+| proxy error / timeout          | `hostname, method, status:502                                                                                                                                                              | 504, durationMs, reqBytes, ttfbMs:null, coldStart, startupMs, bootMs, error:"sprout failure" | "request timed out", errorKind:"proxy" | "timed-out"` [V] |
 
 Field semantics:
 
@@ -477,8 +459,7 @@ Field semantics:
 - Edge every 100 ms: `readdir`; for each name ending `.request.json` (any other file ignored [V]), skip if `<id>.reply.json` already exists [V: left untouched]; else run `start(requestPath)`:
   1. `loadRoutes(requestPath)` (full validation, same rules; invalid -> `invalid route snapshot`; bad JSON -> the parser message, e.g. `JSON Parse error: Expected '}'`);
   2. take the first entry (`empty activation request` if none) [V]; later entries ignored [V];
-  3. backend route -> success immediately, nothing started [V];
-  4. else `pool.endpoint(sproutPath, secretsPath, services, r2, dispatchDisabled=true)` (broker timers held until the route appears in a snapshot and `reconcileTimed` enables dispatch). Errors surface their message, e.g. `sprout exited before it began listening` for an unexecutable path [V].
+  3. `pool.endpoint(sproutPath, secretsPath, services, r2, dispatchDisabled=true)` (broker timers held until the route appears in a snapshot and `reconcileTimed` enables dispatch). Errors surface their message, e.g. `sprout exited before it began listening` for an unexecutable path [V].
 - Reply: `<id>.reply.json.tmp` mode 0640 then rename; content exactly `{"ok":true}` or `{"ok":false,"error":"<message>"}` [V]. After writing, if the request file disappeared meanwhile, the code removes the reply.
 - The edge never deletes the request file; control does. One request at a time (`busy` flag); a candidate that never listens blocks the queue for the 10 s ready timeout. The activated runtime serves nothing until the route is in `routes.json` [V: host still 404].
 
@@ -492,7 +473,7 @@ Field semantics:
 - `ExecStart=/opt/sproutboat/bun/bin/bun services/edge/src/main.ts`; `ExecReload=/bin/kill -HUP $MAINPID`.
 - Environment: `PORT=8080`, `SPROUTBOAT_ROUTE_SNAPSHOT`, `SPROUTBOAT_LOG_PATH`, `SPROUTBOAT_BROKER_STATE_DIR`, `SPROUTBOAT_RESOURCE_DIR`, `SPROUTBOAT_ACTIVATION_DIR`, `SPROUTBOAT_REQUEST_TIMEOUT_MS=30000`, `SPROUTBOAT_RESPONSE_MAX_BYTES=536870912`, `SPROUTBOAT_BIND_HOST=127.0.0.1`, `SPROUTBOAT_SPROUT_SANDBOX=bwrap`, `SPROUTBOAT_SPROUT_SECCOMP=/etc/sproutboat/worker-seccomp.bpf`, `SPROUTBOAT_SPROUT_CGROUP=off`, `SB_EGRESS_URL=http://127.0.0.1:8070`; `EnvironmentFile=-/etc/sproutboat/sproutboat.env` (deployment domain, dashboard URL) and `-/etc/sproutboat/egress.env` (`SB_EGRESS_TOKEN`, optional `SB_EGRESS_ALLOW`).
 - Hardening that the binary must live with: `NoNewPrivileges`, `PrivateTmp`, `ProtectHome`, `ProtectSystem=strict`, `ReadWritePaths=/var/lib/sproutboat`, `UMask=0007`, `MemoryMax=2500M`, `MemorySwapMax=0`, `CPUQuota=200%`, `TasksMax=2048` (cgroup covers every sprout, broker and bwrap), `IPAddressDeny=any` + `IPAddressAllow=localhost`, `RestrictNamespaces=user pid ipc uts mnt cgroup` (bubblewrap needs user namespaces). `After=`/`Wants=` `sproutboat-egress.service`.
-- `tests/contracts.test.ts` pins `UMask=0007`, `SPROUTBOAT_ACTIVATION_DIR=...`, `SB_EGRESS_URL=http://127.0.0.1:<egress port>`, `EnvironmentFile=-/etc/sproutboat/egress.env`, `IPAddressDeny=any`. `tests/sproutd-isolation.test.ts` forbids the word `sproutd` in `install.sh`, `sbctl`, `sb-update` and all units, and pins the restart line `systemctl restart sproutboat-control sproutboat-egress sproutboat-edge` and `SERVICES=(sproutboat-control sproutboat-egress sproutboat-edge caddy)`.
+- `tests/contracts.test.ts` pins `UMask=0007`, `SPROUTBOAT_ACTIVATION_DIR=...`, `SB_EGRESS_URL=http://127.0.0.1:<egress port>`, `EnvironmentFile=-/etc/sproutboat/egress.env`, `IPAddressDeny=any`. The restart line is `systemctl restart sproutboat-control sproutboat-egress sproutboat-edge` and `SERVICES=(sproutboat-control sproutboat-egress sproutboat-edge caddy)`.
 
 ### 11.2 Caddy [S]
 
@@ -503,7 +484,6 @@ Field semantics:
 - `install.sh`: creates users `sproutboat-control`/`sproutboat-edge` and group `sproutboat`; dirs `logs` (0770 edge), `brokers` and `resources` (2770 edge), `activation` (2770 control); rsyncs the checkout to `/opt/sproutboat` excluding `.git node_modules /bun /apps/web/dist ...`; installs pinned Bun (`BUN_VERSION="1.4.0"` -> `/opt/sproutboat/bun/bin/bun`); `bun install --frozen-lockfile`; builds the dashboard; writes `/etc/sproutboat/{sproutboat,control,egress,caddy,update}.env`; copies units, `sbctl`, and `sb-update`; `systemctl restart sproutboat-control sproutboat-egress sproutboat-edge`; `reload-or-restart caddy`; the edge has no build step (Bun runs the TypeScript), no Rust/compiler on the host, apt/dnf installs `bubblewrap curl git patch rsync unzip ...`.
 - `sbctl update` -> `infra/sb-update` (installed to `/usr/local/lib/sproutboat/update`): `git fetch --depth 1` of the latest `v*` tag (or pinned ref) into a private stage dir, then runs that checkout's `install.sh --upgrade` (env `SB_UPDATE=1 SB_PULL=0 ...`). It never names the edge. Prod moves only on `v*` tags.
 - `sbctl restart|up|down|logs edge|restore`: plain `systemctl`/`journalctl` on `sproutboat-edge`; `restore` stops control + edge + backup timer, restores, chowns `brokers`/`resources` to `sproutboat-edge:sproutboat`.
-- `tools/sproutd-staging.sh`: staging clone with `sbstg-*` units and ports `18080/18787/18070/18600`; maps unit names from `install.sh`'s restart line (so the restart line must stay greppable); sets `SPROUTBOAT_EDGE_INTERNAL_URL=http://127.0.0.1:18080` in control env. `tools/sproutd-e2e.sh` drives the real edge on that port with `Host:` headers and asserts: forwarded response, `x-app-version` header passthrough, original Host seen by the app, POST body, unknown host 404, `routes.json` carries `backend.kind == "sproutd"`, `/__sb/pool` `.live == 0` for a sproutd route, request log has `.hostname`, `.status == 200`, `.path == "/"`.
 - Other harnesses that spawn the edge: `tests/tail.e2e.test.ts` (control + edge + stand-in sprout, expects `x-sb-cpu-ms`, uncaught signature, `x-sb-uncaught` marker, log fields), `tests/service-bindings/platform.ts` (`bun services/edge/src/main.ts` with `PORT=0`, `SPROUTBOAT_EDGE_CACHE=off`, optional `SB_SUITE_EDGE_ROOT`), `tools/dev-local.ts` (`bun run edge` behind portless).
 
 ### 11.4 What must change to ship a Rust binary
@@ -514,7 +494,7 @@ Field semantics:
 4. **Bun still required at runtime.** The edge spawns brokers with `process.execPath --smol <resolved @sproutboat/wire/broker>`; a Rust parent must spell out `/opt/sproutboat/bun/bin/bun` (the unit hardens PATH) and the broker entry path under `node_modules`. `sbctl preflight` and the egress unit also need `/opt/sproutboat/bun/bin/bun`.
 5. **Dev loop.** `package.json` `edge` script, `tools/dev-local.ts`, both e2e harnesses spawn `bun services/edge/src/main.ts`; they need an env switch or a Rust command (`SB_SUITE_EDGE_ROOT` exists for the binding suite only).
 6. **CI.** `.github/workflows/ci.yml` must build/test the Rust crate; keep `bun test` covering control against the Rust edge via `tests/tail.e2e.test.ts`.
-7. **Do not name `sproutd`** in installer, updater, sbctl or units (test).
+7. **Keep the restart line greppable** in `install.sh` (`systemctl restart sproutboat-control sproutboat-egress sproutboat-edge`).
 8. **Keep byte-compatible with control:** the request-log line shape (9), `routes.json` schema (3), activation files (10), `/__sb/pool` (4), the startup line (2.1).
 
 ---
@@ -524,7 +504,7 @@ Field semantics:
 Each item says what Bun did and what a faithful rewrite should decide. [V] unless tagged.
 
 1. **Dev error page.** Any exception thrown out of `fetch()` (missing/empty Host -> `new URL` failure; malformed percent in an asset-eligible GET/HEAD; missing asset file; malformed manifest [S]) produces `500` with `content-type: text/html;charset=utf-8`, a ~50 KB HTML page embedding `{"message":"GET - /%E0%A4%A failed","cwd":"/Users/..."}` and source excerpts, because `NODE_ENV` is not `production`. No log line. Clients and control never rely on it; a Rust edge should answer a small 400/404/500 instead, and the diff tool should whitelist this class. The stderr gets the TypeError/URIError stack plus `GET - <path> failed`.
-2. **Malformed percent-encoding** only trips the asset decode on **GET/HEAD to supervisor routes**; POST etc. and all sproutd traffic pass the raw path (verified). `decodeURIComponent` is JS-strict (lone `%`, bad UTF-8 sequences like `%E0%A4%A`, throw; `%2F` decodes to `/` for key lookup).
+2. **Malformed percent-encoding** only trips the asset decode on **GET/HEAD to supervisor routes**; POST etc. pass the raw path (verified). `decodeURIComponent` is JS-strict (lone `%`, bad UTF-8 sequences like `%E0%A4%A`, throw; `%2F` decodes to `/` for key lookup).
 3. **Header casing.** Edge-generated responses show `content-type` lowercase and `Date`, `Content-Length` title-cased; proxied upstream headers keep the casing Bun's client reported (`X-Mixed-Case` kept, `Content-Type`, `Cache-Control`, `Location`, `ETag`, `Age` title-cased, `sb-cache` and `x-sb-*` lowercase). HEAD/no-body paths emit lowercase `content-length`. HTTP header names are case-insensitive; do not match casing.
 4. **Automatic headers.** Bun adds `Date` to every response except HEAD responses (proxied, asset and redirect HEAD all lacked it; curl -I confirmed). It adds `Content-Type: text/plain;charset=utf-8` for string bodies it generates (404, 502, 504, 503 bodies) and `application/json;charset=utf-8` for `/__sb/pool`; it does not invent a content-type for proxied bodies [V raw sprout]. `Content-Length` appears when the whole body is known at first read, otherwise `Transfer-Encoding: chunked`. 204/304 carry no body or length.
 5. **`fetch` auto-decompression bug.** The edge forwards the client's `Accept-Encoding`. If a sprout answers with `Content-Encoding: gzip` the Bun edge sends the **decompressed** body with the original `Content-Encoding: gzip` header and a recomputed `Content-Length` (23 vs the original 28), which is a corrupt response for clients. Test fixture: gzip body of `hello hello hello hello`. Log `resBytes` showed the compressed declared length (28). Real Porffor sprouts do not compress today; a Rust proxy that passes bytes and headers through untouched is the correct behaviour and equals Bun's for uncompressed responses. Fetch also adds `Accept-Encoding: gzip, deflate, br, zstd` when the client sent none.
@@ -563,4 +543,4 @@ Everything else in sections 3-12 stays the contract. Items in section 12 that de
 
 ## Appendix A. Verified-by-run checklist
 
-Probe coverage: startup/exit/signals, routing and Host edge cases, apex 302, pool endpoint, header forwarding/stripping, uncaught signature and marker, cpu header, cookies, status passthrough, HEAD/OPTIONS/custom methods, path normalisation, malformed percent-encoding, body limit (CL and chunked), declared and streamed response caps, deadline (headers and body), client abort (before headers and mid-stream), upstream crash and respawn, cache matrix (hit/miss/bypass/dynamic, statuses, size, expiry, key), assets (redirects, etag/304, HEAD, range, headers rules, sprout-first, missing file), reload matrix (swap, older mtime, deleted, invalid, SIGHUP), route validation matrix (26 cases), sproutd backend (headers, errors, WS), WebSocket (relay, refusal, POST not upgrade, 101 headers), timed bindings, activation spool, idle timeout, log-path failure modes, env parsing, port conflicts, shutdown with an in-flight request.
+Probe coverage: startup/exit/signals, routing and Host edge cases, apex 302, pool endpoint, header forwarding/stripping, uncaught signature and marker, cpu header, cookies, status passthrough, HEAD/OPTIONS/custom methods, path normalisation, malformed percent-encoding, body limit (CL and chunked), declared and streamed response caps, deadline (headers and body), client abort (before headers and mid-stream), upstream crash and respawn, cache matrix (hit/miss/bypass/dynamic, statuses, size, expiry, key), assets (redirects, etag/304, HEAD, range, headers rules, sprout-first, missing file), reload matrix (swap, older mtime, deleted, invalid, SIGHUP), route validation matrix (26 cases), WebSocket (relay, refusal, POST not upgrade, 101 headers), timed bindings, activation spool, idle timeout, log-path failure modes, env parsing, port conflicts, shutdown with an in-flight request.

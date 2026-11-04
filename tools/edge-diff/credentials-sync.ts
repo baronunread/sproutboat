@@ -1,6 +1,6 @@
 /**
  * Harness-only: keeps the supervisor's scoped binding credentials (services/supervisor/src/
- * binding-credentials.ts) equal to the contents of `$EDGE_DIFF_CREDENTIALS_FILE`, so both edges
+ * run.ts) equal to the contents of `$EDGE_DIFF_CREDENTIALS_FILE`, so both edges
  * get the same known per-app credentials and a case can revoke one mid-run (an exited broker).
  *
  * The file is `{"version": n, "credentials": {"<credential>": ["host", ...]}}`. Each applied
@@ -8,7 +8,7 @@
  * or the Rust edge's sidecar), which `Ctx.setCredentials` waits for.
  */
 import { readFileSync, writeFileSync } from "node:fs";
-import { registerBindingCredential } from "../../services/supervisor/src/binding-credentials";
+import { registerBindingCredential } from "../../services/supervisor/src/run";
 
 export function syncCredentials(role: string): void {
   const file = process.env.EDGE_DIFF_CREDENTIALS_FILE;

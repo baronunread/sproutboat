@@ -1,8 +1,8 @@
-/** Routing, backend (sproutd), supervisor proxying, caps, timeouts, uncaught detection. */
+/** Routing, supervisor proxying, caps, timeouts, uncaught detection. */
 import { join } from "node:path";
 import type { Json } from "./lib";
 import type { Case } from "./runner";
-import { backendRoute, both, bytes, get, hdrs, json, kindRoute, pattern, supRoute } from "./helpers";
+import { supCase, bytes, get, hdrs, json, pattern, supRoute } from "./helpers";
 
 const G = "core";
 
@@ -160,10 +160,10 @@ const routing: Case[] = [
   },
 ];
 
-// ---- forwarding behaviour, both route kinds ----
+// ---- forwarding behaviour ----
 
 const forwarding: Case[] = [
-  ...both("forward-host-path-query", G, () => ({
+  ...supCase("forward-host-path-query", G, () => ({
     run: async (ctx) => {
       await get(ctx, "plain", "/hello?x=1", { host: "app.test" });
       await get(ctx, "query only chars", "/seen?a=1&b=%20x&c&d=%2F&e=", { host: "app.test" });
@@ -174,7 +174,7 @@ const forwarding: Case[] = [
       await get(ctx, "long path", `/seen/${"a".repeat(700)}`, { host: "app.test" });
     },
   })),
-  ...both("request-headers-forwarded", G, () => ({
+  ...supCase("request-headers-forwarded", G, () => ({
     run: async (ctx) => {
       const seen = await ctx.req("headers", {
         path: "/seen",
@@ -198,7 +198,7 @@ const forwarding: Case[] = [
       ctx.note("parsed", json(seen));
     },
   })),
-  ...both("internal-headers-stripped", G, () => ({
+  ...supCase("internal-headers-stripped", G, () => ({
     run: async (ctx) => {
       await ctx.req("forged internal headers", {
         path: "/seen",
@@ -219,12 +219,12 @@ const forwarding: Case[] = [
       ctx.note("echo body", Buffer.from(echo.body).toString());
     },
   })),
-  ...both("upstream-hop-by-hop-headers", G, () => ({
+  ...supCase("upstream-hop-by-hop-headers", G, () => ({
     run: async (ctx) => {
       await get(ctx, "connection and keep-alive from the app", "/cookies", { loose: { strictHop: true } });
     },
   })),
-  ...both("response-headers-passthrough", G, () => ({
+  ...supCase("response-headers-passthrough", G, () => ({
     run: async (ctx) => {
       await get(ctx, "duplicate set-cookie and x-dup", "/cookies");
       await get(ctx, "302 is not followed", "/redirect?to=https%3A%2F%2Fexample.org%2Fz");
@@ -233,20 +233,20 @@ const forwarding: Case[] = [
       await ctx.req("HEAD of gen", { method: "HEAD", path: "/gen?size=100" });
     },
   })),
-  ...both("status-passthrough", G, () => ({
+  ...supCase("status-passthrough", G, () => ({
     run: async (ctx) => {
       for (const status of [200, 201, 204, 301, 400, 404, 418, 500, 502, 503, 504])
         await get(ctx, `status ${status}`, `/status/${status}`);
     },
   })),
-  ...both("upstream-5xx", G, () => ({
+  ...supCase("upstream-5xx", G, () => ({
     run: async (ctx) => {
       await get(ctx, "busy 503", "/busy");
       await get(ctx, "500", "/status/500");
       await get(ctx, "deliberate 500", "/deliberate");
     },
   })),
-  ...both("request-body-roundtrip", G, () => ({
+  ...supCase("request-body-roundtrip", G, () => ({
     run: async (ctx) => {
       const big = pattern(100 * 1024);
       const echoed = await ctx.req("100 KiB body echo", { method: "POST", path: "/echo", body: big });
@@ -262,7 +262,7 @@ const forwarding: Case[] = [
       await ctx.req("POST content-length 0", { method: "POST", path: "/seen", headers: { "content-length": "0" } });
     },
   })),
-  ...both("large-response-streams", G, () => ({
+  ...supCase("large-response-streams", G, () => ({
     run: async (ctx) => {
       const big = await get(ctx, "3 MiB declared", "/big?n=3145728", { loose: { body: true } });
       ctx.note("big length", big.body.length);
@@ -270,14 +270,14 @@ const forwarding: Case[] = [
       ctx.note("streamed length", streamed.body.length);
     },
   })),
-  ...both("http10-and-misc-framing", G, () => ({
+  ...supCase("http10-and-misc-framing", G, () => ({
     run: async (ctx) => {
       await ctx.req("HTTP/1.0 GET", { path: "/hello", httpVersion: "1.0", host: "app.test" });
       await ctx.req("HEAD with body-bearing route", { method: "HEAD", path: "/big?n=1000" });
       await get(ctx, "after the HEAD", "/hello");
     },
   })),
-  ...both("log-fields-request-bytes", G, () => ({
+  ...supCase("log-fields-request-bytes", G, () => ({
     run: async (ctx) => {
       await ctx.req("POST with content-length", { method: "POST", path: "/upload", body: "1234567" });
       await ctx.req("POST chunked", { method: "POST", path: "/upload", chunks: ["1234", "567"] });
@@ -291,7 +291,7 @@ const forwarding: Case[] = [
 // ---- uncaught detection, cpu header ----
 
 const uncaught: Case[] = [
-  ...both("uncaught-detection", G, () => ({
+  ...supCase("uncaught-detection", G, () => ({
     run: async (ctx) => {
       await get(ctx, "runtime bare 500 (no content-type, 21 bytes)", "/uncaught");
       await get(ctx, "deliberate 500 with content-type", "/deliberate");
@@ -301,7 +301,7 @@ const uncaught: Case[] = [
       await get(ctx, "after the failures", "/hello");
     },
   })),
-  ...both("cpu-header-formatting", G, () => ({
+  ...supCase("cpu-header-formatting", G, () => ({
     run: async (ctx) => {
       const values = [
         "1.2345",
@@ -336,7 +336,7 @@ const uncaught: Case[] = [
 // ---- caps ----
 
 const caps: Case[] = [
-  ...both("response-cap-declared", G, () => ({
+  ...supCase("response-cap-declared", G, () => ({
     env: { SPROUTBOAT_RESPONSE_MAX_BYTES: "1024" },
     run: async (ctx) => {
       await get(ctx, "exactly the cap", "/big?n=1024");
@@ -346,7 +346,7 @@ const caps: Case[] = [
       await get(ctx, "zero", "/big?n=0");
     },
   })),
-  ...both("response-cap-stream", G, () => ({
+  ...supCase("response-cap-stream", G, () => ({
     env: { SPROUTBOAT_RESPONSE_MAX_BYTES: "1024" },
     run: async (ctx) => {
       await get(ctx, "streamed within the cap", "/stream?n=1000&chunk=500");
@@ -356,14 +356,14 @@ const caps: Case[] = [
       await get(ctx, "still serving", "/hello");
     },
   })),
-  ...both("response-cap-env-invalid", G, () => ({
+  ...supCase("response-cap-env-invalid", G, () => ({
     env: { SPROUTBOAT_RESPONSE_MAX_BYTES: "not-a-number" },
     run: async (ctx) => {
       await get(ctx, "default cap applies", "/big?n=200000", { loose: { body: true } });
     },
   })),
   // Bun's rejection is a 413 or a reset depending on timing, so only accepted/rejected is compared.
-  ...both("body-cap-content-length", G, () => ({
+  ...supCase("body-cap-content-length", G, () => ({
     env: { SPROUTBOAT_EDGE_MAX_BODY_BYTES: "1024" },
     logs: "off",
     run: async (ctx) => {
@@ -380,7 +380,7 @@ const caps: Case[] = [
   })),
   // Bun's chunked rejection is racy (a 413 or a reset, and a 502/proxy log line or none), so only the
   // accepted/rejected outcome is compared and the log is not.
-  ...both("body-cap-chunked", G, () => ({
+  ...supCase("body-cap-chunked", G, () => ({
     env: { SPROUTBOAT_EDGE_MAX_BODY_BYTES: "1024" },
     logs: "off",
     run: async (ctx) => {
@@ -394,13 +394,13 @@ const caps: Case[] = [
       await get(ctx, "GET after", "/hello");
     },
   })),
-  ...both("body-cap-env-invalid", G, () => ({
+  ...supCase("body-cap-env-invalid", G, () => ({
     env: { SPROUTBOAT_EDGE_MAX_BODY_BYTES: "0" },
     run: async (ctx) => {
       await ctx.req("zero means default", { method: "POST", path: "/upload", body: bytes(4000) });
     },
   })),
-  ...both("body-cap-env-garbage", G, () => ({
+  ...supCase("body-cap-env-garbage", G, () => ({
     env: { SPROUTBOAT_EDGE_MAX_BODY_BYTES: "12abc" },
     run: async (ctx) => {
       await ctx.req("garbage means default", { method: "POST", path: "/upload", body: bytes(4000) });
@@ -408,10 +408,10 @@ const caps: Case[] = [
   })),
 ];
 
-// ---- timeouts, down backends, hang-up ----
+// ---- timeouts, hang-up ----
 
 const failures: Case[] = [
-  ...both("timeout-504", G, () => ({
+  ...supCase("timeout-504", G, () => ({
     env: { SPROUTBOAT_REQUEST_TIMEOUT_MS: "300" },
     run: async (ctx) => {
       await get(ctx, "fast", "/hello");
@@ -420,21 +420,21 @@ const failures: Case[] = [
       await get(ctx, "fast again", "/hello");
     },
   })),
-  ...both("timeout-mid-body", G, () => ({
+  ...supCase("timeout-mid-body", G, () => ({
     env: { SPROUTBOAT_REQUEST_TIMEOUT_MS: "300" },
     run: async (ctx) => {
       await get(ctx, "headers then a stall past the deadline", "/stall?ms=1200", { loose: { body: true } });
       await get(ctx, "alive after", "/hello");
     },
   })),
-  ...both("timeout-env-invalid", G, () => ({
+  ...supCase("timeout-env-invalid", G, () => ({
     env: { SPROUTBOAT_REQUEST_TIMEOUT_MS: "soon" },
     run: async (ctx) => {
       await get(ctx, "default deadline, fast request", "/slow?ms=200");
     },
   })),
   {
-    id: "client-hangup-during-cold-start.sup",
+    id: "client-hangup-during-cold-start",
     group: G,
     run: async (ctx) => {
       await get(ctx, "hang up while the sprout is still starting", "/hang", { hangUpAfterMs: 15 });
@@ -445,7 +445,7 @@ const failures: Case[] = [
   // The requester leaves while the sprout (20 ms: the sidecar itself) is still starting. The next
   // requests must join the same start, and the hang-up is logged as a 499 with the cold-start fields.
   ...([20, 300] as const).map((ms): Case => ({
-    id: `client-hangup-during-slow-cold-start-${ms}ms.sup`,
+    id: `client-hangup-during-slow-cold-start-${ms}ms`,
     group: G,
     setup: async (fx) => [
       await supRoute(fx, "app.test", "slowboot", {
@@ -459,7 +459,7 @@ const failures: Case[] = [
       await get(ctx, "third request", "/hello", { timeoutMs: 5000 });
     },
   })),
-  ...both("client-hangup-499", G, () => ({
+  ...supCase("client-hangup-499", G, () => ({
     run: async (ctx) => {
       await get(ctx, "warm up", "/hello");
       await get(ctx, "hang up while the app is busy", "/hang", { hangUpAfterMs: 200 });
@@ -468,53 +468,7 @@ const failures: Case[] = [
     },
   })),
   {
-    id: "backend-down.sproutd",
-    group: G,
-    setup: async (fx) => {
-      const port = await fx.closedPort();
-      return [
-        {
-          hostname: "app.test",
-          sproutPath: join(fx.dir, "x/sprout"),
-          backend: { kind: "sproutd", url: `http://127.0.0.1:${port}` },
-        },
-      ];
-    },
-    run: async (ctx) => {
-      await get(ctx, "connection refused", "/x");
-      await ctx.req("POST to a dead backend", { method: "POST", path: "/x", body: "abc" });
-      await get(ctx, "websocket upgrade to a dead backend", "/ws", {
-        headers: hdrs(
-          ["connection", "Upgrade"],
-          ["upgrade", "websocket"],
-          ["sec-websocket-key", "dGhlIHNhbXBsZSBub25jZQ=="],
-          ["sec-websocket-version", "13"],
-        ),
-      });
-    },
-  },
-  {
-    id: "backend-localhost-url.sproutd",
-    group: G,
-    setup: async (fx) => [
-      {
-        hostname: "app.test",
-        sproutPath: join(fx.dir, "x/sprout"),
-        backend: { kind: "sproutd", url: "http://localhost:1" },
-      },
-      {
-        hostname: "v6.test",
-        sproutPath: join(fx.dir, "x/sprout"),
-        backend: { kind: "sproutd", url: "http://[::1]:1", extra: true },
-      },
-    ],
-    run: async (ctx) => {
-      await get(ctx, "localhost backend (nothing listens)", "/x");
-      await get(ctx, "[::1] backend (nothing listens)", "/x", { host: "v6.test" });
-    },
-  },
-  {
-    id: "sprout-crash.sup",
+    id: "sprout-crash",
     group: G,
     run: async (ctx) => {
       await get(ctx, "warm", "/hello");
@@ -523,7 +477,7 @@ const failures: Case[] = [
     },
   },
   {
-    id: "sprout-exits-immediately.sup",
+    id: "sprout-exits-immediately",
     group: G,
     setup: async (fx) => [await supRoute(fx, "app.test", "dead", { script: "#!/bin/sh\nexit 1\n" })],
     timeoutMs: 40_000,
@@ -533,7 +487,7 @@ const failures: Case[] = [
     },
   },
   {
-    id: "sprout-missing-file.sup",
+    id: "sprout-missing-file",
     group: G,
     setup: async (fx) => [await supRoute(fx, "app.test", "gone", { missing: true })],
     timeoutMs: 40_000,
@@ -543,7 +497,7 @@ const failures: Case[] = [
     },
   },
   {
-    id: "sprout-not-executable.sup",
+    id: "sprout-not-executable",
     group: G,
     setup: async (fx) => {
       const route = await supRoute(fx, "app.test", "noexec", { script: "#!/bin/sh\nexit 0\n" });
@@ -561,7 +515,7 @@ const failures: Case[] = [
 
 const cold: Case[] = [
   {
-    id: "cold-start-fields.sup",
+    id: "cold-start-fields",
     group: G,
     run: async (ctx) => {
       await get(ctx, "first request (cold start)", "/hello");
@@ -571,7 +525,7 @@ const cold: Case[] = [
     },
   },
   {
-    id: "cold-start-no-startup-file.sup",
+    id: "cold-start-no-startup-file",
     group: G,
     setup: async (fx) => [
       await supRoute(fx, "app.test", "nostartup", {
@@ -584,7 +538,7 @@ const cold: Case[] = [
     },
   },
   {
-    id: "cold-start-post.sup",
+    id: "cold-start-post",
     group: G,
     run: async (ctx) => {
       await ctx.req("first request is a POST with a body", { method: "POST", path: "/upload", body: "abc" });
@@ -592,16 +546,7 @@ const cold: Case[] = [
     },
   },
   {
-    id: "no-cold-start-fields.sproutd",
-    group: G,
-    setup: async (fx) => [await backendRoute(fx)],
-    run: async (ctx) => {
-      await get(ctx, "first", "/hello");
-      await get(ctx, "second", "/hello");
-    },
-  },
-  {
-    id: "two-hosts-two-sprouts.sup",
+    id: "two-hosts-two-sprouts",
     group: G,
     setup: async (fx) => [await supRoute(fx, "a.test", "a"), await supRoute(fx, "b.test", "b")],
     run: async (ctx) => {
@@ -629,7 +574,7 @@ const startup = (
   },
 });
 
-const bad =
+const withBackend =
   (v: Json) =>
   async (fx: import("./lib").Fixture): Promise<Json[]> => [
     { hostname: "app.test", sproutPath: join(fx.dir, "x/sprout"), backend: v },
@@ -650,31 +595,14 @@ const routeFiles: Case[] = [
   startup("routes-sproutpath-relative", '[{"hostname":"app.test","sproutPath":"x/sprout"}]', true),
   startup("routes-sproutpath-missing", '[{"hostname":"app.test"}]', true),
   startup(
-    "routes-backend-without-sproutpath",
-    '[{"hostname":"app.test","backend":{"kind":"sproutd","url":"http://127.0.0.1:1"}}]',
-    true,
-  ),
-  startup(
     "routes-one-bad-entry-poisons-all",
     '[{"hostname":"ok.test","sproutPath":"/x/sprout"},{"hostname":"BAD","sproutPath":"/x/sprout"}]',
     true,
   ),
-  startup("routes-backend-null", bad(null), true),
-  startup("routes-backend-string", bad("http://127.0.0.1:1"), true),
-  startup("routes-backend-array", bad([]), true),
-  startup("routes-backend-wrong-kind", bad({ kind: "other", url: "http://127.0.0.1:1" }), true),
-  startup("routes-backend-no-kind", bad({ url: "http://127.0.0.1:1" }), true),
-  startup("routes-backend-non-loopback", bad({ kind: "sproutd", url: "http://10.0.0.5:8600" }), true),
-  startup("routes-backend-with-path", bad({ kind: "sproutd", url: "http://127.0.0.1:8600/path" }), true),
-  startup("routes-backend-https", bad({ kind: "sproutd", url: "https://127.0.0.1:8600" }), true),
-  startup("routes-backend-evil-suffix", bad({ kind: "sproutd", url: "http://127.0.0.1.evil.test:80" }), true),
-  startup("routes-backend-no-port", bad({ kind: "sproutd", url: "http://127.0.0.1" }), true),
-  startup("routes-backend-six-digit-port", bad({ kind: "sproutd", url: "http://127.0.0.1:123456" }), true),
-  startup("routes-backend-trailing-slash", bad({ kind: "sproutd", url: "http://127.0.0.1:8600/" }), true),
-  startup("routes-backend-uppercase-localhost", bad({ kind: "sproutd", url: "http://LOCALHOST:8600" }), true),
-  startup("routes-backend-port-zero-ok", bad({ kind: "sproutd", url: "http://127.0.0.1:0" }), false),
-  startup("routes-backend-ipv6-ok", bad({ kind: "sproutd", url: "http://[::1]:8600" }), false),
-  startup("routes-backend-extra-fields-ok", bad({ kind: "sproutd", url: "http://127.0.0.1:8600", weight: 3 }), false),
+  // The edge has no backend route kind: a `backend` field is an extra field like any other.
+  startup("routes-backend-field-ignored-null", withBackend(null), false),
+  startup("routes-backend-field-ignored-string", withBackend("http://127.0.0.1:1"), false),
+  startup("routes-backend-field-ignored-object", withBackend({ kind: "other", url: "http://10.0.0.5:8600" }), false),
   startup(
     "routes-extra-fields-ignored",
     async (fx) => [
@@ -700,5 +628,3 @@ const routeFiles: Case[] = [
 ];
 
 export const coreCases: Case[] = [...routing, ...forwarding, ...uncaught, ...caps, ...failures, ...cold, ...routeFiles];
-
-void kindRoute;

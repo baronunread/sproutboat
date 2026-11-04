@@ -1,7 +1,6 @@
 /**
- * The fake backend behind every edge-diff case. The same file is run as a sproutd stand-in
- * (`PORT=0`, announces its port) and, wrapped in a tiny `sprout` shell script, as a supervisor
- * sprout (`PORT` set by the pool). node:http rather than Bun.serve on purpose: Bun adds a
+ * The fake sprout behind every edge-diff case, wrapped in a tiny `sprout` shell script and run
+ * under the real supervisor pool (`PORT` set by the pool). node:http rather than Bun.serve on purpose: Bun adds a
  * content-type to every response and the runtime's bare 500 has none.
  *
  * Env: PORT, APP_NAME, EDGE_DIFF_PIDDIR (write a pid file so the harness can sweep leftovers),

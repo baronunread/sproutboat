@@ -2,7 +2,7 @@
 //! does not port it. It runs `services/supervisor/src/sidecar.ts` under Bun as a
 //! child process (same process group and cgroup) and talks JSON to it over a unix
 //! socket. The child is started lazily, the first time anything needs the pool, so
-//! deployments served purely by sproutd never start Bun. If it dies it is restarted
+//! a snapshot with no routes never starts Bun. If it dies it is restarted
 //! with backoff and the last timed-route list is replayed.
 
 use bytes::Bytes;
@@ -127,7 +127,7 @@ fn find_sidecar_script(
     ))
 }
 
-/// Resolve the script for this process. Pure-sproutd deployments never need it, so this runs on
+/// Resolve the script for this process. An empty snapshot never needs it, so this runs on
 /// first use (and as a startup warning), never as a startup failure.
 pub fn sidecar_script() -> Result<PathBuf, String> {
     let env = std::env::var("SPROUTBOAT_SIDECAR_SCRIPT").ok();
@@ -326,7 +326,7 @@ impl Sidecar {
     }
 
     /// Whether `credential` may vouch for a service-binding call to `host`: a live per-broker
-    /// credential whose `services` map names that host, or the edge-wide secret. Never cached:
+    /// credential whose `services` map names that host (nothing else is accepted). Never cached:
     /// a scoped credential is revoked when its broker exits, so every answer comes from the
     /// sidecar (only requests that carry `x-sb-edge-secret` ask).
     pub async fn verify_binding_call(&self, credential: &str, host: &str) -> bool {

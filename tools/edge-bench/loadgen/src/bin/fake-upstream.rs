@@ -1,5 +1,5 @@
 //! Trivial keep-alive upstream: GET / -> small fixed JSON. No logging.
-//! Usage: fake-upstream [--port N] [--bind ADDR] [--sproutd-like] [--cache-control]
+//! Usage: fake-upstream [--port N] [--bind ADDR] [--any] [--cache-control]
 //! `--cache-control` marks every answer `public, max-age=3600` so the edge cache keeps it.
 use http_body_util::Full;
 use hyper::body::{Bytes, Incoming};
@@ -22,7 +22,7 @@ async fn main() {
         match x.as_str() {
             "--port" => port = a.next().and_then(|v| v.parse().ok()).expect("--port N"),
             "--bind" => bind = a.next().expect("--bind ADDR"),
-            "--sproutd-like" => any = true,
+            "--any" => any = true,
             "--cache-control" => cache = true,
             _ => {
                 eprintln!("unknown arg {x}");
@@ -37,7 +37,7 @@ async fn main() {
         let _ = s.set_nodelay(true);
         tokio::spawn(async move {
             let svc = service_fn(move |req: Request<Incoming>| async move {
-                // --sproutd-like: any host/path/method answers; default: only GET /.
+                // --any: any host/path/method answers; default: only GET /.
                 let ok = any || (req.method() == hyper::Method::GET && req.uri().path() == "/");
                 let mut r = Response::new(Full::new(Bytes::from_static(BODY.as_bytes())));
                 if !ok {

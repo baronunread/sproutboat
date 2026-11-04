@@ -1,7 +1,6 @@
 //! The route snapshot (`routes.json`): loader and validation exactly as the Bun
 //! edge's `loadRoutes`, plus the timed-bindings hint used for reconciliation.
 
-use crate::backend::{parse_backend, Backend};
 use regex::Regex;
 use serde_json::{Map, Value};
 use std::collections::HashMap;
@@ -45,8 +44,6 @@ pub struct Route {
     pub secrets_hash: Option<String>,
     pub services: Option<Vec<(String, String)>>,
     pub r2: Option<R2>,
-    /// Forward to sproutd instead of running a sprout. `None` for every supervisor route.
-    pub backend: Option<Backend>,
     /// `runtime_json()`, computed once at load: what the sidecar is asked about.
     pub runtime: Value,
     /// The runtime identity as a string: the key of the edge's endpoint cache.
@@ -196,11 +193,6 @@ pub fn load_routes(text: &str) -> Result<Routes, String> {
                 .filter(|id| do_store_rx().is_match(id))
                 .map(str::to_string),
         });
-        // A backend that is present but not a loopback sproutd URL fails the whole snapshot.
-        let backend = match obj.get("backend") {
-            None => None,
-            Some(v) => Some(parse_backend(v).ok_or(INVALID)?),
-        };
         let mut route = Route {
             sprout_path: sprout_path.to_string(),
             secrets_path,
@@ -210,7 +202,6 @@ pub fn load_routes(text: &str) -> Result<Routes, String> {
                 .map(str::to_string),
             services,
             r2,
-            backend,
             runtime: Value::Null,
             key: String::new(),
         };
@@ -239,11 +230,11 @@ pub fn has_timed_bindings(sprout_path: &str) -> bool {
 }
 
 /// The routes whose sprout must stay up for cron / queue / alarm dispatch, as
-/// the sidecar's `/reconcile` body. Backend routes run their own timers.
+/// the sidecar's `/reconcile` body.
 pub fn timed_sprouts(routes: &Routes) -> Vec<Value> {
     routes
         .iter()
-        .filter(|(_, r)| r.backend.is_none() && has_timed_bindings(&r.sprout_path))
+        .filter(|(_, r)| has_timed_bindings(&r.sprout_path))
         .map(|(_, r)| r.runtime_json())
         .collect()
 }
@@ -261,12 +252,7 @@ mod tests {
         let routes = ok(r#"[{"hostname":"app.test","sproutPath":"/a/sprout"}]"#);
         let r = routes.get("app.test").unwrap();
         assert_eq!(r.sprout_path, "/a/sprout");
-        assert!(
-            r.secrets_path.is_none()
-                && r.services.is_none()
-                && r.r2.is_none()
-                && r.backend.is_none()
-        );
+        assert!(r.secrets_path.is_none() && r.services.is_none() && r.r2.is_none());
     }
 
     #[test]
@@ -348,23 +334,13 @@ mod tests {
     }
 
     #[test]
-    fn backend_must_be_loopback_sproutd_or_the_snapshot_fails() {
-        let good = ok(
-            r#"[{"hostname":"a.test","sproutPath":"/a","backend":{"kind":"sproutd","url":"http://127.0.0.1:9000"}}]"#,
+    fn an_unknown_backend_field_is_ignored_like_any_other_extra_field() {
+        // The Bun edge reads only the fields it knows; there is no route kind but the supervisor's.
+        let routes = ok(
+            r#"[{"hostname":"a.test","sproutPath":"/a","backend":{"kind":"other","url":"x"}},
+                {"hostname":"b.test","sproutPath":"/b","backend":null}]"#,
         );
-        assert_eq!(
-            good.get("a.test").unwrap().backend,
-            Some(Backend {
-                url: "http://127.0.0.1:9000".into()
-            })
-        );
-        for bad in [
-            r#"[{"hostname":"a.test","sproutPath":"/a","backend":{"kind":"sproutd","url":"http://example.com:9000"}}]"#,
-            r#"[{"hostname":"a.test","sproutPath":"/a","backend":null}]"#,
-            r#"[{"hostname":"a.test","sproutPath":"/a","backend":"x"}]"#,
-        ] {
-            assert!(load_routes(bad).is_err(), "{bad}");
-        }
+        assert_eq!(routes.iter().count(), 2);
     }
 
     #[test]
@@ -408,13 +384,12 @@ mod tests {
     }
 
     #[test]
-    fn timed_sprouts_skip_backend_routes_and_carry_the_runtime_identity() {
+    fn timed_sprouts_carry_the_runtime_identity() {
         let dir = tempfile::tempdir().unwrap();
         std::fs::write(dir.path().join("bindings.json"), r#"{"crons":[1]}"#).unwrap();
         let sprout = dir.path().join("sprout");
         let json = format!(
-            r#"[{{"hostname":"t.test","sproutPath":"{p}","secretsPath":"/s.json","services":{{"A":"a.test"}}}},
-                {{"hostname":"b.test","sproutPath":"{p}","backend":{{"kind":"sproutd","url":"http://127.0.0.1:1"}}}}]"#,
+            r#"[{{"hostname":"t.test","sproutPath":"{p}","secretsPath":"/s.json","services":{{"A":"a.test"}}}}]"#,
             p = sprout.display()
         );
         let timed = timed_sprouts(&ok(&json));

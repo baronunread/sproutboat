@@ -4,7 +4,7 @@ Compares the Bun edge (`bun services/edge/src/main.ts`) with the Rust edge (`spr
 front of the same trivial upstream, and measures Caddy's own cost with TLS.
 
 - `loadgen/` standalone crate (not part of `services/edge-rs`): `loadgen` (closed-loop HTTP/1.1 load generator)
-  and `fake-upstream` (keep-alive server, `GET /` returns a ~120 byte JSON body, no logging; `--sproutd-like` accepts any host/path).
+  and `fake-upstream` (keep-alive server, `GET /` returns a ~120 byte JSON body, no logging; `--any` accepts any host/path/method).
 - `run.ts` orchestrates one scenario and prints a markdown table, and appends JSON lines to `results/` (gitignored).
 
 ## Run
@@ -19,7 +19,7 @@ bun tools/edge-bench/run.ts --edge rust --conns 1,8 --duration 3 --warmup 1
 bun tools/edge-bench/run.ts --edge caddy-rust --dry-run                 # print commands only
 ```
 
-Scenarios (`--scenario`, default `hello`): `hello` proxies `GET /` to the trivial upstream through a sproutd backend route; `asset` serves a 4 KiB file from the route's asset manifest (no sprout runs); `cached` serves a public, cacheable answer from the edge cache (the sprout, a copy of `fake-upstream --cache-control`, runs once to fill it). `asset` and `cached` need `bun` or `rust` and run the sprout unsandboxed (`SPROUTBOAT_SPROUT_SANDBOX=none`).
+Scenarios (`--scenario`, default `hello`): `hello` proxies `GET /` to the trivial upstream, run as the route's sprout (`direct` runs it standalone); `asset` serves a 4 KiB file from the route's asset manifest (no sprout runs); `cached` serves a public, cacheable answer from the edge cache (the sprout, a copy of `fake-upstream --cache-control`, runs once to fill it). `hello`, `asset` and `cached` on an edge run the sprout unsandboxed (`SPROUTBOAT_SPROUT_SANDBOX=none`).
 
 Flags: `--conns 1,8,32,128`, `--bun-main PATH` (a bundled Bun edge, `bun build services/edge/src/main.ts --target bun`), `--duration 15`, `--warmup 3`, `--rust-bin PATH`, `--caddy PATH`,
 `--no-newconn`, `--out FILE.jsonl`, `--dry-run`. One scenario per invocation; run `bun`, `rust`, `direct` in sequence, never in parallel.

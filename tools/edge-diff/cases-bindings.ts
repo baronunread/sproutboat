@@ -12,7 +12,7 @@
 import type { Fixture, Json } from "./lib";
 import type { Case, Ctx } from "./runner";
 import { asRecord, isString } from "./json";
-import { backendRoute, get, hdrs, json, supRoute } from "./helpers";
+import { get, hdrs, json, supRoute } from "./helpers";
 
 const G = "bindings";
 
@@ -356,25 +356,6 @@ export const bindingCases: Case[] = [
         loose: { body: true },
       });
       ctx.note("callee status", via.headers.find(([k]) => k === "x-callee-status")?.[1] ?? null);
-    },
-  },
-  {
-    id: "binding-sproutd-callee",
-    group: G,
-    credentials: { [CRED_A]: ["b.test"] },
-    setup: async (fx) => [
-      { ...(await supRoute(fx, "a.test", "a")), services: { B: "b.test" } },
-      await backendRoute(fx, "b.test", "b"),
-    ],
-    run: async (ctx) => {
-      // sproutd has no edge token: nothing is vouched, and the callee never sees the credential.
-      await seen(
-        ctx,
-        "binding call to a sproutd backend",
-        "b.test",
-        asBroker(CRED_A, { "x-sb-url": "https://a.example/" }),
-      );
-      await ctx.req("marker on a sproutd backend", { path: "/marker", host: "b.test", headers: asBroker(CRED_A) });
     },
   },
   {
