@@ -5,6 +5,8 @@ Subject: `sproutboat-egress` (this crate), a one-for-one replacement for the Bun
 (`listenTunnelService`, the TCP tunnel behind `connect()`). Address policy comes from
 `@sproutboat/runtime`'s `egress.ts` (`BLOCKED_RANGES`, `egressRefusal`).
 
+Note: the Bun 1.4.0 the installer ships differs from 1.4.4 in URL credentials, HEAD framing and refused-connect wording; the Rust service follows 1.4.3+, and the differential run lists those cases in `tools/egress-diff/known-differences-bun-before-1.4.3.json` only while the service's Bun is older.
+
 Evidence: every statement below about the Bun service was checked by running it (Bun 1.4.4, macOS) through
 `tools/egress-diff` (see "How it is tested"). Where the Bun service does something that looks like an accident, it is
 listed under "Quirks preserved" and kept, unless it is one of the intentional differences D1 to D6.

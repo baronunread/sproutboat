@@ -86,9 +86,25 @@ const selected = all.filter(
 const known: Record<string, string> = JSON.parse(readFileSync(join(import.meta.dir, "known-differences.json"), "utf8"));
 const knownReason = (id: string) => {
   if (known[id]) return known[id];
+  if (knownOldBun[id]) return knownOldBun[id] + ` (Bun ${tsBun} here)`;
   for (const [k, v] of Object.entries(known)) if (k.endsWith("*") && id.startsWith(k.slice(0, -1))) return v;
   return undefined;
 };
+
+// The Bun the TS service runs on (the first "bun" on PATH, as in lib.ts startService). The shipped runtime is
+// 1.4.0 (install.sh); 1.4.3 changed how fetch() treats URL credentials, HEAD framing and refused-connect
+// wording, and the Rust service follows 1.4.3+. Those cases are known differences only on an older Bun, so a
+// newer Bun that still differed would fail the run instead of hiding behind the list.
+const tsBun = new TextDecoder().decode(Bun.spawnSync(["bun", "--version"]).stdout).trim();
+const bunBefore = (v: string) => {
+  const a = tsBun.split(".").map(Number);
+  const b = v.split(".").map(Number);
+  for (let i = 0; i < 3; i++) if ((a[i] ?? 0) !== (b[i] ?? 0)) return (a[i] ?? 0) < (b[i] ?? 0);
+  return false;
+};
+const knownOldBun: Record<string, string> = bunBefore("1.4.3")
+  ? JSON.parse(readFileSync(join(import.meta.dir, "known-differences-bun-before-1.4.3.json"), "utf8"))
+  : {};
 
 const dir = tempDir("egress-diff-");
 const tls = await selfSigned(dir, "up", "DNS:localhost");
