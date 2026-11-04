@@ -186,6 +186,21 @@ fn is_transfer_path(path: &str) -> bool {
             .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
 }
 
+/// Assets up to this size are read in one go instead of streamed.
+const SMALL_ASSET_BYTES: u64 = 256 * 1024;
+
+/// `length` bytes of the file from `start`.
+fn read_small(path: &std::path::Path, start: u64, length: u64) -> std::io::Result<Vec<u8>> {
+    use std::io::{Read, Seek};
+    let mut file = std::fs::File::open(path)?;
+    if start > 0 {
+        file.seek(std::io::SeekFrom::Start(start))?;
+    }
+    let mut buf = Vec::with_capacity(length as usize);
+    file.take(length).read_to_end(&mut buf)?;
+    Ok(buf)
+}
+
 pub async fn handle(
     app: Arc<App>,
     ctl: IdleControl,
@@ -422,8 +437,10 @@ async fn handle_request(
                     .parent()
                     .map(|d| d.join("assets").join(key.trim_start_matches('/')));
                 // The file on disk decides the length, as Bun.file did (the manifest size is not trusted).
+                // Plain std::fs on the worker: a stat and a small read of a hot file take a few
+                // microseconds, while each tokio::fs call is a spawn_blocking thread hop.
                 let meta = match &file_path {
-                    Some(p) => tokio::fs::metadata(p).await.ok(),
+                    Some(p) => std::fs::metadata(p).ok(),
                     None => None,
                 };
                 let Some(meta) = meta.filter(|m| m.is_file()) else {
@@ -510,6 +527,17 @@ async fn handle_request(
                 };
                 if req.method() == Method::HEAD || length == 0 {
                     log_asset(status, length);
+                    return res;
+                }
+                if length <= SMALL_ASSET_BYTES {
+                    let read = file_path
+                        .as_deref()
+                        .and_then(|p| read_small(p, start, length).ok());
+                    let Some(bytes) = read else {
+                        return text(500, "internal error");
+                    };
+                    log_asset(status, bytes.len() as u64);
+                    *res.body_mut() = full(bytes);
                     return res;
                 }
                 let file = match file_path {
