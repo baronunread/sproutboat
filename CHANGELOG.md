@@ -5,12 +5,24 @@ Changes to the self-hosted Sproutboat platform are recorded here. Read the
 
 ## [Unreleased]
 
+### Breaking and operator actions
+
+- **Sproutboat Community is single machine and supervisor only.** The optional per-project `sproutd` runtime that
+  0.13.0 introduced (private, off unless configured) is gone from this repository. Removed: the runtime endpoint
+  (`/api/projects/:name/runtime`), `POST /api/admin/sproutd/reconcile`, the `module` and `sproutdRefusal` upload fields
+  (an upload that still sends them is accepted and the fields are ignored), the route `backend` entry in
+  `routes.json`, the `SPROUTBOAT_SPROUTD_*` settings, and `tools/sproutd-staging.sh` and `tools/sproutd-e2e.sh`.
+  Nothing in `install.sh`, `sbctl` or the shipped units ever used them, so a normal install is unaffected.
+- **Database migration, automatic at the next start:** the columns `projects.runtime`, `projects.runtime_limits`,
+  `deployments.sproutd_vid` and `deployments.fallback_reason` are dropped. Rolling back to 0.13.x re-adds them.
+  A database that holds a project set to sproutd, or a version sproutd loaded, keeps the columns and logs a warning:
+  Community cannot serve those, so redeploy them on the supervisor.
+
 ### Added
 
 - Documentation for `connect()` from `cloudflare:sockets` (compatibility date 2026-11-17), with the Postgres and Redis
   driver results (`docs/compat/tcp-sockets.md`, `docs/compat/db-clients.md`). Docs only: the platform's pinned runtime
   (0.41.0) does not have it yet, so it reaches deployed apps with the release that adopts `@sproutboat/runtime` 0.42.0.
-- A project set to `runtime: sproutd` whose module sproutd refuses to load now runs that version on the supervisor, when the upload also carries `manifest` and `sprout`. The deployment records why, the deploy response and the version page say so, and the project stays on sproutd so the next deploy tries again. Routes now follow each deployment's own runtime. No migration beyond one nullable column; nothing changes for supervisor projects.
 
 ## [0.13.1] - 2026-11-02
 
