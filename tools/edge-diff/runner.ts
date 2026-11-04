@@ -1,9 +1,10 @@
 /** Runs one case against one edge: fixture, edge process, the case's request script, logs. */
-import { existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, statSync, utimesSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import {
   SIDECAR_WITH_CREDENTIALS,
   Fixture,
+  ROOT,
   makeTempDir,
   openWebSocket,
   rawRequest,
@@ -64,8 +65,17 @@ export interface Ctx {
   /** Like req, but not recorded (polling and background traffic). */
   quiet(spec?: ReqSpec): Promise<HttpObs>;
   note(label: string, value: Json): void;
-  /** Rewrite routes.json (atomically via rename unless `atomic` is false). */
+  /**
+   * Rewrite routes.json (atomically via rename unless `atomic` is false). The new mtime is always strictly
+   * newer than the previous one: a Linux timestamp tick is coarse, and the Bun edge reloads only on a strictly
+   * newer mtime, so a rewrite in the same tick would otherwise be invisible to it by luck of timing.
+   * (The Rust edge catches same-tick rewrites; see `pinRoutesMtime`.)
+   */
   writeRoutes(routes: Json[] | string, atomic?: boolean): void;
+  /** Set routes.json's mtime to a whole second just ahead of now and return it (exact, so it can be repeated). */
+  pinRoutesMtime(): number;
+  /** Rewrite routes.json (in place, or via rename when `atomic`) with its mtime exactly `seconds`: a rewrite in the same tick. */
+  writeRoutesAtMtime(routes: Json[] | string, seconds: number, atomic?: boolean): void;
   removeRoutes(): void;
   /** Replace the registered binding credentials (a broker exited, or a new one started) and wait until the edge has them. */
   setCredentials(credentials: Record<string, string[]>): Promise<void>;
@@ -118,6 +128,9 @@ function edgeEnv(c: Case, fx: Fixture, routesPath: string, logPath: string) {
     SPROUTBOAT_BROKER_STATE_DIR: join(fx.dir, "brokers"),
     SPROUTBOAT_RESOURCE_DIR: join(fx.dir, "resources"),
   });
+  // The harness runs a copy of the Rust binary from a temp dir, where neither the working directory nor
+  // the install prefix leads to the checkout, so say where the script is.
+  env.SPROUTBOAT_SIDECAR_SCRIPT = join(ROOT, "services/supervisor/src/sidecar.ts");
   if (c.credentials) {
     env.EDGE_DIFF_CREDENTIALS_FILE = join(fx.dir, "credentials.json");
     env.SPROUTBOAT_SIDECAR_SCRIPT = SIDECAR_WITH_CREDENTIALS;
@@ -217,8 +230,25 @@ export async function runCase(c: Case, kind: EdgeKind, bin: string, timeoutMs: n
       note: (label, value) => void result.obs.push({ kind: "note", label, value }),
       writeRoutes: (routes, atomic = true) => {
         const text = isString(routes) ? routes : JSON.stringify(routes);
+        const before = existsSync(routesPath) ? statSync(routesPath).mtimeMs : 0;
         if (atomic) writeFileAtomic(routesPath, text);
         else writeFileSync(routesPath, text);
+        if (statSync(routesPath).mtimeMs <= before) {
+          const next = new Date(before + 1000);
+          utimesSync(routesPath, next, next);
+        }
+      },
+      pinRoutesMtime: () => {
+        const seconds = Math.floor(Date.now() / 1000) + 1;
+        utimesSync(routesPath, seconds, seconds);
+        return seconds;
+      },
+      writeRoutesAtMtime: (routes, seconds, atomic = false) => {
+        const text = isString(routes) ? routes : JSON.stringify(routes);
+        const target = atomic ? `${routesPath}.pinned.tmp` : routesPath;
+        writeFileSync(target, text);
+        utimesSync(target, seconds, seconds);
+        if (atomic) renameSync(target, routesPath);
       },
       removeRoutes: () => rmSync(routesPath, { force: true }),
       setCredentials: async (credentials) => {

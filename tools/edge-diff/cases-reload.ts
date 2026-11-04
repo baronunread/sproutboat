@@ -259,6 +259,32 @@ export const reloadCases: Case[] = [
     },
   },
   {
+    id: "reload-same-tick-rewrite",
+    group: G,
+    logs: "off",
+    setup: async (fx) => [await backendRoute(fx, "app.test", "a")],
+    intentional: {
+      reason:
+        "Linux mtimes are coarse: a rewrite in the same tick as the previous write has an identical mtime (to the nanosecond). Bun reloads only on a strictly newer mtime, so it keeps the old routes until SIGHUP; Rust also compares inode, size and ctime, and a content hash while the loaded snapshot is within 2 s of its mtime, so it picks the rewrite up",
+      assertRust: (run, h) => {
+        const out: string[] = [];
+        if (h.note(run, "in-place rewrite, same mtime: now b") !== true)
+          out.push("in-place same-tick rewrite not picked up");
+        if (h.note(run, "atomic rewrite, same mtime: now a") !== true)
+          out.push("atomic same-tick rewrite not picked up");
+        return out;
+      },
+    },
+    run: async (ctx) => {
+      const seconds = ctx.pinRoutesMtime(); // an exact timestamp both rewrites below can repeat
+      await ctx.sleep(1300); // every poll path has seen the pinned file
+      ctx.writeRoutesAtMtime([await backendRoute(ctx.fx, "app.test", "b")], seconds);
+      ctx.note("in-place rewrite, same mtime: now b", (await flipsTo(ctx, "b", 2500)).ok);
+      ctx.writeRoutesAtMtime([await backendRoute(ctx.fx, "app.test", "a")], seconds, true);
+      ctx.note("atomic rewrite, same mtime: now a", (await flipsTo(ctx, "a", 2500)).ok);
+    },
+  },
+  {
     id: "reload-adds-and-removes-hosts",
     group: G,
     logs: "off",
@@ -267,6 +293,8 @@ export const reloadCases: Case[] = [
       return [a];
     },
     run: async (ctx) => {
+      // ctx.writeRoutes always moves the mtime strictly forward, so Bun's strictly-newer check does not
+      // depend on how far apart in time the writes are (see reload-same-tick-rewrite for the other case).
       const a = await backendRoute(ctx.fx, "app.test", "a");
       const b = await backendRoute(ctx.fx, "second.test", "b");
       ctx.writeRoutes([a, b]);

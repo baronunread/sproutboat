@@ -625,7 +625,13 @@ export const assetCases: Case[] = [
     run: async (ctx) => {
       await get(ctx, "v1", "/index.html");
       ctx.writeRoutes([{ hostname: "app.test", sproutPath: ctx.fx.sprouts.get("two")! }]);
-      await ctx.sleep(300);
+      // Wait for the change instead of sleeping a fixed time: the edges poll on their own schedule.
+      const swapped = await ctx.waitFor(
+        async () => Buffer.from((await ctx.quiet({ path: "/index.html" })).body).toString() === "two",
+        3000,
+        50,
+      );
+      ctx.note("manifest swapped", swapped);
       await get(ctx, "v2", "/index.html");
     },
   },

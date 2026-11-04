@@ -12,13 +12,14 @@ mod config;
 mod idle;
 mod logs;
 mod proxy;
+mod reload;
 mod routes;
 mod server;
 mod sidecar;
 mod util;
 mod websocket;
 
-use app::{read_routes, snapshot_mtime, App};
+use app::{read_routes, read_snapshot, App};
 use config::Config;
 use logs::LogSink;
 use routes::Routes;
@@ -52,13 +53,20 @@ async fn run() -> i32 {
             return 1;
         }
     };
-    let (routes, mtime) = match initial_routes(&cfg).await {
+    let (routes, loaded) = match initial_routes(&cfg).await {
         Ok(r) => r,
         Err(error) => {
             eprintln!("{error}");
             return 1;
         }
     };
+    // Supervisor routes need the Bun sidecar script. Say so now rather than on the first request;
+    // it is not fatal because sproutd-only deployments never start it.
+    if routes.iter().any(|(_, r)| r.backend.is_none()) {
+        if let Err(error) = sidecar::sidecar_script() {
+            eprintln!("warning: {error}");
+        }
+    }
     let log = cfg
         .log_path
         .as_deref()
@@ -76,7 +84,7 @@ async fn run() -> i32 {
     let port = listener.local_addr().map_or(cfg.port, |a| a.port());
     let bind_host = cfg.bind_host.clone();
     let activation_dir = cfg.activation_dir.clone();
-    let app = App::new(cfg, routes, mtime, log);
+    let app = App::new(cfg, routes, loaded, log);
 
     // #48 - service bindings are forwarded back through this server, so every broker the
     // sidecar spawns needs our own address. Set before any sprout starts.
@@ -179,12 +187,11 @@ async fn run() -> i32 {
     0
 }
 
-async fn initial_routes(cfg: &Config) -> Result<(Routes, f64), String> {
-    let mtime = snapshot_mtime(&cfg.routes_path).await?;
-    if mtime > 0.0 {
-        Ok((read_routes(&cfg.routes_path).await?, mtime))
+async fn initial_routes(cfg: &Config) -> Result<(Routes, reload::Loaded), String> {
+    if reload::stamp_of(&cfg.routes_path).await?.exists {
+        read_snapshot(&cfg.routes_path).await
     } else {
-        Ok((Routes::default(), 0.0))
+        Ok((Routes::default(), reload::Loaded::default()))
     }
 }
 

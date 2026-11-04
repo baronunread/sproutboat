@@ -155,6 +155,8 @@ sproutd route (#335): `{hostname, sproutPath, ownerId, r2ResourceIds: [], doStor
 | 1 s interval | same function, same throttle; independent of traffic.                                                                                                                                                                                                |
 | SIGHUP       | unconditional reload (no mtime compare, no throttle).                                                                                                                                                                                                |
 
+**Known Bun bug (intentionally fixed in the Rust edge, see `services/edge-rs/DEVIATIONS.md` 8).** The strictly-newer test misses a rewrite that lands in the same filesystem timestamp tick as the previous write (identical mtime to the nanosecond; about 4 ms on Linux): polling keeps the old routes, only SIGHUP reloads. The Rust edge also compares inode, size and ctime, and a content hash while the loaded snapshot is within 2 s of its mtime; it still ignores an older mtime and a deleted file. The same applies to the per-sprout asset manifest, which is only dropped when its route changes.
+
 Observed [V]: the edge picks up an atomically swapped newer file; **the edge ignores a replacement file with an older mtime**; **the edge ignores deletion of the file at runtime** (old routes kept; only SIGHUP clears them); an invalid file at runtime keeps the old routes and logs `route snapshot reload failed: <msg>` on stderr again on every tick (3 lines in 2.6 s) because the mtime does not advance.
 
 ### 3.4 Swap semantics (`swapRoutes`)

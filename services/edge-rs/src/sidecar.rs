@@ -11,7 +11,7 @@ use hyper::{Method, Request};
 use hyper_util::rt::TokioIo;
 use serde_json::Value;
 use std::collections::HashMap;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::Stdio;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard};
@@ -89,35 +89,51 @@ fn bun_binary() -> String {
     "bun".to_string()
 }
 
-fn sidecar_script() -> String {
-    if let Some(script) = std::env::var("SPROUTBOAT_SIDECAR_SCRIPT")
-        .ok()
-        .filter(|v| !v.is_empty())
-    {
-        return script;
+const SIDECAR_RELATIVE: &str = "services/supervisor/src/sidecar.ts";
+
+/// Where the supervisor script is, in this order: `SPROUTBOAT_SIDECAR_SCRIPT` (taken as is, and
+/// it must exist), then `services/supervisor/src/sidecar.ts` under the working directory, then
+/// under each ancestor of the binary's directory (the install prefix: `/opt/sproutboat/bin/<exe>`
+/// finds `/opt/sproutboat/services/...`; a cargo build finds the checkout the same way).
+fn find_sidecar_script(
+    env: Option<&str>,
+    cwd: Option<&Path>,
+    exe: Option<&Path>,
+) -> Result<PathBuf, String> {
+    if let Some(script) = env.filter(|v| !v.is_empty()) {
+        let path = PathBuf::from(script);
+        return if path.is_file() {
+            Ok(path)
+        } else {
+            Err(format!(
+                "SPROUTBOAT_SIDECAR_SCRIPT points at {script}, which does not exist"
+            ))
+        };
     }
-    let relative = "services/supervisor/src/sidecar.ts";
-    if std::path::Path::new(relative).exists() {
-        return relative.to_string();
-    }
-    // Not run from the repo root: look next to the binary (services/edge-rs/target/<profile>/).
-    if let Ok(exe) = std::env::current_exe() {
-        if let Some(found) = exe
-            .ancestors()
-            .skip(1)
-            .map(|a| a.join(relative))
-            .find(|p| p.exists())
-        {
-            return found.display().to_string();
+    let mut tried = Vec::new();
+    let bases = cwd
+        .into_iter()
+        .chain(exe.into_iter().flat_map(|e| e.ancestors().skip(1)));
+    for base in bases {
+        let candidate = base.join(SIDECAR_RELATIVE);
+        if candidate.is_file() {
+            return Ok(candidate);
         }
+        tried.push(candidate.display().to_string());
     }
-    // Last resort: the checkout this binary was built from (development, or a copied binary).
-    let built_from =
-        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../supervisor/src/sidecar.ts");
-    if built_from.exists() {
-        return built_from.display().to_string();
-    }
-    relative.to_string()
+    Err(format!(
+        "supervisor sidecar script not found (looked for {SIDECAR_RELATIVE} in the working directory and the binary's install prefix; tried {}). Run from the install prefix or set SPROUTBOAT_SIDECAR_SCRIPT",
+        tried.join(", ")
+    ))
+}
+
+/// Resolve the script for this process. Pure-sproutd deployments never need it, so this runs on
+/// first use (and as a startup warning), never as a startup failure.
+pub fn sidecar_script() -> Result<PathBuf, String> {
+    let env = std::env::var("SPROUTBOAT_SIDECAR_SCRIPT").ok();
+    let cwd = std::env::current_dir().ok();
+    let exe = std::env::current_exe().ok();
+    find_sidecar_script(env.as_deref(), cwd.as_deref(), exe.as_deref())
 }
 
 impl Sidecar {
@@ -161,6 +177,8 @@ impl Sidecar {
     }
 
     async fn wait_ready(&self) -> Result<u64, String> {
+        // Fail at once, with the reason, rather than let the request wait out READY_TIMEOUT.
+        sidecar_script()?;
         self.ensure_started();
         let mut rx = self.inner.ready.subscribe();
         let wait = async {
@@ -347,9 +365,16 @@ async fn supervise(inner: Arc<Inner>) {
         }
         generation += 1;
         let spawned_at = Instant::now();
+        let script = match sidecar_script() {
+            Ok(script) => script,
+            Err(error) => {
+                eprintln!("sidecar could not be started: {error}");
+                return;
+            }
+        };
         let mut command = Command::new(bun_binary());
         command
-            .arg(sidecar_script())
+            .arg(script)
             .env("SPROUTBOAT_SIDECAR_SOCKET", &inner.socket)
             .env("SPROUTBOAT_SIDECAR_EXIT_ON_STDIN_EOF", "1")
             .stdin(Stdio::piped())
@@ -619,6 +644,80 @@ impl EndpointCache {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // Defect: a bare binary run outside the checkout could not find the script and every
+    // supervisor request hung for 30 s. Now it is an immediate, explained error.
+    #[test]
+    fn script_lookup_order_and_failure() {
+        let root = tempfile::tempdir().unwrap();
+        let script = |base: &Path| {
+            let p = base.join(SIDECAR_RELATIVE);
+            std::fs::create_dir_all(p.parent().unwrap()).unwrap();
+            std::fs::write(&p, "").unwrap();
+            p
+        };
+        let (cwd, prefix, plain) = (
+            root.path().join("cwd"),
+            root.path().join("prefix"),
+            root.path().join("plain"),
+        );
+        for d in [&cwd, &plain] {
+            std::fs::create_dir_all(d).unwrap();
+        }
+        std::fs::create_dir_all(prefix.join("bin")).unwrap();
+        let exe = prefix.join("bin/sproutboat-edge");
+
+        // Nothing anywhere: an error that names the setting, no hang.
+        let err = find_sidecar_script(None, Some(&plain), Some(&exe)).unwrap_err();
+        assert!(
+            err.contains("SPROUTBOAT_SIDECAR_SCRIPT") && err.contains("not found"),
+            "{err}"
+        );
+        // The install prefix of the binary.
+        let in_prefix = script(&prefix);
+        assert_eq!(
+            find_sidecar_script(None, Some(&plain), Some(&exe)),
+            Ok(in_prefix.clone())
+        );
+        // The working directory wins over the prefix.
+        let in_cwd = script(&cwd);
+        assert_eq!(
+            find_sidecar_script(None, Some(&cwd), Some(&exe)),
+            Ok(in_cwd)
+        );
+        // The environment variable wins over both, and must exist.
+        let custom = root.path().join("custom.ts");
+        std::fs::write(&custom, "").unwrap();
+        let custom_str = custom.to_str().unwrap();
+        assert_eq!(
+            find_sidecar_script(Some(custom_str), Some(&cwd), Some(&exe)),
+            Ok(custom)
+        );
+        let missing = root.path().join("missing.ts");
+        let err = find_sidecar_script(Some(missing.to_str().unwrap()), Some(&cwd), Some(&exe))
+            .unwrap_err();
+        assert!(err.contains("does not exist"), "{err}");
+        // An empty variable counts as unset.
+        assert_eq!(
+            find_sidecar_script(Some(""), Some(&plain), Some(&exe)),
+            Ok(in_prefix)
+        );
+    }
+
+    #[tokio::test]
+    async fn a_missing_script_fails_fast_not_after_the_ready_timeout() {
+        std::env::set_var("SPROUTBOAT_SIDECAR_SCRIPT", "/nonexistent/sidecar.ts");
+        let sidecar = Sidecar::new();
+        let started = Instant::now();
+        let err = sidecar.wait_ready().await.unwrap_err();
+        assert!(err.contains("does not exist"), "{err}");
+        assert!(started.elapsed() < Duration::from_secs(2));
+        assert!(
+            !sidecar.is_started(),
+            "no supervise loop for a script that is not there"
+        );
+        std::env::remove_var("SPROUTBOAT_SIDECAR_SCRIPT");
+    }
 
     #[test]
     fn endpoint_reply_parses() {

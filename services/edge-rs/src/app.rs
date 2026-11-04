@@ -7,6 +7,7 @@ use crate::body::{BoxError, RBody};
 use crate::cache::EdgeCache;
 use crate::config::Config;
 use crate::logs::LogSink;
+use crate::reload::{self, Check, Loaded};
 use crate::routes::{load_routes, timed_sprouts, Routes};
 use crate::sidecar::{EndpointCache, Sidecar};
 use crate::util::now_ms;
@@ -67,7 +68,7 @@ impl Drop for InFlightGuard {
 pub struct App {
     pub cfg: Config,
     routes: RwLock<Arc<Routes>>,
-    routes_mtime_ms: Mutex<f64>,
+    routes_loaded: Mutex<Loaded>,
     last_route_check_ms: AtomicU64,
     pub cache: Option<Mutex<EdgeCache>>,
     manifests: Mutex<HashMap<String, Option<Arc<Manifest>>>>,
@@ -79,18 +80,15 @@ pub struct App {
     pub in_flight: Arc<InFlight>,
 }
 
-/// `stat().mtimeMs`; a missing file is 0.
-pub async fn snapshot_mtime(path: &std::path::Path) -> Result<f64, String> {
-    match tokio::fs::metadata(path).await {
-        Ok(meta) => {
-            let modified = meta.modified().map_err(|e| e.to_string())?;
-            Ok(modified
-                .duration_since(std::time::UNIX_EPOCH)
-                .map_or(0.0, |d| d.as_secs_f64() * 1000.0))
-        }
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(0.0),
-        Err(e) => Err(e.to_string()),
-    }
+/// Read and parse a route snapshot, with what is needed to notice the next change to it.
+/// The stat is taken before the read: a write that lands in between shows as a changed tuple
+/// or, within one tick, as a changed hash.
+pub async fn read_snapshot(path: &std::path::Path) -> Result<(Routes, Loaded), String> {
+    let stamp = reload::stamp_of(path).await?;
+    let bytes = tokio::fs::read(path).await.map_err(|e| e.to_string())?;
+    let text = std::str::from_utf8(&bytes).map_err(|e| e.to_string())?;
+    let routes = load_routes(text)?;
+    Ok((routes, reload::loaded(stamp, &bytes, now_ms())))
 }
 
 pub async fn read_routes(path: &std::path::Path) -> Result<Routes, String> {
@@ -112,12 +110,12 @@ fn build_client() -> UpstreamClient {
 }
 
 impl App {
-    pub fn new(cfg: Config, routes: Routes, routes_mtime_ms: f64, log: LogSink) -> Arc<App> {
+    pub fn new(cfg: Config, routes: Routes, loaded: Loaded, log: LogSink) -> Arc<App> {
         let cache = cfg.cache_enabled.then(|| Mutex::new(EdgeCache::default()));
         Arc::new(App {
             cfg,
             routes: RwLock::new(Arc::new(routes)),
-            routes_mtime_ms: Mutex::new(routes_mtime_ms),
+            routes_loaded: Mutex::new(loaded),
             last_route_check_ms: AtomicU64::new(0),
             cache,
             manifests: Mutex::new(HashMap::new()),
@@ -169,7 +167,7 @@ impl App {
     /// Swap in a new route snapshot: dispose sprouts whose route changed or was removed.
     /// HTTP-only sprouts are not pre-spawned: they cold-start on their first request and
     /// stay eligible for idle eviction. The timed-route reconciliation is the exception.
-    pub async fn swap_routes(self: &Arc<Self>, next: Routes, next_mtime_ms: f64) {
+    pub async fn swap_routes(self: &Arc<Self>, next: Routes, next_loaded: Loaded) {
         let previous = self.routes();
         let mut disposals = Vec::new();
         for (hostname, route) in previous.iter() {
@@ -194,7 +192,7 @@ impl App {
         // route during it would start the sprout again right after it was disposed (it would
         // linger until idle eviction).
         *self.routes.write().unwrap_or_else(|e| e.into_inner()) = Arc::new(next);
-        *lock(&self.routes_mtime_ms) = next_mtime_ms;
+        *lock(&self.routes_loaded) = next_loaded;
         futures_util::future::join_all(disposals.iter().map(|p| self.sidecar.dispose(p))).await;
         self.reconcile_timed();
     }
@@ -211,8 +209,9 @@ impl App {
         });
     }
 
-    /// Reload when the file's mtime moved forward. Throttled to once per 250 ms and
-    /// triggered per request, belt-and-braces to SIGHUP (the authoritative path).
+    /// Reload when the file changed (see `reload.rs`: newer mtime, or a same-tick rewrite caught by
+    /// inode / size / ctime and, while the loaded snapshot is still racy, by content hash). Throttled
+    /// to once per 250 ms and triggered per request, belt-and-braces to SIGHUP (the authoritative path).
     pub async fn refresh_routes(self: &Arc<Self>) -> Result<(), String> {
         let now = now_ms();
         let last = self.last_route_check_ms.load(Ordering::Acquire);
@@ -224,27 +223,70 @@ impl App {
         {
             return Ok(());
         }
-        let current = snapshot_mtime(&self.cfg.routes_path).await?;
-        let known = *lock(&self.routes_mtime_ms);
-        if current > known {
-            let next = read_routes(&self.cfg.routes_path).await?;
-            self.swap_routes(next, current).await;
+        let known = *lock(&self.routes_loaded);
+        match reload::check(&self.cfg.routes_path, &known, now).await? {
+            Check::Same => {}
+            Check::Settled => {
+                let mut current = lock(&self.routes_loaded);
+                if *current == known {
+                    current.racy = false;
+                }
+            }
+            Check::Reload => {
+                let (next, loaded) = read_snapshot(&self.cfg.routes_path).await?;
+                self.swap_routes(next, loaded).await;
+            }
         }
         Ok(())
     }
 
     /// SIGHUP: reload unconditionally; a missing file means no routes.
     pub async fn reload_routes(self: &Arc<Self>) -> Result<(), String> {
-        let mtime = snapshot_mtime(&self.cfg.routes_path).await?;
-        let next = if mtime > 0.0 {
-            read_routes(&self.cfg.routes_path).await?
+        let (next, loaded) = if reload::stamp_of(&self.cfg.routes_path).await?.exists {
+            read_snapshot(&self.cfg.routes_path).await?
         } else {
-            Routes::default()
+            (Routes::default(), Loaded::default())
         };
-        self.swap_routes(next, mtime).await;
+        self.swap_routes(next, loaded).await;
         Ok(())
     }
 }
 
 #[allow(dead_code)]
 type _Unused = BoxError;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use filetime::{set_file_mtime, FileTime};
+
+    fn hosts(app: &App) -> Vec<String> {
+        app.routes().iter().map(|(h, _)| h.clone()).collect()
+    }
+
+    // The defect, end to end: routes.json rewritten twice within one timestamp tick (identical
+    // mtime, same size, same inode), picked up by the poll but never by a strictly-newer check.
+    #[tokio::test]
+    async fn refresh_picks_up_a_rewrite_in_the_same_mtime_tick() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("routes.json");
+        let env = path.display().to_string();
+        let cfg = Config::from_lookup(|n| (n == "SPROUTBOAT_ROUTE_SNAPSHOT").then(|| env.clone()))
+            .unwrap();
+        let tick = FileTime::from_unix_time(now_ms() as i64 / 1000, 500_000_000);
+        std::fs::write(&path, r#"[{"hostname":"a.test","sproutPath":"/p"}]"#).unwrap();
+        set_file_mtime(&path, tick).unwrap();
+        let (routes, loaded) = read_snapshot(&path).await.unwrap();
+        let app = App::new(cfg, routes, loaded, LogSink::disabled());
+        assert_eq!(hosts(&app), ["a.test"]);
+
+        for (round, host) in ["b.test", "c.test"].into_iter().enumerate() {
+            let body = format!(r#"[{{"hostname":"{host}","sproutPath":"/p"}}]"#);
+            std::fs::write(&path, body).unwrap(); // in place: same inode and size
+            set_file_mtime(&path, tick).unwrap();
+            app.last_route_check_ms.store(0, Ordering::Release); // skip the 250 ms throttle
+            app.refresh_routes().await.unwrap();
+            assert_eq!(hosts(&app), [host], "round {round}");
+        }
+    }
+}
