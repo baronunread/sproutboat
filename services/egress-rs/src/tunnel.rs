@@ -12,7 +12,7 @@
 //! connection goes to the vetted address, never the name. There is no ack on this
 //! endpoint: a refusal is an error frame.
 
-use crate::addr::egress_refusal;
+use crate::addr::{egress_refusal, Allow};
 use crate::resolve::{is_ip_literal, literal_answer, Answer, Resolve};
 use std::net::{IpAddr, SocketAddr};
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -43,7 +43,7 @@ const BUFFER_LIMIT: usize = 256 * 1024;
 
 pub struct Tunnels {
     pub token: Vec<u8>,
-    pub allow: Vec<String>,
+    pub allow: Allow,
     pub strict: bool,
     pub max_open: usize,
     pub connect_timeout: Duration,
@@ -55,14 +55,14 @@ pub struct Tunnels {
 impl Tunnels {
     pub fn new(
         token: &str,
-        allow: Vec<String>,
+        allow: Allow,
         resolver: Arc<dyn Resolve>,
         tls: TlsConnector,
     ) -> Tunnels {
         Tunnels {
             token: token.as_bytes().to_vec(),
             allow,
-            strict: false,
+            strict: true,
             max_open: SERVICE_MAX_OPEN,
             connect_timeout: TCP_CONNECT_TIMEOUT,
             resolver,
@@ -185,7 +185,7 @@ impl Tunnels {
         let mut refusal: Option<String> = None;
         let mut ok = Vec::new();
         for a in answers {
-            match egress_refusal(host, &a.text, &self.allow, self.strict) {
+            match egress_refusal(host, &a.text, a.ip, &self.allow, self.strict) {
                 None => ok.push(a),
                 Some(why) => {
                     refusal.get_or_insert(why);

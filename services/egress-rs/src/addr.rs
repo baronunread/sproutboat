@@ -8,7 +8,7 @@ use std::sync::OnceLock;
 /// Blocked ranges, in the order `egress.ts` lists them (the first match names the
 /// range in the refusal). IPv4-mapped (`::ffff:0:0/96`), NAT64 (`64:ff9b::/96`) and
 /// 6to4 (`2002::/16`) addresses are checked by the IPv4 address they embed.
-pub const BLOCKED_RANGES: [&str; 22] = [
+pub const BLOCKED_RANGES: [&str; 30] = [
     "0.0.0.0/8",
     "10.0.0.0/8",
     "100.64.0.0/10",
@@ -31,22 +31,21 @@ pub const BLOCKED_RANGES: [&str; 22] = [
     "fe80::/10",
     "fec0::/10",
     "ff00::/8",
-];
-
-/// Extra ranges, only with `SB_EGRESS_STRICT=1` (not in the Bun service; see
-/// BEHAVIOUR.md, "Findings"). Checked against the address as written first, then
-/// against whatever IPv4 it embeds.
-pub const STRICT_EXTRA_RANGES: [&str; 9] = [
+    // Added to the shared table after the Bun service shipped (sproutboat-packages
+    // #240): reserved space that carries no public service.
     "192.31.196.0/24",
     "192.52.193.0/24",
     "192.88.99.0/24",
     "192.175.48.0/24",
     "::ffff:0:0:0/96",
     "2001::/23",
-    "2002::/16",
     "3fff::/20",
     "5f00::/16",
 ];
+
+/// How many entries of [`BLOCKED_RANGES`] the table had before those eight were added.
+/// `SB_EGRESS_STRICT=0` limits the check to them (what the released Bun service does).
+pub const LEGACY_RANGES: usize = 22;
 
 /// Parse an IPv4 or IPv6 literal to its bytes (4 or 16); `None` when it is neither.
 /// Mirrors `parseAddress` in `egress.ts`: dotted-decimal IPv4 with 1-3 digit groups
@@ -159,11 +158,6 @@ fn ranges() -> &'static Vec<Range> {
     R.get_or_init(|| compile(&BLOCKED_RANGES))
 }
 
-fn extra_ranges() -> &'static Vec<Range> {
-    static R: OnceLock<Vec<Range>> = OnceLock::new();
-    R.get_or_init(|| compile(&STRICT_EXTRA_RANGES))
-}
-
 fn in_range(bytes: &[u8], range: &Range) -> bool {
     if bytes.len() != range.bytes.len() {
         return false;
@@ -199,19 +193,16 @@ fn embedded_v4(bytes: &[u8]) -> Option<&[u8]> {
 }
 
 /// The blocked range `bytes` (4 or 16) falls in, or `None` when it may be reached.
+/// `strict` (the default) uses the whole table; without it only the first
+/// [`LEGACY_RANGES`] entries.
 pub fn blocked_range_bytes(bytes: &[u8], strict: bool) -> Option<&'static str> {
-    if strict {
-        if let Some(r) = extra_ranges().iter().find(|r| in_range(bytes, r)) {
-            return Some(r.cidr);
-        }
-    }
     let probe = embedded_v4(bytes).unwrap_or(bytes);
-    if strict && probe.len() == 4 {
-        if let Some(r) = extra_ranges().iter().find(|r| in_range(probe, r)) {
-            return Some(r.cidr);
-        }
-    }
-    ranges().iter().find(|r| in_range(probe, r)).map(|r| r.cidr)
+    let table = ranges();
+    let n = if strict { table.len() } else { LEGACY_RANGES };
+    table[..n]
+        .iter()
+        .find(|r| in_range(probe, r))
+        .map(|r| r.cidr)
 }
 
 /// The blocked range the address text falls in; `"unparseable address"` when the
@@ -223,10 +214,17 @@ pub fn blocked_range(address: &str, strict: bool) -> Option<&'static str> {
     }
 }
 
-/// Why `fetch()` may not connect to `address`, or `None` when it may. The message is
-/// byte-identical to `egressRefusal` in `egress.ts` (and to the C client's).
-pub fn egress_refusal(host: &str, address: &str, allow: &[String], strict: bool) -> Option<String> {
-    if allow.iter().any(|a| a == "*" || a == address) {
+/// Why `fetch()` may not connect to `address` (`ip` is its parsed form, `None` for text
+/// that is no address), or `None` when it may. The message is byte-identical to
+/// `egressRefusal` in `egress.ts` (and to the C client's).
+pub fn egress_refusal(
+    host: &str,
+    address: &str,
+    ip: Option<IpAddr>,
+    allow: &Allow,
+    strict: bool,
+) -> Option<String> {
+    if allow.allows(ip) {
         return None;
     }
     let range = blocked_range(address, strict)?;
@@ -235,13 +233,93 @@ pub fn egress_refusal(host: &str, address: &str, allow: &[String], strict: bool)
     ))
 }
 
-/// `SB_EGRESS_ALLOW` split into entries.
-pub fn allow_list(raw: Option<&str>) -> Vec<String> {
-    raw.unwrap_or("")
-        .split(',')
-        .map(|s| s.trim().to_string())
-        .filter(|s| !s.is_empty())
-        .collect()
+/// `SB_EGRESS_ALLOW`: `*`, addresses and CIDR ranges, comma-separated. Entries are
+/// parsed, so every spelling of an address matches (`::ffff:7f00:1`, `::ffff:127.0.0.1`
+/// and `127.0.0.1` are one address), and `10.0.0.0/8` allows a subnet. The Bun service
+/// compared answer text exactly and had no ranges.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct Allow {
+    all: bool,
+    addrs: Vec<IpAddr>,
+    nets: Vec<(IpAddr, u8)>,
+}
+
+/// An IPv4-mapped IPv6 address as the IPv4 it carries; anything else unchanged.
+fn canon(ip: IpAddr) -> IpAddr {
+    match ip {
+        IpAddr::V6(v6) => match v6.to_ipv4_mapped() {
+            Some(v4) => IpAddr::V4(v4),
+            None => ip,
+        },
+        v4 => v4,
+    }
+}
+
+fn in_net(ip: IpAddr, net: IpAddr, bits: u8) -> bool {
+    let (a, b): (Vec<u8>, Vec<u8>) = match (ip, net) {
+        (IpAddr::V4(a), IpAddr::V4(b)) => (a.octets().to_vec(), b.octets().to_vec()),
+        (IpAddr::V6(a), IpAddr::V6(b)) => (a.octets().to_vec(), b.octets().to_vec()),
+        _ => return false,
+    };
+    let whole = (bits / 8) as usize;
+    if a[..whole] != b[..whole] {
+        return false;
+    }
+    let rem = bits % 8;
+    rem == 0 || (a[whole] ^ b[whole]) >> (8 - rem) == 0
+}
+
+impl Allow {
+    /// Parse the variable's value. An entry that is neither `*`, an address nor a
+    /// CIDR range is an error naming it (the service refuses to start).
+    pub fn parse(raw: Option<&str>) -> Result<Allow, String> {
+        let mut out = Allow::default();
+        for entry in raw
+            .unwrap_or("")
+            .split(',')
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+        {
+            let bad = || {
+                format!(
+                    "invalid SB_EGRESS_ALLOW entry {entry:?}: expected an IP address, a CIDR range such as 10.0.0.0/8, or *"
+                )
+            };
+            if entry == "*" {
+                out.all = true;
+            } else if let Some((addr, bits)) = entry.split_once('/') {
+                let ip: IpAddr = addr.parse().map_err(|_| bad())?;
+                let bits: u8 = bits.parse().map_err(|_| bad())?;
+                let max = if ip.is_ipv4() { 32 } else { 128 };
+                if bits > max || bits.to_string() != entry.split_once('/').unwrap().1 {
+                    return Err(bad());
+                }
+                out.nets.push((ip, bits));
+            } else {
+                out.addrs.push(canon(entry.parse().map_err(|_| bad())?));
+            }
+        }
+        Ok(out)
+    }
+
+    /// Whether an answer may be connected to regardless of the block. Text that is no
+    /// address (`None`) is allowed only by `*`.
+    pub fn allows(&self, ip: Option<IpAddr>) -> bool {
+        if self.all {
+            return true;
+        }
+        let Some(ip) = ip else { return false };
+        let c = canon(ip);
+        self.addrs.contains(&c)
+            || self
+                .nets
+                .iter()
+                .any(|(net, bits)| in_net(ip, *net, *bits) || in_net(c, *net, *bits))
+    }
+
+    pub fn is_empty(&self) -> bool {
+        !self.all && self.addrs.is_empty() && self.nets.is_empty()
+    }
 }
 
 /// An address as `inet_ntop` prints it (what the system resolver hands Bun), which
@@ -315,7 +393,7 @@ mod tests {
     use super::*;
 
     fn blocked(a: &str) -> Option<&'static str> {
-        blocked_range(a, false)
+        blocked_range(a, true)
     }
 
     #[test]
@@ -521,49 +599,163 @@ mod tests {
 
     #[test]
     fn refusal_message_is_the_ts_message() {
-        let msg = egress_refusal("169.254.169.254", "169.254.169.254", &[], false).unwrap();
+        let none = Allow::default();
+        let metadata: Option<IpAddr> = "169.254.169.254".parse().ok();
+        let msg =
+            egress_refusal("169.254.169.254", "169.254.169.254", metadata, &none, true).unwrap();
         assert_eq!(
             msg,
             "fetch() refused: 169.254.169.254 resolves to 169.254.169.254, a private or reserved address (169.254.0.0/16). An operator can allow it with SB_EGRESS_ALLOW=169.254.169.254"
         );
-        let msg = egress_refusal("[::1]", "::1", &[], false).unwrap();
+        let msg = egress_refusal("[::1]", "::1", "::1".parse().ok(), &none, true).unwrap();
         assert_eq!(
             msg,
             "fetch() refused: [::1] resolves to ::1, a private or reserved address (::/96). An operator can allow it with SB_EGRESS_ALLOW=::1"
         );
     }
 
-    #[test]
-    fn allow_list_is_exact_or_star() {
-        let allow = allow_list(Some(" 127.0.0.1 , ,10.0.0.5"));
-        assert_eq!(allow, vec!["127.0.0.1", "10.0.0.5"]);
-        assert!(egress_refusal("h", "127.0.0.1", &allow, false).is_none());
-        assert!(egress_refusal("h", "10.0.0.5", &allow, false).is_none());
-        assert!(egress_refusal("h", "10.0.0.6", &allow, false).is_some());
-        // exact text only: no CIDR, no other spelling of the same address
-        assert!(egress_refusal("h", "::ffff:7f00:1", &allow, false).is_some());
-        assert!(egress_refusal("h", "10.0.0.6", &["*".to_string()], false).is_none());
-        assert_eq!(allow_list(None), Vec::<String>::new());
+    fn refused(allow: &Allow, text: &str) -> bool {
+        egress_refusal("h", text, text.parse().ok(), allow, true).is_some()
     }
 
     #[test]
-    fn strict_mode_adds_ranges_without_loosening_any() {
+    fn allow_matches_addresses_in_any_spelling() {
+        let allow =
+            Allow::parse(Some(" 127.0.0.1 , ,10.0.0.5, ::ffff:10.0.0.9, FD00:0:0::1")).unwrap();
+        assert!(!refused(&allow, "127.0.0.1"));
+        assert!(!refused(&allow, "10.0.0.5"));
+        assert!(
+            !refused(&allow, "::ffff:a00:5"),
+            "mapped form of an allowed IPv4"
+        );
+        assert!(!refused(&allow, "::ffff:127.0.0.1"));
+        assert!(
+            !refused(&allow, "10.0.0.9"),
+            "an allowed mapped entry covers the IPv4"
+        );
+        assert!(!refused(&allow, "::ffff:10.0.0.9"));
+        assert!(
+            !refused(&allow, "fd00::1"),
+            "compressed and expanded IPv6 are one address"
+        );
+        assert!(refused(&allow, "10.0.0.6"));
+        assert!(refused(&allow, "127.0.0.2"));
+        assert!(refused(&allow, "fd00::2"));
+        assert!(Allow::parse(None).unwrap().is_empty());
+        assert!(Allow::parse(Some(" , ")).unwrap().is_empty());
+    }
+
+    #[test]
+    fn allow_supports_cidr_ranges_and_star() {
+        let allow = Allow::parse(Some("10.0.0.0/8, 192.168.1.128/25, fd00::/8, ::1/128")).unwrap();
+        for ok in [
+            "10.0.0.1",
+            "10.255.255.255",
+            "192.168.1.200",
+            "192.168.1.255",
+            "fd12:3456::1",
+            "::1",
+            "::ffff:10.1.2.3",
+        ] {
+            assert!(!refused(&allow, ok), "{ok}");
+        }
+        for no in [
+            "172.16.0.1",
+            "192.168.1.127",
+            "192.168.2.200",
+            "fe80::1",
+            "::2",
+            "127.0.0.1",
+        ] {
+            assert!(refused(&allow, no), "{no}");
+        }
+        // host bits in the entry do not matter
+        assert!(!refused(
+            &Allow::parse(Some("10.9.9.9/8")).unwrap(),
+            "10.1.1.1"
+        ));
+        // /0 allows a whole family, * everything (including text that is no address)
+        assert!(!refused(
+            &Allow::parse(Some("0.0.0.0/0")).unwrap(),
+            "127.0.0.1"
+        ));
+        assert!(refused(&Allow::parse(Some("0.0.0.0/0")).unwrap(), "::1"));
+        let star = Allow::parse(Some("*")).unwrap();
+        assert!(!refused(&star, "10.0.0.6"));
+        assert!(egress_refusal("h", "fe80::1%eth0", None, &star, true).is_none());
+        assert!(egress_refusal("h", "fe80::1%eth0", None, &allow, true).is_some());
+    }
+
+    #[test]
+    fn allow_rejects_invalid_entries_with_a_clear_error() {
+        for bad in [
+            "nonsense",
+            "10.0.0",
+            "10.0.0.256",
+            "010.0.0.1",
+            "10.0.0.0/33",
+            "::/129",
+            "10.0.0.0/",
+            "10.0.0.0/x",
+            "10.0.0.0/08",
+            "/8",
+            "fe80::1%eth0",
+            "10.0.0.1, bad",
+            "[::1]",
+            "10.0.0.0/8/8",
+            "https://x",
+        ] {
+            let err = Allow::parse(Some(bad)).expect_err(bad);
+            assert!(
+                err.starts_with("invalid SB_EGRESS_ALLOW entry"),
+                "{bad}: {err}"
+            );
+            assert!(
+                err.contains("expected an IP address, a CIDR range such as 10.0.0.0/8, or *"),
+                "{err}"
+            );
+        }
+        let err = Allow::parse(Some("10.0.0.1,wat")).unwrap_err();
+        assert!(err.contains("\"wat\""), "{err}");
+    }
+
+    #[test]
+    fn the_added_ranges_are_blocked_by_default_and_opt_out_restores_the_old_table() {
         for a in [
             "192.88.99.1",
             "192.31.196.1",
+            "192.52.193.1",
+            "192.175.48.255",
             "2001::1",
             "2001:0:4136:e378:8000:63bf:3fff:fdd2",
+            "2001:1ff::1",
             "::ffff:0:7f00:1",
+            "::ffff:0:0:0",
             "3fff::1",
-            "2002:0808:0808::1",
+            "3fff:fff:ffff::1",
             "5f00::1",
         ] {
-            assert_eq!(blocked_range(a, false), None, "default {a}");
-            assert!(blocked_range(a, true).is_some(), "strict {a}");
+            assert!(blocked_range(a, true).is_some(), "default {a}");
+            assert_eq!(blocked_range(a, false), None, "SB_EGRESS_STRICT=0 {a}");
         }
-        for a in BLOCKED_RANGES.iter().map(|c| c.split('/').next().unwrap()) {
-            assert!(blocked_range(a, true).is_some(), "{a}");
+        for a in [
+            "192.31.195.255",
+            "192.88.100.1",
+            "2001:200::1",
+            "4000::1",
+            "3ffe::1",
+            "5f01::1",
+            "2002:808:808::1",
+        ] {
+            assert_eq!(blocked_range(a, true), None, "{a}");
         }
+        // every table entry's own base address is blocked, and names itself or an earlier overlapping entry
+        for cidr in BLOCKED_RANGES {
+            let base = cidr.split('/').next().unwrap();
+            assert!(blocked_range(base, true).is_some(), "{base}");
+        }
+        assert_eq!(BLOCKED_RANGES.len(), 30);
+        assert_eq!(blocked_range("2001::1", true), Some("2001::/23"));
         assert_eq!(blocked_range("1.1.1.1", true), None);
         assert_eq!(blocked_range("2606:4700::1111", true), None);
     }

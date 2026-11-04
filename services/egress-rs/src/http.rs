@@ -1,17 +1,21 @@
 //! The HTTP side of the service: one request in, one upstream request out.
 //! Mirrors `createEgressHandler` in `egress.ts`.
 
+use crate::addr::Allow;
 use crate::resolve::Resolve;
 use crate::upstream::{
-    fold_headers, header_name, vetted_fetch, Client, Outbound, Vetting, DEFAULT_USER_AGENT,
+    fetch_vetted, fold_headers, header_name, vet, Client, OutBody, Outbound, ReqBody, Vetting,
 };
 use bytes::Bytes;
 use http_body_util::combinators::BoxBody;
 use http_body_util::{BodyExt, Full};
-use hyper::body::Incoming;
+use hyper::body::{Body, Frame, Incoming, SizeHint};
 use hyper::header::{HeaderValue, CONTENT_LENGTH, CONTENT_TYPE, HOST, TRANSFER_ENCODING};
 use hyper::{Method, Request, Response, StatusCode};
+use std::pin::Pin;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use std::task::{Context, Poll};
 use url::{Position, Url};
 
 pub const EGRESS_URL_HEADER: &str = "x-sb-egress-url";
@@ -21,12 +25,17 @@ pub const EGRESS_ERROR_HEADER: &str = "x-sb-egress-error";
 /// Bun.serve's default `maxRequestBodySize`.
 pub const DEFAULT_MAX_REQUEST_BYTES: usize = 128 * 1024 * 1024;
 
+/// A request body with a declared length up to this is held in memory (and can be replayed
+/// on a pooled connection); a larger or undeclared one is streamed.
+pub const BODY_BUFFER_MAX: usize = 256 * 1024;
+
 pub type BoxError = Box<dyn std::error::Error + Send + Sync>;
 pub type RespBody = BoxBody<Bytes, BoxError>;
 
 pub struct Egress {
     pub token: Vec<u8>,
-    pub allow: Vec<String>,
+    pub allow: Allow,
+    /// The whole address table (default); `false` is `SB_EGRESS_STRICT=0`.
     pub strict: bool,
     pub max_request_bytes: usize,
     pub resolver: Box<dyn Resolve>,
@@ -34,18 +43,14 @@ pub struct Egress {
 }
 
 impl Egress {
-    pub fn new(
-        token: &str,
-        allow: Vec<String>,
-        resolver: Box<dyn Resolve>,
-    ) -> Result<Egress, String> {
+    pub fn new(token: &str, allow: Allow, resolver: Box<dyn Resolve>) -> Result<Egress, String> {
         if token.is_empty() {
             return Err("the egress service needs a token".into());
         }
         Ok(Egress {
             token: token.as_bytes().to_vec(),
             allow,
-            strict: false,
+            strict: true,
             max_request_bytes: DEFAULT_MAX_REQUEST_BYTES,
             resolver,
             client: Client::new(),
@@ -140,24 +145,69 @@ fn base64(data: &[u8]) -> String {
     out
 }
 
-/// Read a request body, refusing more than `limit` bytes.
-async fn read_body(body: Incoming, limit: usize) -> Result<Bytes, ()> {
-    use hyper::body::Body;
-    if body.size_hint().lower() as usize > limit {
-        return Err(());
-    }
-    let mut body = body;
+enum ReadError {
+    TooLarge,
+    Broken,
+}
+
+/// Read a request body into memory, refusing more than `limit` bytes.
+async fn read_body(mut body: Incoming, limit: usize) -> Result<Bytes, ReadError> {
     let mut buf: Vec<u8> = Vec::new();
     while let Some(frame) = body.frame().await {
-        let Ok(frame) = frame else { return Err(()) };
+        let Ok(frame) = frame else {
+            return Err(ReadError::Broken);
+        };
         if let Ok(data) = frame.into_data() {
             if buf.len() + data.len() > limit {
-                return Err(());
+                return Err(ReadError::TooLarge);
             }
             buf.extend_from_slice(&data);
         }
     }
     Ok(Bytes::from(buf))
+}
+
+/// The caller's body passed on to the upstream as it arrives, failing (and noting why)
+/// when it runs past the limit.
+struct Limited {
+    inner: Incoming,
+    left: usize,
+    exceeded: Arc<AtomicBool>,
+}
+
+impl Body for Limited {
+    type Data = Bytes;
+    type Error = BoxError;
+
+    fn poll_frame(
+        self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+    ) -> Poll<Option<Result<Frame<Bytes>, BoxError>>> {
+        let this = self.get_mut();
+        match Pin::new(&mut this.inner).poll_frame(cx) {
+            Poll::Ready(Some(Ok(frame))) => {
+                if let Some(data) = frame.data_ref() {
+                    if data.len() > this.left {
+                        this.exceeded.store(true, Ordering::SeqCst);
+                        return Poll::Ready(Some(Err("request body too large".into())));
+                    }
+                    this.left -= data.len();
+                }
+                Poll::Ready(Some(Ok(frame)))
+            }
+            Poll::Ready(Some(Err(e))) => Poll::Ready(Some(Err(Box::new(e)))),
+            Poll::Ready(None) => Poll::Ready(None),
+            Poll::Pending => Poll::Pending,
+        }
+    }
+
+    fn is_end_stream(&self) -> bool {
+        self.inner.is_end_stream()
+    }
+
+    fn size_hint(&self) -> SizeHint {
+        self.inner.size_hint()
+    }
 }
 
 fn header_text(headers: &hyper::HeaderMap, name: &str) -> Option<Vec<u8>> {
@@ -217,41 +267,71 @@ pub async fn handle(egress: Arc<Egress>, req: Request<Incoming>) -> Response<Res
     if !headers.contains_key(hyper::header::ACCEPT) {
         headers.insert(hyper::header::ACCEPT, HeaderValue::from_static("*/*"));
     }
-    if !headers.contains_key(hyper::header::USER_AGENT) {
-        headers.insert(
-            hyper::header::USER_AGENT,
-            HeaderValue::from_static(DEFAULT_USER_AGENT),
-        );
-    }
 
-    let method = parts.method.clone();
-    let body = if method == Method::GET || method == Method::HEAD {
-        Bytes::new()
-    } else {
-        match read_body(body, egress.max_request_bytes).await {
-            Ok(b) => b,
-            Err(()) => return plain(StatusCode::PAYLOAD_TOO_LARGE, "Request Entity Too Large"),
-        }
-    };
-    if method != Method::GET && method != Method::HEAD {
-        // Bun's fetch always states the length of a body-carrying request, even 0.
-        headers.insert(CONTENT_LENGTH, HeaderValue::from(body.len()));
+    // Destination first: the port, then the resolved addresses. Nothing of the request
+    // body is read until both pass.
+    if url.port_or_known_default() == Some(25) {
+        return refuse(StatusCode::BAD_GATEWAY, PORT_25_REFUSAL);
     }
-    let out = Outbound {
-        method: method.clone(),
-        headers,
-        body,
-    };
     let vetting = Vetting {
         resolver: egress.resolver.as_ref(),
         allow: &egress.allow,
         strict: egress.strict,
     };
-    match vetted_fetch(&egress.client, &url, &out, &vetting).await {
+    let vetted = match vet(&url, &vetting).await {
+        Ok(v) => v,
+        Err(message) => return refuse(StatusCode::BAD_GATEWAY, &message),
+    };
+
+    let method = parts.method.clone();
+    let exceeded = Arc::new(AtomicBool::new(false));
+    let too_large = || plain(StatusCode::PAYLOAD_TOO_LARGE, "Request Entity Too Large");
+    let out_body = if method == Method::GET || method == Method::HEAD {
+        OutBody::Buffered(Bytes::new())
+    } else {
+        let declared = header_text(&parts.headers, "content-length")
+            .and_then(|v| String::from_utf8_lossy(&v).trim().parse::<usize>().ok());
+        match declared {
+            Some(n) if n > egress.max_request_bytes => return too_large(),
+            Some(n) if n <= BODY_BUFFER_MAX => {
+                match read_body(body, egress.max_request_bytes).await {
+                    Ok(b) => {
+                        // Bun's fetch always states the length of a body-carrying request, even 0.
+                        headers.insert(CONTENT_LENGTH, HeaderValue::from(b.len()));
+                        OutBody::Buffered(b)
+                    }
+                    Err(ReadError::TooLarge) => return too_large(),
+                    Err(ReadError::Broken) => return plain(StatusCode::BAD_REQUEST, "Bad Request"),
+                }
+            }
+            _ => {
+                if let Some(n) = declared {
+                    headers.insert(CONTENT_LENGTH, HeaderValue::from(n));
+                }
+                let stream: ReqBody = Limited {
+                    inner: body,
+                    left: egress.max_request_bytes,
+                    exceeded: exceeded.clone(),
+                }
+                .boxed();
+                OutBody::Stream(Some(stream))
+            }
+        }
+    };
+    let out = Outbound {
+        method: method.clone(),
+        headers,
+        body: out_body,
+    };
+    match fetch_vetted(&egress.client, &url, out, &vetted).await {
         Ok(upstream) => relay(upstream, &method),
+        Err(_) if exceeded.load(Ordering::SeqCst) => too_large(),
         Err(message) => refuse(StatusCode::BAD_GATEWAY, &message),
     }
 }
+
+/// `fetch()` to port 25 is refused, as the tunnel refuses it (and as Workers does).
+pub const PORT_25_REFUSAL: &str = "fetch() refused: port 25 is blocked, as on Workers";
 
 /// `new Response(upstream.body, { status, headers })`.
 fn relay(upstream: Response<crate::upstream::Guarded>, method: &Method) -> Response<RespBody> {

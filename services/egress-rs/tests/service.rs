@@ -1,7 +1,7 @@
 //! In-process tests: the service against fake upstreams, with a counting resolver
 //! standing in for DNS (the rebinding defence) and a raw client.
 
-use sproutboat_egress::addr::allow_list;
+use sproutboat_egress::addr::Allow;
 use sproutboat_egress::resolve::{Answer, Resolve, ResolveFuture};
 use sproutboat_egress::tunnel::{
     open_frame, typed_frame, Tunnels, TCP_CONNECTED, TCP_DATA, TCP_ERROR,
@@ -74,8 +74,27 @@ async fn upstream() -> (u16, Arc<Mutex<Vec<String>>>, Arc<AtomicUsize>) {
                     buf.extend_from_slice(&tmp[..n]);
                     while let Some(i) = buf.windows(4).position(|w| w == b"\r\n\r\n") {
                         let head = String::from_utf8_lossy(&buf[..i]).to_string();
-                        buf.drain(..i + 4);
-                        seen.lock().unwrap().push(head);
+                        let cl = head
+                            .lines()
+                            .find_map(|l| {
+                                l.to_lowercase()
+                                    .strip_prefix("content-length:")
+                                    .map(|v| v.trim().parse::<usize>().unwrap_or(0))
+                            })
+                            .unwrap_or(0);
+                        while buf.len() < i + 4 + cl {
+                            let Ok(n) = sock.read(&mut tmp).await else {
+                                return;
+                            };
+                            if n == 0 {
+                                return;
+                            }
+                            buf.extend_from_slice(&tmp[..n]);
+                        }
+                        buf.drain(..i + 4 + cl);
+                        seen.lock()
+                            .unwrap()
+                            .push(format!("{head}\r\nx-test-body-bytes: {cl}"));
                         if sock.write_all(b"HTTP/1.1 200 OK\r\ncontent-length: 2\r\ncontent-type: text/plain\r\n\r\nok").await.is_err() {
                             return;
                         }
@@ -87,13 +106,20 @@ async fn upstream() -> (u16, Arc<Mutex<Vec<String>>>, Arc<AtomicUsize>) {
     (port, seen, conns)
 }
 
-async fn start(allow: &str, script: Arc<Script>) -> u16 {
-    let egress = Egress::new(
+fn egress(allow: &str, script: Arc<Script>) -> Egress {
+    Egress::new(
         TOKEN,
-        allow_list(Some(allow)),
+        Allow::parse(Some(allow)).unwrap(),
         Box::new(ScriptResolver(script)),
     )
-    .unwrap();
+    .unwrap()
+}
+
+async fn start(allow: &str, script: Arc<Script>) -> u16 {
+    start_with(egress(allow, script)).await
+}
+
+async fn start_with(egress: Egress) -> u16 {
     let l = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let port = l.local_addr().unwrap().port();
     tokio::spawn(serve(Arc::new(egress), l));
@@ -293,7 +319,7 @@ async fn tunnel_relays_bytes_and_refuses_private_targets() {
     let tls = sproutboat_egress::upstream::Client::new().tls;
     let tunnels = Arc::new(Tunnels::new(
         TOKEN,
-        allow_list(Some("127.0.0.1")),
+        Allow::parse(Some("127.0.0.1")).unwrap(),
         resolver,
         tls,
     ));
@@ -329,4 +355,223 @@ async fn read_frame(s: &mut TcpStream) -> (u8, Vec<u8>) {
     let mut p = vec![0u8; len];
     s.read_exact(&mut p).await.unwrap();
     (h[0], p)
+}
+
+/// Send raw request bytes to the service and read the whole answer.
+async fn raw(svc: u16, request: &str, then: Option<&[u8]>) -> (u16, String) {
+    let mut s = TcpStream::connect(("127.0.0.1", svc)).await.unwrap();
+    s.write_all(request.as_bytes()).await.unwrap();
+    if let Some(more) = then {
+        s.write_all(more).await.unwrap();
+    }
+    let mut out = Vec::new();
+    tokio::time::timeout(std::time::Duration::from_secs(5), s.read_to_end(&mut out))
+        .await
+        .expect("an answer within 5 s")
+        .ok();
+    let text = String::from_utf8_lossy(&out).to_string();
+    let status = text
+        .split_whitespace()
+        .nth(1)
+        .and_then(|c| c.parse().ok())
+        .unwrap_or(0);
+    (status, text)
+}
+
+fn post(url: &str, headers: &str) -> String {
+    format!("POST / HTTP/1.1\r\nhost: e\r\nconnection: close\r\nx-sb-egress-url: {url}\r\nx-sb-egress-token: {TOKEN}\r\n{headers}\r\n")
+}
+
+#[tokio::test]
+async fn fetch_to_port_25_is_refused_before_anything_else() {
+    let script = Script::new(vec![vec!["1.1.1.1"]]);
+    let svc = start("*", script.clone()).await;
+    for url in [
+        "http://mail.test:25/",
+        "http://mail.test:25/x?y=1",
+        "https://mail.test:25/",
+    ] {
+        let (status, _, body) = fetch(svc, url, TOKEN).await;
+        assert_eq!(status, 502, "{url}");
+        assert_eq!(
+            body,
+            r#"{"error":"fetch() refused: port 25 is blocked, as on Workers"}"#
+        );
+    }
+    assert_eq!(
+        script.lookups.load(Ordering::SeqCst),
+        0,
+        "refused before resolving"
+    );
+    // other ports, including the neighbours, are not affected by the rule
+    let (up, _, _) = upstream().await;
+    let svc = start("127.0.0.1", Script::new(vec![vec!["127.0.0.1"]])).await;
+    assert_eq!(
+        fetch(svc, &format!("http://p.test:{up}/"), TOKEN).await.0,
+        200
+    );
+}
+
+#[tokio::test]
+async fn destination_is_vetted_before_the_request_body_is_read() {
+    let (up, seen, _) = upstream().await;
+    let script = Script::new(vec![vec!["10.255.255.1"]]);
+    let svc = start("", script.clone()).await;
+    // 100 MiB declared, none sent: a service that reads the body first would wait for it.
+    let req = post(
+        &format!("http://private.test:{up}/"),
+        "content-length: 104857600\r\n",
+    );
+    let (status, text) = raw(svc, &req, None).await;
+    assert_eq!(status, 502, "{text}");
+    assert!(text.contains("fetch() refused: private.test resolves to 10.255.255.1"));
+    // the same for port 25
+    let req = post("http://mail.test:25/", "content-length: 104857600\r\n");
+    assert_eq!(raw(svc, &req, None).await.0, 502);
+    assert!(seen.lock().unwrap().is_empty());
+}
+
+#[tokio::test]
+async fn large_bodies_are_streamed_and_small_ones_buffered() {
+    let (up, seen, _) = upstream().await;
+    let svc = start("127.0.0.1", Script::new(vec![vec!["127.0.0.1"]])).await;
+    let url = format!("http://stream.test:{up}/");
+    let big = vec![b'x'; 1024 * 1024];
+    let (status, text) = raw(svc, &post(&url, "content-length: 1048576\r\n"), Some(&big)).await;
+    assert_eq!(status, 200, "{text}");
+    let small = post(&url, "content-length: 5\r\n");
+    assert_eq!(raw(svc, &small, Some(b"hello")).await.0, 200);
+    let empty = post(&url, "content-length: 0\r\n");
+    assert_eq!(raw(svc, &empty, None).await.0, 200);
+    let seen = seen.lock().unwrap().clone();
+    assert_eq!(seen.len(), 3);
+    assert!(seen[0].contains("content-length: 1048576"), "{}", seen[0]);
+    assert!(seen[0].ends_with("x-test-body-bytes: 1048576"));
+    assert!(seen[1].ends_with("x-test-body-bytes: 5"));
+    assert!(
+        seen[2].to_lowercase().contains("content-length: 0"),
+        "{}",
+        seen[2]
+    );
+}
+
+#[tokio::test]
+async fn request_body_limit_applies_to_declared_and_streamed_bodies() {
+    let (up, seen, _) = upstream().await;
+    let mut e = egress("127.0.0.1", Script::new(vec![vec!["127.0.0.1"]]));
+    e.max_request_bytes = 1000;
+    let svc = start_with(e).await;
+    let url = format!("http://limit.test:{up}/");
+    // declared too large: refused at once
+    let (status, _) = raw(svc, &post(&url, "content-length: 5000\r\n"), None).await;
+    assert_eq!(status, 413);
+    // within the limit
+    assert_eq!(
+        raw(
+            svc,
+            &post(&url, "content-length: 900\r\n"),
+            Some(&[b'a'; 900])
+        )
+        .await
+        .0,
+        200
+    );
+    // undeclared (chunked) and too large: cut off while streaming
+    let chunk = format!("{:x}\r\n{}\r\n", 600, "b".repeat(600));
+    let body = format!("{chunk}{chunk}0\r\n\r\n");
+    let (status, _) = raw(
+        svc,
+        &post(&url, "transfer-encoding: chunked\r\n"),
+        Some(body.as_bytes()),
+    )
+    .await;
+    assert_eq!(status, 413);
+    // a streamed body that runs over is cut off mid-flight: the upstream has seen the
+    // head and part of the body of the second request, never all of it
+    assert!(seen.lock().unwrap().len() <= 2);
+}
+
+#[tokio::test]
+async fn no_user_agent_unless_the_app_sets_one() {
+    let (up, seen, _) = upstream().await;
+    let svc = start("127.0.0.1", Script::new(vec![vec!["127.0.0.1"]])).await;
+    let url = format!("http://ua.test:{up}/");
+    assert_eq!(fetch(svc, &url, TOKEN).await.0, 200);
+    let req = format!("GET / HTTP/1.1\r\nhost: e\r\nconnection: close\r\nuser-agent: app/1\r\nx-sb-egress-url: {url}\r\nx-sb-egress-token: {TOKEN}\r\n\r\n");
+    assert_eq!(raw(svc, &req, None).await.0, 200);
+    let seen = seen.lock().unwrap().clone();
+    assert!(
+        !seen[0].to_lowercase().contains("user-agent"),
+        "{}",
+        seen[0]
+    );
+    assert!(seen[0].to_lowercase().contains("accept: */*"));
+    assert!(seen[1].to_lowercase().contains("user-agent: app/1"));
+}
+
+#[tokio::test]
+async fn allow_accepts_any_spelling_and_cidr_ranges() {
+    let (up, _, _) = upstream().await;
+    // the answer is the mapped spelling of an allowed IPv4 range member
+    let svc = start("127.0.0.0/8", Script::new(vec![vec!["127.0.0.1"]])).await;
+    assert_eq!(
+        fetch(svc, &format!("http://a.test:{up}/"), TOKEN).await.0,
+        200
+    );
+    let svc = start("127.0.0.0/8", Script::new(vec![vec!["10.0.0.1"]])).await;
+    assert_eq!(
+        fetch(svc, &format!("http://b.test:{up}/"), TOKEN).await.0,
+        502
+    );
+}
+
+#[tokio::test]
+async fn the_added_ranges_are_refused_by_default() {
+    let (up, seen, _) = upstream().await;
+    for (name, answer, range) in [
+        (
+            "teredo",
+            "2001:0:4136:e378:8000:63bf:3fff:fdd2",
+            "2001::/23",
+        ),
+        ("siit", "::ffff:0:7f00:1", "::ffff:0:0:0/96"),
+        ("doc", "3fff::1", "3fff::/20"),
+        ("srv6", "5f00::1", "5f00::/16"),
+        ("anycast", "192.88.99.1", "192.88.99.0/24"),
+        ("as112", "192.31.196.1", "192.31.196.0/24"),
+    ] {
+        let svc = start("", Script::new(vec![vec![answer]])).await;
+        let (status, _, body) = fetch(svc, &format!("http://{name}.test:{up}/"), TOKEN).await;
+        assert_eq!(status, 502, "{name}");
+        assert!(body.contains(&format!("({range})")), "{name}: {body}");
+    }
+    assert!(seen.lock().unwrap().is_empty());
+}
+
+#[tokio::test]
+async fn connect_timeout_gives_a_clear_error() {
+    // A server that accepts and never speaks: the TLS handshake cannot finish.
+    let silent = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let port = silent.local_addr().unwrap().port();
+    tokio::spawn(async move {
+        let mut held = Vec::new();
+        loop {
+            if let Ok((s, _)) = silent.accept().await {
+                held.push(s);
+            }
+        }
+    });
+    let mut e = egress("127.0.0.1", Script::new(vec![vec!["127.0.0.1"]]));
+    e.client.connect_timeout = std::time::Duration::from_millis(300);
+    let svc = start_with(e).await;
+    let started = std::time::Instant::now();
+    let (status, _, body) = fetch(svc, &format!("https://silent.test:{port}/"), TOKEN).await;
+    assert_eq!(status, 502);
+    assert_eq!(
+        body,
+        format!(
+            r#"{{"error":"connect to 127.0.0.1:{port} timed out after 300 ms (SB_EGRESS_CONNECT_TIMEOUT_MS)"}}"#
+        )
+    );
+    assert!(started.elapsed() < std::time::Duration::from_secs(3));
 }

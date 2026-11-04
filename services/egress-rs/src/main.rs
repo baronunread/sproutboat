@@ -1,8 +1,8 @@
 //! `sproutboat-egress --host 127.0.0.1 --port 8070 [--tcp-port 8071]`
-//! Environment: `SB_EGRESS_TOKEN` (required), `SB_EGRESS_ALLOW`, `PORT`,
+//! Environment: `SB_EGRESS_TOKEN` (required), `SB_EGRESS_ALLOW`, `SB_EGRESS_STRICT`, `SB_EGRESS_CONNECT_TIMEOUT_MS`, `PORT`,
 //! `SB_CA_BUNDLE`. See BEHAVIOUR.md.
 
-use sproutboat_egress::addr::allow_list;
+use sproutboat_egress::addr::Allow;
 use sproutboat_egress::resolve::default_resolver;
 use sproutboat_egress::tunnel::{self, Tunnels};
 use sproutboat_egress::{serve, Egress};
@@ -26,6 +26,11 @@ fn arg(args: &[String], name: &str) -> Option<String> {
 
 fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
+    if args.iter().any(|a| a == "--print-ranges") {
+        // The address table, for the differential harness to compare with the TS one.
+        println!("{}", serde_json::json!(sproutboat_egress::addr::BLOCKED_RANGES));
+        return;
+    }
     let token = std::env::var("SB_EGRESS_TOKEN").unwrap_or_default();
     if token.is_empty() {
         eprintln!("sproutboat egress: SB_EGRESS_TOKEN is required");
@@ -47,8 +52,26 @@ fn main() {
         }),
         None => port.wrapping_add(1),
     };
-    let allow = allow_list(std::env::var("SB_EGRESS_ALLOW").ok().as_deref());
-    let strict = matches!(std::env::var("SB_EGRESS_STRICT").as_deref(), Ok("1"));
+    let allow =
+        Allow::parse(std::env::var("SB_EGRESS_ALLOW").ok().as_deref()).unwrap_or_else(|e| {
+            eprintln!("sproutboat egress: {e}");
+            std::process::exit(1)
+        });
+    // The whole address table by default; `SB_EGRESS_STRICT=0` limits it to the
+    // ranges the Bun service had before the table grew.
+    let strict = !matches!(std::env::var("SB_EGRESS_STRICT").as_deref(), Ok("0"));
+    let connect_timeout = match std::env::var("SB_EGRESS_CONNECT_TIMEOUT_MS") {
+        Ok(v) if !v.trim().is_empty() => match v.trim().parse::<u64>() {
+            Ok(ms) if ms > 0 => Some(std::time::Duration::from_millis(ms)),
+            _ => {
+                eprintln!(
+                    "sproutboat egress: invalid SB_EGRESS_CONNECT_TIMEOUT_MS {v:?}: expected a positive number of milliseconds"
+                );
+                std::process::exit(1)
+            }
+        },
+        _ => None,
+    };
 
     // Two workers by default: the service is a loopback helper next to the edge, and more
     // threads only add cross-thread wake-ups (measured: 1.7x the CPU per request at 4).
@@ -65,6 +88,9 @@ fn main() {
     rt.block_on(async move {
         let mut egress = Egress::new(&token, allow.clone(), default_resolver()).expect("token");
         egress.strict = strict;
+        if let Some(t) = connect_timeout {
+            egress.client.connect_timeout = t;
+        }
         if let Some(n) = std::env::var("SB_EGRESS_MAX_REQUEST_BYTES")
             .ok()
             .and_then(|s| s.parse::<usize>().ok())
@@ -76,6 +102,9 @@ fn main() {
         let resolver: Arc<dyn sproutboat_egress::resolve::Resolve> = Arc::from(default_resolver());
         let mut tunnels = Tunnels::new(&token, allow, resolver, tls);
         tunnels.strict = strict;
+        if let Some(t) = connect_timeout {
+            tunnels.connect_timeout = t;
+        }
         let tunnels = Arc::new(tunnels);
 
         let tcp = TcpListener::bind((host.as_str(), tcp_port))

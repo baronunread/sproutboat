@@ -4,10 +4,12 @@
 //! `fetch` keeps connections alive; so does this, keyed by name, address and port
 //! so that a TLS session verified for one name is never reused for another).
 
-use crate::addr::egress_refusal;
+use crate::addr::{egress_refusal, Allow};
+use crate::http::BoxError;
 use crate::resolve::{is_ip_literal, Resolve};
 use bytes::Bytes;
-use http_body_util::Full;
+use http_body_util::combinators::BoxBody;
+use http_body_util::{BodyExt, Full};
 use hyper::body::{Body, Frame, Incoming, SizeHint};
 use hyper::client::conn::http1::SendRequest;
 use hyper::header::{HeaderMap, HeaderName, HeaderValue};
@@ -29,14 +31,16 @@ use url::{Position, Url};
 /// What Bun's `fetch` says when a connection is refused; kept so the broker sees the
 /// same text.
 pub const BUN_CONNECT_FAILED: &str = "Unable to connect. Is the computer able to access the url?";
-/// Bun's `fetch` adds these when the caller sent none.
-pub const DEFAULT_USER_AGENT: &str = "Bun/1.4.4";
+/// How long a connection (TCP, and TLS for https) may take to open.
+pub const DEFAULT_CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
 
 const IDLE_TTL: Duration = Duration::from_secs(15);
 const MAX_IDLE_PER_KEY: usize = 64;
 const MAX_KEYS: usize = 512;
 
-type Sender = SendRequest<Full<Bytes>>;
+/// The request body type of every upstream request: a buffered body or the caller's stream.
+pub type ReqBody = BoxBody<Bytes, BoxError>;
+type Sender = SendRequest<ReqBody>;
 
 #[derive(Clone, PartialEq, Eq, Hash, Debug)]
 struct PoolKey {
@@ -136,6 +140,7 @@ impl Body for Guarded {
 /// Shared client state: TLS config and pool.
 pub struct Client {
     pub tls: TlsConnector,
+    pub connect_timeout: Duration,
     pool: Arc<Pool>,
 }
 
@@ -143,6 +148,7 @@ impl Client {
     pub fn new() -> Client {
         Client {
             tls: TlsConnector::from(Arc::new(tls_config())),
+            connect_timeout: DEFAULT_CONNECT_TIMEOUT,
             pool: Arc::new(Pool::default()),
         }
     }
@@ -182,7 +188,7 @@ pub fn tls_config() -> ClientConfig {
 /// Policy and plumbing one request needs.
 pub struct Vetting<'a> {
     pub resolver: &'a dyn Resolve,
-    pub allow: &'a [String],
+    pub allow: &'a Allow,
     pub strict: bool,
 }
 
@@ -209,22 +215,34 @@ fn connect_error_text(e: &io::Error) -> String {
     format!("{code}: {BUN_CONNECT_FAILED}")
 }
 
+/// The body of an upstream request.
+pub enum OutBody {
+    /// Held in memory: replayable, so a stale pooled connection can be retried.
+    Buffered(Bytes),
+    /// The caller's stream, sent once, on a connection opened for it.
+    Stream(Option<ReqBody>),
+}
+
 /// What the broker's `fetch()` sends, after the header rules in `http.rs`.
 pub struct Outbound {
     pub method: Method,
     pub headers: HeaderMap,
-    pub body: Bytes,
+    pub body: OutBody,
 }
 
-/// Resolve, vet, then fetch from a vetted address. `Err` carries the message for the
-/// 502 body: the refusal text, `could not resolve <host>`, or the connect / TLS /
-/// protocol failure.
-pub async fn vetted_fetch(
-    client: &Client,
-    url: &Url,
-    out: &Outbound,
-    vetting: &Vetting<'_>,
-) -> Result<Response<Guarded>, String> {
+/// A destination that passed the vetting: the addresses that may be connected to.
+#[derive(Debug)]
+pub struct Vetted {
+    host_text: String,
+    name: String,
+    ips: Vec<IpAddr>,
+    port: u16,
+    tls: bool,
+}
+
+/// Resolve the host and vet every answer, before anything of the request is read.
+/// `Err` is the refusal text or `could not resolve <host>`.
+pub async fn vet(url: &Url, vetting: &Vetting<'_>) -> Result<Vetted, String> {
     let host_text = url.host_str().unwrap_or("").to_string();
     let name = host_text
         .trim_start_matches('[')
@@ -236,12 +254,12 @@ pub async fn vetted_fetch(
         .await
         .map_err(|_| format!("could not resolve {host_text}"))?;
     let mut refusal: Option<String> = None;
-    let mut vetted: Vec<IpAddr> = Vec::new();
+    let mut ips: Vec<IpAddr> = Vec::new();
     for a in &answers {
-        match egress_refusal(&host_text, &a.text, vetting.allow, vetting.strict) {
+        match egress_refusal(&host_text, &a.text, a.ip, vetting.allow, vetting.strict) {
             None => {
                 if let Some(ip) = a.ip {
-                    vetted.push(ip);
+                    ips.push(ip);
                 }
             }
             Some(why) => {
@@ -249,35 +267,52 @@ pub async fn vetted_fetch(
             }
         }
     }
-    if vetted.is_empty() {
+    if ips.is_empty() {
         return Err(refusal.unwrap_or_else(|| format!("could not resolve {host_text}")));
     }
     let tls = url.scheme() == "https";
     let port = url
         .port_or_known_default()
         .unwrap_or(if tls { 443 } else { 80 });
-    let sni = if is_ip_literal(&name) {
+    Ok(Vetted {
+        host_text,
+        name,
+        ips,
+        port,
+        tls,
+    })
+}
+
+/// Fetch from a vetted address. `Err` carries the message for the 502 body: the connect /
+/// TLS / protocol failure.
+pub async fn fetch_vetted(
+    client: &Client,
+    url: &Url,
+    mut out: Outbound,
+    vetted: &Vetted,
+) -> Result<Response<Guarded>, String> {
+    let sni = if is_ip_literal(&vetted.name) {
         None
     } else {
-        Some(name.clone())
+        Some(vetted.name.clone())
     };
     // Like the Bun service: move on to the next address only when one cannot be
     // connected to; nothing has been sent yet, so a retry cannot repeat a request.
     let mut last: Option<String> = None;
-    for ip in vetted {
+    for ip in &vetted.ips {
         let key = PoolKey {
-            tls,
-            name: name.clone(),
-            ip,
-            port,
+            tls: vetted.tls,
+            name: vetted.name.clone(),
+            ip: *ip,
+            port: vetted.port,
         };
-        match send_via(client, &key, sni.as_deref(), url, out).await {
+        match send_via(client, &key, sni.as_deref(), url, &mut out).await {
             Ok(res) => return Ok(res),
             Err(SendError::Connect(e)) => last = Some(connect_error_text(&e)),
             Err(SendError::Fatal(m)) => return Err(m),
         }
     }
-    Err(last.unwrap_or_else(|| format!("could not resolve {host_text}")))
+    Err(last.unwrap_or_else(|| format!("could not resolve {}", vetted.host_text)))
 }
 
 enum SendError {
@@ -287,8 +322,18 @@ enum SendError {
 }
 
 async fn open(client: &Client, key: &PoolKey, sni: Option<&str>) -> Result<Sender, SendError> {
-    let tcp = TcpStream::connect(SocketAddr::new(key.ip, key.port))
+    let limit = client.connect_timeout;
+    let timed_out = || {
+        SendError::Fatal(format!(
+            "connect to {}:{} timed out after {} ms (SB_EGRESS_CONNECT_TIMEOUT_MS)",
+            key.ip,
+            key.port,
+            limit.as_millis()
+        ))
+    };
+    let tcp = tokio::time::timeout(limit, TcpStream::connect(SocketAddr::new(key.ip, key.port)))
         .await
+        .map_err(|_| timed_out())?
         .map_err(|e| {
             if is_connect_failure(&e) {
                 SendError::Connect(e)
@@ -303,10 +348,9 @@ async fn open(client: &Client, key: &PoolKey, sni: Option<&str>) -> Result<Sende
                 .map_err(|_| SendError::Fatal(format!("invalid server name {n}")))?,
             None => ServerName::IpAddress(key.ip.into()),
         };
-        let stream = client
-            .tls
-            .connect(server_name, tcp)
+        let stream = tokio::time::timeout(limit, client.tls.connect(server_name, tcp))
             .await
+            .map_err(|_| timed_out())?
             .map_err(|e| SendError::Fatal(format!("TLS handshake failed: {e}")))?;
         handshake(stream).await
     } else {
@@ -328,10 +372,18 @@ where
     Ok(sender)
 }
 
-fn build_request(url: &Url, out: &Outbound) -> Request<Full<Bytes>> {
+fn build_request(url: &Url, out: &mut Outbound) -> Request<ReqBody> {
     let target = &url[Position::BeforePath..Position::AfterQuery];
     let target = if target.is_empty() { "/" } else { target };
-    let mut req = Request::new(Full::new(out.body.clone()));
+    let body: ReqBody = match &mut out.body {
+        OutBody::Buffered(b) => Full::new(b.clone()).map_err(|never| match never {}).boxed(),
+        OutBody::Stream(s) => s.take().unwrap_or_else(|| {
+            Full::new(Bytes::new())
+                .map_err(|never| match never {})
+                .boxed()
+        }),
+    };
+    let mut req = Request::new(body);
     *req.method_mut() = out.method.clone();
     *req.uri_mut() = target.parse().unwrap_or_else(|_| "/".parse().unwrap());
     *req.headers_mut() = out.headers.clone();
@@ -343,12 +395,19 @@ async fn send_via(
     key: &PoolKey,
     sni: Option<&str>,
     url: &Url,
-    out: &Outbound,
+    out: &mut Outbound,
 ) -> Result<Response<Guarded>, SendError> {
     let close = wants_close(&out.headers);
     // A pooled connection may have been closed by the server while idle: that shows up
-    // as a cancelled request before any response byte, and one fresh attempt is safe.
-    let mut reused = if close { None } else { client.pool.take(key) };
+    // as a cancelled request before any response byte, and one fresh attempt is safe,
+    // but only for a body that can be sent again. A streamed body always gets a
+    // connection of its own.
+    let replayable = matches!(out.body, OutBody::Buffered(_));
+    let mut reused = if close || !replayable {
+        None
+    } else {
+        client.pool.take(key)
+    };
     loop {
         let was_reused = reused.is_some();
         let mut sender = match reused.take() {
