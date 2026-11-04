@@ -1,0 +1,8 @@
+{
+  "relay/upstream-drops-connection": "502 and x-sb-egress-error agree; only the free-text message of a transport failure differs (Bun's fetch wording vs the Rust client's)",
+  "tls/plain-http-to-tls-port": "same: transport-failure wording",
+  "tls/name-mismatch-by-ip": "same: certificate-failure wording (both refuse with 502)",
+  "tunnel/frame-too-large": "frames pipelined with the open frame: Bun handles them before the connect finishes (error without a connected frame); Rust answers connected, then the same error",
+  "tunnel/starttls-on-plain-socket": "same ordering difference (Bun also refuses startTls pipelined before connect even in starttls mode; Rust accepts it)",
+  "tunnel/head-not-json": "Bun tcp.ts throws an uncaught SyntaxError and the egress process dies; Rust answers an 'expected tcp.open' error frame"
+}
