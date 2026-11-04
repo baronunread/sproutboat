@@ -10,7 +10,7 @@ export const colors = {
     hairline: "oklch(0.3 0.018 255)",
     "hairline-strong": "oklch(0.4 0.02 255)",
     "control-edge": "oklch(0.56 0.02 255)",
-    focus: "oklch(0.8 0.14 152)",
+    focus: "oklch(0.95 0.01 255)",
     fg: "oklch(0.95 0.01 255)",
     "fg-muted": "oklch(0.76 0.018 255)",
     brand: "oklch(0.72 0.12 152)",
@@ -58,7 +58,7 @@ export const colors = {
     hairline: "oklch(0.9 0 0)",
     "hairline-strong": "oklch(0.82 0 0)",
     "control-edge": "oklch(0.6 0 0)",
-    focus: "oklch(0.55 0.15 150)",
+    focus: "oklch(0.22 0 0)",
     fg: "oklch(0.22 0 0)",
     "fg-muted": "oklch(0.44 0 0)",
     brand: "oklch(0.47 0.12 152)",
@@ -260,7 +260,7 @@ export const border = {
   },
   focus: {
     px: 2,
-    use: "Focus ring (sprout green)",
+    use: "Focus ring (neutral ink)",
   },
 } as const;
 

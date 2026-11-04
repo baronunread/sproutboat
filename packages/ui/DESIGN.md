@@ -6,12 +6,12 @@
 
 1. **Soft, layered.** Surfaces separate by a gentle step in tone and a layered shadow, not by borders everywhere. Canvas, surface, well and raised each sit one step apart. Hairlines are kept for table rules and dividers.
 2. **Concentric radii.** Outer radius = inner radius + padding: controls 8, a well 10 (rows 6 inside it), cards, menus and dialogs 12.
-3. **Green is rare.** Sprout green (hue about 150) appears only on primary actions, success and focus. Everything else is neutral grey or a status color that stays well away from it.
+3. **Green is rare.** Sprout green (hue about 150) appears only on primary actions and success. Focus is neutral ink, never green. Everything else is neutral grey or a status color that stays well away from it.
 4. **Amber is not red.** A version that fell back to the supervisor is working, only differently. It is amber. Red is reserved for errors that need action and for destructive controls.
 5. **Status is shape plus word.** Every status shows its own shape (circle, triangle, cross, ring, square) and a label. Color alone is never the message.
 6. **Overlays are clearly raised.** Menus, selects, popovers, dialogs and toasts use the lighter `raised` surface with a layered shadow, in dark as well as light.
 7. **Dense but readable.** 14px body, 36px controls, 48px table rows. Density changes sizes of boxes, never type.
-8. **Keyboard first.** Every control is reachable, shows a green focus ring, and works with the keys its WAI-ARIA pattern promises. Overlays opened with the keyboard do not animate.
+8. **Keyboard first.** Every control is reachable, shows a neutral focus ring, and works with the keys its WAI-ARIA pattern promises. Overlays opened with the keyboard do not animate.
 9. **Motion with a reason.** Ease-out for everything that enters or is pressed, short exits, nothing below scale 0.96. Reduced motion keeps fades and drops movement.
 10. **Logical, not physical.** Components use `start`/`end`, `ps-*`/`pe-*` and `inline` utilities so right-to-left works without forks.
 
@@ -37,7 +37,7 @@ All colors are OKLCH, defined once per theme and exposed as `--sb-*` variables p
 
 ### Why this palette
 
-The colour survey (`mockups-20261104/color-survey/SURVEY.md`) measured 20-odd cloud and deploy platforms. Two findings decided this. Green and teal is the most crowded family, and it is clustered: Supabase, Neon, Deno Deploy, Koyeb and Northflank all sit within 8 degrees of hue 157 to 163, and most of them are databases or runtimes whose green is their logo. A green UI would read as "a database". And deploy platforms are near-monochrome: Vercel has no chromatic accent, Render and Cloudflare docs keep one accent for the call to action and links. So Sproutboat keeps its sprout hue but changes its role: a neutral UI where the product is the content, with green only on primary actions, success and focus. Status colors (amber, red, blue, grey) are chosen at least 45 degrees from the accent, and a test enforces it.
+The colour survey (`mockups-20261104/color-survey/SURVEY.md`) measured 20-odd cloud and deploy platforms. Two findings decided this. Green and teal is the most crowded family, and it is clustered: Supabase, Neon, Deno Deploy, Koyeb and Northflank all sit within 8 degrees of hue 157 to 163, and most of them are databases or runtimes whose green is their logo. A green UI would read as "a database". And deploy platforms are near-monochrome: Vercel has no chromatic accent, Render and Cloudflare docs keep one accent for the call to action and links. So Sproutboat keeps its sprout hue but changes its role: a neutral UI where the product is the content, with green only on primary actions and success. Status colors (amber, red, blue, grey) are chosen at least 45 degrees from the accent, and a test enforces it.
 
 <!-- tokens:palette:start -->
 
@@ -51,7 +51,7 @@ The colour survey (`mockups-20261104/color-survey/SURVEY.md`) measured 20-odd cl
 | `hairline`        | `bg-hairline` `text-hairline` `border-hairline`                      | `oklch(0.3 0.018 255)`         | `oklch(0.9 0 0)`           |
 | `hairline-strong` | `bg-hairline-strong` `text-hairline-strong` `border-hairline-strong` | `oklch(0.4 0.02 255)`          | `oklch(0.82 0 0)`          |
 | `control-edge`    | `bg-control-edge` `text-control-edge` `border-control-edge`          | `oklch(0.56 0.02 255)`         | `oklch(0.6 0 0)`           |
-| `focus`           | `bg-focus` `text-focus` `border-focus`                               | `oklch(0.8 0.14 152)`          | `oklch(0.55 0.15 150)`     |
+| `focus`           | `bg-focus` `text-focus` `border-focus`                               | `oklch(0.95 0.01 255)`         | `oklch(0.22 0 0)`          |
 | `fg`              | `bg-fg` `text-fg` `border-fg`                                        | `oklch(0.95 0.01 255)`         | `oklch(0.22 0 0)`          |
 | `fg-muted`        | `bg-fg-muted` `text-fg-muted` `border-fg-muted`                      | `oklch(0.76 0.018 255)`        | `oklch(0.44 0 0)`          |
 | `brand`           | `bg-brand` `text-brand` `border-brand`                               | `oklch(0.72 0.12 152)`         | `oklch(0.47 0.12 152)`     |
@@ -160,11 +160,14 @@ Every pair below is asserted by `test/tokens.test.ts`. Text needs 4.5:1, large t
 | `danger-dot`     | `well`         | 3:1 (ui)     | 7.30:1 pass  | 4.24:1 pass  | Error dot                                 |
 | `info-dot`       | `well`         | 3:1 (ui)     | 8.39:1 pass  | 3.86:1 pass  | Info dot                                  |
 | `neutral-dot`    | `well`         | 3:1 (ui)     | 7.30:1 pass  | 4.35:1 pass  | Idle and unknown dot                      |
-| `focus`          | `canvas`       | 3:1 (ui)     | 10.62:1 pass | 4.10:1 pass  | Focus ring                                |
-| `focus`          | `surface`      | 3:1 (ui)     | 9.53:1 pass  | 4.47:1 pass  | Focus ring                                |
-| `focus`          | `well`         | 3:1 (ui)     | 10.22:1 pass | 4.06:1 pass  | Focus ring                                |
-| `focus`          | `hover`        | 3:1 (ui)     | 7.83:1 pass  | 3.63:1 pass  | Focus ring                                |
-| `focus`          | `raised`       | 3:1 (ui)     | 6.63:1 pass  | 4.54:1 pass  | Focus ring                                |
+| `focus`          | `canvas`       | 3:1 (ui)     | 16.26:1 pass | 15.64:1 pass | Focus ring                                |
+| `focus`          | `surface`      | 3:1 (ui)     | 14.60:1 pass | 17.07:1 pass | Focus ring                                |
+| `focus`          | `well`         | 3:1 (ui)     | 15.65:1 pass | 15.50:1 pass | Focus ring                                |
+| `focus`          | `hover`        | 3:1 (ui)     | 11.99:1 pass | 13.87:1 pass | Focus ring                                |
+| `focus`          | `raised`       | 3:1 (ui)     | 10.16:1 pass | 17.31:1 pass | Focus ring                                |
+| `focus`          | `code-bg`      | 3:1 (ui)     | 16.90:1 pass | 15.19:1 pass | Focus ring                                |
+| `focus`          | `diff-add`     | 3:1 (ui)     | 12.80:1 pass | 14.77:1 pass | Focus ring                                |
+| `focus`          | `diff-del`     | 3:1 (ui)     | 13.31:1 pass | 14.45:1 pass | Focus ring                                |
 | `danger`         | `surface`      | 3:1 (ui)     | 5.50:1 pass  | 7.09:1 pass  | Destructive button fill                   |
 | `chart-requests` | `surface`      | 3:1 (ui)     | 7.83:1 pass  | 4.82:1 pass  | Chart mark                                |
 | `chart-errors`   | `surface`      | 3:1 (ui)     | 6.81:1 pass  | 4.67:1 pass  | Chart mark                                |
@@ -211,13 +214,13 @@ Hairlines are decorative dividers and are deliberately below 3:1. They never car
 
 ### Using status colors
 
-| Meaning                        | Family          | Use for                                                                                 | Never use for                                               |
-| ------------------------------ | --------------- | --------------------------------------------------------------------------------------- | ----------------------------------------------------------- |
-| Success, primary action, focus | `brand` (green) | Primary button, ready or healthy state, success toast, checked controls, the focus ring | Decoration, links, selection, charts with no status meaning |
-| Degraded but working           | `warn` (amber)  | "Fell back to supervisor", usage near its limit, deprecations                           | Errors, anything that blocks the user                       |
-| Failure needing action         | `danger`        | Failed deploy, validation errors, destructive buttons, the danger zone                  | Fallback, warnings, emphasis                                |
-| Neutral information            | `info` (blue)   | Notices, in-progress states                                                             | Success or failure                                          |
-| Idle, unknown, off             | `neutral-*`     | Stopped, no data, disabled                                                              | Anything with a deadline                                    |
+| Meaning                 | Family          | Use for                                                                 | Never use for                                               |
+| ----------------------- | --------------- | ----------------------------------------------------------------------- | ----------------------------------------------------------- |
+| Success, primary action | `brand` (green) | Primary button, ready or healthy state, success toast, checked controls | Decoration, links, selection, charts with no status meaning |
+| Degraded but working    | `warn` (amber)  | "Fell back to supervisor", usage near its limit, deprecations           | Errors, anything that blocks the user                       |
+| Failure needing action  | `danger`        | Failed deploy, validation errors, destructive buttons, the danger zone  | Fallback, warnings, emphasis                                |
+| Neutral information     | `info` (blue)   | Notices, in-progress states                                             | Success or failure                                          |
+| Idle, unknown, off      | `neutral-*`     | Stopped, no data, disabled                                              | Anything with a deadline                                    |
 
 Rules:
 
@@ -293,7 +296,7 @@ Radii are concentric: outer = inner + padding. A button or input is 8. A menu or
 | Token      | Width | Use                                                                 |
 | ---------- | ----- | ------------------------------------------------------------------- |
 | `hairline` | 1px   | Dividers and table rules only; surfaces separate by tone and shadow |
-| `focus`    | 2px   | Focus ring (sprout green)                                           |
+| `focus`    | 2px   | Focus ring (neutral ink)                                            |
 
 <!-- tokens:border:end -->
 
@@ -405,11 +408,11 @@ Use compact for log viewers, resource tables with many rows, and panels the user
 
 ## Focus rings
 
-- Every focusable element shows a 2px ring in `focus` (sprout green: a deeper green in light, a lighter one in dark), offset 2px, on `:focus-visible` only. Mouse clicks do not draw a ring; keyboard and programmatic focus do.
-- The ring is an outline, so it is not clipped by `overflow: hidden` on the control. Inside a clipped scroller (tab lists, menus) use a negative offset (`-outline-offset-2`).
-- Never remove an outline without replacing it. Never rely on color change of the background alone.
+- Every focusable element shows a 2px ring in `focus`, offset 2px, on `:focus-visible` only. Mouse clicks do not draw a ring; keyboard and programmatic focus do.
+- **The ring is neutral, never green.** `focus` is the primary text ink: near-black in light, near-white in dark. Green means go or success, so a destructive control must not look safe while focused. The 2px offset leaves a gap of page background, so the ring contrasts with the page, not with the control fill, and it reads on every button variant.- The ring is an outline, so it is not clipped by `overflow: hidden` on the control. Inside a clipped scroller (tab lists, menus) use a negative offset (`-outline-offset-2`).
+- The ring is an outline, so it is not clipped by `overflow: hidden` on the control. Inside a clipped scroller (tab lists, menus) use a negative offset (`-outline-offset-2`).- Never remove an outline without replacing it. Never rely on color change of the background alone.
 - Invalid fields keep the same ring and add a `danger` ring plus an error message wired through `aria-describedby`.
-- The ring must clear 3:1 against every surface it sits on; the contrast table covers `canvas`, `surface`, `well`, `hover` and `raised`.
+- The ring must clear 3:1 against every surface it sits on; the contrast table covers `canvas`, `surface`, `well`, `hover`, `raised`, `code-bg` and the diff tints. It does not sit on a control fill: the offset gap is page background.
 
 ## Component rules
 

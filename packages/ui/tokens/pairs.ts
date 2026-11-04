@@ -28,6 +28,7 @@ const statusFamilies = [
   { name: "neutral", fg: "neutral-fg", soft: "neutral-soft" },
 ] as const;
 /** Where a control edge, a dot or a chart mark can sit. */
+const focusSurfaces: readonly ColorName[] = [...pageSurfaces, "code-bg", "diff-add", "diff-del"];
 const markBackdrops = ["surface", "canvas", "well"] as const;
 const chartMarks = [
   "chart-requests",
@@ -68,7 +69,7 @@ export const pairs: Pair[] = [
     pair("info-dot", bg, "ui", "Info dot"),
     pair("neutral-dot", bg, "ui", "Idle and unknown dot"),
   ]),
-  ...pageSurfaces.map((bg) => pair("focus", bg, "ui", "Focus ring")),
+  ...focusSurfaces.map((bg) => pair("focus", bg, "ui", "Focus ring")),
   pair("danger", "surface", "ui", "Destructive button fill"),
   ...markBackdrops.flatMap((bg) => chartMarks.map((name) => pair(name, bg, "ui", "Chart mark"))),
 ];

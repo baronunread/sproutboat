@@ -14,7 +14,7 @@ export const cn = (...inputs: ClassValue[]): string => merge(clsx(inputs));
 
 export const tv = createTV({ twMerge: merge });
 
-/** Visible focus ring: 2px sprout-green outline, keyboard focus only. */
+/** Visible focus ring: 2px neutral (near-black or near-white) outline, keyboard focus only. */
 export const focusRing =
   "outline-hidden focus-visible:outline-solid focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus";
 

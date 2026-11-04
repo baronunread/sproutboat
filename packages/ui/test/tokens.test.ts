@@ -61,16 +61,8 @@ describe("contrast", () => {
     }
   });
 
-  test("green is only success, primary actions and focus: other colors stay 45+ degrees from hue 150", () => {
-    const greens = new Set<string>([
-      "brand",
-      "brand-hover",
-      "on-brand",
-      "brand-fg",
-      "brand-soft",
-      "brand-dot",
-      "focus",
-    ]);
+  test("green is only success and primary actions (focus is neutral): other colors stay 45+ degrees from hue 150", () => {
+    const greens = new Set<string>(["brand", "brand-hover", "on-brand", "brand-fg", "brand-soft", "brand-dot"]);
     greens.add("chart-2xx").add("diff-add");
     for (const theme of [dark, light]) {
       for (const n of colorNames) {
