@@ -15,8 +15,6 @@ import {
   tailLogs,
 } from "./logs";
 import { parseTailFilters, tailEvents } from "./tail";
-import { activateSproutd, deploySproutd, describeRuntime, setRuntime } from "./sproutd-deploy";
-import { forgetSproutdProject, sproutdClient } from "./sproutd";
 import {
   activateDeployment as storeActivate,
   activeProjects,
@@ -34,9 +32,7 @@ import {
   projectDeployment,
   projectDeployments,
   projectHosts,
-  projectRuntime,
   pruneProjectDeployments,
-  sproutdProjects,
   recordDeployment,
   resourceById,
   syncRoutes,
@@ -44,7 +40,7 @@ import {
 
 export type { Deployment, ProjectSummary } from "./store";
 
-const artifactRoot = () => resolve(process.env.SPROUTBOAT_ARTIFACTS_DIR || "/var/lib/sproutboat/artifacts");
+const artifactRoot = resolve(process.env.SPROUTBOAT_ARTIFACTS_DIR || "/var/lib/sproutboat/artifacts");
 
 /** #78 — what one row of the Sprouts list needs, beyond the route itself. */
 export type ProjectRow = ProjectSummary & {
@@ -95,7 +91,7 @@ export function isDeploymentHostname(hostname: string): boolean {
 async function activePorfforVersion(ownerId: string, project: string): Promise<string | null> {
   const active = projectDeployments(ownerId, project).find((deployment) => deployment.active);
   if (!active) return null;
-  const validation = await validateArtifactDirectory(resolve(artifactRoot(), active.artifact));
+  const validation = await validateArtifactDirectory(resolve(artifactRoot, active.artifact));
   return validation.ok ? validation.value.manifest.porfforVersion : null;
 }
 
@@ -111,22 +107,6 @@ async function authorized(request: Request): Promise<Actor | Response> {
       { status: 503 },
     );
   }
-}
-
-/** GET /api/projects/:project/runtime: which runtime serves the project, and what this box offers. */
-export async function getProjectRuntime(request: Request, project: string): Promise<Response> {
-  const actor = await authorized(request);
-  if (actor instanceof Response) return actor;
-  return Response.json(describeRuntime(actor, project));
-}
-
-/** PUT /api/projects/:project/runtime { runtime: "supervisor" | "sproutd", limits? } */
-export async function putProjectRuntime(request: Request, project: string): Promise<Response> {
-  const actor = await authorized(request);
-  if (actor instanceof Response) return actor;
-  if (!/^[a-z0-9](?:[a-z0-9-]{1,30}[a-z0-9])?$/.test(project))
-    return Response.json({ error: "invalid project name" }, { status: 400 });
-  return setRuntime(actor, request, project);
 }
 
 export async function listDeployments(request: Request, project: string): Promise<Response> {
@@ -208,27 +188,7 @@ export async function deploymentDetail(request: Request, project: string, id: st
   if (actor instanceof Response) return actor;
   const found = projectDeployment(actor.id, project, id);
   if (!found) return Response.json({ error: "deployment not found" }, { status: 404 });
-  if (found.vid) {
-    // A sproutd module has no manifest or bindings sidecar; sproutd holds those.
-    return Response.json({
-      id: found.id,
-      project: found.project,
-      hostname: found.hostname,
-      artifact: found.artifact,
-      sproutPath: found.sproutPath,
-      deployedAt: found.deployedAt,
-      active: found.active,
-      deployedBy: found.username,
-      runtime: "sproutd",
-      vid: found.vid,
-      fallbackReason: null,
-      bindings: null,
-      resources: [],
-      manifest: null,
-      manifestError: "sproutd module: no artifact manifest",
-    });
-  }
-  const validation = await validateArtifactDirectory(resolve(artifactRoot(), found.artifact));
+  const validation = await validateArtifactDirectory(resolve(artifactRoot, found.artifact));
   return Response.json({
     id: found.id,
     project: found.project,
@@ -240,9 +200,6 @@ export async function deploymentDetail(request: Request, project: string, id: st
     // #76 — the dashboard's version + bindings views: who shipped it, what the
     // artifact declares, and which owned resources it was recorded against.
     deployedBy: found.username,
-    // A sproutd project's version that sproutd refused: it runs on the supervisor, and this says why.
-    runtime: "supervisor",
-    fallbackReason: found.fallbackReason ?? null,
     bindings: validation.ok ? validation.value.bindings : null,
     resources: deploymentResources(actor.id, found.id),
     manifest: validation.ok ? validation.value.manifest : null,
@@ -276,8 +233,6 @@ export async function activateDeployment(request: Request, project: string, id: 
   if (actor instanceof Response) return actor;
   const target = projectDeployment(actor.id, project, id);
   if (!target) return Response.json({ error: "deployment not found" }, { status: 404 });
-  // A version runs where it was loaded: a sproutd version has a vid; a fallback version runs on the supervisor.
-  if (target.vid) return activateSproutd(actor, project, target);
   // #141: a rollback target must start too; otherwise the current version stays.
   try {
     await stageCandidate(await candidateRoute(target));
@@ -362,19 +317,6 @@ export async function projectSproutLog(request: Request, project: string): Promi
   if (actor instanceof Response) return actor;
   const active = projectDeployments(actor.id, project).find((deployment) => deployment.active);
   if (!active) return Response.json({ error: "no active deployment" }, { status: 404 });
-  if (active.vid) {
-    // sproutd keeps each app's console and uncaught errors in its own log; the adapter returns the last lines.
-    const client = sproutdClient();
-    const lines = client
-      ? await client.logs(actor.id, project, 200).then(
-          (r) => r.lines,
-          () => null,
-        )
-      : null;
-    return new Response(lines ? lines.join("\n") + "\n" : "(sproutd is unavailable)\n", {
-      headers: { "content-type": "text/plain; charset=utf-8" },
-    });
-  }
   const text = await readSproutLogText(basename(dirname(active.sproutPath)));
   return new Response(text || "(no sprout output — the deployment has not started, or its handler logs nothing)\n", {
     headers: { "content-type": "text/plain; charset=utf-8" },
@@ -402,19 +344,9 @@ export async function deleteProject(request: Request, project: string): Promise<
   if (confirm !== project)
     return Response.json({ error: "add ?confirm=<project name> to delete a project" }, { status: 400 });
 
-  const onSproutd = projectRuntime(actor.id, project).runtime === "sproutd";
   const result = storeDeleteProject(actor.id, project);
-  if (result.removed === 0 && !onSproutd) return Response.json({ error: "project not found" }, { status: 404 });
+  if (result.removed === 0) return Response.json({ error: "project not found" }, { status: 404 });
   await syncRoutes();
-  if (onSproutd) {
-    forgetSproutdProject(actor.id, project);
-    // Stop it in sproutd too. If the adapter is down the app is orphaned there (reconcile reports it) but unrouted.
-    await sproutdClient()
-      ?.remove(actor.id, project)
-      .catch((error) =>
-        console.error(`sproutd remove failed: ${error instanceof Error ? error.message : String(error)}`),
-      );
-  }
   const cleanup = await collectArtifacts(result.orphanedArtifacts);
   const body = {
     deleted: project,
@@ -496,31 +428,6 @@ export async function deployArtifact(request: Request, project: string): Promise
   } catch {
     return Response.json({ error: "expected multipart artifact upload" }, { status: 400 });
   }
-  if (projectRuntime(actor.id, project).runtime === "sproutd")
-    return deploySproutd(actor, project, deploymentHostname(project, actor.username), form, (reason) =>
-      deploySupervisor(actor, project, form, reason),
-    );
-  return deploySupervisor(actor, project, form);
-}
-
-/**
- * The supervisor deploy: a `manifest` and `sprout` (and sidecars) in `form`. `fallbackReason` is set when the
- * project asked for sproutd and sproutd refused the version (sproutd-deploy.ts): the version is recorded
- * with that reason and the response says it runs on the supervisor.
- */
-async function deploySupervisor(
-  actor: Actor,
-  project: string,
-  form: FormData,
-  fallbackReason?: string,
-): Promise<Response> {
-  const fallback = fallbackReason
-    ? {
-        runtime: "supervisor",
-        fallback: { from: "sproutd", reason: fallbackReason },
-        message: `sproutd refused this version (${fallbackReason}); it runs on the supervisor instead`,
-      }
-    : {};
   const manifest = form.get("manifest");
   const sprout = form.get("sprout");
   if (!(manifest instanceof File) || !(sprout instanceof File))
@@ -539,7 +446,7 @@ async function deploySupervisor(
   if (assetFiles.reduce((sum, file) => sum + file.size, 0) > 64 * 1024 * 1024)
     return Response.json({ error: "assets exceed the 64 MiB limit" }, { status: 413 });
 
-  const temporary = resolve(artifactRoot(), `.upload-${randomUUID()}`);
+  const temporary = resolve(artifactRoot, `.upload-${randomUUID()}`);
   await mkdir(temporary, { recursive: true, mode: 0o750 });
   try {
     await Promise.all([
@@ -589,7 +496,6 @@ async function deploySupervisor(
           artifact: digest,
           activated: false,
           unchanged: true,
-          ...fallback,
         },
         { status: 200 },
       );
@@ -597,7 +503,7 @@ async function deploySupervisor(
 
     // #55: capture the outgoing version's Porffor pin before it is replaced.
     const previousPorffor = await activePorfforVersion(actor.id, project);
-    const destination = resolve(artifactRoot(), digest);
+    const destination = resolve(artifactRoot, digest);
     let placed = false;
     try {
       await rename(temporary, destination);
@@ -641,7 +547,6 @@ async function deploySupervisor(
       binarySize: validation.value.manifest.binarySize,
       compileMs: validation.value.manifest.compileMs ?? null,
       resourceIds: resolvedResources,
-      fallbackReason,
     });
     await syncRoutes();
     // #25 — keep the retained-versions cap; GC any artifact it orphans.
@@ -653,15 +558,7 @@ async function deploySupervisor(
         ? { from: previousPorffor, to: incomingPorffor }
         : undefined;
     return Response.json(
-      {
-        id: deployment.id,
-        hostname,
-        url: `https://${hostname}`,
-        artifact: digest,
-        activated: true,
-        porfforDrift,
-        ...fallback,
-      },
+      { id: deployment.id, hostname, url: `https://${hostname}`, artifact: digest, activated: true, porfforDrift },
       { status: 201 },
     );
   } catch (error) {
@@ -682,12 +579,8 @@ export async function deleteAccount(request: Request): Promise<Response> {
   if (actor.authentication !== "session")
     return Response.json({ error: "account deletion requires an interactive session" }, { status: 403 });
 
-  const sproutdProjectNames = sproutdProjects().flatMap((p) => (p.ownerId === actor.id ? [p.project] : []));
   const result = deleteOwner(actor.id);
   await syncRoutes();
-  const sproutd = sproutdClient();
-  for (const name of sproutdProjectNames) forgetSproutdProject(actor.id, name);
-  await Promise.all(sproutdProjectNames.map((name) => sproutd?.remove(actor.id, name).catch(() => undefined)));
   const cleanup = await collectArtifacts(result.orphanedArtifacts);
   const identity = purgeUser(actor.id);
 

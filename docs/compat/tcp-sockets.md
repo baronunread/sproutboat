@@ -8,7 +8,7 @@ Run 2026-11-02 on a Mac (arm64), servers in Docker: Postgres 16 (scram-sha-256, 
 
 - `connect(address | { hostname, port }, { secureTransport: "off" | "on" | "starttls", allowHalfOpen })` returning `readable`, `writable` (byte streams, with write backpressure), `opened`, `closed`, `close()`, `startTls({ expectedServerHostname })`.
 - workerd's error shapes: argument errors (`TypeError`/`RangeError` texts), a failed connect rejects `opened` with `proxy request failed, cannot connect to the specified address`, port 25 refused, a closed socket's stream errors.
-- Both transports: the embedded one (standalone, and sproutd by the same C) and the broker one (platform deploys, `sproutboat dev`).
+- Both transports: the embedded one (standalone binaries) and the broker one (platform deploys, `sproutboat dev`).
 - Outbound policy is the `fetch()` policy: resolve, vet every address, connect to the vetted IP, private ranges refused unless in `SB_EGRESS_ALLOW`. On the broker transport the broker does the vetting and the TLS, and the egress service takes the tunnel where the broker has no network.
 - TLS verifies against the built-in roots; `SB_CA_BUNDLE` adds roots (both transports).
 - Limits: 16 open sockets per app, 15 s connect timeout on the broker path.
@@ -19,7 +19,6 @@ Run 2026-11-02 on a Mac (arm64), servers in Docker: Postgres 16 (scram-sha-256, 
 - `node:net` / `node:tls` as working modules: drivers that have no Workers entry point (`ioredis`, `node-redis`, `mysql2`) do not run. The Redis check below uses a small RESP client written against `connect()`.
 - `mysql2`: its generated parsers produce a 1.37 M-line C unit and the compile did not finish in 35 minutes.
 - Hyperdrive and pooling; `upgraded`; per-request cleanup of sockets a handler leaves open (they live until closed or the app is reaped, within the 16-socket cap).
-- sproutd: the C path is shared and goes through the frontend's egress fd (`SB_EGRESS_FD`), but the density gate has not been run on it (see the PR).
 
 ## Results against workerd
 
@@ -47,7 +46,7 @@ Mac arm64, loopback to Docker, median of five runs of 2,000 queries (5,000 for R
 | Redis `GET`                                  |      92 us |                  1005 us |                                    95 us |
 | RSS per open socket                          |     32 KiB |       25-32 KiB (sprout) |                             not measured |
 
-Standalone binaries (idle RSS): the Postgres drivers add about 3 MiB at module init (`pg` 6.6 MiB, `postgres` 6.4 MiB against 3.6 MiB for hello), which is twice sproutd's 1.5 MiB per-app budget. A handler that does not import them pays nothing.
+Standalone binaries (idle RSS): the Postgres drivers add about 3 MiB at module init (`pg` 6.6 MiB, `postgres` 6.4 MiB against 3.6 MiB for hello). A handler that does not import them pays nothing.
 
 ## Known differences
 

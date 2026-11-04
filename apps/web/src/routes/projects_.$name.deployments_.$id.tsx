@@ -55,8 +55,6 @@ type Detail = {
   deployedAt: string;
   active: boolean;
   deployedBy: string | null;
-  /** Set when the project asked for sproutd and sproutd refused this version, so it runs on the supervisor. */
-  fallbackReason?: string | null;
   bindings: Bindings | null;
   resources: Resource[];
   manifest: Manifest | null;
@@ -195,15 +193,6 @@ function DeploymentDetail() {
                   <Copy value={detail.artifact} />
                 </dd>
               </div>
-              {detail.fallbackReason ? (
-                <div>
-                  <dt>Runtime</dt>
-                  <dd>
-                    Supervisor, because sproutd refused this version: {detail.fallbackReason}. The project is still set
-                    to sproutd, so the next deploy tries it again.
-                  </dd>
-                </div>
-              ) : null}
               <div>
                 <dt>Deployed by</dt>
                 <dd>{detail.deployedBy ?? "-"}</dd>

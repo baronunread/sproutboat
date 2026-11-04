@@ -54,8 +54,8 @@ Web Crypto.
 RSASSA-PKCS1-v1_5, RSA-PSS, RSA-OAEP, ECDSA, ECDH, Ed25519, X25519, AES-GCM/CBC/CTR/KW,
 HKDF, all-hash PBKDF2, `jwk`/`spki`/`pkcs8` import and export and wrap/unwrap follow workerd.
 The primitives are BearSSL's (MIT) plus Monocypher's (BSD-2-Clause or CC0, vendored, for
-Ed25519 and X25519), so this tier is **embedded transport only**: standalone binaries and
-sproutd, which both link BearSSL. The broker transport does not, and a link dependency there
+Ed25519 and X25519), so this tier is **embedded transport only**: standalone binaries, which
+link BearSSL. The broker transport does not, and a link dependency there
 would break `sproutboat build` without `--standalone`; on it the same calls reject with
 `NotSupportedError`, and digest, HMAC and the old PBKDF2 subset stay on the dependency-free
 inline-C SHA-2 above and work on all three transports. Open decision: either vendor a pure-C

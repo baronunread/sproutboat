@@ -28,7 +28,7 @@ Short answer: with the published CLI, two of five compile and one of those runs.
 
 Notes on the columns.
 
-- Build seconds exclude the wait for `/tmp/sproutd-mac-build.lock`, which was 10 to 25 minutes because other jobs held it.
+- Build seconds exclude the wait for a shared build lock, which was 10 to 25 minutes because other jobs held it.
 - RSS is the binary's resident set. workerd's is not given: its process is shared with wrangler's tooling, so the number would not compare.
 - Per-query time is the mean of 40 sequential queries on loopback with `Date.now()`, so it has 1 ms resolution. It measures the client and the server, not the platform. The Neon HTTP figure is the local proxy opening a Postgres connection for every query. Treat 1 ms as "faster than the clock".
 - Neon in stages (13/24, then 21/24, then 24/24) shows what each change buys: the validator change alone leaves the WebSocket path returning garbage rows; the typed array fix gets 21; `Error.captureStackTrace` gets the last three, all WebSocket error cases.
