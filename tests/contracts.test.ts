@@ -215,6 +215,24 @@ describe("Phase A contracts", () => {
     expect(sandbox).not.toContain("SB_EGRESS");
   });
 
+  test("the Rust egress is an opt-in drop-in; the Bun egress stays the default", async () => {
+    const unit = await Bun.file("infra/systemd/sproutboat-egress.service").text();
+    const dropIn = await Bun.file("infra/systemd/sproutboat-egress.service.d/rust.conf.example").text();
+    expect(unit).toMatch(/^ExecStart=\S*\/bun\/bin\/bun node_modules\/@sproutboat\/wire\/src\/egress\.ts /m);
+    // Not a live drop-in: nothing under the unit's .d directory is named *.conf.
+    const live = [...new Bun.Glob("infra/systemd/sproutboat-egress.service.d/*.conf").scanSync(".")];
+    expect(live).toEqual([]);
+    // It replaces ExecStart only, on the port the edge's SB_EGRESS_URL names.
+    const lines = dropIn.split("\n").filter((l) => l && !l.startsWith("#"));
+    expect(lines).toEqual([
+      "[Service]",
+      "ExecStart=",
+      "ExecStart=/opt/sproutboat/bin/sproutboat-egress --host 127.0.0.1 --port 8070",
+    ]);
+    const edgeUnit = await Bun.file("infra/systemd/sproutboat-edge.service").text();
+    expect(edgeUnit).toContain("Environment=SB_EGRESS_URL=http://127.0.0.1:8070");
+  });
+
   test("updates stage a new installer outside the active release", async () => {
     const install = await Bun.file("install.sh").text();
     const updater = await Bun.file("infra/sb-update").text();
