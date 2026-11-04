@@ -67,7 +67,6 @@ struct Inner {
     stop: watch::Sender<bool>,
     edge_url: Mutex<Option<String>>,
     last_timed: Mutex<Vec<Value>>,
-    secret: Mutex<Option<(u64, String)>>,
     task: Mutex<Option<tokio::task::JoinHandle<()>>>,
 }
 
@@ -138,7 +137,6 @@ impl Sidecar {
                 stop: watch::channel(false).0,
                 edge_url: Mutex::new(None),
                 last_timed: Mutex::new(Vec::new()),
-                secret: Mutex::new(None),
                 task: Mutex::new(None),
             }),
         }
@@ -309,30 +307,22 @@ impl Sidecar {
         Ok(bytes)
     }
 
-    /// `isEdgeSecret(value)`. The secret is fixed for a sidecar's lifetime, so once the
-    /// sidecar has confirmed a value it is compared locally from then on.
-    pub async fn is_edge_secret(&self, value: &str) -> bool {
-        let generation = *self.inner.ready.borrow();
-        if let Some((known, secret)) = lock(&self.inner.secret).as_ref() {
-            if *known == generation && constant_time_eq(secret.as_bytes(), value.as_bytes()) {
-                return true;
-            }
-        }
-        let body = serde_json::json!({ "value": value });
+    /// Whether `credential` may vouch for a service-binding call to `host`: a live per-broker
+    /// credential whose `services` map names that host, or the edge-wide secret. Never cached:
+    /// a scoped credential is revoked when its broker exits, so every answer comes from the
+    /// sidecar (only requests that carry `x-sb-edge-secret` ask).
+    pub async fn verify_binding_call(&self, credential: &str, host: &str) -> bool {
+        let body = serde_json::json!({ "credential": credential, "host": host });
         let Ok((200, bytes)) = self
-            .call(Method::POST, "/is-edge-secret", Some(&body))
+            .call(Method::POST, "/verify-binding-call", Some(&body))
             .await
         else {
             return false;
         };
-        let ok = serde_json::from_slice::<Value>(&bytes)
+        serde_json::from_slice::<Value>(&bytes)
             .ok()
             .and_then(|v| v["ok"].as_bool())
-            .unwrap_or(false);
-        if ok && generation != 0 {
-            *lock(&self.inner.secret) = Some((generation, value.to_string()));
-        }
-        ok
+            .unwrap_or(false)
     }
 
     /// Stop the sidecar: SIGTERM (it disposes every sprout), a short wait, then kill.
@@ -344,10 +334,6 @@ impl Sidecar {
         }
         let _ = std::fs::remove_file(&self.inner.socket);
     }
-}
-
-fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
-    a.len() == b.len() && a.iter().zip(b).fold(0u8, |acc, (x, y)| acc | (x ^ y)) == 0
 }
 
 /// Keep one sidecar child alive until told to stop.
@@ -419,7 +405,6 @@ async fn supervise(inner: Arc<Inner>) {
                         ok = &mut announce, if !up => {
                             if ok {
                                 up = true;
-                                *lock(&inner.secret) = None;
                                 inner.ready.send_replace(generation);
                                 replay_timed(&inner);
                             } else {
@@ -654,13 +639,6 @@ mod tests {
         .unwrap();
         assert!(bare.transfer_url.is_none() && bare.edge_token.is_none());
         assert!(Endpoint::parse(b"{}").is_err());
-    }
-
-    #[test]
-    fn constant_time_compare() {
-        assert!(constant_time_eq(b"abc", b"abc"));
-        assert!(!constant_time_eq(b"abc", b"abd"));
-        assert!(!constant_time_eq(b"abc", b"ab"));
     }
 
     fn endpoint(cold: bool) -> Endpoint {

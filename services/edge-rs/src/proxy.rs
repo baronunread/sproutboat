@@ -644,22 +644,19 @@ async fn handle_request(
         direct_transfer,
     };
 
-    // #48 - a service-binding call arrives from the caller's broker with the edge's secret.
-    // The edge vouches for it to the callee with the callee's own token, so the callee sees the
-    // caller's URL and reports a thrown error back. Nobody else can send or receive these headers.
-    let secret = req
-        .headers()
-        .get("x-sb-edge-secret")
-        .map(|v| String::from_utf8_lossy(v.as_bytes()).into_owned());
+    // #48 - a service-binding call arrives from the caller's broker with a credential the sidecar
+    // vouches for: the broker's own one, good only for the hosts its app declares (or the edge-wide
+    // secret). The edge vouches for the call to the callee with the callee's own token, so the callee
+    // sees the caller's URL and reports a thrown error back. Nobody else can send or receive these
+    // headers. `Headers#get` joins a repeated field with ", ", so a credential sent twice never matches.
+    let secret = header_joined(req.headers(), "x-sb-edge-secret");
     let binding_call = match secret {
-        Some(value) => app.sidecar.is_edge_secret(&value).await,
+        Some(value) => app.sidecar.verify_binding_call(&value, &host).await,
         None => false,
     };
-    let caller_url = req
-        .headers()
-        .get("x-sb-url")
+    let caller_url = header_joined(req.headers(), "x-sb-url")
         .filter(|v| !v.is_empty())
-        .cloned();
+        .and_then(|v| HeaderValue::from_str(&v).ok());
 
     // A WebSocket handshake: the sprout accepts a socket of its own first, then the client is
     // upgraded and messages are relayed. The sprout is kept warm while it is open.

@@ -101,9 +101,11 @@ test("an endpoint that cannot start is a 500 with the message", async () => {
   expect((await call("POST", "/endpoint", {})).status).toBe(500);
 });
 
-test("is-edge-secret rejects anything it was not given", async () => {
-  expect((await call("POST", "/is-edge-secret", { value: "nope" })).json).toEqual({ ok: false });
-  expect((await call("POST", "/is-edge-secret", {})).json).toEqual({ ok: false });
+test("verify-binding-call rejects anything it was not given", async () => {
+  expect((await call("POST", "/verify-binding-call", { credential: "nope", host: "a.test" })).json).toEqual({
+    ok: false,
+  });
+  expect((await call("POST", "/verify-binding-call", {})).json).toEqual({ ok: false });
 });
 
 test("reconcile answers at once; dispose and dispose-all stop sprouts", async () => {

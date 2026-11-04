@@ -11,14 +11,15 @@
  *   POST /dispose-all
  *   POST /reconcile       [{sproutPath, secretsPath, services, r2}, ...]  (answers at once; runs in the background)
  *   GET  /stats           -> PoolStats
- *   POST /is-edge-secret  {value} -> {ok}
+ *   POST /verify-binding-call  {credential, host} -> {ok}  (a scoped per-broker credential for that host, or the edge-wide secret)
  *
  * Brokers read SPROUTBOAT_EDGE_URL (the edge sets it in this process's environment).
  * Prints `sidecar ready` once listening. SIGTERM/SIGINT, or end of stdin when
  * SPROUTBOAT_SIDECAR_EXIT_ON_STDIN_EOF=1 (the edge died), dispose every sprout and exit.
  */
 import { chmodSync, rmSync } from "node:fs";
-import { isEdgeSecret, pool, type R2Runtime, type TimedSprout } from "./run";
+import { acceptBindingCall } from "./binding-credentials";
+import { pool, type R2Runtime, type TimedSprout } from "./run";
 
 type Json = null | boolean | number | string | Json[] | { readonly [key: string]: Json };
 
@@ -110,9 +111,10 @@ async function handle(request: Request): Promise<Response> {
       });
       return Response.json({ ok: true });
     }
-    case "/is-edge-secret": {
-      const value = isRecord(parsed) && isString(parsed.value) ? parsed.value : null;
-      return Response.json({ ok: isEdgeSecret(value) });
+    case "/verify-binding-call": {
+      const credential = isRecord(parsed) && isString(parsed.credential) ? parsed.credential : null;
+      const host = isRecord(parsed) && isString(parsed.host) ? parsed.host : "";
+      return Response.json({ ok: acceptBindingCall(credential, host) });
     }
     default:
       return Response.json({ error: "not found" }, { status: 404 });
