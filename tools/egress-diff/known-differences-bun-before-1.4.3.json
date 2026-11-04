@@ -1,0 +1,9 @@
+{
+  "relay/get-userinfo": "Bun before 1.4.3 drops the credentials of a user:pass@ URL; Rust (like 1.4.3 and later) sends them as Basic authorization",
+  "relay/get-userinfo-percent": "same: Bun before 1.4.3 drops percent-encoded credentials",
+  "relay/get-userinfo-only-name": "Bun before 1.4.3 resolves 'user@host' as a host name and answers 502; Rust (like 1.4.3 and later) connects and sends 'Basic user:'",
+  "relay/head": "Bun before 1.4.3 answers a HEAD chunked, with no content-length; Rust (like 1.4.3 and later) keeps the upstream's content-length",
+  "relay/connection-refused": "Bun before 1.4.3 words a refused connect without the ECONNREFUSED prefix; Rust (like 1.4.3 and later) has it",
+  "relay/connection-refused-localhost": "same wording difference",
+  "relay/ipv6-refused-allowed": "same wording difference"
+}

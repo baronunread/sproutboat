@@ -163,6 +163,13 @@ instead (#252). That's a separate unit outside the edge's cgroup, listening on
   on this host, add `SB_EGRESS_ALLOW=10.0.0.5` (comma-separated exact
   addresses, or `*`) to `/etc/sproutboat/egress.env` and run
   `systemctl restart sproutboat-egress`. Re-running the installer keeps it.
+- **Rust egress (opt-in, not the default):** `services/egress-rs` is a drop-in
+  for the Bun service with the same token, port and checks (contract:
+  `services/egress-rs/BEHAVIOUR.md`). To try it on a host, install
+  `infra/systemd/sproutboat-egress.service.d/rust.conf.example` as `rust.conf` and
+  the musl binary at `/opt/sproutboat/bin/sproutboat-egress`, then
+  `systemctl daemon-reload && systemctl restart sproutboat-egress`. Remove
+  `rust.conf` to go back. The installer does not ship the binary yet.
 
 ```sh
 sbctl status   # sproutboat-egress should be active
