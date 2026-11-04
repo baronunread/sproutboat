@@ -80,6 +80,16 @@ const bindingCredentials = new Map<string, ReadonlySet<string>>();
 const credentialKey = (credential: string): string => createHash("sha256").update(credential).digest("hex");
 const hostOnly = (host: string): string => host.split(":")[0]!.toLowerCase();
 
+/**
+ * Make `credential` valid for `hosts` until the returned function is called. The broker
+ * spawn path uses it; the edge-diff harness uses it to give both edges known credentials.
+ */
+export function registerBindingCredential(credential: string, hosts: Iterable<string>): () => void {
+  const key = credentialKey(credential);
+  bindingCredentials.set(key, new Set([...hosts].map(hostOnly)));
+  return () => void bindingCredentials.delete(key);
+}
+
 /** Whether `credential` is a live broker credential allowed to call `host`. */
 export function verifyBindingCall(credential: string | null, host: string): boolean {
   if (!credential) return false;
@@ -313,6 +323,7 @@ function spawnWithBroker(
   const bindingsPath = resolve(workerDir, "bindings.json");
   let broker: Bun.Subprocess<"pipe", number | "ignore", number | "ignore"> | null = null;
   let brokerCredential: string | null = null;
+  let revokeCredential: (() => void) | null = null;
   const edgeToken = randomBytes(24).toString("hex");
   const sproutEnv: SproutEnv = { SB_EDGE_TOKEN: edgeToken };
 
@@ -391,7 +402,7 @@ function spawnWithBroker(
     // The broker's own edge credential, only when it can call services at all.
     if (services && Object.keys(services).length > 0 && process.env.SPROUTBOAT_EDGE_URL) {
       brokerCredential = randomBytes(24).toString("hex");
-      bindingCredentials.set(credentialKey(brokerCredential), new Set(Object.values(services).map(hostOnly)));
+      revokeCredential = registerBindingCredential(brokerCredential, Object.values(services));
     }
     const mode = brokerSandboxMode();
     let command = args;
@@ -429,7 +440,7 @@ function spawnWithBroker(
     try {
       broker = Bun.spawn(command, { ...withLog(brokerFd), stdin: "pipe", env });
     } catch (cause) {
-      if (brokerCredential) bindingCredentials.delete(credentialKey(brokerCredential));
+      revokeCredential?.();
       throw cause;
     } finally {
       closeLog(brokerFd);
@@ -453,7 +464,7 @@ function spawnWithBroker(
     stopped = true;
     sprout?.kill(9);
     capturedBroker?.kill(9);
-    if (brokerCredential) bindingCredentials.delete(credentialKey(brokerCredential));
+    revokeCredential?.();
   };
 
   // The broker is a Bun process; a freshly compiled native sprout is ready in
