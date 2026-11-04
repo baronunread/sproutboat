@@ -28,7 +28,10 @@ fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
     if args.iter().any(|a| a == "--print-ranges") {
         // The address table, for the differential harness to compare with the TS one.
-        println!("{}", serde_json::json!(sproutboat_egress::addr::BLOCKED_RANGES));
+        println!(
+            "{}",
+            serde_json::json!(sproutboat_egress::addr::BLOCKED_RANGES)
+        );
         return;
     }
     let token = std::env::var("SB_EGRESS_TOKEN").unwrap_or_default();
