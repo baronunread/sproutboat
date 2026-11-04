@@ -1,0 +1,28 @@
+# Deviations from the Bun edge
+
+## Intentional differences (bugs of the Bun edge that the Rust edge fixes)
+
+1. `/__sb/pool` answers only when the peer is loopback **and** the Host header is `localhost`, `127.0.0.1` or `[::1]` (any port). Through Caddy the Host is a deployment hostname, so the request falls through to normal routing (the app's own `/__sb/pool`, or 404 `unknown deployment`). Bun answered any request on any host.
+2. No HTML dev error page, no paths or source in any error body. A missing or empty `Host`, an unparseable request target and a malformed `%` escape in the path answer `400 bad request` (text/plain); a manifest asset whose file is missing on disk answers `500 internal error`. The edge logs each (`errorKind` `bad-request` / `asset-missing`). Bun answered 400 with no body / a 50 KB HTML page / `Something went wrong!`, and logged nothing.
+3. Upstream bodies and `content-encoding` pass through unchanged, never decoded or recompressed, and the edge forwards the client's `accept-encoding` as sent (Bun's fetch added its own `accept-encoding` and could decode).
+4. `SPROUTBOAT_REQUEST_TIMEOUT_MS` covers the time until the upstream response **headers** only (504 if they do not arrive); the body then streams without a deadline, so SSE and long downloads work. The connection idle timer is off while a request is in flight (it only guards a keep-alive connection waiting for its next request). WebSockets: ping every 60 s, closed after 120 s with no frame from the client (a live client answering pings is never cut). Direct transfers keep their own keepalive and deadline for the sprout lifetime only.
+5. SIGHUP with an invalid `routes.json` keeps the old routes, logs `route snapshot reload failed: ...` and never exits.
+6. The edge logs more: the apex redirect (302), 413 body-cap rejections (`payload-too-large`), 400s, client hang-ups before **and during** the body (499 `client-closed`, with the bytes sent so far), an upstream failing mid-body (`proxy`), `direct transfers unavailable` (503 `transfer-unavailable`), a missing asset file (500). Asset responses log their real status (206 / 416 for Range) and the bytes sent. Assets support single `Range: bytes=` requests like Bun's `Bun.file` responses (206 + `content-range` + `accept-ranges`). A relayed WebSocket logs a second line when it closes (same `path`, `status` 101, `durationMs` for the whole socket, `reqBytes` / `resBytes` the payload bytes from / to the client, `closedBy` `client` | `upstream` | `client-lost` | `client-error` | `upstream-error` | `idle` | `shutdown`, and `closeCode`). Bun logged only the 101 line. The 413 line carries the request `path`.
+7. A changed `services` map in a route snapshot disposes the sprout and purges the cache (Bun only compared path, secrets hash and r2).
+
+## Deliberate architecture deviations
+
+- **Sidecar.** The supervisor pool stays in Bun (`services/supervisor/src/sidecar.ts`), started lazily as a child process over a unix socket. Pure-sproutd deployments never start Bun. For a supervisor route the edge caches the resolved endpoint per runtime key for at most 1 s and invalidates it on a connect error (a body-less request then re-resolves once). the edge logs `coldStart` / `startupMs` / `bootMs` only for the request that triggered the spawn. The spawn (the endpoint resolution) runs as its own task, so a client that hangs up while awaiting it neither cancels nor wedges it: later requests join the same start, and the edge logs the hang-up as 499 once the start finishes, with the cold-start fields if that request began it (as Bun did).
+- Shutdown order: stop accepting, stop timers, drain in-flight requests (30 s), flush the log, then SIGTERM the sidecar (which disposes sprouts). Bun disposed sprouts first.
+
+## Bun artifacts not mirrored
+
+- A request path that starts with `//` (`//seen//x`) is a path, not an authority: the edge routes, logs, caches and forwards it exactly as received. Bun logs it as received but drops the first slash upstream (`/seen//x`), which changes which URL the app sees. Rust keeps the path, so the app gets `//seen//x`.
+- Framing headers (`content-length`, `content-range`, `transfer-encoding`, `connection`, `keep-alive`, `te`, `trailer`, `upgrade`, `proxy-connection`) cannot be set or unset by a static-asset `_headers` rule. Bun ignores such rules for the body length too, so the two agree.
+
+- Upstream hop-by-hop headers (`connection`, `keep-alive`, `transfer-encoding`, ...) are not forwarded; Bun leaked the upstream's `Connection: keep-alive` / `Keep-Alive: timeout=5`. Response framing follows the upstream (chunked stays chunked; Bun re-framed small bodies with `content-length`). A HEAD response carries the upstream's `content-length` (Bun showed `0`).
+- Upstream requests are not given Bun fetch's `user-agent`, `accept-encoding` or `content-length: 0` additions; `expect` is not forwarded (the edge already answered `100 Continue`); the edge forwards repeated request headers as separate fields, not joined.
+- Response header names are lowercase on the wire (Bun title-cased some). Reason phrase of 413 is `Request Entity Too Large`; 413 and 400 close the connection.
+- Rust error strings in stderr and in `route snapshot reload failed: ...` differ from JavaScript's for I/O and JSON syntax errors; `invalid route snapshot` is identical.
+- The edge skips a `_headers` rule with an invalid header name or value (Bun would throw and answer 500). An invalid `runSproutFirst` glob never matches.
+- The edge refuses (502) a WebSocket upstream that picks a subprotocol the client did not offer, like a spec-compliant client.

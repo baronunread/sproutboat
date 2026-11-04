@@ -100,3 +100,56 @@ jobs:
           name: sproutboat-egress-linux-${{ matrix.arch }}
           path: services/egress-rs/target/${{ matrix.target }}/release/sproutboat-egress
           if-no-files-found: error
+
+  # The Rust edge (services/edge-rs). Kept separate from the Bun job so neither
+  # waits on the other; the cache keys on the lockfile.
+  edge-rs:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: services/edge-rs
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: services/edge-rs
+      - run: cargo fmt --check
+      - run: cargo clippy --locked --all-targets -- -D warnings
+      - run: cargo test --locked
+
+  # Static release binaries for the two architectures the installer supports.
+  # Uploaded as workflow artifacts only: install.sh and `sbctl update` do not
+  # fetch them yet (see docs/edge-rs-behaviour.md, deployment section).
+  edge-rs-release:
+    needs: edge-rs
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-musl
+            arch: x64
+          - os: ubuntu-24.04-arm
+            target: aarch64-unknown-linux-musl
+            arch: arm64
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+      - run: sudo apt-get update -qq && sudo apt-get install -y -qq musl-tools
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: services/edge-rs
+          key: ${{ matrix.target }}
+      - run: cargo build --locked --release --target ${{ matrix.target }}
+        working-directory: services/edge-rs
+      - run: file services/edge-rs/target/${{ matrix.target }}/release/sproutboat-edge && ls -l services/edge-rs/target/${{ matrix.target }}/release/sproutboat-edge
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sproutboat-edge-linux-${{ matrix.arch }}
+          path: services/edge-rs/target/${{ matrix.target }}/release/sproutboat-edge
+          if-no-files-found: error

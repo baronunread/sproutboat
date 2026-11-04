@@ -1,0 +1,52 @@
+[package]
+name = "sproutboat-edge"
+version = "0.1.0"
+edition = "2021"
+publish = false
+description = "Rust edge proxy for the Sproutboat platform (one-for-one replacement of services/edge)."
+
+[[bin]]
+name = "sproutboat-edge"
+path = "src/main.rs"
+
+# Standalone crate: not a member of any other workspace.
+[workspace]
+
+[dependencies]
+bytes = "1"
+futures-util = { version = "0.3", default-features = false, features = ["sink", "std", "alloc"] }
+http-body-util = "0.1"
+httparse = "1"
+httpdate = "1"
+libc = "0.2"
+hyper = { version = "1", features = ["server", "client", "http1"] }
+hyper-util = { version = "0.1", features = ["tokio", "client-legacy", "http1"] }
+regex = "1"
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1", features = ["preserve_order"] }
+tokio = { version = "1", features = [
+  "rt-multi-thread",
+  "net",
+  "fs",
+  "signal",
+  "process",
+  "time",
+  "sync",
+  "io-util",
+  "macros",
+] }
+tokio-tungstenite = { version = "0.28", default-features = false, features = ["handshake"] }
+tokio-util = { version = "0.7", features = ["io"] }
+url = "2"
+
+[dev-dependencies]
+tempfile = "3"
+tokio = { version = "1", features = ["test-util"] }
+
+# Panic recovery matters here: tokio isolates a panicking connection task, so a
+# bug in one request does not take the whole edge (and every other connection) down.
+[profile.release]
+lto = true
+codegen-units = 1
+strip = true
+opt-level = 3
