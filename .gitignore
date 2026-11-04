@@ -16,4 +16,4 @@ e2e/.auth/
 /playwright-report/
 /blob-report/
 /playwright/.cache/
-/packages/ui/.e2e-output/
+/packages/ikada/.e2e-output/

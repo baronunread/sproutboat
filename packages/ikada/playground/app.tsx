@@ -76,7 +76,7 @@ export function App() {
       <ToastProvider>
         <div data-density={density} className="min-h-dvh">
           <header className="z-(--sb-z-sticky) sm:sticky sm:top-0 flex flex-wrap items-center gap-x-3 gap-y-2 bg-canvas/90 px-4 py-2.5 shadow-card backdrop-blur sm:px-6">
-            <h1 className="min-w-0 flex-1 basis-40 truncate text-md font-semibold">@sproutboat/ui</h1>
+            <h1 className="min-w-0 flex-1 basis-40 truncate text-md font-semibold">@sproutboat/ikada</h1>
             <div className="flex flex-wrap items-center gap-2">
               {(["both", "light", "dark"] as const).map((v) => (
                 <Button

@@ -511,7 +511,7 @@ function ChartsSection() {
   return (
     <Section
       title="Charts"
-      hint="@sproutboat/ui/charts: TimeseriesChart and Sparkline on TanStack Charts, painted by the chart tokens. Hover or use the arrow keys for the tooltip."
+      hint="@sproutboat/ikada/charts: TimeseriesChart and Sparkline on TanStack Charts, painted by the chart tokens. Hover or use the arrow keys for the tooltip."
     >
       <Row label="TimeseriesChart: requests (area) with a deploy marker">
         <TimeseriesChart

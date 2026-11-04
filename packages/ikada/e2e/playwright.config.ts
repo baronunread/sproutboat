@@ -2,7 +2,7 @@ import { defineConfig, devices } from "@playwright/test";
 
 /**
  * Screenshot checks of the playground. Separate from the root e2e config, which
- * needs the full dev stack. Run with `bun run --cwd packages/ui e2e`.
+ * needs the full dev stack. Run with `bun run --cwd packages/ikada e2e`.
  */
 export default defineConfig({
   testDir: ".",

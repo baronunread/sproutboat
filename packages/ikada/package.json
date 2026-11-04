@@ -1,5 +1,5 @@
 {
-  "name": "@sproutboat/ui",
+  "name": "@sproutboat/ikada",
   "version": "0.1.0",
   "description": "Sproutboat design system: tokens and React components on Base UI and Tailwind v4.",
   "license": "Apache-2.0",

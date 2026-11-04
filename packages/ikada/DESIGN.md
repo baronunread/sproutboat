@@ -1,6 +1,8 @@
 # Sproutboat design system
 
-`@sproutboat/ui` is the open component package behind the Community dashboard and, later, the Cloud dashboard. This file is the contract: the principles, every token, and the rules for using them. Tokens live in `tokens/tokens.ts`; the tables below are generated from that file by `bun run --cwd packages/ui tokens`, so they cannot drift from the code.
+`@sproutboat/ikada` is the open component package behind the Community dashboard and, later, the Cloud dashboard. This file is the contract: the principles, every token, and the rules for using them. Tokens live in `tokens/tokens.ts`; the tables below are generated from that file by `bun run --cwd packages/ikada tokens`, so they cannot drift from the code.
+
+**Name.** 筏 ikada means raft. The components are lashed together like the logs of a raft, and the sprout rides on it, in the spirit of Cloudflare's Kumo (雲, cloud). Pronounced ee-KAH-dah.
 
 ## Principles
 
@@ -21,8 +23,8 @@ Compatible with `apps/web`: dark is the default, light opts in with `data-theme=
 
 ```css
 @import "tailwindcss";
-@import "@sproutboat/ui/theme.css";
-@source "../node_modules/@sproutboat/ui/src";
+@import "@sproutboat/ikada/theme.css";
+@source "../node_modules/@sproutboat/ikada/src";
 ```
 
 The package ships Figtree and JetBrains Mono as the intended faces. Apps load them (`@fontsource-variable/figtree`, `@fontsource-variable/jetbrains-mono`); the stacks fall back to system fonts.
@@ -421,7 +423,7 @@ Use compact for log viewers, resource tables with many rows, and panels the user
 - Icon-only controls require `label`, which becomes `aria-label` and the tooltip text.
 - Loading disables interaction with `aria-busy` and `data-loading`, but keeps the button's width so nothing shifts.
 - Menus with a checkbox or radio item reserve one fixed 1.5rem gutter (`--sb-gutter`) for every item, so item text lines up whether or not a row shows a check. Never pad only the checked row.
-- Charts live in `@sproutboat/ui/charts`: `TimeseriesChart` (with a dashed deploy marker) and `Sparkline` wrap TanStack Charts and read only the `chart-*` tokens, so they follow the theme with no rebuild.
+- Charts live in `@sproutboat/ikada/charts`: `TimeseriesChart` (with a dashed deploy marker) and `Sparkline` wrap TanStack Charts and read only the `chart-*` tokens, so they follow the theme with no rebuild.
 - Positioned layers (Tooltip, Popover, Menu, Select) flip and shift inside the viewport and use `collisionPadding`.
 - Dialogs trap focus, restore it on close, and close on Escape. Destructive dialogs focus the cancel action first.
 - Copy follows the product voice: sentence case, verb first on buttons ("Create project", never "Submit"), errors say what to do next.
@@ -429,5 +431,5 @@ Use compact for log viewers, resource tables with many rows, and panels the user
 ## Adding or changing a token
 
 1. Edit `tokens/tokens.ts`. If it is a color used as text or UI, add or update its pair in `tokens/pairs.ts`.
-2. Run `bun run --cwd packages/ui tokens`.
-3. Run `bun test packages/ui/test`. The contrast and drift tests must pass.
+2. Run `bun run --cwd packages/ikada tokens`.
+3. Run `bun test packages/ikada/test`. The contrast and drift tests must pass.

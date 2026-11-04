@@ -48,6 +48,6 @@ for (const out of outputs) {
 }
 if (check) rmSync(scratch, { recursive: true, force: true });
 if (stale) {
-  console.error("Run `bun run --cwd packages/ui tokens` and commit the result.");
+  console.error("Run `bun run --cwd packages/ikada tokens` and commit the result.");
   process.exit(1);
 }

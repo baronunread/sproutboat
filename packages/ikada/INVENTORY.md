@@ -1,6 +1,6 @@
 # Component inventory
 
-The full list of components `@sproutboat/ui` needs. It starts from the index at <https://kumo-ui.com/llms.txt>, used only as a checklist of what a product UI covers, and adds the Sproutboat-specific pieces. Nothing here copies another library's look, wording or code.
+The full list of components `@sproutboat/ikada` needs. It starts from the index at <https://kumo-ui.com/llms.txt>, used only as a checklist of what a product UI covers, and adds the Sproutboat-specific pieces. Nothing here copies another library's look, wording or code.
 
 Priority: **P0** is built in phase 1, **P1** is next (needed by the dashboards' first screens), **P2** comes later. "Base UI" names the primitive from `@base-ui/react`; "none" means plain elements.
 
