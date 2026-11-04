@@ -2,7 +2,7 @@ import { afterAll, afterEach, describe, expect, test } from "bun:test";
 import { Database } from "bun:sqlite";
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { basename, dirname, join } from "node:path";
 import {
   boundResourceIds,
   brokerBwrapArgs,
@@ -51,7 +51,9 @@ type Seen = {
   platform: string;
   blobs: string[];
   owners: string;
-  home: string;
+  home: string | string[];
+  /** The listing of the directory the Bun binary is in, when that is under /home (CI: /home/runner/.bun/bin). */
+  bunDir: string | string[] | null;
 };
 type TestFrame = { op: string; params?: string[]; headers?: string[][] } & Partial<
   Record<"ns" | "key" | "value" | "db" | "sql" | "bucket" | "queue" | "body" | "binding" | "url" | "method", string>
@@ -262,6 +264,7 @@ describe.skipIf(!bwrapWorks)("inside the sandbox (Linux, bubblewrap)", () => {
     const mounts = planBrokerSandbox(l.input);
     prepareBrokerHostFiles(l.input, mounts);
     const at = (...p: string[]) => JSON.stringify(join(l.root, ...p));
+    const bunDir = dirname(process.execPath).startsWith("/home/") ? dirname(process.execPath) : null;
     const code = [
       'const fs = require("fs");',
       'const tryRead = (p) => { try { return fs.readFileSync(p, "utf8").slice(0, 40); } catch (e) { return "ERR " + e.code; } };',
@@ -277,6 +280,7 @@ describe.skipIf(!bwrapWorks)("inside the sandbox (Linux, bubblewrap)", () => {
       `  blobs: ls(${at("resources", "r2-blobs")}),`,
       `  owners: ls(${at("resources", "owners")}),`,
       '  home: ls("/home"),',
+      `  bunDir: ${JSON.stringify(bunDir)} ? ls(${JSON.stringify(bunDir)}) : null,`,
       `  write: (() => { try { fs.writeFileSync(${at("resources", "planted")}, "x"); return "wrote"; } catch (e) { return "ERR " + e.code; } })(),`,
       "}));",
     ].join("\n");
@@ -288,7 +292,7 @@ describe.skipIf(!bwrapWorks)("inside the sandbox (Linux, bubblewrap)", () => {
     const [out, err] = await Promise.all([new Response(run.stdout).text(), new Response(run.stderr).text()]);
     expect(await run.exited, err).toBe(0);
     const seen: Seen = JSON.parse(out);
-    return { seen, ...l };
+    return { seen, mounts, ...l };
   }
 
   const runtime = { PATH: "/usr/bin:/bin", HOME: "/tmp", TMPDIR: "/tmp" };
@@ -299,7 +303,7 @@ describe.skipIf(!bwrapWorks)("inside the sandbox (Linux, bubblewrap)", () => {
       "per-app-credential",
       runtime,
     );
-    const { seen, resourceDir } = await probe(env);
+    const { seen, mounts, resourceDir } = await probe(env);
     expect(seen.env).toEqual(["HOME", "PATH", "SB_EDGE_SECRET", "SB_EGRESS_URL", "TMPDIR"]);
     expect(String(seen.own)).not.toStartWith("ERR");
     expect(seen.otherResource).toBe("ERR ENOENT");
@@ -308,7 +312,18 @@ describe.skipIf(!bwrapWorks)("inside the sandbox (Linux, bubblewrap)", () => {
     expect(seen.platform).toBe("ERR ENOENT");
     expect(seen.owners).toBe("ERR ENOENT");
     expect(seen.blobs).toEqual([]);
-    expect(seen.home).toBe("ERR ENOENT");
+    // Nothing of the host's /home is there beyond the parents of the paths that are bound in (on a CI runner the
+    // Bun binary lives in /home/runner/.bun/bin, so /home/runner exists, holding only that path's own directories).
+    const under = (dir: string) => [
+      ...new Set(
+        mounts
+          .map((m) => m.dest)
+          .filter((dest) => dest.startsWith(`${dir}/`))
+          .map((dest) => dest.slice(dir.length + 1).split("/")[0]!),
+      ),
+    ];
+    expect(seen.home).toEqual(under("/home").length > 0 ? under("/home").sort() : "ERR ENOENT");
+    if (seen.bunDir !== null) expect(seen.bunDir).toEqual([basename(process.execPath)]);
     // Only its bound files (and their -wal / -shm), plus the owner-mapped R2 paths.
     const listed = seen.resources;
     expect(listed).toContain(`${id("kv", 1)}.sqlite`);
