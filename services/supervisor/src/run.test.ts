@@ -4,7 +4,7 @@ import { once } from "node:events";
 import { connect } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { SproutPool, brokerArgs, isEdgeSecret, spawnSprout, startupFilePath } from "./run";
+import { SproutPool, brokerArgs, verifyBindingCall, spawnSprout, startupFilePath } from "./run";
 import { sproutCommand } from "./sandbox";
 import type { SproutChild, SproutFactory } from "./run";
 
@@ -520,7 +520,7 @@ test("each sprout gets its own edge token, which its endpoint carries; the edge 
     expect(token).toMatch(/^[0-9a-f]{48}$/);
     expect(token).toBe(endpoint.edgeToken ?? "");
     expect(secret).toBe("undefined");
-    expect(isEdgeSecret(token)).toBe(false);
+    expect(verifyBindingCall(token, "a.test")).toBe(false);
   } finally {
     if (saved.sandbox === undefined) delete process.env.SPROUTBOAT_SPROUT_SANDBOX;
     else process.env.SPROUTBOAT_SPROUT_SANDBOX = saved.sandbox;
@@ -530,8 +530,8 @@ test("each sprout gets its own edge token, which its endpoint carries; the edge 
   }
 });
 
-test("isEdgeSecret accepts nothing a client could send", () => {
-  expect(isEdgeSecret(null)).toBe(false);
-  expect(isEdgeSecret("")).toBe(false);
-  expect(isEdgeSecret("0".repeat(64))).toBe(false);
+test("verifyBindingCall accepts nothing a client could send", () => {
+  expect(verifyBindingCall(null, "a.test")).toBe(false);
+  expect(verifyBindingCall("", "a.test")).toBe(false);
+  expect(verifyBindingCall("0".repeat(64), "a.test")).toBe(false);
 });

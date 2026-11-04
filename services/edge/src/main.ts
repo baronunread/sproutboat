@@ -1,7 +1,7 @@
 import { readFile, stat } from "node:fs/promises";
 import { createWriteStream, existsSync, mkdirSync, readFileSync, type WriteStream } from "node:fs";
 import { dirname, join, resolve } from "node:path";
-import { isEdgeSecret, pool } from "../../supervisor/src/run";
+import { verifyBindingCall, pool } from "../../supervisor/src/run";
 import { isSproutFirst, resolveAssetKey, type AssetManifest } from "@sproutboat/assets";
 import { applyAssetHeaders, assetRedirect } from "./asset-rules";
 import { serveActivations } from "./activation";
@@ -576,11 +576,11 @@ const server = Bun.serve<RelayData>({
       return new Response("sprout failed", { status: 502 });
     }
 
-    // #48 — a service-binding call arrives from the caller's broker with the edge's
-    // secret (see isEdgeSecret). The edge vouches for it to the callee with the callee's
+    // #48 — a service-binding call arrives from the caller's broker with that broker's
+    // own credential, good only for the hosts its app may call (see verifyBindingCall). The edge vouches for it to the callee with the callee's
     // own token, so the callee sees the caller's URL and reports a thrown error back.
     // Nobody else can send or receive any of these headers.
-    const bindingCall = isEdgeSecret(request.headers.get("x-sb-edge-secret"));
+    const bindingCall = verifyBindingCall(request.headers.get("x-sb-edge-secret"), host);
     const forwarded = new Headers(request.headers);
     for (const name of INTERNAL_REQUEST_HEADERS) forwarded.delete(name);
     if (bindingCall && edgeToken) {

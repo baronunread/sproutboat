@@ -12,9 +12,9 @@
  * directory for the bytes.
  */
 import { Database } from "bun:sqlite";
-import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, statSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
+import { ownerStorageDir, r2BlobName } from "../../../services/supervisor/src/resource-layout";
 import { actorFor } from "./identity";
 import { ownerResources, resourceById } from "./store";
 
@@ -103,7 +103,10 @@ export async function r2Usage(request: Request): Promise<Response> {
     }
   }
   const metrics = { reservedBytes: 0, ticketsIssued: 0, rejectedQuota: 0, rejectedDisk: 0, rejectedSize: 0 };
-  const quotaPath = resolve(resourceRoot(), "r2-quota.sqlite");
+  // Each owner's ledger is its own file (services/supervisor/src/resource-layout.ts);
+  // the shared one is what an install from before that change still has.
+  const ownerQuota = join(ownerStorageDir(resourceRoot(), actor.id), "r2-quota.sqlite");
+  const quotaPath = existsSync(ownerQuota) ? ownerQuota : resolve(resourceRoot(), "r2-quota.sqlite");
   if (existsSync(quotaPath)) {
     const db = new Database(quotaPath, { readonly: true });
     try {
@@ -142,11 +145,18 @@ export async function r2Usage(request: Request): Promise<Response> {
  * on disk. Duplicated rather than imported because it is a small stable
  * storage-format boundary between the control plane and wire package.
  */
-function r2BlobPath(resourceDbPath: string, bucket: string, key: string, generation?: string | null): string {
-  const hash = createHash("sha256")
-    .update(generation ? `${bucket}\0${key}\0${generation}` : `${bucket}\0${key}`)
-    .digest("hex");
-  return join(dirname(resourceDbPath), "r2-blobs", `${hash}.blob`);
+function r2BlobPath(
+  resourceDbPath: string,
+  owner: string,
+  bucket: string,
+  key: string,
+  generation?: string | null,
+): string {
+  const name = `${r2BlobName(bucket, key, generation)}.blob`;
+  const own = join(ownerStorageDir(dirname(resourceDbPath), owner), "r2-blobs", name);
+  // Bodies written before the per-owner layout stay in the shared directory until
+  // the owner's next broker start moves them.
+  return existsSync(own) ? own : join(dirname(resourceDbPath), "r2-blobs", name);
 }
 
 export async function listR2Objects(request: Request, id: string): Promise<Response> {
@@ -205,7 +215,7 @@ export async function r2Object(request: Request, id: string, key: string): Promi
   // Current broker writes use immutable blobs keyed by `blob_id`; retain the
   // original key-only filename as a compatibility fallback for pre-generation
   // rows created before @sproutboat/wire 0.7.
-  const blobPath = r2BlobPath(owned.path, id, key, row.blob_id);
+  const blobPath = r2BlobPath(owned.path, owned.actorId, id, key, row.blob_id);
   if (!existsSync(blobPath)) {
     // A metadata row with no blob file (disk issue, deleted out from under
     // it) reads as not-found rather than a 500.

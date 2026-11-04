@@ -1,9 +1,10 @@
 import { afterAll, beforeAll, expect, test } from "bun:test";
 import { Database } from "bun:sqlite";
 import { createHash } from "node:crypto";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rename, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { ownerStorageDir, r2BlobName } from "../../../services/supervisor/src/resource-layout";
 
 let dir: string;
 let id: string;
@@ -136,4 +137,35 @@ test("downloads an object's exact bytes with its content type, 404s a missing on
 
   const missing = await r2.r2Object(request(`/api/r2/${id}/objects/nope`), id, "nope");
   expect(missing.status).toBe(404);
+});
+
+test("reads bodies and the quota ledger from the owner's own directory once the broker writes them there", async () => {
+  const resourceDir = join(dir, "resources");
+  const owner = ownerStorageDir(resourceDir, "bootstrap:tester");
+  const bytes = new TextEncoder().encode("owner scoped");
+  await seedObject(resourceDir, id, "scoped.txt", bytes);
+  // Move what seedObject wrote into the per-owner directory, as the broker's mounts do.
+  const etag = createHash("sha256").update(bytes).digest("hex");
+  const name = `${r2BlobName(id, "scoped.txt", etag)}.blob`;
+  await mkdir(join(owner, "r2-blobs"), { recursive: true });
+  await rename(join(resourceDir, "r2-blobs", name), join(owner, "r2-blobs", name));
+  const found = await r2.r2Object(request(`/api/r2/${id}/objects/scoped.txt`), id, "scoped.txt");
+  expect(found.status).toBe(200);
+  expect(new Uint8Array(await found.arrayBuffer())).toEqual(bytes);
+
+  // A per-owner ledger wins over the shared one that older installs still have.
+  const ledger = new Database(join(owner, "r2-quota.sqlite"), { create: true });
+  try {
+    ledger.exec(
+      "CREATE TABLE r2_account_quota (owner TEXT PRIMARY KEY, used_bytes INTEGER NOT NULL, reserved_bytes INTEGER NOT NULL)",
+    );
+    ledger.exec(
+      "CREATE TABLE r2_transfer_metric (owner TEXT PRIMARY KEY, tickets_issued INTEGER NOT NULL, rejected_quota INTEGER NOT NULL, rejected_disk INTEGER NOT NULL, rejected_size INTEGER NOT NULL)",
+    );
+    ledger.query("INSERT INTO r2_account_quota VALUES (?1, 0, 11)").run("bootstrap:tester");
+  } finally {
+    ledger.close();
+  }
+  const usage = await r2.r2Usage(request("/api/r2/usage"));
+  expect(await usage.json()).toMatchObject({ reservedBytes: 11 });
 });
