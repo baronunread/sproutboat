@@ -17,7 +17,6 @@ Changes to the self-hosted Sproutboat platform are recorded here. Read the
   `deployments.sproutd_vid` and `deployments.fallback_reason` are dropped. Rolling back to 0.13.x re-adds them.
   A database that holds a project set to sproutd, or a version sproutd loaded, keeps the columns and logs a warning:
   Community cannot serve those, so redeploy them on the supervisor.
-
 - **Bindings brokers now run in their own sandbox (Linux).** Update with `sbctl update` and restart the edge
   (`sbctl update` does). Take a backup first. No new units, env files or secrets, and apps do not need a rebuild.
   The first start of each account's broker moves that account's R2 object bodies from `resources/r2-blobs/` and
