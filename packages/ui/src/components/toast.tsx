@@ -2,8 +2,8 @@ import { Toast } from "@base-ui/react/toast";
 import type { ComponentProps, ReactNode } from "react";
 import { cn, focusRing } from "../lib/cn";
 import { CloseIcon } from "../lib/icons";
-import { dotColor } from "./status";
 import type { Status } from "./status";
+import { StatusGlyph } from "./status-glyph";
 
 /** Call `toast.add({ title, description, type })` from anywhere, inside or outside React. */
 export const toast = Toast.createToastManager();
@@ -24,24 +24,25 @@ function ToastList() {
         key={item.id}
         toast={item}
         className={cn(
-          "absolute inset-x-0 bottom-0 mx-auto w-full origin-bottom rounded-xl bg-surface p-4 text-fg shadow-dialog",
-          "[--gap:0.75rem] [--shrink:calc(1-(var(--toast-index)*0.04))]",
-          "transition-[transform,opacity] duration-(--sb-duration-slow) ease-standard",
-          "[transform:translateX(var(--toast-swipe-movement-x))_translateY(calc(var(--toast-swipe-movement-y)+(var(--toast-index)*var(--gap)*-1)))_scale(var(--shrink))]",
-          "data-starting-style:[transform:translateY(calc(100%+var(--gap)))] data-starting-style:opacity-0",
-          "data-ending-style:opacity-0 data-ending-style:[transform:translateY(calc(100%+var(--gap)))]",
+          "absolute inset-x-0 bottom-0 mx-auto w-full origin-bottom rounded-xl bg-raised p-4 text-fg shadow-dialog",
+          // --sb-move is 0 under reduced motion: the toast fades in place instead of sliding.
+          "[--gap:0.75rem] [--shrink:calc(1-(var(--toast-index)*0.04*var(--sb-move)))]",
+          "transition-[transform,opacity] duration-(--sb-duration-toast-in) ease-out data-ending-style:duration-(--sb-duration-toast-out)",
+          "[transform:translateX(var(--toast-swipe-movement-x))_translateY(calc(var(--toast-swipe-movement-y)+(var(--toast-index)*var(--gap)*-1*var(--sb-move))))_scale(var(--shrink))]",
+          "data-starting-style:[transform:translateY(calc((100%+var(--gap))*var(--sb-move)))] data-starting-style:opacity-0",
+          "data-ending-style:opacity-0 data-ending-style:[transform:translateY(calc((100%+var(--gap))*var(--sb-move)))]",
           "data-limited:opacity-0",
         )}
       >
         <Toast.Content className="flex items-start gap-3">
-          <span aria-hidden="true" className={cn("mt-1.5 size-2 shrink-0 rounded-full", dotColor[status])} />
+          <StatusGlyph status={status} className="mt-1.5" />
           <div className="min-w-0 flex-1">
             <Toast.Title className="text-base font-medium" />
             <Toast.Description className="mt-0.5 text-sm text-fg-muted" />
             {item.actionProps ? (
               <Toast.Action
                 className={cn(
-                  "mt-2 rounded-md border border-hairline-strong px-2.5 py-1 text-sm font-medium hover:bg-raised",
+                  "mt-2 rounded-md bg-hover px-2.5 py-1 text-sm font-semibold shadow-button transition-colors duration-(--sb-duration-hover) ease-hover hover:bg-[color-mix(in_oklch,var(--sb-hover),var(--sb-fg)_9%)]",
                   focusRing,
                 )}
               />
@@ -50,7 +51,7 @@ function ToastList() {
           <Toast.Close
             aria-label="Dismiss notification"
             className={cn(
-              "-me-1 -mt-1 inline-grid size-7 shrink-0 place-items-center rounded-md text-fg-muted hover:bg-raised hover:text-fg pointer-coarse:size-11",
+              "-me-1 -mt-1 inline-grid size-7 shrink-0 place-items-center rounded-md text-fg-muted transition-colors duration-(--sb-duration-hover) ease-hover hover:bg-hover hover:text-fg pointer-coarse:size-11",
               focusRing,
             )}
           >

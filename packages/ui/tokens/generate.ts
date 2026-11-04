@@ -49,14 +49,17 @@ ${colorVars(dark)}
 ${shadowVars("dark")}
 }
 
-:root[data-theme="light"] {
+[data-theme="light"] {
   color-scheme: light;
 ${colorVars(light)}
 ${shadowVars("light")}
 }
 
 :root {
+  /* 1 lets layers move (scale, slide); 0 under reduced motion, where only fades stay. */
+  --sb-move: 1;
 ${vars(Object.entries(motion.duration).map(([k, v]) => [`--sb-duration-${k}`, `${v}ms`]))}
+${vars(Object.entries(motion.scale).map(([k, v]) => [`--sb-scale-${k}`, `calc(1 - ${Number((1 - v).toFixed(2))} * var(--sb-move))`]))}
 ${vars(Object.entries(zIndex).map(([k, v]) => [`--sb-z-${k}`, String(v)]))}
 }
 
@@ -77,11 +80,11 @@ ${vars([
 ])}
 }
 
-/* Reduced motion zeroes every duration token. Components transition on these
-   tokens, so nothing animates; state still changes instantly. */
+/* Reduced motion keeps fades and colour changes and drops movement: the scale
+   tokens collapse to 1 and slides use --sb-move, so only opacity still animates. */
 @media (prefers-reduced-motion: reduce) {
   :root {
-${vars(Object.keys(motion.duration).map((k) => [`--sb-duration-${k}`, "0ms"]))}
+    --sb-move: 0;
   }
 }
 
@@ -92,8 +95,7 @@ ${vars([
   ["--spacing", rem(spacing.base)],
   ...Object.entries(radius).map(([k, v]): [string, string] => [`--radius-${k}`, k === "full" ? "9999px" : rem(v.px)]),
   ...Object.entries(breakpoints).map(([k, v]): [string, string] => [`--breakpoint-${k}`, `${v.rem}rem`]),
-  ["--ease-standard", motion.easing.standard],
-  ["--ease-exit", motion.easing.exit],
+  ...Object.entries(motion.easing).map(([k, v]): [string, string] => [`--ease-${k}`, v]),
 ])}
 ${text.join("\n")}
 }
@@ -108,12 +110,51 @@ ${vars(Object.keys(shadow.dark).map((k) => [`--shadow-${k}`, `var(--sb-shadow-${
     font-family: var(--font-sans);
     font-synthesis: none;
     -webkit-text-size-adjust: 100%;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+    scrollbar-gutter: stable;
+  }
+  h1,
+  h2,
+  h3 {
+    text-wrap: balance;
+  }
+  p {
+    text-wrap: pretty;
+  }
+  code,
+  kbd,
+  samp,
+  pre {
+    font-family: var(--font-mono);
+    font-feature-settings: "zero";
   }
   *,
   ::after,
   ::before,
   ::backdrop {
     border-color: var(--sb-hairline);
+  }
+  /* Scope for TanStack Charts: its palette and tooltip read these variables. */
+  .sb-chart {
+    --ts-chart-1: var(--sb-chart-requests);
+    --ts-chart-2: var(--sb-chart-series);
+    --ts-chart-3: var(--sb-chart-4xx);
+    --ts-chart-4: var(--sb-chart-errors);
+    --ts-chart-5: var(--sb-chart-3xx);
+    --ts-chart-6: var(--sb-chart-other);
+    --ts-chart-tooltip-background: var(--sb-raised);
+    --ts-chart-tooltip-color: var(--sb-fg);
+    --ts-chart-tooltip-border: 0;
+    --ts-chart-tooltip-border-radius: 10px;
+    --ts-chart-tooltip-shadow: var(--sb-shadow-float);
+    --ts-chart-tooltip-padding: 8px 10px;
+    --ts-chart-tooltip-font: 500 12px/1.4 var(--font-sans);
+    font-variant-numeric: tabular-nums;
+  }
+  .sb-chart .ts-chart-tooltip {
+    z-index: var(--sb-z-tooltip);
   }
   ::selection {
     background: var(--sb-brand);
@@ -168,13 +209,14 @@ const table = (head: string[], rows: string[][]): string =>
 const ratio = (a: string, b: string): string => `${contrast(a, b).toFixed(2)}:1`;
 const status = (kind: PairKind, a: string, b: string): string => (contrast(a, b) >= minRatio[kind] ? "pass" : "FAIL");
 
+const lightShadow: Record<string, string> = shadow.light;
+
 const decorative = [
   ["hairline", "canvas"],
   ["hairline", "surface"],
   ["hairline-strong", "surface"],
+  ["chart-grid", "surface"],
 ] as const;
-
-const shadowKeys = ["raised", "popover", "dialog"] as const;
 
 export const docRegions = {
   palette: () =>
@@ -234,14 +276,24 @@ export const docRegions = {
   shadow: () =>
     table(
       ["Token", "Utility", "Dark", "Light"],
-      shadowKeys.map((k) => [`\`${k}\``, `\`shadow-${k}\``, `\`${shadow.dark[k]}\``, `\`${shadow.light[k]}\``]),
+      Object.entries(shadow.dark).map(([k, darkValue]) => [
+        `\`${k}\``,
+        `\`shadow-${k}\``,
+        `\`${darkValue}\``,
+        `\`${lightShadow[k]}\``,
+      ]),
     ),
   motion: () =>
     table(
       ["Token", "Value", "Reduced motion"],
       [
-        ...Object.entries(motion.duration).map(([k, v]) => [`\`--sb-duration-${k}\``, `${v}ms`, "0ms"]),
-        ...Object.entries(motion.easing).map(([k, v]) => [`\`ease-${k}\``, `\`${v}\``, "unchanged (no duration)"]),
+        ...Object.entries(motion.duration).map(([k, v]) => [
+          `\`--sb-duration-${k}\``,
+          `${v}ms`,
+          "unchanged (fade stays)",
+        ]),
+        ...Object.entries(motion.easing).map(([k, v]) => [`\`ease-${k}\``, `\`${v}\``, "unchanged"]),
+        ...Object.entries(motion.scale).map(([k, v]) => [`\`--sb-scale-${k}\``, String(v), "1 (no scale)"]),
       ],
     ),
   zindex: () =>

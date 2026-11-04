@@ -54,4 +54,5 @@ export { Tabs, TabsList, TabsPanel, TabsTab } from "./components/tabs";
 export { ToastProvider, toast, useToast } from "./components/toast";
 export { Tooltip, TooltipProvider } from "./components/tooltip";
 export { cn } from "./lib/cn";
+export { PortalContainer } from "./lib/portal";
 export { CheckIcon, ChevronDownIcon, CloseIcon, CopyIcon, SpinnerIcon } from "./lib/icons";

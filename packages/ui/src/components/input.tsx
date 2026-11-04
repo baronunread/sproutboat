@@ -1,22 +1,19 @@
 import { Input as BaseInput } from "@base-ui/react/input";
 import type { ComponentProps } from "react";
-import { cn, coarseTarget, focusRing } from "../lib/cn";
+import { cn, coarseTarget, fieldSurface, focusRing } from "../lib/cn";
 
 export const inputStyles = cn(
-  "h-(--sb-control-h) w-full min-w-0 rounded-lg border border-control-edge bg-surface px-3 text-base text-fg",
+  "h-(--sb-control-h) w-full min-w-0 px-3 text-base",
+  fieldSurface,
   "placeholder:text-fg-muted pointer-coarse:text-[16px]",
-  "transition-[border-color,background-color] duration-(--sb-duration-fast) ease-standard",
-  "hover:border-fg-muted",
-  "data-disabled:cursor-not-allowed data-disabled:bg-raised data-disabled:opacity-55",
-  "read-only:bg-raised",
-  "data-invalid:border-danger-dot aria-invalid:border-danger-dot",
+  "read-only:bg-hover",
   focusRing,
   coarseTarget,
 );
 
 export interface InputProps extends Omit<ComponentProps<typeof BaseInput>, "className"> {
   className?: string;
-  /** Marks the field invalid: red edge and aria-invalid. Prefer the Field error. */
+  /** Marks the field invalid: danger ring and aria-invalid. Prefer the Field error. */
   invalid?: boolean;
   /** Monospace face for ids, keys and hashes. */
   mono?: boolean;

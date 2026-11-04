@@ -12,7 +12,7 @@ for (const width of widths) {
   for (const theme of themes) {
     test(`playground ${theme} ${width}px has no overflow`, async ({ page }, info) => {
       await page.setViewportSize({ width, height: 900 });
-      await page.goto(`/?theme=${theme}`);
+      await page.goto(`/?view=${theme}`);
       await expect(page.getByRole("heading", { name: "Button", exact: true })).toBeVisible();
       const overflow = await page.evaluate(() => document.documentElement.scrollWidth - innerWidth);
       expect(overflow).toBe(0);
@@ -28,7 +28,7 @@ for (const width of widths) {
         ["popover", "dialog"],
       ]);
       for (const open of opens) {
-        await page.goto(`/?theme=${theme}&open=${open}`);
+        await page.goto(`/?view=${theme}&open=${open}`);
         const role = roles.get(open);
         if (role) await expect(page.getByRole(role).first()).toBeVisible();
         else
@@ -42,7 +42,7 @@ for (const width of widths) {
 }
 
 test("keyboard focus shows a visible ring", async ({ page }) => {
-  await page.goto("/?theme=light");
+  await page.goto("/?view=light");
   await page.keyboard.press("Tab");
   const outline = await page.evaluate(() => {
     const el = document.activeElement;

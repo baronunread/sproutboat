@@ -13,7 +13,7 @@ export function Link({ external = false, className, children, ref, ...props }: L
       ref={ref}
       {...(external ? { target: "_blank", rel: "noopener noreferrer" } : {})}
       className={cn(
-        "inline-flex items-center gap-1 rounded-sm font-medium text-fg underline decoration-hairline-strong underline-offset-4 transition-colors duration-(--sb-duration-fast) ease-standard",
+        "inline-flex items-center gap-1 rounded-xs font-medium text-fg underline decoration-hairline-strong decoration-1 underline-offset-4 transition-colors duration-(--sb-duration-hover) ease-hover",
         "hover:decoration-fg aria-disabled:pointer-events-none aria-disabled:opacity-55",
         focusRing,
         className,

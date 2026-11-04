@@ -287,6 +287,20 @@ describe("Dialog", () => {
     );
   }
 
+  test("opened with the keyboard it does not animate; opened with a pointer it does", async () => {
+    render(<Demo />);
+    const trigger = screen.getByRole("button", { name: "Open" });
+    trigger.focus();
+    await userEvent.keyboard("{Enter}");
+    const dialog = await screen.findByRole("dialog", { name: "Delete app?" });
+    expect(dialog.hasAttribute("data-sb-instant")).toBe(true);
+    await userEvent.keyboard("{Escape}");
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    await userEvent.click(trigger);
+    const again = await screen.findByRole("dialog", { name: "Delete app?" });
+    expect(again.hasAttribute("data-sb-instant")).toBe(false);
+  });
+
   test("has dialog role, name and description; Escape closes and focus returns", async () => {
     render(<Demo />);
     const trigger = screen.getByRole("button", { name: "Open" });

@@ -19,14 +19,27 @@ const pair = (fg: ColorName, bg: ColorName, kind: PairKind, note: string): Pair 
   note,
 });
 
-const pageSurfaces = ["canvas", "surface", "raised"] as const;
+const pageSurfaces = ["canvas", "surface", "well", "hover", "raised"] as const;
 const statusFamilies = [
   { name: "brand", fg: "brand-fg", soft: "brand-soft" },
   { name: "warn", fg: "warn-fg", soft: "warn-soft" },
   { name: "danger", fg: "danger-fg", soft: "danger-soft" },
   { name: "info", fg: "info-fg", soft: "info-soft" },
+  { name: "neutral", fg: "neutral-fg", soft: "neutral-soft" },
 ] as const;
-const edgeBackdrops = ["surface", "canvas"] as const;
+/** Where a control edge, a dot or a chart mark can sit. */
+const markBackdrops = ["surface", "canvas", "well"] as const;
+const chartMarks = [
+  "chart-requests",
+  "chart-errors",
+  "chart-deploy",
+  "chart-2xx",
+  "chart-3xx",
+  "chart-4xx",
+  "chart-5xx",
+  "chart-other",
+  "chart-series",
+] as const;
 
 export const pairs: Pair[] = [
   ...pageSurfaces.map((bg) => pair("fg", bg, "text", "Body text")),
@@ -42,12 +55,12 @@ export const pairs: Pair[] = [
   ...statusFamilies.flatMap((f) => [
     pair(f.fg, "surface", "text", `${f.name} text on surface`),
     pair(f.fg, "canvas", "text", `${f.name} text on canvas`),
+    pair(f.fg, "raised", "text", `${f.name} text on a floating layer`),
     pair(f.fg, f.soft, "text", `${f.name} badge`),
   ]),
   pair("danger-fg", "surface", "large", "Danger zone heading"),
-  ...edgeBackdrops.flatMap((bg) => [
+  ...markBackdrops.flatMap((bg) => [
     pair("control-edge", bg, "ui", "Input, select, checkbox edge"),
-    pair("focus", bg, "ui", "Focus ring"),
     pair("brand", bg, "ui", "Switch on, checkbox checked, primary fill"),
     pair("brand-dot", bg, "ui", "Success dot"),
     pair("warn-dot", bg, "ui", "Fallback and warning dot"),
@@ -55,9 +68,7 @@ export const pairs: Pair[] = [
     pair("info-dot", bg, "ui", "Info dot"),
     pair("neutral-dot", bg, "ui", "Idle and unknown dot"),
   ]),
-  pair("focus", "raised", "ui", "Focus ring on raised"),
+  ...pageSurfaces.map((bg) => pair("focus", bg, "ui", "Focus ring")),
   pair("danger", "surface", "ui", "Destructive button fill"),
-  ...(["chart-2xx", "chart-3xx", "chart-4xx", "chart-5xx", "chart-other", "chart-series"] as const).map((name) =>
-    pair(name, "surface", "ui", "Chart mark"),
-  ),
+  ...markBackdrops.flatMap((bg) => chartMarks.map((name) => pair(name, bg, "ui", "Chart mark"))),
 ];

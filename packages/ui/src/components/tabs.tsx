@@ -1,17 +1,33 @@
 import { Tabs as BaseTabs } from "@base-ui/react/tabs";
 import type { ComponentProps } from "react";
-import { cn, focusRingInset, type WithClass } from "../lib/cn";
+import { cn, focusRing, type WithClass } from "../lib/cn";
 
 export function Tabs({ className, ...props }: WithClass<ComponentProps<typeof BaseTabs.Root>>) {
   return <BaseTabs.Root className={cn("flex flex-col", className)} {...props} />;
 }
 
-export function TabsList({ className, ...props }: WithClass<ComponentProps<typeof BaseTabs.List>>) {
+/**
+ * A 10px well (padding 4) holding 6px tabs. The raised pill is one element that slides
+ * to the active tab over 250ms ease-in-out (the one in-out use: it moves across the screen).
+ */
+export function TabsList({ className, children, ...props }: WithClass<ComponentProps<typeof BaseTabs.List>>) {
   return (
     <BaseTabs.List
-      className={cn("flex gap-0.5 overflow-x-auto border-b border-hairline [scrollbar-width:thin]", className)}
+      className={cn(
+        "relative inline-flex max-w-full gap-0.5 self-start overflow-x-auto rounded-lg bg-well p-1 [scrollbar-width:none]",
+        className,
+      )}
       {...props}
-    />
+    >
+      {children}
+      <BaseTabs.Indicator
+        className={cn(
+          "absolute start-0 top-0 z-0 h-(--active-tab-height) w-(--active-tab-width) translate-x-(--active-tab-left) translate-y-(--active-tab-top) rounded-sm bg-raised shadow-pill",
+          "[transition:translate_var(--sb-duration-slide)_var(--ease-in-out),width_var(--sb-duration-slide)_var(--ease-in-out)]",
+          "motion-reduce:transition-none",
+        )}
+      />
+    </BaseTabs.List>
   );
 }
 
@@ -19,12 +35,12 @@ export function TabsTab({ className, ...props }: WithClass<ComponentProps<typeof
   return (
     <BaseTabs.Tab
       className={cn(
-        "relative flex h-10 shrink-0 items-center whitespace-nowrap rounded-t-md px-3 text-base font-medium text-fg-muted",
-        "transition-colors duration-(--sb-duration-fast) ease-standard hover:text-fg",
-        "data-active:text-fg data-disabled:cursor-not-allowed data-disabled:opacity-55",
-        "after:absolute after:inset-x-3 after:-bottom-px after:h-0.5 after:bg-transparent data-active:after:bg-fg",
+        "relative z-10 flex h-8 shrink-0 items-center whitespace-nowrap rounded-sm px-3 text-base font-semibold text-fg-muted",
+        "[transition:color_var(--sb-duration-slide)_var(--ease-in-out)]",
+        "hover:text-fg data-active:text-fg data-disabled:cursor-not-allowed data-disabled:opacity-50",
+        "before:absolute before:inset-x-0 before:top-1/2 before:h-10 before:-translate-y-1/2 before:content-[''] pointer-fine:before:hidden",
         "pointer-coarse:min-h-11",
-        focusRingInset,
+        focusRing,
         className,
       )}
       {...props}

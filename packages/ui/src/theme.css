@@ -7,106 +7,146 @@
 :root,
 [data-theme="dark"] {
   color-scheme: dark;
-  --sb-canvas: oklch(0.155 0.006 255);
-  --sb-surface: oklch(0.195 0.008 255);
-  --sb-raised: oklch(0.235 0.01 255);
-  --sb-hairline: oklch(0.29 0.011 255);
-  --sb-hairline-strong: oklch(0.39 0.012 255);
-  --sb-control-edge: oklch(0.58 0.014 255);
-  --sb-focus: oklch(0.965 0.004 255);
-  --sb-fg: oklch(0.965 0.004 255);
-  --sb-fg-muted: oklch(0.76 0.012 255);
-  --sb-brand: oklch(0.8 0.17 150);
-  --sb-brand-hover: oklch(0.85 0.17 150);
-  --sb-on-brand: oklch(0.19 0.04 150);
-  --sb-brand-fg: oklch(0.82 0.16 150);
-  --sb-brand-soft: oklch(0.27 0.05 150);
-  --sb-brand-edge: oklch(0.38 0.08 150);
-  --sb-brand-dot: oklch(0.8 0.17 150);
-  --sb-warn-fg: oklch(0.85 0.14 82);
-  --sb-warn-soft: oklch(0.27 0.05 80);
-  --sb-warn-edge: oklch(0.42 0.08 80);
-  --sb-warn-dot: oklch(0.82 0.16 80);
-  --sb-danger: oklch(0.72 0.17 25);
-  --sb-danger-hover: oklch(0.77 0.16 25);
+  --sb-canvas: oklch(0.18 0.014 255);
+  --sb-surface: oklch(0.23 0.016 255);
+  --sb-well: oklch(0.2 0.015 255);
+  --sb-hover: oklch(0.295 0.018 255);
+  --sb-raised: oklch(0.34 0.02 255);
+  --sb-hairline: oklch(0.3 0.018 255);
+  --sb-hairline-strong: oklch(0.4 0.02 255);
+  --sb-control-edge: oklch(0.56 0.02 255);
+  --sb-focus: oklch(0.8 0.14 152);
+  --sb-fg: oklch(0.95 0.01 255);
+  --sb-fg-muted: oklch(0.76 0.018 255);
+  --sb-brand: oklch(0.72 0.12 152);
+  --sb-brand-hover: oklch(0.77 0.12 152);
+  --sb-on-brand: oklch(0.2 0.03 152);
+  --sb-brand-fg: oklch(0.82 0.13 152);
+  --sb-brand-soft: oklch(0.31 0.045 152);
+  --sb-brand-dot: oklch(0.74 0.15 152);
+  --sb-warn-fg: oklch(0.88 0.1 85);
+  --sb-warn-soft: oklch(0.35 0.06 80);
+  --sb-warn-dot: oklch(0.8 0.14 80);
+  --sb-danger: oklch(0.68 0.14 25);
+  --sb-danger-hover: oklch(0.73 0.13 25);
   --sb-on-danger: oklch(0.18 0.04 25);
-  --sb-danger-fg: oklch(0.78 0.15 25);
-  --sb-danger-soft: oklch(0.26 0.06 25);
-  --sb-danger-edge: oklch(0.42 0.1 25);
-  --sb-danger-dot: oklch(0.72 0.17 25);
-  --sb-info-fg: oklch(0.8 0.1 245);
-  --sb-info-soft: oklch(0.26 0.04 250);
-  --sb-info-edge: oklch(0.4 0.07 250);
-  --sb-info-dot: oklch(0.75 0.13 245);
-  --sb-neutral-dot: oklch(0.62 0.012 255);
-  --sb-code-bg: oklch(0.17 0.007 255);
-  --sb-diff-add: oklch(0.25 0.05 150);
-  --sb-diff-del: oklch(0.25 0.05 22);
-  --sb-chart-2xx: oklch(0.78 0.16 150);
-  --sb-chart-3xx: oklch(0.76 0.1 240);
-  --sb-chart-4xx: oklch(0.82 0.15 75);
-  --sb-chart-5xx: oklch(0.7 0.18 25);
-  --sb-chart-other: oklch(0.62 0.012 255);
-  --sb-chart-series: oklch(0.76 0.1 285);
-  --sb-scrim: oklch(0 0 0 / 0.6);
-  --sb-shadow-raised: 0 1px 2px oklch(0 0 0 / 0.4);
-  --sb-shadow-popover: 0 8px 24px oklch(0 0 0 / 0.5), 0 0 0 1px oklch(0.39 0.012 255);
-  --sb-shadow-dialog: 0 16px 48px oklch(0 0 0 / 0.6), 0 0 0 1px oklch(0.39 0.012 255);
+  --sb-danger-fg: oklch(0.85 0.1 25);
+  --sb-danger-soft: oklch(0.34 0.08 25);
+  --sb-danger-dot: oklch(0.74 0.16 25);
+  --sb-info-fg: oklch(0.84 0.1 255);
+  --sb-info-soft: oklch(0.33 0.07 255);
+  --sb-info-dot: oklch(0.76 0.13 255);
+  --sb-neutral-fg: oklch(0.85 0.012 255);
+  --sb-neutral-soft: oklch(0.33 0.012 255);
+  --sb-neutral-dot: oklch(0.72 0.012 255);
+  --sb-code-bg: oklch(0.155 0.012 255);
+  --sb-diff-add: oklch(0.27 0.05 152);
+  --sb-diff-del: oklch(0.27 0.06 25);
+  --sb-chart-requests: oklch(0.76 0.13 255);
+  --sb-chart-errors: oklch(0.74 0.16 25);
+  --sb-chart-deploy: oklch(0.83 0.015 255);
+  --sb-chart-grid: oklch(0.34 0.018 255);
+  --sb-chart-2xx: oklch(0.76 0.16 152);
+  --sb-chart-3xx: oklch(0.78 0.1 235);
+  --sb-chart-4xx: oklch(0.8 0.13 80);
+  --sb-chart-5xx: oklch(0.74 0.16 25);
+  --sb-chart-other: oklch(0.72 0.012 255);
+  --sb-chart-series: oklch(0.76 0.1 300);
+  --sb-scrim: oklch(0.06 0.012 255 / 0.62);
+  --sb-shadow-card: 0 0 0 1px oklch(1 0 0 / 0.05), inset 0 1px 0 oklch(1 0 0 / 0.04);
+  --sb-shadow-button: inset 0 0 0 1px oklch(1 0 0 / 0.08);
+  --sb-shadow-primary: inset 0 1px 0 oklch(1 0 0 / 0.25), 0 1px 2px oklch(0 0 0 / 0.4);
+  --sb-shadow-field: inset 0 0 0 1px var(--sb-control-edge);
+  --sb-shadow-field-hover: inset 0 0 0 1px var(--sb-fg-muted);
+  --sb-shadow-pill: 0 0 0 1px oklch(1 0 0 / 0.1), inset 0 1px 0 oklch(1 0 0 / 0.08), 0 1px 3px oklch(0 0 0 / 0.4);
+  --sb-shadow-float:
+    0 0 0 1px oklch(1 0 0 / 0.11), inset 0 1px 0 oklch(1 0 0 / 0.08), 0 2px 4px oklch(0 0 0 / 0.35),
+    0 18px 44px -6px oklch(0 0 0 / 0.65);
+  --sb-shadow-dialog:
+    0 0 0 1px oklch(1 0 0 / 0.11), inset 0 1px 0 oklch(1 0 0 / 0.08), 0 4px 8px oklch(0 0 0 / 0.35),
+    0 28px 72px -8px oklch(0 0 0 / 0.75);
 }
 
-:root[data-theme="light"] {
+[data-theme="light"] {
   color-scheme: light;
-  --sb-canvas: oklch(0.982 0.002 250);
-  --sb-surface: oklch(1 0 0);
-  --sb-raised: oklch(0.963 0.003 250);
-  --sb-hairline: oklch(0.915 0.004 250);
-  --sb-hairline-strong: oklch(0.83 0.005 250);
-  --sb-control-edge: oklch(0.6 0.008 250);
-  --sb-focus: oklch(0.2 0.005 250);
-  --sb-fg: oklch(0.2 0.005 250);
-  --sb-fg-muted: oklch(0.47 0.008 250);
-  --sb-brand: oklch(0.5 0.12 152);
-  --sb-brand-hover: oklch(0.44 0.11 152);
-  --sb-on-brand: oklch(1 0 0);
-  --sb-brand-fg: oklch(0.42 0.1 152);
-  --sb-brand-soft: oklch(0.965 0.03 152);
-  --sb-brand-edge: oklch(0.87 0.07 152);
-  --sb-brand-dot: oklch(0.6 0.15 152);
-  --sb-warn-fg: oklch(0.45 0.1 70);
-  --sb-warn-soft: oklch(0.97 0.04 85);
-  --sb-warn-edge: oklch(0.85 0.09 80);
-  --sb-warn-dot: oklch(0.66 0.15 70);
-  --sb-danger: oklch(0.5 0.19 25);
-  --sb-danger-hover: oklch(0.44 0.18 25);
+  --sb-canvas: oklch(0.965 0 0);
+  --sb-surface: oklch(0.995 0 0);
+  --sb-well: oklch(0.962 0 0);
+  --sb-hover: oklch(0.925 0 0);
+  --sb-raised: oklch(1 0 0);
+  --sb-hairline: oklch(0.9 0 0);
+  --sb-hairline-strong: oklch(0.82 0 0);
+  --sb-control-edge: oklch(0.6 0 0);
+  --sb-focus: oklch(0.55 0.15 150);
+  --sb-fg: oklch(0.22 0 0);
+  --sb-fg-muted: oklch(0.44 0 0);
+  --sb-brand: oklch(0.47 0.12 152);
+  --sb-brand-hover: oklch(0.42 0.105 152);
+  --sb-on-brand: oklch(0.99 0.005 150);
+  --sb-brand-fg: oklch(0.42 0.11 152);
+  --sb-brand-soft: oklch(0.94 0.05 150);
+  --sb-brand-dot: oklch(0.62 0.16 150);
+  --sb-warn-fg: oklch(0.43 0.09 70);
+  --sb-warn-soft: oklch(0.95 0.06 85);
+  --sb-warn-dot: oklch(0.63 0.14 72);
+  --sb-danger: oklch(0.48 0.18 25);
+  --sb-danger-hover: oklch(0.43 0.18 25);
   --sb-on-danger: oklch(1 0 0);
-  --sb-danger-fg: oklch(0.48 0.17 25);
-  --sb-danger-soft: oklch(0.97 0.02 20);
-  --sb-danger-edge: oklch(0.86 0.07 22);
+  --sb-danger-fg: oklch(0.46 0.18 25);
+  --sb-danger-soft: oklch(0.95 0.035 25);
   --sb-danger-dot: oklch(0.58 0.2 25);
-  --sb-info-fg: oklch(0.45 0.15 255);
-  --sb-info-soft: oklch(0.965 0.02 255);
-  --sb-info-edge: oklch(0.86 0.05 255);
-  --sb-info-dot: oklch(0.58 0.18 255);
-  --sb-neutral-dot: oklch(0.6 0.008 250);
-  --sb-code-bg: oklch(0.975 0.003 250);
-  --sb-diff-add: oklch(0.96 0.04 152);
-  --sb-diff-del: oklch(0.965 0.03 22);
-  --sb-chart-2xx: oklch(0.62 0.14 152);
-  --sb-chart-3xx: oklch(0.62 0.12 240);
-  --sb-chart-4xx: oklch(0.66 0.15 65);
-  --sb-chart-5xx: oklch(0.6 0.2 25);
-  --sb-chart-other: oklch(0.6 0.008 250);
-  --sb-chart-series: oklch(0.55 0.1 270);
-  --sb-scrim: oklch(0.2 0.01 250 / 0.4);
-  --sb-shadow-raised: 0 1px 2px oklch(0.2 0.01 250 / 0.06);
-  --sb-shadow-popover: 0 8px 24px oklch(0.2 0.01 250 / 0.12), 0 0 0 1px oklch(0.83 0.005 250);
-  --sb-shadow-dialog: 0 16px 48px oklch(0.2 0.01 250 / 0.18), 0 0 0 1px oklch(0.83 0.005 250);
+  --sb-info-fg: oklch(0.42 0.14 255);
+  --sb-info-soft: oklch(0.94 0.04 255);
+  --sb-info-dot: oklch(0.58 0.15 255);
+  --sb-neutral-fg: oklch(0.42 0 0);
+  --sb-neutral-soft: oklch(0.93 0 0);
+  --sb-neutral-dot: oklch(0.55 0 0);
+  --sb-code-bg: oklch(0.955 0 0);
+  --sb-diff-add: oklch(0.94 0.05 150);
+  --sb-diff-del: oklch(0.95 0.04 25);
+  --sb-chart-requests: oklch(0.55 0.15 255);
+  --sb-chart-errors: oklch(0.58 0.2 25);
+  --sb-chart-deploy: oklch(0.4 0 0);
+  --sb-chart-grid: oklch(0.88 0 0);
+  --sb-chart-2xx: oklch(0.6 0.16 150);
+  --sb-chart-3xx: oklch(0.6 0.12 235);
+  --sb-chart-4xx: oklch(0.62 0.135 75);
+  --sb-chart-5xx: oklch(0.58 0.2 25);
+  --sb-chart-other: oklch(0.55 0 0);
+  --sb-chart-series: oklch(0.55 0.12 300);
+  --sb-scrim: oklch(0.25 0 260 / 0.34);
+  --sb-shadow-card: 0 0 0 1px oklch(0.3 0 0 / 0.05), 0 1px 2px oklch(0.3 0 0 / 0.05);
+  --sb-shadow-button: inset 0 0 0 1px oklch(0.3 0 0 / 0.07);
+  --sb-shadow-primary: inset 0 1px 0 oklch(1 0 0 / 0.18), 0 1px 2px oklch(0.3 0.08 150 / 0.3);
+  --sb-shadow-field: inset 0 0 0 1px var(--sb-control-edge);
+  --sb-shadow-field-hover: inset 0 0 0 1px var(--sb-fg-muted);
+  --sb-shadow-pill: 0 0 0 1px oklch(0.3 0 0 / 0.06), 0 1px 2px oklch(0.3 0 0 / 0.1);
+  --sb-shadow-float:
+    0 0 0 1px oklch(0.3 0 0 / 0.08), 0 1px 2px -1px oklch(0.3 0 0 / 0.12), 0 4px 8px -2px oklch(0.3 0 0 / 0.08),
+    0 16px 32px -8px oklch(0.3 0 0 / 0.18);
+  --sb-shadow-dialog:
+    0 0 0 1px oklch(0.3 0 0 / 0.08), 0 2px 4px -1px oklch(0.3 0 0 / 0.12), 0 8px 16px -4px oklch(0.3 0 0 / 0.1),
+    0 32px 64px -12px oklch(0.3 0 0 / 0.28);
 }
 
 :root {
-  --sb-duration-fast: 100ms;
-  --sb-duration-base: 150ms;
-  --sb-duration-slow: 250ms;
+  /* 1 lets layers move (scale, slide); 0 under reduced motion, where only fades stay. */
+  --sb-move: 1;
+  --sb-duration-hover: 120ms;
+  --sb-duration-press: 160ms;
+  --sb-duration-tooltip-in: 150ms;
+  --sb-duration-tooltip-out: 100ms;
+  --sb-duration-popup-in: 180ms;
+  --sb-duration-popup-out: 120ms;
+  --sb-duration-dialog-in: 220ms;
+  --sb-duration-dialog-out: 150ms;
+  --sb-duration-slide: 250ms;
+  --sb-duration-toast-in: 360ms;
+  --sb-duration-toast-out: 200ms;
+  --sb-scale-popup: calc(1 - 0.04 * var(--sb-move));
+  --sb-scale-dialog: calc(1 - 0.04 * var(--sb-move));
+  --sb-scale-press: calc(1 - 0.03 * var(--sb-move));
+  --sb-scale-icon: calc(1 - 0.75 * var(--sb-move));
   --sb-z-base: 0;
   --sb-z-sticky: 20;
   --sb-z-dropdown: 40;
@@ -130,69 +170,72 @@
   --sb-row-h: 36px;
 }
 
-/* Reduced motion zeroes every duration token. Components transition on these
-   tokens, so nothing animates; state still changes instantly. */
+/* Reduced motion keeps fades and colour changes and drops movement: the scale
+   tokens collapse to 1 and slides use --sb-move, so only opacity still animates. */
 @media (prefers-reduced-motion: reduce) {
   :root {
-    --sb-duration-fast: 0ms;
-    --sb-duration-base: 0ms;
-    --sb-duration-slow: 0ms;
+    --sb-move: 0;
   }
 }
 
 @theme {
-  --font-sans: "Geist Variable", "Geist", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
-  --font-mono: "Geist Mono Variable", "Geist Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  --font-sans: "Figtree Variable", "Figtree", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "JetBrains Mono Variable", "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
   --spacing: 0.25rem;
-  --radius-sm: 0.25rem;
-  --radius-md: 0.375rem;
-  --radius-lg: 0.5rem;
+  --radius-xs: 0.25rem;
+  --radius-sm: 0.375rem;
+  --radius-md: 0.5rem;
+  --radius-lg: 0.625rem;
   --radius-xl: 0.75rem;
+  --radius-2xl: 0.875rem;
   --radius-full: 9999px;
   --breakpoint-sm: 40rem;
   --breakpoint-md: 48rem;
   --breakpoint-lg: 64rem;
   --breakpoint-xl: 80rem;
   --breakpoint-2xl: 96rem;
-  --ease-standard: cubic-bezier(0.2, 0, 0, 1);
-  --ease-exit: cubic-bezier(0.4, 0, 1, 1);
+  --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+  --ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
+  --ease-hover: ease;
   --text-xs: 0.75rem;
   --text-xs--line-height: 1rem;
   --text-xs--letter-spacing: 0em;
   --text-xs--font-weight: 500;
   --text-sm: 0.8125rem;
   --text-sm--line-height: 1.25rem;
-  --text-sm--letter-spacing: -0.006em;
+  --text-sm--letter-spacing: 0em;
   --text-sm--font-weight: 400;
   --text-base: 0.875rem;
   --text-base--line-height: 1.25rem;
-  --text-base--letter-spacing: -0.006em;
+  --text-base--letter-spacing: 0em;
   --text-base--font-weight: 400;
   --text-md: 0.9375rem;
   --text-md--line-height: 1.375rem;
-  --text-md--letter-spacing: -0.012em;
+  --text-md--letter-spacing: -0.005em;
   --text-md--font-weight: 600;
   --text-lg: 1.125rem;
   --text-lg--line-height: 1.625rem;
-  --text-lg--letter-spacing: -0.02em;
-  --text-lg--font-weight: 600;
+  --text-lg--letter-spacing: -0.01em;
+  --text-lg--font-weight: 700;
   --text-xl: 1.5rem;
   --text-xl--line-height: 2rem;
-  --text-xl--letter-spacing: -0.03em;
-  --text-xl--font-weight: 600;
+  --text-xl--letter-spacing: -0.015em;
+  --text-xl--font-weight: 700;
   --text-2xl: 1.75rem;
   --text-2xl--line-height: 2.25rem;
-  --text-2xl--letter-spacing: -0.035em;
-  --text-2xl--font-weight: 600;
+  --text-2xl--letter-spacing: -0.02em;
+  --text-2xl--font-weight: 700;
   --text-metric: 2.25rem;
   --text-metric--line-height: 2.5rem;
-  --text-metric--letter-spacing: -0.04em;
-  --text-metric--font-weight: 600;
+  --text-metric--letter-spacing: -0.025em;
+  --text-metric--font-weight: 700;
 }
 
 @theme inline {
   --color-canvas: var(--sb-canvas);
   --color-surface: var(--sb-surface);
+  --color-well: var(--sb-well);
+  --color-hover: var(--sb-hover);
   --color-raised: var(--sb-raised);
   --color-hairline: var(--sb-hairline);
   --color-hairline-strong: var(--sb-hairline-strong);
@@ -205,27 +248,29 @@
   --color-on-brand: var(--sb-on-brand);
   --color-brand-fg: var(--sb-brand-fg);
   --color-brand-soft: var(--sb-brand-soft);
-  --color-brand-edge: var(--sb-brand-edge);
   --color-brand-dot: var(--sb-brand-dot);
   --color-warn-fg: var(--sb-warn-fg);
   --color-warn-soft: var(--sb-warn-soft);
-  --color-warn-edge: var(--sb-warn-edge);
   --color-warn-dot: var(--sb-warn-dot);
   --color-danger: var(--sb-danger);
   --color-danger-hover: var(--sb-danger-hover);
   --color-on-danger: var(--sb-on-danger);
   --color-danger-fg: var(--sb-danger-fg);
   --color-danger-soft: var(--sb-danger-soft);
-  --color-danger-edge: var(--sb-danger-edge);
   --color-danger-dot: var(--sb-danger-dot);
   --color-info-fg: var(--sb-info-fg);
   --color-info-soft: var(--sb-info-soft);
-  --color-info-edge: var(--sb-info-edge);
   --color-info-dot: var(--sb-info-dot);
+  --color-neutral-fg: var(--sb-neutral-fg);
+  --color-neutral-soft: var(--sb-neutral-soft);
   --color-neutral-dot: var(--sb-neutral-dot);
   --color-code-bg: var(--sb-code-bg);
   --color-diff-add: var(--sb-diff-add);
   --color-diff-del: var(--sb-diff-del);
+  --color-chart-requests: var(--sb-chart-requests);
+  --color-chart-errors: var(--sb-chart-errors);
+  --color-chart-deploy: var(--sb-chart-deploy);
+  --color-chart-grid: var(--sb-chart-grid);
   --color-chart-2xx: var(--sb-chart-2xx);
   --color-chart-3xx: var(--sb-chart-3xx);
   --color-chart-4xx: var(--sb-chart-4xx);
@@ -233,8 +278,13 @@
   --color-chart-other: var(--sb-chart-other);
   --color-chart-series: var(--sb-chart-series);
   --color-scrim: var(--sb-scrim);
-  --shadow-raised: var(--sb-shadow-raised);
-  --shadow-popover: var(--sb-shadow-popover);
+  --shadow-card: var(--sb-shadow-card);
+  --shadow-button: var(--sb-shadow-button);
+  --shadow-primary: var(--sb-shadow-primary);
+  --shadow-field: var(--sb-shadow-field);
+  --shadow-field-hover: var(--sb-shadow-field-hover);
+  --shadow-pill: var(--sb-shadow-pill);
+  --shadow-float: var(--sb-shadow-float);
   --shadow-dialog: var(--sb-shadow-dialog);
 }
 
@@ -243,12 +293,51 @@
     font-family: var(--font-sans);
     font-synthesis: none;
     -webkit-text-size-adjust: 100%;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+    scrollbar-gutter: stable;
+  }
+  h1,
+  h2,
+  h3 {
+    text-wrap: balance;
+  }
+  p {
+    text-wrap: pretty;
+  }
+  code,
+  kbd,
+  samp,
+  pre {
+    font-family: var(--font-mono);
+    font-feature-settings: "zero";
   }
   *,
   ::after,
   ::before,
   ::backdrop {
     border-color: var(--sb-hairline);
+  }
+  /* Scope for TanStack Charts: its palette and tooltip read these variables. */
+  .sb-chart {
+    --ts-chart-1: var(--sb-chart-requests);
+    --ts-chart-2: var(--sb-chart-series);
+    --ts-chart-3: var(--sb-chart-4xx);
+    --ts-chart-4: var(--sb-chart-errors);
+    --ts-chart-5: var(--sb-chart-3xx);
+    --ts-chart-6: var(--sb-chart-other);
+    --ts-chart-tooltip-background: var(--sb-raised);
+    --ts-chart-tooltip-color: var(--sb-fg);
+    --ts-chart-tooltip-border: 0;
+    --ts-chart-tooltip-border-radius: 10px;
+    --ts-chart-tooltip-shadow: var(--sb-shadow-float);
+    --ts-chart-tooltip-padding: 8px 10px;
+    --ts-chart-tooltip-font: 500 12px/1.4 var(--font-sans);
+    font-variant-numeric: tabular-nums;
+  }
+  .sb-chart .ts-chart-tooltip {
+    z-index: var(--sb-z-tooltip);
   }
   ::selection {
     background: var(--sb-brand);

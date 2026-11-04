@@ -21,17 +21,27 @@ export function Checkbox({ label, description, invalid, className, id, ref, ...p
       id={controlId}
       aria-invalid={invalid || undefined}
       className={cn(
-        "mt-px inline-flex size-4 shrink-0 items-center justify-center rounded-sm border border-control-edge bg-surface text-on-brand",
-        "transition-[background-color,border-color] duration-(--sb-duration-fast) ease-standard",
-        "hover:border-fg-muted data-checked:border-brand data-checked:bg-brand data-indeterminate:border-brand data-indeterminate:bg-brand",
-        "data-disabled:cursor-not-allowed data-disabled:opacity-55 aria-invalid:border-danger-dot",
+        "mt-px inline-flex size-4.5 shrink-0 items-center justify-center rounded-xs bg-well text-on-brand",
+        "shadow-[inset_0_0_0_1.5px_var(--sb-control-edge)]",
+        "transition-[background-color,box-shadow] duration-(--sb-duration-hover) ease-hover",
+        "hover:shadow-[inset_0_0_0_1.5px_var(--sb-fg-muted)]",
+        "data-checked:bg-brand data-checked:shadow-none data-indeterminate:bg-brand data-indeterminate:shadow-none",
+        "data-disabled:cursor-not-allowed data-disabled:opacity-50",
+        "aria-invalid:shadow-[inset_0_0_0_1.5px_var(--sb-danger-dot)]",
         "relative before:absolute before:-inset-3 before:content-[''] pointer-fine:before:hidden",
         focusRing,
         !label && className,
       )}
       {...props}
     >
-      <BaseCheckbox.Indicator className="flex data-unchecked:hidden" keepMounted={false}>
+      <BaseCheckbox.Indicator
+        className={cn(
+          "flex transition-[opacity,scale] duration-(--sb-duration-hover) ease-out",
+          "data-starting-style:scale-(--sb-scale-icon) data-starting-style:opacity-0",
+          "data-ending-style:scale-(--sb-scale-icon) data-ending-style:opacity-0",
+        )}
+        keepMounted={false}
+      >
         <IndicatorIcon indeterminate={props.indeterminate} />
       </BaseCheckbox.Indicator>
     </BaseCheckbox.Root>

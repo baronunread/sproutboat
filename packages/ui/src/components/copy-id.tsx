@@ -15,6 +15,10 @@ export interface CopyIdProps extends Omit<ComponentProps<"span">, "children"> {
   onCopied?: (value: string) => void;
 }
 
+/** Both icons stay mounted; the idle one scales to 0.25, blurs and fades. Reduced motion keeps the fade. */
+const swap = (on: boolean): string =>
+  on ? "scale-100 opacity-100 blur-none" : "scale-(--sb-scale-icon) opacity-0 blur-xs motion-reduce:blur-none";
+
 export function CopyId({ value, display, label = "Copy ID", onCopied, className, ref, ...props }: CopyIdProps) {
   const [copied, setCopied] = useState(false);
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
@@ -33,17 +37,27 @@ export function CopyId({ value, display, label = "Copy ID", onCopied, className,
   }
 
   return (
-    <span ref={ref} className={cn("inline-flex min-w-0 max-w-full items-center gap-1", className)} {...props}>
-      <code className="min-w-0 truncate font-mono text-sm text-fg" title={value}>
+    <span
+      ref={ref}
+      className={cn(
+        "inline-flex h-8 min-w-0 max-w-full items-center gap-1 rounded-md bg-well ps-2.5 pe-1 shadow-field",
+        className,
+      )}
+      {...props}
+    >
+      <code className="min-w-0 truncate font-mono text-sm font-medium text-fg" title={value}>
         {display ?? value}
       </code>
       <IconButton
         label={copied ? "Copied" : label}
         size="sm"
         onClick={copy}
-        className="size-6 shrink-0 text-fg-muted hover:text-fg"
+        className="size-6 shrink-0 rounded-xs text-fg-muted hover:text-fg"
       >
-        {copied ? <CheckIcon className="text-brand-fg" /> : <CopyIcon />}
+        <span className="inline-grid size-4 *:col-start-1 *:row-start-1 *:transition-[opacity,scale,filter] *:duration-300 *:ease-out">
+          <CopyIcon className={swap(!copied)} />
+          <CheckIcon className={cn(swap(copied), "text-brand-fg")} />
+        </span>
       </IconButton>
       <span role="status" className="sr-only">
         {copied ? "Copied to clipboard" : ""}

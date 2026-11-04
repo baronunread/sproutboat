@@ -8,8 +8,15 @@
     background: var(--color-canvas);
     color: var(--color-fg);
     font-size: 14px;
-    line-height: 1.43;
-    -webkit-font-smoothing: antialiased;
+    line-height: 1.5;
     overflow-wrap: break-word;
   }
+}
+
+/* Easing demo: the dots use the real motion tokens. */
+.ease-track [data-dot] {
+  transition: translate calc(var(--sb-slow, 1) * 900ms) var(--ease-curve);
+}
+.ease-track[data-run="true"] [data-dot] {
+  translate: calc(100cqw - 100%) 0;
 }

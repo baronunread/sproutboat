@@ -16,10 +16,11 @@ export function Switch({ label, className, id, ref, ...props }: SwitchProps) {
       ref={ref}
       id={controlId}
       className={cn(
-        "relative inline-flex h-5 w-9 shrink-0 items-center rounded-full border border-control-edge bg-raised p-0.5",
-        "transition-[background-color,border-color] duration-(--sb-duration-base) ease-standard",
-        "hover:border-fg-muted data-checked:border-brand data-checked:bg-brand",
-        "data-disabled:cursor-not-allowed data-disabled:opacity-55",
+        "relative inline-flex h-6 w-10 shrink-0 items-center rounded-full bg-hover p-[3px]",
+        "shadow-[inset_0_0_0_1.5px_var(--sb-control-edge)]",
+        "transition-[background-color,box-shadow] duration-(--sb-duration-hover) ease-hover",
+        "hover:shadow-[inset_0_0_0_1.5px_var(--sb-fg-muted)] data-checked:bg-brand data-checked:shadow-none",
+        "data-disabled:cursor-not-allowed data-disabled:opacity-50",
         "before:absolute before:-inset-2 before:content-[''] pointer-fine:before:hidden",
         focusRing,
         !label && className,
@@ -28,8 +29,10 @@ export function Switch({ label, className, id, ref, ...props }: SwitchProps) {
     >
       <BaseSwitch.Thumb
         className={cn(
-          "block size-3.5 rounded-full bg-control-edge transition-transform duration-(--sb-duration-base) ease-standard",
+          "block size-[18px] rounded-full bg-fg-muted shadow-[0_1px_2px_oklch(0_0_0/0.25)]",
+          "[transition:translate_var(--sb-duration-dialog-in)_var(--ease-out),background-color_var(--sb-duration-hover)_var(--ease-hover)]",
           "data-checked:translate-x-4 data-checked:bg-on-brand rtl:data-checked:-translate-x-4",
+          "motion-reduce:[transition:background-color_var(--sb-duration-hover)_var(--ease-hover)]",
         )}
       />
     </BaseSwitch.Root>

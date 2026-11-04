@@ -1,8 +1,17 @@
 import { Popover as BasePopover } from "@base-ui/react/popover";
 import type { ComponentProps } from "react";
+import { usePortalContainer } from "../lib/portal";
 import { cn, floatingSurface, popupMotion, type WithClass } from "../lib/cn";
+import { InstantProvider, instantAttr, useInstant, useInstantOpen } from "../lib/instant";
 
-export const Popover = BasePopover.Root;
+export function Popover({ onOpenChange, ...props }: ComponentProps<typeof BasePopover.Root>) {
+  const [instant, handle] = useInstantOpen(onOpenChange);
+  return (
+    <InstantProvider value={instant}>
+      <BasePopover.Root onOpenChange={handle} {...props} />
+    </InstantProvider>
+  );
+}
 export const PopoverTrigger = BasePopover.Trigger;
 export const PopoverClose = BasePopover.Close;
 
@@ -20,8 +29,10 @@ export function PopoverContent({
   ref,
   ...props
 }: PopoverContentProps) {
+  const instant = useInstant();
+  const container = usePortalContainer();
   return (
-    <BasePopover.Portal>
+    <BasePopover.Portal container={container}>
       <BasePopover.Positioner
         side={side}
         align={align}
@@ -32,6 +43,7 @@ export function PopoverContent({
         <BasePopover.Popup
           ref={ref}
           className={cn(floatingSurface, popupMotion, "w-72 max-w-(--available-width) p-4 text-base", className)}
+          {...instantAttr(instant)}
           {...props}
         >
           {children}
