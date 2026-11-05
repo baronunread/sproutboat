@@ -148,13 +148,35 @@ function WebhookRow({ hook, onChanged }: { hook: Webhook; onChanged: () => void 
     return null;
   }
 
+  const actions = (
+    <span className="inline-flex flex-wrap items-center justify-end gap-2">
+      <SendTestButton hook={hook} />
+      <DeliveriesDialog hook={hook} />
+      <WebhookDialog hook={hook} onSaved={onChanged} />
+      <ConfirmDialog
+        trigger="Delete"
+        triggerLabel={`Delete webhook ${hook.url}`}
+        title="Delete this webhook?"
+        description={
+          <>
+            Events stop going to <code className="break-all">{hook.url}</code> and its delivery log is removed. This
+            cannot be undone.
+          </>
+        }
+        confirmLabel="Delete webhook"
+        onConfirm={remove}
+      />
+    </span>
+  );
+
   return (
     <TableRow>
-      <TableCell className="min-w-56">
+      <TableCell className="min-w-44">
         <span className="block break-all font-semibold">{hook.url}</span>
-        <span className="mt-1 flex flex-wrap items-center gap-x-2 text-sm text-fg-muted lg:hidden">
+        <span className="mt-1 flex flex-wrap items-center gap-x-2 text-sm text-fg-muted @lg:hidden">
           <span>{typesSummary(hook.types)}</span>
         </span>
+        <div className="mt-2 @md:hidden">{actions}</div>
       </TableCell>
       <TableCell hideBelow="md">
         <Badge tone="neutral">{hook.format === "discord" ? "Discord" : "JSON"}</Badge>
@@ -169,25 +191,8 @@ function WebhookRow({ hook, onChanged }: { hook: Webhook; onChanged: () => void 
           aria-label={`Enabled for ${hook.url}`}
         />
       </TableCell>
-      <TableCell className="text-end">
-        <span className="inline-flex flex-wrap items-center justify-end gap-2">
-          <SendTestButton hook={hook} />
-          <DeliveriesDialog hook={hook} />
-          <WebhookDialog hook={hook} onSaved={onChanged} />
-          <ConfirmDialog
-            trigger="Delete"
-            triggerLabel={`Delete webhook ${hook.url}`}
-            title="Delete this webhook?"
-            description={
-              <>
-                Events stop going to <code className="break-all">{hook.url}</code> and its delivery log is removed. This
-                cannot be undone.
-              </>
-            }
-            confirmLabel="Delete webhook"
-            onConfirm={remove}
-          />
-        </span>
+      <TableCell hideBelow="md" className="text-end">
+        {actions}
       </TableCell>
     </TableRow>
   );

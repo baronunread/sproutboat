@@ -188,6 +188,25 @@ function ResourceRow({
     return null;
   };
 
+  const actions = (
+    <span className="inline-flex items-center gap-2">
+      <RenameDialog product={product} resource={resource} onRenamed={onChanged} />
+      <ConfirmDialog
+        trigger="Delete"
+        triggerLabel={`Delete ${resource.name}`}
+        title={`Delete ${resource.name}?`}
+        description={
+          <>
+            This removes the {product.noun} <code>{resource.id}</code> and the data it holds. One still bound by a
+            deployed version cannot be deleted: redeploy those projects without it first. This cannot be undone.
+          </>
+        }
+        confirmLabel={`Delete ${product.noun}`}
+        onConfirm={remove}
+      />
+    </span>
+  );
+
   return (
     <TableRow>
       <TableCell className="min-w-40 font-semibold">
@@ -198,6 +217,7 @@ function ResourceRow({
         ) : (
           <span className="break-all">{resource.name}</span>
         )}
+        <div className="mt-2 @md:hidden">{actions}</div>
       </TableCell>
       <TableCell hideBelow="md">
         <CopyId value={resource.id} display={`${resource.id.slice(0, 14)}…`} label={`Copy ${product.noun} ID`} />
@@ -218,23 +238,8 @@ function ResourceRow({
       <TableCell hideBelow="lg" className="whitespace-nowrap text-fg-muted tabular-nums">
         {relativeTime(resource.createdAt)}
       </TableCell>
-      <TableCell className="whitespace-nowrap text-end">
-        <span className="inline-flex items-center gap-2">
-          <RenameDialog product={product} resource={resource} onRenamed={onChanged} />
-          <ConfirmDialog
-            trigger="Delete"
-            triggerLabel={`Delete ${resource.name}`}
-            title={`Delete ${resource.name}?`}
-            description={
-              <>
-                This removes the {product.noun} <code>{resource.id}</code> and the data it holds. One still bound by a
-                deployed version cannot be deleted: redeploy those projects without it first. This cannot be undone.
-              </>
-            }
-            confirmLabel={`Delete ${product.noun}`}
-            onConfirm={remove}
-          />
-        </span>
+      <TableCell hideBelow="md" className="whitespace-nowrap text-end">
+        {actions}
       </TableCell>
     </TableRow>
   );

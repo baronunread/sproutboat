@@ -133,7 +133,7 @@ function AdminUsers() {
                 Projects
               </TableHead>
               <TableHead hideBelow="xl">Joined</TableHead>
-              <TableHead>Status</TableHead>
+              <TableHead hideBelow="sm">Status</TableHead>
               <TableHead className="text-end">
                 <span className="sr-only">Actions</span>
               </TableHead>
@@ -153,9 +153,20 @@ function AdminUsers() {
             ) : (
               page?.users.map((user) => (
                 <TableRow key={user.id}>
-                  <TableCell className="min-w-48">
+                  <TableCell className="min-w-36">
                     <span className="block break-all font-semibold">{user.email}</span>
                     {user.name ? <span className="block text-sm text-fg-muted">{user.name}</span> : null}
+                    <div className="mt-1 @sm:hidden">
+                      {user.banned ? (
+                        <Badge tone="warning" dot>
+                          Disabled
+                        </Badge>
+                      ) : (
+                        <Badge tone="success" dot>
+                          Active
+                        </Badge>
+                      )}
+                    </div>
                   </TableCell>
                   <TableCell hideBelow="lg" className="text-fg-muted">
                     {user.role}
@@ -166,7 +177,7 @@ function AdminUsers() {
                   <TableCell hideBelow="xl" className="whitespace-nowrap text-fg-muted">
                     {relativeTime(user.createdAt)}
                   </TableCell>
-                  <TableCell>
+                  <TableCell hideBelow="sm">
                     {user.banned ? (
                       <Badge tone="warning" dot>
                         Disabled
