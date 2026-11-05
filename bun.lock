@@ -60,6 +60,7 @@
         "@happy-dom/global-registrator": "^20.0.0",
         "@testing-library/react": "^16.3.0",
         "@testing-library/user-event": "^14.6.1",
+        "axe-core": "^4.14.0",
       },
       "peerDependencies": {
         "react": "^19",
@@ -551,11 +552,11 @@
 
     "@sproutboat/config": ["@sproutboat/config@0.6.0", "", {}, "sha512-fx7B412Sy4YEDXMSaUx07+GyAOQDOaGSW7kO4hmA1SZBUsRX3evx+zH7tyFv6b0PHxP+htkySl+8wZUdWc0vjA=="],
 
+    "@sproutboat/ikada": ["@sproutboat/ikada@workspace:packages/ikada"],
+
     "@sproutboat/runtime": ["@sproutboat/runtime@0.41.0", "", {}, "sha512-HEvLE24U1WwqGwZ5nwvGE6irvL9eWtv+Ltl4cPbYhvKef34y64KalYR6jXVdi/u4KrAXOAYK+kN9wUt4Sgvqlw=="],
 
     "@sproutboat/toolchain": ["@sproutboat/toolchain@0.21.3", "", {}, "sha512-OTB0tBiJGf1EBCAUg02S5wc8+eiSG6Lm5y0ZJfamzblFjhpbm1G+pawMAvR6o2tlymL4PY+fYoOpk747fAUhVQ=="],
-
-    "@sproutboat/ikada": ["@sproutboat/ikada@workspace:packages/ikada"],
 
     "@sproutboat/wire": ["@sproutboat/wire@0.21.4", "", { "dependencies": { "@sproutboat/assets": "^0.3.0", "@sproutboat/runtime": "^0.41.0" } }, "sha512-nmGeTDQyMo70XuoJsGw6Pz/mIgaDmKS7ePN+1qxvnLItXW62rbsKhiIQLUntRgBMPGU3lGXvI9jCKBr0RCCGhQ=="],
 
@@ -740,6 +741,8 @@
     "astring": ["astring@1.9.0", "", { "bin": { "astring": "bin/astring" } }, "sha512-LElXdjswlqjWrPpJFg1Fx4wpkOCxj1TDHlSV4PlaRxHGWko024xICaa97ZkMfs6DRKlCguiAI+rbXv5GWwXIkg=="],
 
     "atomically": ["atomically@2.1.1", "", { "dependencies": { "stubborn-fs": "^2.0.0", "when-exit": "^2.1.4" } }, "sha512-P4w9o2dqARji6P7MHprklbfiArZAWvo07yW7qs3pdljb3BWr12FIB7W+p0zJiuiVsUpRO0iZn1kFFcpPegg0tQ=="],
+
+    "axe-core": ["axe-core@4.14.0", "", {}, "sha512-9WTZxEjsZ7b13TH8JPmbV2z8CHbl80/2hm3XPEG4JgNdQLK81IBRXmSxHfMAOkSqQeRxT/0dwNDz2GOm3zzpcQ=="],
 
     "babel-dead-code-elimination": ["babel-dead-code-elimination@1.0.12", "", { "dependencies": { "@babel/core": "^7.23.7", "@babel/parser": "^7.23.6", "@babel/traverse": "^7.23.7", "@babel/types": "^7.23.6" } }, "sha512-GERT7L2TiYcYDtYk1IpD+ASAYXjKbLTDPhBtYj7X1NuRMDTMtAx9kyBenub1Ev41lo91OHCKdmP+egTDmfQ7Ig=="],
 
