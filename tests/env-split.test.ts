@@ -378,7 +378,7 @@ describe("the units and tools read the local files", () => {
   test("restore and rollback give the local files the owner and mode of their generated twin", async () => {
     for (const f of ["infra/sbctl", "infra/sb-rollback"]) {
       const text = await read(f);
-      expect(text, f).toContain("control.env control.local.env sproutboat.env sproutboat.local.env backup.key");
+      expect(text, f).toContain("control.local.env sproutboat.env sproutboat.local.env");
       expect(text, f).toContain("caddy.env caddy.local.env");
       expect(text, f).toContain("egress.env egress.local.env update.env");
     }

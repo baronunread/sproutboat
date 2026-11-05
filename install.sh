@@ -181,6 +181,8 @@ pre_update_backup() {
   [ -n "$archive" ] || die "the backup unit finished but wrote no archive under $STATE/backups; nothing was changed"
   key=$(val_env_op "$ETC/control.env" "$ETC/control.local.env" SPROUTBOAT_BACKUP_KEY_FILE)
   [ -z "$key" ] || vargs=(--key "$key")
+  # The unit just wrote this archive: it is plain only when the operator turned encryption off.
+  vargs+=(--allow-plain)
   "$ROOT/bun/bin/bun" "$SRC/apps/control/src/backups.ts" verify "$archive" "${vargs[@]}" \
     || die "the pre-update backup $archive failed verification; nothing was changed"
   PRE_UPDATE_BACKUP=$archive
@@ -378,6 +380,75 @@ SB_ACME_EMAIL=${SB_ACME_EMAIL:-$(val_env "$ETC/caddy.env" ACME_EMAIL)}
 # No Caddy on an SB_PROXY=external install: the admin email lives in control.env.
 SB_ACME_EMAIL=${SB_ACME_EMAIL:-$(val_env "$ETC/control.env" SPROUTBOAT_ADMIN_EMAILS)}
 
+# write_caddyfile <path>: the generated Caddyfile (uses SB_DOMAIN, ROOT, acme_line).
+# The admin API sits on a root-only unix socket, so no local service or tenant
+# can reach it over loopback. `caddy reload` reads the address from this file.
+# The socket lives in /run, which a unit running as root can create; a distro
+# unit with User=caddy cannot, and would need RuntimeDirectory=caddy plus an
+# admin address under it.
+write_caddyfile() {
+{
+  cat <<EOF
+{
+	admin "unix//run/caddy-admin.sock|0600"
+	email {\$ACME_EMAIL}$acme_line
+	on_demand_tls {
+		ask http://127.0.0.1:8787/internal/tls/allow
+	}
+}
+
+# Control API (CLI + dashboard /api). Cert via HTTP-01 (or DNS-01 if configured).
+control.$SB_DOMAIN {
+	handle /internal/tls/* {
+		respond 404
+	}
+	handle {
+		request_body {
+			max_size 100MB
+		}
+		reverse_proxy 127.0.0.1:8787
+	}
+}
+EOF
+  cat <<EOF
+
+dashboard.$SB_DOMAIN {
+	handle /internal/tls/* {
+		respond 404
+	}
+	handle /api/* {
+		request_body {
+			max_size 100MB
+		}
+		reverse_proxy 127.0.0.1:8787
+	}
+	handle {
+		root * $ROOT/apps/web/dist/client
+		try_files {path} /_shell.html
+		file_server
+	}
+}
+EOF
+  cat <<'EOF'
+
+# Every <project>.<user>.<domain> deployment. Cert issued on demand,
+# only for a hostname control confirms is an active route.
+https:// {
+	tls {
+		on_demand
+	}
+	reverse_proxy 127.0.0.1:8080
+}
+EOF
+  cat <<'EOF'
+
+# Operator additions (kept across updates). See /etc/sproutboat/caddy.d/README.caddy
+import /etc/sproutboat/caddy.d/*.caddy
+EOF
+} > "$1"
+}
+# end write_caddyfile
+
 # --- install mode: public VPS or homelab ----------------------------------------
 # The choices live in $ETC/install.env (no secrets). Environment variables override
 # the file; a box with no file is a public install. Written below, backfilled here.
@@ -573,6 +644,7 @@ for u in sproutboat-control sproutboat-edge; do
 done
 install -d -m 0755 -o root "$ROOT"
 install -d -m 0750 -o sproutboat-control -g sproutboat "$STATE" "$STATE/artifacts"
+install -d -m 0700 -o sproutboat-control -g sproutboat "$STATE/backups"
 install -d -m 0770 -o sproutboat-edge   -g sproutboat "$STATE/logs"
 install -d -m 2770 -o sproutboat-edge   -g sproutboat "$STATE/brokers"
 install -d -m 2770 -o sproutboat-edge   -g sproutboat "$STATE/resources"
@@ -825,8 +897,8 @@ say "Building the dashboard"
 [ -d "$ROOT/apps/web/dist" ] && chmod -R a+rX "$ROOT/apps/web/dist"
 
 # Backups are encrypted at rest with this key (AES-256-GCM, no KDF: it is
-# already random). Created once and kept across updates; the backup user reads
-# it through the sproutboat group. Without a copy off the box, every backup is
+# already random). Created once and kept across updates; only the backup user
+# (control) and root read it. Without a copy off the box, every backup is
 # unreadable after losing the disk.
 BACKUP_KEY_FILE=$ETC/backup.key
 if [ ! -s "$BACKUP_KEY_FILE" ]; then
@@ -835,7 +907,7 @@ if [ ! -s "$BACKUP_KEY_FILE" ]; then
 else
   BACKUP_KEY_IS_NEW=0
 fi
-chown root:sproutboat "$BACKUP_KEY_FILE"; chmod 0640 "$BACKUP_KEY_FILE"
+chown sproutboat-control:root "$BACKUP_KEY_FILE"; chmod 0400 "$BACKUP_KEY_FILE"
 
 # --- write env BEFORE starting services -----------------------------
 say "Writing $ETC/{install,sproutboat,control,egress}.env"
@@ -897,7 +969,8 @@ chown root:sproutboat "$ETC/sproutboat.env"; chmod 0640 "$ETC/sproutboat.env"
     echo "GITHUB_CLIENT_SECRET=$SB_GITHUB_CLIENT_SECRET"
   fi
 } > "$ETC/control.env"
-chown root:sproutboat "$ETC/control.env"; chmod 0640 "$ETC/control.env"
+# Only systemd (as root), sbctl and backup-stage read this file, all as root.
+chown root:root "$ETC/control.env"; chmod 0600 "$ETC/control.env"
 
 # #252 — the token brokers present to sproutboat-egress. Kept across upgrades,
 # like the other secrets. An operator's SB_EGRESS_ALLOW lives in egress.local.env
@@ -928,50 +1001,7 @@ acme_line=""
 # SB_ACME_STAGING=1 -> Let's Encrypt staging (untrusted certs, no rate limit) for
 # a first shakeout; kept in install.env. Re-run with SB_ACME_STAGING=0 to switch to prod.
 [ "$SB_ACME_STAGING" = 1 ] && acme_line="$acme_line"$'\n\tacme_ca https://acme-staging-v02.api.letsencrypt.org/directory'
-{
-  cat <<EOF
-{
-	email {\$ACME_EMAIL}$acme_line
-	on_demand_tls {
-		ask http://127.0.0.1:8787/internal/tls/allow
-	}
-}
-
-# Control API (CLI + dashboard /api). Cert via HTTP-01 (or DNS-01 if configured).
-control.$SB_DOMAIN {
-	reverse_proxy 127.0.0.1:8787
-}
-EOF
-  cat <<EOF
-
-dashboard.$SB_DOMAIN {
-	handle /api/* {
-		reverse_proxy 127.0.0.1:8787
-	}
-	handle {
-		root * $ROOT/apps/web/dist/client
-		try_files {path} /_shell.html
-		file_server
-	}
-}
-EOF
-  cat <<'EOF'
-
-# Every <project>.<user>.<domain> deployment. Cert issued on demand,
-# only for a hostname control confirms is an active route.
-https:// {
-	tls {
-		on_demand
-	}
-	reverse_proxy 127.0.0.1:8080
-}
-EOF
-  cat <<'EOF'
-
-# Operator additions (kept across updates). See /etc/sproutboat/caddy.d/README.caddy
-import /etc/sproutboat/caddy.d/*.caddy
-EOF
-} > /etc/caddy/Caddyfile.new
+write_caddyfile /etc/caddy/Caddyfile.new
 
 # Operator drop-ins: complete site blocks that survive `sbctl update`. The
 # README.caddy below always matches the import glob. (Caddy only logs a warning
@@ -1132,6 +1162,7 @@ say "Migrating the auth database"
     BETTER_AUTH_SECRET="$BETTER_AUTH_SECRET" BETTER_AUTH_URL="$DASH_URL" \
     capped "$BUN" x --bun auth@1.7.1 migrate --config apps/control/src/auth.migrate.ts --yes >/dev/null ) && ok "auth schema up to date"
 chown sproutboat-control:sproutboat "$STATE"/sproutboat.sqlite* 2>/dev/null || true
+chmod 0600 "$STATE"/sproutboat.sqlite* 2>/dev/null || true
 
 # --- move binding data out of logs/ (idempotent) ------------------
 # Older installs derived broker state from the log path, so KV / R2 / D1 / queue

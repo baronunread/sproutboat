@@ -11,6 +11,7 @@ Before=sproutboat-edge.service
 StartLimitIntervalSec=0
 
 [Service]
+LimitNOFILE=65536
 Type=simple
 DynamicUser=yes
 WorkingDirectory=/opt/sproutboat

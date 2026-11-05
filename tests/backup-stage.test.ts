@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, expect, test } from "bun:test";
-import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -11,8 +11,8 @@ beforeEach(async () => {
   dir = await mkdtemp(join(tmpdir(), "sb-stage-"));
   await mkdir(join(dir, "etc"), { recursive: true });
   await mkdir(join(dir, "state"), { recursive: true });
-  await writeFile(join(dir, "etc", "control.env"), "SPROUTBOAT_BOOTSTRAP_TOKEN=abc\n");
-  await writeFile(join(dir, "etc", "backup.key"), "k".repeat(64) + "\n");
+  await writeFile(join(dir, "etc", "control.env"), "SPROUTBOAT_BOOTSTRAP_TOKEN=abc\n", { mode: 0o600 });
+  await writeFile(join(dir, "etc", "backup.key"), "k".repeat(64) + "\n", { mode: 0o400 });
 });
 afterEach(async () => {
   await rm(dir, { recursive: true, force: true });
@@ -99,6 +99,12 @@ test("stage: snapshots /etc/sproutboat and Caddy data (no locks), --delete keeps
     "SPROUTBOAT_BOOTSTRAP_TOKEN=abc\n",
   );
   expect((await readFile(join(snap, "etc", "sproutboat", "backup.key"), "utf8")).length).toBe(65);
+  // Secret files are never widened by the copy.
+  for (const [name, mode] of [
+    ["control.env", 0o600],
+    ["backup.key", 0o400],
+  ] as const)
+    expect((await stat(join(snap, "etc", "sproutboat", name))).mode & 0o777).toBe(mode);
   expect(await readFile(join(snap, "caddy", "certificates", "acme", "site.crt"), "utf8")).toBe("CERT");
   expect(await Bun.file(join(snap, "caddy", "locks", "issue.lock")).exists()).toBe(false);
 
