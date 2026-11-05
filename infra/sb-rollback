@@ -19,9 +19,15 @@
 # tolerates it by policy: a release only adds columns the previous one ignores, or
 # drops columns it re-adds when started (0.14.0 and 0.13.x work this way).
 #
+# The artifact layout is put back too when the restored release predates per-account
+# directories (its tree has no apps/control/src/artifact-layout.ts): every entry the
+# update moved goes back under its digest name, by the same renames, with nothing running.
+#
 # Test overrides: SB_ROLLBACK_ROOT (prefix for every host path), SB_ROLLBACK_PREV,
 # SB_SYSTEMCTL (default systemctl; `true` stubs it), SB_HEALTH_BIN (the health gate
-# to run; default is the restored /usr/local/lib/sproutboat/health).
+# to run; default is the restored /usr/local/lib/sproutboat/health), SB_LAYOUT_BIN (the
+# layout tool; default /usr/local/lib/sproutboat/layout.ts), SB_BUN (the Bun that runs it;
+# default is the restored tree's).
 set -euo pipefail
 
 PFX=${SB_ROLLBACK_ROOT:-}
@@ -31,6 +37,9 @@ SYSTEMCTL=${SB_SYSTEMCTL:-systemctl}
 LIB=$PFX/usr/local/lib/sproutboat
 CADDY_BIN=$PFX/usr/local/bin/caddy-sproutboat
 ETC=$PFX/etc/sproutboat
+STATE=$PFX/var/lib/sproutboat
+LAYOUT=${SB_LAYOUT_BIN:-$LIB/layout.ts}
+BUN=${SB_BUN:-$ROOT/bun/bin/bun}
 
 die() { printf 'sb-rollback: %s\n' "$*" >&2; exit 1; }
 
@@ -73,11 +82,30 @@ mirror() { # mirror <relative dir> [rsync args]: dest matches the snapshot, or i
     rm -rf "$PFX/${rel:?}"
   fi
 }
-mirror usr/local/lib/sproutboat --exclude /rollback --exclude /health
+mirror usr/local/lib/sproutboat --exclude /rollback --exclude /health --exclude /layout.ts
 for d in caddy sproutboat-control sproutboat-edge sproutboat-egress; do
   mirror "etc/systemd/system/$d.service.d"
 done
 echo "  restored config, units, sbctl, helper scripts and engines"
+
+# 2b. The artifact layout, for a release that reads artifacts/<digest>. Nothing may be
+# running: a broker or the edge would recreate per-account names while entries move.
+layout_reverted=0 layout_needed=0
+if [ ! -f "$ROOT/apps/control/src/artifact-layout.ts" ] && [ -f "$STATE/sproutboat.sqlite" ]; then
+  layout_needed=1
+  if [ -f "$LAYOUT" ] && [ -x "$BUN" ]; then
+    "$SYSTEMCTL" stop sproutboat-edge sproutboat-control
+    SPROUTBOAT_DATABASE_PATH="$STATE/sproutboat.sqlite" SPROUTBOAT_ARTIFACTS_DIR="$STATE/artifacts" \
+      SPROUTBOAT_BROKER_STATE_DIR="$STATE/brokers" SPROUTBOAT_LOG_PATH="$STATE/logs/requests.ndjson" \
+      SPROUTBOAT_ROUTE_SNAPSHOT="$STATE/routes.json" "$BUN" "$LAYOUT" revert && layout_reverted=1 \
+      || echo "  could not put the whole artifact layout back; run 'sudo sbctl rollback' again to finish, or restore a backup: sbctl restore <archive> --force" >&2
+    own sproutboat-control:sproutboat "$STATE"/sproutboat.sqlite* 2>/dev/null || true
+    chmod 0600 "$STATE"/sproutboat.sqlite* 2>/dev/null || true
+    [ "$layout_reverted" = 1 ] && echo "  put the artifact layout back for $RELEASE"
+  else
+    echo "  no layout tool ($LAYOUT) or Bun ($BUN): the artifact layout was not put back; deployments from before the update may not serve under $RELEASE" >&2
+  fi
+fi
 
 # 3. Owners and modes, as install.sh sets them.
 for f in control.local.env sproutboat.env sproutboat.local.env; do
@@ -111,6 +139,10 @@ if [ -x "$HEALTH" ]; then "$HEALTH" || rc=$?; else echo "  no health gate at $HE
 
 echo "rolled back to $RELEASE"
 echo "note: a database migration run by the new release stays applied. The previous release tolerates it by policy: a release only adds columns the previous one ignores, or drops columns it re-adds."
+if [ "$layout_needed" = 1 ] && [ "$layout_reverted" = 0 ]; then
+  echo "the artifact layout was not put back for $RELEASE (see above)." >&2
+  exit 1
+fi
 if [ "$rc" != 0 ]; then
   echo "the host is still unhealthy after the rollback." >&2
   echo "next step: restore the pre-update backup: sbctl backup list, then sbctl restore <archive> --force" >&2

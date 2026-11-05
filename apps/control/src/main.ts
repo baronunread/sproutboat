@@ -21,7 +21,7 @@ import {
 } from "./deployments";
 import { addDomain, deleteDomain, listDomains, verifyDomain } from "./domains";
 import { listSecrets, putSecret, removeSecret } from "./secrets";
-import { sweepBrokerState, storeDatabase } from "./store";
+import { LegacyLayoutError, sweepBrokerState, storeDatabase, syncRoutes } from "./store";
 import {
   createResourceHandler,
   createResourceOfKind,
@@ -113,11 +113,22 @@ async function activeHostnames(): Promise<Set<string>> {
   }
 }
 
+// Open the store now, not on the first request: its schema migrations must have run
+// before anything is served or swept, and an install whose artifact layout the installer
+// has not migrated yet must not serve at all. 78 (EX_CONFIG) is in the unit's
+// RestartPreventExitStatus: one clear line, no restart loop.
+try {
+  storeDatabase();
+} catch (error) {
+  if (!(error instanceof LegacyLayoutError)) throw error;
+  console.error(`control: refusing to start: ${error.message}`);
+  process.exit(78);
+}
+// The route snapshot is derived state: regenerate it so the edge never keeps a stale
+// path from before a layout migration or a restore.
+void syncRoutes().catch((error) => console.error("control: route sync at start failed", error));
 // Clear broker state left by versions collected before the sweep existed, and
 // by any collection a crash interrupted. Later collections sweep as they go.
-// Open the store now, not on the first request: its migrations (schema, artifact
-// layout) must have run before anything is served or swept.
-storeDatabase();
 void sweepBrokerState().then((removed) => {
   if (removed.length > 0) console.log(`removed broker state for ${removed.length} collected artifact(s)`);
 });

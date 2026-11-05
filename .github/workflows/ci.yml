@@ -22,6 +22,7 @@ jobs:
       # so this can gate now — before that it could never have passed.
       - run: bun run fmt:check
       - run: bun test apps/ services/ tests/
+      - run: sudo -E "$(command -v bun)" test tests/layout-root.test.ts
       - run: bun run test:ikada
       - run: bun run --cwd packages/ikada tokens:check
 

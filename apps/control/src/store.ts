@@ -1,20 +1,9 @@
 import { Database } from "bun:sqlite";
-import {
-  cpSync,
-  existsSync,
-  lchownSync,
-  lstatSync,
-  mkdirSync,
-  readdirSync,
-  readFileSync,
-  renameSync,
-  rmSync,
-} from "node:fs";
+import { existsSync, readFileSync, renameSync } from "node:fs";
 import { mkdir, readdir, rename, rm, stat, writeFile } from "node:fs/promises";
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { dirname, resolve } from "node:path";
 import { validateManifest } from "@sproutboat/artifact";
-import { logPath } from "./logs";
 import { decryptSecret, encryptSecret } from "./secrets-crypto";
 
 /**
@@ -295,9 +284,15 @@ function connection(): Database {
   dbConnectedPath = dbPath();
   importLegacyDeployments();
   if (addedBinarySize) backfillBinarySizes(database);
-  if (migrateArtifactLayout(database)) {
-    // The edge reloads routes.json on change: hand it the new sprout paths.
-    void syncRoutes().catch((error) => console.error("store: route sync after artifact migration failed", error));
+  const legacy = legacyLayoutCount(database);
+  if (legacy > 0) {
+    // Not ours to fix: the installer moves the layout as root before the services start
+    // (apps/control/src/artifact-layout.ts). Serving the old paths would name broker state and
+    // logs after the wrong directory, so refuse. Forget the connection so the next call checks again.
+    db = undefined;
+    dbConnectedPath = "";
+    database.close();
+    throw new LegacyLayoutError(legacy);
   }
   return database;
 }
@@ -423,91 +418,32 @@ function keyArtifactsByOwner(database: Database): void {
 }
 
 /**
- * Move an existing install's artifacts from `artifacts/<digest>/` to `artifacts/<ownerDir>/<digest>/`, with the
- * broker state (`brokers/<digest>` -> `brokers/<ownerDir>-<digest>`) and sprout log
- * (`logs/sprouts/<digest>.log` -> `<ownerDir>-<digest>.log`) that go with them. A directory several accounts
- * share is copied once per account, then removed. Each copy is skipped when its target already exists and the
- * legacy source is removed only after every copy is in place, with the database update last, so a crash at
- * any point is finished by the next start. Returns whether any row was rewritten.
+ * Thrown by `storeDatabase()` while any deployment still has its artifact at `artifacts/<digest>/` (the layout
+ * up to 0.14.0). main.ts turns it into one clear log line and a non-restarting exit.
  */
-export function migrateArtifactLayout(database: Database = connection()): boolean {
+export class LegacyLayoutError extends Error {
+  constructor(readonly deployments: number) {
+    super(
+      `the artifact layout of this install has not been migrated: ${deployments} deployment(s) still use ` +
+        "artifacts/<digest> paths. Run 'sudo sbctl update' or 'sudo bash /opt/sproutboat/install.sh', which " +
+        "moves them to per-account directories as root before the services start; this service does not serve until then",
+    );
+    this.name = "LegacyLayoutError";
+  }
+}
+
+/** Deployments whose sprout path is still `artifacts/<digest>/sprout`. The installer's layout tool rewrites them. */
+export function legacyLayoutCount(database: Database = connection()): number {
   // SAFETY: SQLite returns exactly the columns selected here.
-  const rows = database.query("SELECT id, owner_id, artifact_digest, sprout_path FROM deployments").all() as Array<{
-    id: string;
-    owner_id: string;
+  const rows = database.query("SELECT artifact_digest, sprout_path FROM deployments").all() as Array<{
     artifact_digest: string;
     sprout_path: string;
   }>;
-  const legacy = rows.filter(
+  return rows.filter(
     (row) =>
       /^[a-f0-9]{64}$/.test(row.artifact_digest) &&
       row.sprout_path === resolve(artifactRoot(), row.artifact_digest, "sprout"),
-  );
-  if (legacy.length === 0) return false;
-  const owners = new Map<string, Set<string>>();
-  for (const row of legacy) {
-    const set = owners.get(row.artifact_digest) ?? new Set<string>();
-    owners.set(row.artifact_digest, set.add(row.owner_id));
-  }
-  const logs = resolve(dirname(logPath()), "sprouts");
-
-  // A copy made by root (sbctl restore opens the store too) must still belong to the
-  // service user that writes it, or the edge cannot append to its broker state and log.
-  const keepOwner = (from: string, copy: string) => {
-    if (process.getuid?.() !== 0) return;
-    const { uid, gid } = lstatSync(from);
-    const walk = (path: string) => {
-      lchownSync(path, uid, gid);
-      if (lstatSync(path).isDirectory()) for (const entry of readdirSync(path)) walk(resolve(path, entry));
-    };
-    walk(copy);
-  };
-  // Copy a legacy path to each target that does not exist yet (via a `.migrating` sibling, so a crash never
-  // leaves a half-copied target), then remove the legacy path.
-  const spread = (from: string, targets: string[], what: string, directory: boolean) => {
-    if (!existsSync(from)) return;
-    for (const to of targets) {
-      if (existsSync(to)) continue;
-      const partial = `${to}.migrating`;
-      mkdirSync(dirname(to), { recursive: true, mode: 0o750 });
-      rmSync(partial, { recursive: true, force: true });
-      cpSync(from, partial, { recursive: directory, preserveTimestamps: true });
-      keepOwner(from, partial);
-      renameSync(partial, to);
-      console.log(`store: copied ${what} ${from} -> ${to}`);
-    }
-    rmSync(from, { recursive: true, force: true });
-    console.log(`store: removed legacy ${what} ${from}`);
-  };
-
-  for (const [digest, set] of owners) {
-    const ownerIds = [...set];
-    const named = (ownerId: string) => `${artifactOwnerDir(ownerId)}-${digest}`;
-    spread(
-      resolve(artifactRoot(), digest),
-      ownerIds.map((ownerId) => artifactDir(ownerId, digest)),
-      "artifact",
-      true,
-    );
-    spread(
-      resolve(brokersDir(), digest),
-      ownerIds.map((ownerId) => resolve(brokersDir(), named(ownerId))),
-      "broker state",
-      true,
-    );
-    spread(
-      resolve(logs, `${digest}.log`),
-      ownerIds.map((ownerId) => resolve(logs, `${named(ownerId)}.log`)),
-      "sprout log",
-      false,
-    );
-  }
-  const update = database.query("UPDATE deployments SET sprout_path = ? WHERE id = ?");
-  database.transaction(() => {
-    for (const row of legacy) update.run(resolve(artifactDir(row.owner_id, row.artifact_digest), "sprout"), row.id);
-  })();
-  console.log(`store: moved ${legacy.length} deployment(s) to per-owner artifact directories`);
-  return true;
+  ).length;
 }
 
 const legacyOrOwnerDir = (ownerId: string, digest: string): string =>
