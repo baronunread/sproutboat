@@ -204,6 +204,10 @@ describe("Phase A contracts", () => {
     expect(edgeUnit).toContain(`Environment=SB_EGRESS_URL=http://127.0.0.1:${exec![1]}`);
     expect(edgeUnit).toContain("EnvironmentFile=-/etc/sproutboat/egress.env");
     expect(egressUnit).toContain("EnvironmentFile=/etc/sproutboat/egress.env");
+    // Control sends webhooks through the same service, with the same token file.
+    const controlUnit = await Bun.file("infra/systemd/sproutboat-control.service").text();
+    expect(controlUnit).toContain(`Environment=SB_EGRESS_URL=http://127.0.0.1:${exec![1]}`);
+    expect(controlUnit).toContain("EnvironmentFile=-/etc/sproutboat/egress.env");
     // The edge's own deny stays: sprouts must not gain a route.
     expect(edgeUnit).toContain("IPAddressDeny=any");
 

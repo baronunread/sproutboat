@@ -629,6 +629,66 @@ All configurable in `/etc/sproutboat/control.env`; sane defaults apply if unset.
 | `SPROUTBOAT_MAX_DOMAINS_PER_PROJECT`       | 5       | custom domains one project may attach                                       |
 | `SPROUTBOAT_MAX_SECRETS_PER_PROJECT`       | 64      | secrets one project may hold                                                |
 | `SPROUTBOAT_AUTH_RATE_MAX` / `_WINDOW_SEC` | 30 / 60 | Better Auth throttle on `/api/auth/*` (login, token)                        |
+| `SPROUTBOAT_MAX_WEBHOOKS_PER_ACCOUNT`      | 10      | webhooks one account may register                                           |
+| `SPROUTBOAT_EVENTS_KEEP_DAYS`              | 365     | days of Activity events kept                                                |
+| `SPROUTBOAT_EVENTS_MAX_ROWS`               | 50000   | Activity events kept in total; the oldest go first                          |
+
+## Activity and webhooks
+
+Control records what changes on the box in an `events` table and serves it at
+`GET /api/activity` (scoped to the caller; admins can pass `?all=1`).
+
+- **What is recorded:** deploys (started, succeeded, failed), activations and
+  rollbacks, version and project deletes, project creation, secret set and
+  delete (the name only, never the value), custom domains (added, verified,
+  removed; never the verification token), CLI token created and revoked, member
+  created, disabled and enabled, backups (created, failed) and webhook tests.
+  Each type may carry only an allowlisted set of fields, so a secret, token or
+  hash cannot end up in the history by mistake. Backup events belong to the box
+  and only admins see them.
+- **Retention:** `SPROUTBOAT_EVENTS_KEEP_DAYS` and `SPROUTBOAT_EVENTS_MAX_ROWS`
+  (above). Pruning runs at the first event after start and every 100th event
+  after that. The table is part of the SQLite file, so backups carry it; a
+  0.14.0 install ignores it.
+- **Webhooks:** each account registers up to `SPROUTBOAT_MAX_WEBHOOKS_PER_ACCOUNT`
+  URLs (`POST /api/webhooks`) with a type filter (`deploy.*` or exact types; an
+  empty list means everything) and a format, `json` or `discord`. Failed
+  deliveries retry at +30 s, +2 min, +10 min and +1 h, then are marked failed;
+  the last 200 deliveries per webhook are kept and listed at
+  `GET /api/webhooks/:id/deliveries`.
+- **Egress:** control never connects to a webhook URL itself. It hands each
+  delivery to the egress service (`SB_EGRESS_URL`, with the token from
+  `/etc/sproutboat/egress.env`, which the control unit now reads), so private
+  and reserved addresses are refused just as they are for a sprout's `fetch()`.
+  The delivery log shows `refused` and the reason, and a refusal is not retried.
+  To deliver to a host on a private address, add it to `SB_EGRESS_ALLOW` in
+  `egress.env` (see [Outbound fetch](#outbound-fetch)) and restart
+  `sproutboat-egress`. Without egress configured a delivery fails with
+  `egress not configured`.
+- **Discord:** create a webhook in the channel's Integrations settings, paste its
+  URL as the webhook URL and choose the `discord` format. The signature header is
+  sent too; Discord ignores it.
+
+### Verifying a delivery
+
+Every request carries `x-sproutboat-signature: t=<unix seconds>,v1=<hex>`, where
+`v1` is the HMAC-SHA256 of `<t>.<raw body>` with the webhook's secret (shown once,
+when the webhook is created). `x-sproutboat-event` and `x-sproutboat-delivery`
+carry the type and a delivery id. Check the signature over the raw bytes, and
+reject an old `t` to stop replays:
+
+```js
+import { createHmac, timingSafeEqual } from "node:crypto";
+
+function verify(rawBody, header, secret, toleranceSeconds = 300) {
+  const parts = Object.fromEntries(header.split(",").map((part) => part.split("=")));
+  const expected = createHmac("sha256", secret).update(`${parts.t}.${rawBody}`).digest("hex");
+  const fresh = Math.abs(Date.now() / 1000 - Number(parts.t)) <= toleranceSeconds;
+  const a = Buffer.from(expected);
+  const b = Buffer.from(parts.v1 ?? "");
+  return fresh && a.length === b.length && timingSafeEqual(a, b);
+}
+```
 
 ## Logs
 
