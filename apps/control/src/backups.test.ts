@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, expect, test } from "bun:test";
 import { Database } from "bun:sqlite";
-import { mkdir, mkdtemp, rm, stat, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import * as mod from "./backups";
@@ -19,6 +19,10 @@ beforeEach(async () => {
   // that reaches this file after them archived their directory (#289 CI).
   delete process.env.SPROUTBOAT_RESOURCE_DIR;
   delete process.env.SPROUTBOAT_BACKUP_KEEP;
+  // Most tests read the archive with plain tar; the encrypted ones turn this back on.
+  process.env.SPROUTBOAT_BACKUP_ENCRYPT = "off";
+  process.env.SPROUTBOAT_BACKUP_KEY_FILE = join(dir, "backup.key");
+  delete process.env.SPROUTBOAT_BACKUP_S3_ENDPOINT;
   delete process.env.SPROUTBOAT_BACKUP_S3_BUCKET;
   delete process.env.SPROUTBOAT_BACKUP_S3_ACCESS_KEY_ID;
   delete process.env.SPROUTBOAT_BACKUP_S3_SECRET_ACCESS_KEY;
@@ -123,7 +127,7 @@ test("createBackup + restoreBackup: binding data survives onto an empty install 
   try {
     process.env.SPROUTBOAT_STATE_DIR = fresh;
     process.env.SPROUTBOAT_DATABASE_PATH = join(fresh, "sproutboat.sqlite");
-    expect(await mod.restoreBackup(archive)).toEqual([]);
+    expect((await mod.restoreBackup(archive)).warnings).toEqual([]);
     const read = (path: string) => {
       const db = new Database(path, { readonly: true });
       try {
@@ -150,7 +154,7 @@ test("createBackup + restoreBackup: binding data survives onto an empty install 
     const staleWal = await Bun.file(`${target}-wal`).bytes();
     live.close();
     await writeFile(`${target}-wal`, staleWal);
-    expect(await mod.restoreBackup(archive, { force: true })).toEqual([]);
+    expect((await mod.restoreBackup(archive, { force: true })).warnings).toEqual([]);
     expect(await Bun.file(`${target}-wal`).exists()).toBe(false);
     const restored = new Database(target, { readonly: true });
     try {
@@ -175,7 +179,7 @@ test("restoreBackup: rejects a truncated archive and warns about a missing key",
     process.env.SPROUTBOAT_DATABASE_PATH = join(fresh, "state", "sproutboat.sqlite");
     await expect(mod.restoreBackup(truncated)).rejects.toThrow(/unreadable or incomplete/);
     delete process.env.SPROUTBOAT_SECRETS_KEY;
-    const warnings = await mod.restoreBackup(join(dir, "backups", entry.name));
+    const { warnings } = await mod.restoreBackup(join(dir, "backups", entry.name));
     expect(warnings.join("\n")).toContain("secrets.key");
     expect(warnings.join("\n")).toContain("predates #139");
   } finally {
@@ -188,4 +192,234 @@ test("deleteBackup: removes a real backup, false for a missing one", async () =>
   expect(await mod.deleteBackup(entry.name)).toBe(true);
   expect(await mod.deleteBackup(entry.name)).toBe(false);
   expect(await mod.deleteBackup("../x")).toBe(false);
+});
+
+// --- v2: manifest, encryption, verify, restore ---------------------------------
+
+const KEY_A = "a1".repeat(32);
+const KEY_B = "b2".repeat(32);
+
+async function useKey(hex: string, name = "backup.key"): Promise<string> {
+  const path = join(dir, name);
+  await writeFile(path, hex + "\n");
+  process.env.SPROUTBOAT_BACKUP_KEY_FILE = path;
+  return path;
+}
+
+async function stageConfigSnapshot() {
+  await mkdir(join(dir, "config-snapshot", "etc", "sproutboat"), { recursive: true });
+  await mkdir(join(dir, "config-snapshot", "caddy", "certificates", "acme"), { recursive: true });
+  await writeFile(join(dir, "config-snapshot", "etc", "sproutboat", "control.env"), "SPROUTBOAT_BOOTSTRAP_TOKEN=t\n");
+  await writeFile(join(dir, "config-snapshot", "caddy", "certificates", "acme", "site.crt"), "CERT");
+}
+
+/** Point the state dir at a fresh, empty install. */
+async function freshInstall(): Promise<string> {
+  const fresh = await mkdtemp(join(tmpdir(), "sb-restore-"));
+  process.env.SPROUTBOAT_STATE_DIR = fresh;
+  process.env.SPROUTBOAT_DATABASE_PATH = join(fresh, "sproutboat.sqlite");
+  return fresh;
+}
+
+test("manifest: first member, hashes and sizes match every archived file, config included", async () => {
+  await stageConfigSnapshot();
+  await writeFile(join(dir, "secrets.key"), Buffer.alloc(32, 7));
+  const entry = await mod.createBackup();
+  const archive = join(dir, "backups", entry.name);
+  const first = Bun.spawn(["tar", "-tzf", archive], { stdout: "pipe" });
+  expect((await new Response(first.stdout).text()).split("\n")[0]).toBe("manifest.json");
+
+  const { manifest, members } = await mod.inspectBackup(archive);
+  expect(manifest).toMatchObject({ format: 2, includesConfig: true });
+  expect(manifest!.platformVersion).toMatch(/^\d+\.\d+\.\d+/);
+  expect(Number.isNaN(Date.parse(manifest!.createdAt))).toBe(false);
+  const paths = manifest!.files.map((f) => f.path);
+  expect(paths).toContain("config/etc/sproutboat/control.env");
+  expect(paths).toContain("config/caddy/certificates/acme/site.crt");
+  expect(paths).toContain("secrets.key");
+  expect(paths).not.toContain("manifest.json");
+  // Every regular member is in the manifest, and vice versa.
+  expect(members.filter((m) => !m.endsWith("/") && m !== "manifest.json").sort()).toEqual(paths);
+  const control = manifest!.files.find((f) => f.path === "config/etc/sproutboat/control.env")!;
+  expect(control.sizeBytes).toBe("SPROUTBOAT_BOOTSTRAP_TOKEN=t\n".length);
+  expect(control.sha256).toBe(new Bun.CryptoHasher("sha256").update("SPROUTBOAT_BOOTSTRAP_TOKEN=t\n").digest("hex"));
+});
+
+test("encrypted: create -> quick verify -> full verify -> restore, config lands in a scratch dir", async () => {
+  process.env.SPROUTBOAT_BACKUP_ENCRYPT = "on";
+  await useKey(KEY_A);
+  await stageConfigSnapshot();
+  await writeFile(join(dir, "secrets.key"), Buffer.alloc(32, 7));
+  const entry = await mod.createBackup();
+  expect(entry.name).toMatch(/^sproutboat-\d{8}-\d{6}\.tar\.gz\.enc$/);
+  expect(entry.encrypted).toBe(true);
+  const archive = join(dir, "backups", entry.name);
+
+  // Documented layout: magic, 12-byte nonce, ciphertext, 16-byte tag; no gzip or tar in clear.
+  const bytes = await readFile(archive);
+  expect(bytes.subarray(0, 6).toString()).toBe("SBBK1\n");
+  expect(bytes.includes(Buffer.from("sproutboat.sqlite"))).toBe(false);
+  expect(bytes.subarray(18, 20).equals(Buffer.from([0x1f, 0x8b]))).toBe(false);
+  expect(mod.backupPath(entry.name)).toBe(archive);
+  expect((await mod.listBackups())[0]).toMatchObject({ name: entry.name, encrypted: true });
+  // No plaintext archive or partial file is left behind.
+  expect((await Array.fromAsync(new Bun.Glob("*").scan(join(dir, "backups")))).sort()).toEqual([entry.name]);
+
+  const quick = await mod.verifyBackup(archive);
+  expect(quick).toMatchObject({ format: 2, includesConfig: true, encrypted: true, full: false });
+  const full = await mod.verifyBackup(archive, { full: true });
+  expect(full.full).toBe(true);
+  expect(await Array.fromAsync(new Bun.Glob(".verify-*").scan({ cwd: join(dir, "backups"), dot: true }))).toEqual([]);
+
+  const fresh = await freshInstall();
+  try {
+    const { warnings, configDir } = await mod.restoreBackup(archive);
+    expect(warnings.join("\n")).not.toContain("secrets.key");
+    expect(await Bun.file(join(fresh, "secrets.key")).exists()).toBe(true);
+    expect(await Bun.file(join(fresh, "manifest.json")).exists()).toBe(false);
+    // config never touches the state dir.
+    expect(await Bun.file(join(fresh, "config", "etc", "sproutboat", "control.env")).exists()).toBe(false);
+    expect(configDir).not.toBeNull();
+    expect(await Bun.file(join(configDir!, "etc", "sproutboat", "control.env")).text()).toBe(
+      "SPROUTBOAT_BOOTSTRAP_TOKEN=t\n",
+    );
+    expect(await Bun.file(join(configDir!, "caddy", "certificates", "acme", "site.crt")).text()).toBe("CERT");
+    const db = new Database(join(fresh, "sproutboat.sqlite"), { readonly: true });
+    expect(db.query("SELECT id FROM deployment").get()).toEqual({ id: "d1" });
+    db.close();
+    await rm(join(configDir!, ".."), { recursive: true, force: true });
+
+    // skipConfig leaves it in the archive.
+    const second = await mod.restoreBackup(archive, { force: true, skipConfig: true });
+    expect(second.configDir).toBeNull();
+  } finally {
+    await rm(fresh, { recursive: true, force: true });
+  }
+});
+
+test("encrypted: the wrong key fails with a clear message, and so does a missing key file", async () => {
+  process.env.SPROUTBOAT_BACKUP_ENCRYPT = "on";
+  await useKey(KEY_A);
+  const entry = await mod.createBackup();
+  const archive = join(dir, "backups", entry.name);
+  const wrong = await useKey(KEY_B, "other.key");
+  await expect(mod.verifyBackup(archive)).rejects.toThrow("wrong backup key or corrupted archive");
+  const fresh = await freshInstall();
+  try {
+    await expect(mod.restoreBackup(archive)).rejects.toThrow("wrong backup key or corrupted archive");
+    expect(await Bun.file(join(fresh, "sproutboat.sqlite")).exists()).toBe(false);
+    // An explicit key file wins over the environment.
+    const right = await useKey(KEY_A, "right.key");
+    process.env.SPROUTBOAT_BACKUP_KEY_FILE = wrong;
+    await mod.restoreBackup(archive, { keyFile: right });
+  } finally {
+    await rm(fresh, { recursive: true, force: true });
+  }
+  process.env.SPROUTBOAT_BACKUP_KEY_FILE = join(dir, "nope.key");
+  await expect(mod.verifyBackup(archive)).rejects.toThrow(/nope\.key is missing or unreadable/);
+  // Encryption on with no key refuses to write a backup rather than falling back to plaintext.
+  await expect(mod.createBackup()).rejects.toThrow(/missing or unreadable/);
+});
+
+test("verify: a truncated or tampered archive fails, plain and encrypted", async () => {
+  process.env.SPROUTBOAT_BACKUP_ENCRYPT = "on";
+  await useKey(KEY_A);
+  const enc = await mod.createBackup();
+  process.env.SPROUTBOAT_BACKUP_ENCRYPT = "off";
+  await Bun.sleep(1100);
+  const plain = await mod.createBackup();
+  const scratch = await mkdtemp(join(tmpdir(), "sb-verify-"));
+  try {
+    for (const entry of [enc, plain]) {
+      const bytes = await readFile(join(dir, "backups", entry.name));
+      const cut = join(scratch, entry.name);
+      await writeFile(cut, bytes.subarray(0, Math.floor(bytes.length / 2)));
+      await expect(mod.verifyBackup(cut)).rejects.toThrow();
+    }
+    const flipped = Buffer.from(await readFile(join(dir, "backups", enc.name)));
+    flipped[flipped.length - 40] ^= 0xff;
+    const tampered = join(scratch, "tampered.tar.gz.enc");
+    await writeFile(tampered, flipped);
+    await expect(mod.verifyBackup(tampered)).rejects.toThrow("wrong backup key or corrupted archive");
+  } finally {
+    await rm(scratch, { recursive: true, force: true });
+  }
+});
+
+test("verify --full: catches a file whose content no longer matches its manifest hash", async () => {
+  await writeFile(join(dir, "routes.json"), "[1]");
+  const entry = await mod.createBackup();
+  const stage = await mkdtemp(join(tmpdir(), "sb-forge-"));
+  try {
+    const source = join(dir, "backups", entry.name);
+    await Bun.spawn(["tar", "-xzf", source, "-C", stage]).exited;
+    await writeFile(join(stage, "routes.json"), "[2]"); // same size, different bytes
+    const forged = join(stage, "forged.tar.gz");
+    await Bun.spawn([
+      "tar",
+      "-czf",
+      forged,
+      "-C",
+      stage,
+      "manifest.json",
+      "sproutboat.sqlite",
+      "routes.json",
+      "artifacts",
+    ]).exited;
+    await expect(mod.verifyBackup(forged)).resolves.toMatchObject({ full: false });
+    await expect(mod.verifyBackup(forged, { full: true })).rejects.toThrow("routes.json does not match its sha256");
+  } finally {
+    await rm(stage, { recursive: true, force: true });
+  }
+});
+
+test("restoreBackup: refuses an archive from a newer platform unless --allow-newer", async () => {
+  const stage = await mkdtemp(join(tmpdir(), "sb-newer-"));
+  const entry = await mod.createBackup();
+  const fresh = await freshInstall();
+  try {
+    await Bun.spawn(["tar", "-xzf", join(dir, "backups", entry.name), "-C", stage]).exited;
+    const manifest = JSON.parse(await Bun.file(join(stage, "manifest.json")).text());
+    manifest.platformVersion = "999.0.0";
+    await writeFile(join(stage, "manifest.json"), JSON.stringify(manifest));
+    const archive = join(stage, "newer.tar.gz");
+    await Bun.spawn(["tar", "-czf", archive, "-C", stage, "manifest.json", "sproutboat.sqlite"]).exited;
+    await expect(mod.restoreBackup(archive)).rejects.toThrow(/made by sproutboat 999\.0\.0, newer than this install/);
+    // --force overrides the non-empty-install check, not the version check.
+    await expect(mod.restoreBackup(archive, { force: true })).rejects.toThrow(/newer than this install/);
+    expect(await Bun.file(join(fresh, "sproutboat.sqlite")).exists()).toBe(false);
+    await mod.restoreBackup(archive, { allowNewer: true });
+    expect(await Bun.file(join(fresh, "sproutboat.sqlite")).exists()).toBe(true);
+  } finally {
+    await rm(stage, { recursive: true, force: true });
+    await rm(fresh, { recursive: true, force: true });
+  }
+});
+
+test("SPROUTBOAT_BACKUP_ENCRYPT=off writes a plain .tar.gz that needs no key and restores", async () => {
+  process.env.SPROUTBOAT_BACKUP_ENCRYPT = "off";
+  delete process.env.SPROUTBOAT_BACKUP_KEY_FILE;
+  const entry = await mod.createBackup();
+  expect(entry.name).toMatch(/\.tar\.gz$/);
+  expect(entry.encrypted).toBe(false);
+  expect(entry.warning).toBeUndefined();
+  const archive = join(dir, "backups", entry.name);
+  expect((await readFile(archive)).subarray(0, 2).equals(Buffer.from([0x1f, 0x8b]))).toBe(true);
+  const fresh = await freshInstall();
+  try {
+    await mod.restoreBackup(archive);
+    expect(await Bun.file(join(fresh, "sproutboat.sqlite")).exists()).toBe(true);
+  } finally {
+    await rm(fresh, { recursive: true, force: true });
+  }
+});
+
+test("createBackup: warns when off-box upload is configured without encryption", async () => {
+  process.env.SPROUTBOAT_BACKUP_S3_BUCKET = "b";
+  process.env.SPROUTBOAT_BACKUP_S3_ACCESS_KEY_ID = "k";
+  process.env.SPROUTBOAT_BACKUP_S3_SECRET_ACCESS_KEY = "s";
+  process.env.SPROUTBOAT_BACKUP_S3_ENDPOINT = "http://127.0.0.1:9"; // nothing listens: the upload fails, the backup does not
+  const entry = await mod.createBackup();
+  expect(entry.warning).toContain("encryption is off");
+  expect(entry.offsite).toBe(false);
 });

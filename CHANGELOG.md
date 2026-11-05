@@ -7,6 +7,12 @@ Changes to the self-hosted Sproutboat platform are recorded here. Read the
 
 ### Breaking and operator actions
 
+- **Backups v2: copy `/etc/sproutboat/backup.key` off the box.** `sbctl update` creates it, and new backups are
+  encrypted with it (`.tar.gz.enc`). Without the key they cannot be restored. Old `.tar.gz` archives still restore.
+  Restoring onto a box that lacks the key needs `sbctl restore <archive> --key FILE`. Set
+  `SPROUTBOAT_BACKUP_ENCRYPT=off` in `control.env` to keep plain archives. Backups now also contain `/etc/sproutboat`
+  and Caddy's data (certificates), staged by a root step; a dashboard backup has config as of the last nightly run or
+  update.
 - **Sproutboat Community is single machine and supervisor only.** The optional per-project `sproutd` runtime that
   0.13.0 introduced (private, off unless configured) is gone from this repository. Removed: the runtime endpoint
   (`/api/projects/:name/runtime`), `POST /api/admin/sproutd/reconcile`, the `module` and `sproutdRefusal` upload fields
@@ -42,8 +48,15 @@ Changes to the self-hosted Sproutboat platform are recorded here. Read the
 - Caddy is pinned to 2.11.9 (security fix release) and verified with SHA-512 instead of downloading the latest
   unverified build.
 
+### Changed
+
+- Backup archives are now `sproutboat-<date>.tar.gz.enc` (AES-256-GCM) by default.
+
 ### Fixed
 
+- **Restore left the dashboard password and the CLI token different.** `sbctl restore` now resets the admin password to
+  the token in `control.env`, restores `/etc/sproutboat` and Caddy's data from the archive, and refuses an archive
+  from a newer platform version (`--allow-newer` overrides).
 - **Security: a broker could reach other accounts' data and impersonate the edge.** The per-app Bun broker ran outside
   the sandbox as the edge's user, with the edge's whole environment, the edge secret for service bindings and the
   shared `resources/` directory. It now runs under bubblewrap and sees only its deployment's state, the resource
@@ -55,6 +68,8 @@ Changes to the self-hosted Sproutboat platform are recorded here. Read the
 
 - `/etc/sproutboat/caddy.d/*.caddy`: operator Caddy site blocks that survive updates, with a www-to-apex redirect
   example (`infra/caddy/caddy.d/www-redirect.caddy.example`).
+- `sbctl backup now|list|verify`. `verify` checks an archive (add `--full` for hashes and SQLite integrity); every
+  backup is verified as it is written and a failure fails the unit. Backups carry a `manifest.json`.
 - Documentation for `connect()` from `cloudflare:sockets` (compatibility date 2026-11-17), with the Postgres and Redis
   driver results (`docs/compat/tcp-sockets.md`, `docs/compat/db-clients.md`). Docs only: the platform's pinned runtime
   (0.41.0) does not have it yet, so it reaches deployed apps with the release that adopts `@sproutboat/runtime` 0.42.0.

@@ -233,6 +233,46 @@ describe("Phase A contracts", () => {
     expect(edgeUnit).toContain("Environment=SB_EGRESS_URL=http://127.0.0.1:8070");
   });
 
+  test("backups v2: key, config snapshot and the restore order are wired", async () => {
+    const install = await Bun.file("install.sh").text();
+    const sbctl = await Bun.file("infra/sbctl").text();
+    const unit = await Bun.file("infra/systemd/sproutboat-backup.service").text();
+
+    // The unit stages root-only config outside its sandbox (`+`), as root, before it runs.
+    expect(unit).toContain("ExecStartPre=+/usr/local/lib/sproutboat/backup-stage");
+    expect(unit).toContain("User=sproutboat-control");
+    expect(unit).toContain("ProtectSystem=strict");
+
+    expect(install).toContain('install -m 0755 "$ROOT/infra/sb-backup-stage" /usr/local/lib/sproutboat/backup-stage');
+    expect(install).toContain("BACKUP_KEY_FILE=$ETC/backup.key");
+    expect(install).toContain('randhex > "$BACKUP_KEY_FILE"');
+    expect(install).toContain('chown root:sproutboat "$BACKUP_KEY_FILE"; chmod 0640 "$BACKUP_KEY_FILE"');
+    expect(install).toContain('echo "SPROUTBOAT_BACKUP_KEY_FILE=$BACKUP_KEY_FILE"');
+    expect(install).toContain("/usr/local/lib/sproutboat/backup-stage ||");
+    expect(install).toContain("rm -f /usr/local/lib/sproutboat/backup-stage");
+    expect(install).toContain("without it every backup is unreadable");
+    expect(install).toContain("systemctl restart sproutboat-control sproutboat-egress sproutboat-edge");
+
+    for (const cmd of ["backup)", "now)", "list)", "verify)", "restore)"]) expect(sbctl).toContain(cmd);
+    for (const flag of ["--no-config", "--key", "--allow-newer", "--force", "--full"]) expect(sbctl).toContain(flag);
+    // Order: restore state, apply config, reseed the password, reload Caddy, start services.
+    const order = [
+      "backups_cli restore",
+      'apply_restored_config "$cfg/config"',
+      "auth-admin.ts reset-password",
+      "systemctl reload-or-restart caddy",
+      "systemctl start sproutboat-control sproutboat-edge sproutboat-backup.timer",
+    ].map((needle) => sbctl.indexOf(needle));
+    expect(order.every((i) => i > 0)).toBe(true);
+    expect(order).toEqual(order.toSorted((a, b) => a - b));
+    expect(sbctl).toContain('chmod 0600 "$ETC/$rel"');
+    // Caddy drop-ins stay readable for a non-root caddy user.
+    expect(sbctl).toContain('caddy.d/*) install -d -m 0755 -o root -g root "$ETC/$(dirname "$rel")"');
+    expect(sbctl).toContain('caddy.d/*|README.caddy) chown root:root "$ETC/$rel"; chmod 0644 "$ETC/$rel"');
+    expect(sbctl).toContain('"$STAGER" --print-caddy-dir');
+    expect(sbctl).toContain("SPROUTBOAT_API_URL=https://control.%s");
+  });
+
   test("updates stage a new installer outside the active release", async () => {
     const install = await Bun.file("install.sh").text();
     const updater = await Bun.file("infra/sb-update").text();

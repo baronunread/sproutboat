@@ -284,7 +284,7 @@ export async function adminDownloadBackup(request: Request, name: string): Promi
   if (!(await file.exists())) return Response.json({ error: "backup not found" }, { status: 404 });
   return new Response(file, {
     headers: {
-      "content-type": "application/gzip",
+      "content-type": name.endsWith(".enc") ? "application/octet-stream" : "application/gzip",
       "content-disposition": `attachment; filename="${name}"`,
     },
   });

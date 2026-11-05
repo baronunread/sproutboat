@@ -11,6 +11,8 @@ ROOT=/opt/sproutboat
 STATE=/var/lib/sproutboat
 TOKEN_FILE=/root/sproutboat-admin.env
 UPDATER=/usr/local/lib/sproutboat/update
+STAGER=/usr/local/lib/sproutboat/backup-stage
+ETC=/etc/sproutboat
 SERVICES=(sproutboat-control sproutboat-egress sproutboat-edge caddy)
 UNITS=("${SERVICES[@]}" sproutboat-backup.timer)
 
@@ -31,9 +33,84 @@ sbctl — Sproutboat single-VPS control
   sbctl token              print the admin API URL + token
   sbctl preflight          re-run the runtime sandbox checks
   sbctl update             stage a fresh release, then run its installer
-  sbctl restore <archive> [--force]  stop control + edge, restore a backup, fix owners, start
+  sbctl backup now|list    take a backup now (prints its name) / list backups
+  sbctl backup verify <archive> [--full] [--key FILE]   check an archive (--full: hashes + sqlite integrity)
+  sbctl restore <archive> [--force] [--no-config] [--key FILE] [--allow-newer]
+                           stop control + edge, restore a backup (state, then /etc/sproutboat and
+                           Caddy data), reseed the admin password, fix owners, start
   sbctl uninstall [args]   hand off to install.sh --uninstall
 EOF
+}
+
+# Run the backups CLI the way the units do: the installer-written env files are
+# plain KEY=value lines, safe to source.
+backups_cli() {
+  ( set -a
+    # shellcheck disable=SC1091
+    [ ! -f "$ETC/sproutboat.env" ] || . "$ETC/sproutboat.env"
+    # shellcheck disable=SC1091
+    [ ! -f "$ETC/control.env" ] || . "$ETC/control.env"
+    set +a
+    cd "$ROOT" && "$ROOT/bun/bin/bun" apps/control/src/backups.ts "$@" )
+}
+
+latest_backup() {
+  find "$STATE/backups" -maxdepth 1 -type f -name 'sproutboat-*.tar.gz*' 2>/dev/null | sort | tail -n 1 | xargs -r basename 2>/dev/null || true
+}
+
+# Copy the restored config over /etc/sproutboat with the owners and modes
+# install.sh gives each file, restore Caddy's data, and rewrite the token file.
+# $1 is the extracted config dir (holds etc/ and caddy/).
+apply_restored_config() {
+  local cfg=$1 f rel caddy
+  if [ -d "$cfg/etc/sproutboat" ]; then
+    while IFS= read -r f; do
+      rel=${f#"$cfg/etc/sproutboat/"}
+      case "$rel" in
+        # Caddy reads its drop-ins itself, and may run as a non-root `caddy` user.
+        caddy.d/*) install -d -m 0755 -o root -g root "$ETC/$(dirname "$rel")" || return 1 ;;
+        *) install -d -m 0750 -o root -g sproutboat "$ETC/$(dirname "$rel")" || return 1 ;;
+      esac
+      cp "$f" "$ETC/$rel" || return 1
+      case "$rel" in
+        caddy.d/*|README.caddy) chown root:root "$ETC/$rel"; chmod 0644 "$ETC/$rel" ;;
+        *) chown root:root "$ETC/$rel"; chmod 0600 "$ETC/$rel" ;;
+      esac
+    done < <(find "$cfg/etc/sproutboat" -type f)
+    for f in control.env sproutboat.env backup.key; do
+      [ ! -e "$ETC/$f" ] || { chown root:sproutboat "$ETC/$f"; chmod 0640 "$ETC/$f"; }
+    done
+    [ ! -e "$ETC/caddy.env" ] || { chown root:root "$ETC/caddy.env"; chmod 0640 "$ETC/caddy.env"; }
+    for f in egress.env update.env; do
+      [ ! -e "$ETC/$f" ] || { chown root:root "$ETC/$f"; chmod 0600 "$ETC/$f"; }
+    done
+    printf '  restored %s/ (%s files)\n' "$ETC" "$(find "$cfg/etc/sproutboat" -type f | wc -l | tr -d ' ')"
+    if [ -f "$ETC/control.env" ] && [ -f "$ETC/sproutboat.env" ]; then
+      ( set -a
+        # shellcheck disable=SC1091
+        . "$ETC/sproutboat.env"
+        # shellcheck disable=SC1091
+        . "$ETC/control.env"
+        set +a
+        umask 077
+        printf 'SPROUTBOAT_API_URL=https://control.%s\nSPROUTBOAT_TOKEN=%s\n' \
+          "$SPROUTBOAT_DEPLOYMENT_DOMAIN" "$SPROUTBOAT_BOOTSTRAP_TOKEN" > "$TOKEN_FILE" ) || return 1
+      chmod 0600 "$TOKEN_FILE"
+      printf '  rewrote %s from the restored control.env\n' "$TOKEN_FILE"
+    fi
+  else
+    printf '  no /etc/sproutboat in the archive: env files left as they are\n'
+  fi
+  if [ -d "$cfg/caddy" ]; then
+    [ -x "$STAGER" ] || { echo "$STAGER missing: re-run the installer once" >&2; return 1; }
+    caddy=$("$STAGER" --print-caddy-dir) || return 1
+    install -d "$caddy" || return 1
+    rsync -a "$cfg/caddy/" "$caddy/" || return 1
+    chown -R "$(stat -c %u:%g "$caddy")" "$caddy"
+    printf '  restored Caddy data into %s\n' "$caddy"
+  else
+    printf '  no Caddy data in the archive: certificates will be requested again\n'
+  fi
 }
 
 unit_of() { case "$1" in
@@ -69,15 +146,44 @@ case "$cmd" in
   update)
     [ -x "$UPDATER" ] || die "$UPDATER missing: re-run the installer once"
     exec "$UPDATER" "$@" ;;
+  backup)
+    sub=${1:-}; [ $# -eq 0 ] || shift
+    case "$sub" in
+      now)
+        systemctl start sproutboat-backup.service
+        latest_backup ;;
+      list) backups_cli list ;;
+      verify)
+        archive=; vargs=()
+        while [ $# -gt 0 ]; do case "$1" in
+          --full) vargs+=(--full); shift ;;
+          --key) [ $# -ge 2 ] || die "--key needs a file"; vargs+=(--key "$2"); shift 2 ;;
+          -*) die "usage: sbctl backup verify <archive> [--full] [--key FILE]" ;;
+          *) archive=$1; shift ;;
+        esac; done
+        [ -f "$archive" ] || die "usage: sbctl backup verify <archive> [--full] [--key FILE]"
+        backups_cli verify "$(realpath "$archive")" "${vargs[@]}" ;;
+      *) die "usage: sbctl backup now|list|verify <archive> [--full] [--key FILE]" ;;
+    esac ;;
   restore)
-    archive=${1:-}; force=${2:-}
-    [ -f "$archive" ] || die "usage: sbctl restore <backup.tar.gz> [--force]"
-    [ -z "$force" ] || [ "$force" = --force ] || die "usage: sbctl restore <backup.tar.gz> [--force]"
+    usage_restore="usage: sbctl restore <archive> [--force] [--no-config] [--key FILE] [--allow-newer]"
+    archive=; rargs=(); noconfig=0
+    while [ $# -gt 0 ]; do case "$1" in
+      --force|--allow-newer) rargs+=("$1"); shift ;;
+      --no-config) noconfig=1; shift ;;
+      --key) [ $# -ge 2 ] || die "--key needs a file"; rargs+=(--key "$(realpath "$2")"); shift 2 ;;
+      -*) die "$usage_restore" ;;
+      *) [ -z "$archive" ] || die "$usage_restore"; archive=$1; shift ;;
+    esac; done
+    [ -f "$archive" ] || die "$usage_restore"
     archive=$(realpath "$archive")
+    cfg=$(mktemp -d /var/tmp/sb-restore-config.XXXXXXXX)
+    trap 'rm -rf "$cfg"' EXIT
+    if [ "$noconfig" = 1 ]; then rargs+=(--no-config); else rargs+=(--config-dir "$cfg"); fi
     # Nothing may hold the databases open while they are replaced.
     systemctl stop sproutboat-backup.timer sproutboat-control sproutboat-edge
     rc=0
-    ( cd "$ROOT" && "$ROOT/bun/bin/bun" apps/control/src/backups.ts restore "$archive" ${force:+"$force"} ) || rc=$?
+    backups_cli restore "$archive" "${rargs[@]}" || rc=$?
     # Owners and modes as install.sh sets them: control owns its database, routes
     # and artifacts; the edge owns binding data, which both share through the group.
     for f in sproutboat.sqlite routes.json deployments.json secrets.key artifacts; do
@@ -88,9 +194,29 @@ case "$cmd" in
       chown -R sproutboat-edge:sproutboat "$STATE/$d"
       chmod -R g+rwX "$STATE/$d"
     done
+    # Host config next (it replaces the env files the rest of this reads), then
+    # the admin password: the restored database holds the old box's hash while
+    # control.env holds the token to log in with.
+    config_applied=0
+    if [ "$rc" = 0 ] && [ "$noconfig" = 0 ] && [ -d "$cfg/config" ]; then
+      apply_restored_config "$cfg/config" || rc=$?
+      config_applied=1
+    fi
+    if [ "$rc" = 0 ]; then
+      ( set -a
+        # shellcheck disable=SC1091
+        . "$ETC/sproutboat.env"
+        # shellcheck disable=SC1091
+        . "$ETC/control.env"
+        set +a
+        cd "$ROOT" && "$ROOT/bun/bin/bun" apps/control/src/auth-admin.ts reset-password ) || rc=$?
+    fi
+    [ "$config_applied" = 0 ] || systemctl reload-or-restart caddy || true
+    [ "$config_applied" = 0 ] || systemctl restart sproutboat-egress || true
     systemctl start sproutboat-control sproutboat-edge sproutboat-backup.timer
     [ "$rc" = 0 ] || die "restore failed (exit $rc); the services were restarted on the state as it was"
     printf '%s✓%s restored %s\n' "$OK" "$Z" "$archive"
+    rm -rf "$cfg"
     exec "$0" status ;;
   uninstall)
     [ -x "$ROOT/install.sh" ] || die "$ROOT/install.sh missing"
