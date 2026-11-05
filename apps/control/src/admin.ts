@@ -1,6 +1,7 @@
 import { getAuth } from "./auth";
 import { backupPath, createBackup, deleteBackup, listBackups } from "./backups";
-import { actorFor, reserveUsername, validUsername } from "./identity";
+import { recordEvent } from "./events";
+import { actorFor, reserveUsername, validUsername, type Actor } from "./identity";
 import { globalLogTotals } from "./logs";
 import { banOwner, globalStats, ownerDeployments, ownerRollups, syncRoutes, unbanOwner } from "./store";
 
@@ -13,11 +14,16 @@ import { banOwner, globalStats, ownerDeployments, ownerRollups, syncRoutes, unba
  * snapshot; `unbanOwner` restores them.
  */
 
-async function requireAdmin(request: Request): Promise<Response | null> {
+async function adminActor(request: Request): Promise<Actor | Response> {
   const actor = await actorFor(request).catch(() => undefined);
   if (!actor) return Response.json({ error: "sign in required" }, { status: 401 });
   if (!actor.isAdmin) return Response.json({ error: "admin access required" }, { status: 403 });
-  return null;
+  return actor;
+}
+
+async function requireAdmin(request: Request): Promise<Response | null> {
+  const actor = await adminActor(request);
+  return actor instanceof Response ? actor : null;
 }
 
 type ListedUser = {
@@ -190,8 +196,8 @@ const MIN_PASSWORD = 10;
  * so they land straight in their workspace.
  */
 export async function adminCreateUser(request: Request): Promise<Response> {
-  const denied = await requireAdmin(request);
-  if (denied) return denied;
+  const admin = await adminActor(request);
+  if (admin instanceof Response) return admin;
   const body = await request.json().catch(() => ({}));
   const email = asText(body.email)?.toLowerCase();
   const username = asText(body.username);
@@ -226,27 +232,48 @@ export async function adminCreateUser(request: Request): Promise<Response> {
       { status: 409 },
     );
   }
+  recordEvent({
+    ownerId: admin.id,
+    type: "member.created",
+    actor: admin.username,
+    summary: `Created member ${username}`,
+    data: { userId, username, email },
+  });
   return Response.json({ id: userId, email, username }, { status: 201 });
 }
 
 export async function banUser(request: Request, id: string): Promise<Response> {
-  const denied = await requireAdmin(request);
-  if (denied) return denied;
+  const admin = await adminActor(request);
+  if (admin instanceof Response) return admin;
   const body = await request.json().catch(() => ({}));
   const banReason = asText(body.reason);
   const banExpiresIn = asPositive(body.expiresIn);
   await getAuth().api.banUser({ body: { userId: id, banReason, banExpiresIn }, headers: request.headers });
   banOwner(id);
   await syncRoutes();
+  recordEvent({
+    ownerId: admin.id,
+    type: "member.disabled",
+    actor: admin.username,
+    summary: `Disabled member ${id}`,
+    data: { userId: id },
+  });
   return Response.json({ banned: id, routesStopped: true });
 }
 
 export async function unbanUser(request: Request, id: string): Promise<Response> {
-  const denied = await requireAdmin(request);
-  if (denied) return denied;
+  const admin = await adminActor(request);
+  if (admin instanceof Response) return admin;
   await getAuth().api.unbanUser({ body: { userId: id }, headers: request.headers });
   unbanOwner(id);
   await syncRoutes();
+  recordEvent({
+    ownerId: admin.id,
+    type: "member.enabled",
+    actor: admin.username,
+    summary: `Enabled member ${id}`,
+    data: { userId: id },
+  });
   return Response.json({ unbanned: id, routesRestored: true });
 }
 
@@ -266,10 +293,10 @@ export async function adminBackups(request: Request): Promise<Response> {
 }
 
 export async function adminCreateBackup(request: Request): Promise<Response> {
-  const denied = await requireAdmin(request);
-  if (denied) return denied;
+  const admin = await adminActor(request);
+  if (admin instanceof Response) return admin;
   try {
-    return Response.json({ backup: await createBackup() }, { status: 201 });
+    return Response.json({ backup: await createBackup({ actor: admin.username }) }, { status: 201 });
   } catch (error) {
     return Response.json({ error: error instanceof Error ? error.message : "backup failed" }, { status: 500 });
   }

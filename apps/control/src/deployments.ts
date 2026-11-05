@@ -3,6 +3,7 @@ import { basename, dirname, resolve } from "node:path";
 import { createHash, randomUUID } from "node:crypto";
 import { stageCandidate } from "./activation";
 import { validateArtifactDirectory, type ResourceBindingRef } from "./artifact";
+import { recordEvent } from "./events";
 import { actorFor, purgeUser, type Actor } from "./identity";
 import { guardDeploy, guardNewProject, LIMITS } from "./limits";
 import {
@@ -40,7 +41,8 @@ import {
 
 export type { Deployment, ProjectSummary } from "./store";
 
-const artifactRoot = resolve(process.env.SPROUTBOAT_ARTIFACTS_DIR || "/var/lib/sproutboat/artifacts");
+// Read lazily, like store.ts, so a test can point it at a temp dir after import.
+const artifactRoot = () => resolve(process.env.SPROUTBOAT_ARTIFACTS_DIR || "/var/lib/sproutboat/artifacts");
 
 /** #78 — what one row of the Sprouts list needs, beyond the route itself. */
 export type ProjectRow = ProjectSummary & {
@@ -91,7 +93,7 @@ export function isDeploymentHostname(hostname: string): boolean {
 async function activePorfforVersion(ownerId: string, project: string): Promise<string | null> {
   const active = projectDeployments(ownerId, project).find((deployment) => deployment.active);
   if (!active) return null;
-  const validation = await validateArtifactDirectory(resolve(artifactRoot, active.artifact));
+  const validation = await validateArtifactDirectory(resolve(artifactRoot(), active.artifact));
   return validation.ok ? validation.value.manifest.porfforVersion : null;
 }
 
@@ -188,7 +190,7 @@ export async function deploymentDetail(request: Request, project: string, id: st
   if (actor instanceof Response) return actor;
   const found = projectDeployment(actor.id, project, id);
   if (!found) return Response.json({ error: "deployment not found" }, { status: 404 });
-  const validation = await validateArtifactDirectory(resolve(artifactRoot, found.artifact));
+  const validation = await validateArtifactDirectory(resolve(artifactRoot(), found.artifact));
   return Response.json({
     id: found.id,
     project: found.project,
@@ -221,6 +223,14 @@ export async function deleteDeployment(request: Request, project: string, id: st
       { error: "cannot delete the active version — roll back or replace it first" },
       { status: 409 },
     );
+  recordEvent({
+    ownerId: actor.id,
+    project,
+    type: "deploy.deleted",
+    actor: actor.username,
+    summary: `Deleted version ${id.slice(0, 8)} of ${project}`,
+    data: { deploymentId: id },
+  });
   const cleanup = await collectArtifacts(result.orphanedArtifacts);
   return Response.json(
     { deleted: id, artifactsRemoved: cleanup.removed, artifactCleanupFailed: cleanup.failed },
@@ -239,9 +249,19 @@ export async function activateDeployment(request: Request, project: string, id: 
   } catch (error) {
     return Response.json({ error: error instanceof Error ? error.message : "activation failed" }, { status: 409 });
   }
+  const previous = projectDeployments(actor.id, project).find((version) => version.active);
   const deployment = storeActivate(actor.id, project, id);
   if (!deployment) return Response.json({ error: "deployment not found" }, { status: 404 });
   await syncRoutes();
+  const rolledBack = previous !== undefined && previous.id !== id && target.deployedAt < previous.deployedAt;
+  recordEvent({
+    ownerId: actor.id,
+    project,
+    type: rolledBack ? "deploy.rolled_back" : "deploy.activated",
+    actor: actor.username,
+    summary: `${rolledBack ? "Rolled back" : "Activated"} ${project} to version ${id.slice(0, 8)}`,
+    data: { from: previous?.id ?? null, to: id },
+  });
   return Response.json({ id, project, active: true, url: `https://${deployment.hostname}` });
 }
 
@@ -347,6 +367,14 @@ export async function deleteProject(request: Request, project: string): Promise<
   const result = storeDeleteProject(actor.id, project);
   if (result.removed === 0) return Response.json({ error: "project not found" }, { status: 404 });
   await syncRoutes();
+  recordEvent({
+    ownerId: actor.id,
+    project,
+    type: "project.deleted",
+    actor: actor.username,
+    summary: `Deleted project ${project}`,
+    data: { hostnames: result.hostnames.length },
+  });
   const cleanup = await collectArtifacts(result.orphanedArtifacts);
   const body = {
     deleted: project,
@@ -418,10 +446,47 @@ export async function deployArtifact(request: Request, project: string): Promise
     return Response.json({ error: "invalid project name" }, { status: 400 });
   const rateLimited = await guardDeploy(actor.id, request);
   if (rateLimited) return rateLimited;
-  if (projectDeployments(actor.id, project).length === 0) {
+  const newProject = projectDeployments(actor.id, project).length === 0;
+  if (newProject) {
     const capped = await guardNewProject(actor.id, request, ownerProjectCount(actor.id));
     if (capped) return capped;
   }
+  recordEvent({
+    ownerId: actor.id,
+    project,
+    type: "deploy.started",
+    actor: actor.username,
+    summary: `Deploy of ${project} started`,
+    data: { project },
+  });
+  const failed = (reason: string) =>
+    recordEvent({
+      ownerId: actor.id,
+      project,
+      type: "deploy.failed",
+      actor: actor.username,
+      summary: `Deploy of ${project} failed`,
+      data: { reason },
+    });
+  try {
+    const response = await runDeploy(request, project, actor, newProject);
+    if (response.status >= 400) {
+      // SAFETY: every error response from runDeploy is { error, details? } JSON.
+      const body = (await response
+        .clone()
+        .json()
+        .catch(() => null)) as { error?: string; details?: string[] } | null;
+      const detail = Array.isArray(body?.details) ? `: ${body.details.join("; ")}` : "";
+      failed(`${body?.error ?? `HTTP ${response.status}`}${detail}`);
+    }
+    return response;
+  } catch (error) {
+    failed(error instanceof Error ? error.message : "deployment failed");
+    throw error;
+  }
+}
+
+async function runDeploy(request: Request, project: string, actor: Actor, newProject: boolean): Promise<Response> {
   let form: FormData;
   try {
     form = await request.formData();
@@ -446,7 +511,7 @@ export async function deployArtifact(request: Request, project: string): Promise
   if (assetFiles.reduce((sum, file) => sum + file.size, 0) > 64 * 1024 * 1024)
     return Response.json({ error: "assets exceed the 64 MiB limit" }, { status: 413 });
 
-  const temporary = resolve(artifactRoot, `.upload-${randomUUID()}`);
+  const temporary = resolve(artifactRoot(), `.upload-${randomUUID()}`);
   await mkdir(temporary, { recursive: true, mode: 0o750 });
   try {
     await Promise.all([
@@ -488,6 +553,14 @@ export async function deployArtifact(request: Request, project: string): Promise
     );
     if (unchanged) {
       await rm(temporary, { recursive: true, force: true });
+      recordEvent({
+        ownerId: actor.id,
+        project,
+        type: "deploy.succeeded",
+        actor: actor.username,
+        summary: `Deploy of ${project} unchanged: the active version already matches`,
+        data: { deploymentId: unchanged.id, digest, hostname: unchanged.hostname, unchanged: true },
+      });
       return Response.json(
         {
           id: unchanged.id,
@@ -503,7 +576,7 @@ export async function deployArtifact(request: Request, project: string): Promise
 
     // #55: capture the outgoing version's Porffor pin before it is replaced.
     const previousPorffor = await activePorfforVersion(actor.id, project);
-    const destination = resolve(artifactRoot, digest);
+    const destination = resolve(artifactRoot(), digest);
     let placed = false;
     try {
       await rename(temporary, destination);
@@ -552,6 +625,30 @@ export async function deployArtifact(request: Request, project: string): Promise
     // #25 — keep the retained-versions cap; GC any artifact it orphans.
     const orphaned = pruneProjectDeployments(actor.id, project, LIMITS.versionsPerProject());
     if (orphaned.length > 0) await collectArtifacts(orphaned);
+    if (newProject)
+      recordEvent({
+        ownerId: actor.id,
+        project,
+        type: "project.created",
+        actor: actor.username,
+        summary: `Created project ${project}`,
+        data: { hostname },
+      });
+    recordEvent({
+      ownerId: actor.id,
+      project,
+      type: "deploy.succeeded",
+      actor: actor.username,
+      summary: `Deployed ${project} to ${hostname}`,
+      data: {
+        deploymentId: deployment.id,
+        digest,
+        hostname,
+        binarySize: validation.value.manifest.binarySize,
+        compileMs: validation.value.manifest.compileMs ?? null,
+        newProject,
+      },
+    });
     const incomingPorffor = validation.value.manifest.porfforVersion;
     const porfforDrift =
       previousPorffor && previousPorffor !== incomingPorffor

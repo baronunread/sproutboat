@@ -1,7 +1,7 @@
 [Unit]
 Description=Sproutboat control service
-After=network-online.target
-Wants=network-online.target
+After=network-online.target sproutboat-egress.service
+Wants=network-online.target sproutboat-egress.service
 StartLimitIntervalSec=0
 
 [Service]
@@ -21,6 +21,11 @@ EnvironmentFile=-/etc/sproutboat/sproutboat.env
 # Admin identity, auth secrets, storage paths — written by install.sh before
 # this unit is first started.
 EnvironmentFile=-/etc/sproutboat/control.env
+# Webhook deliveries leave through the egress service, which refuses private
+# addresses. Its token is in a root-only file; systemd reads it before dropping
+# privileges, as it does for the edge unit.
+Environment=SB_EGRESS_URL=http://127.0.0.1:8070
+EnvironmentFile=-/etc/sproutboat/egress.env
 ExecStart=/opt/sproutboat/bun/bin/bun apps/control/src/main.ts
 Restart=always
 RestartSec=2

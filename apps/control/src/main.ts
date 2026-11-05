@@ -55,6 +55,17 @@ import {
   revokeUserSessions,
   unbanUser,
 } from "./admin";
+import {
+  activityFeed,
+  activityTypes,
+  webhookCreate,
+  webhookDelete,
+  webhookDeliveries,
+  webhookTest,
+  webhookUpdate,
+  webhooksList,
+} from "./activity";
+import { startWebhookWorker } from "./webhooks";
 import { kvBulk, kvKey, listKvKeys } from "./kv";
 import { listR2Objects, r2Object, r2Usage } from "./r2";
 import { isDashboardRequest, serveDashboard } from "./dashboard-static";
@@ -240,6 +251,20 @@ async function handle(request: Request): Promise<Response> {
   // #76 — the caps this box enforces, so the dashboard can show usage against
   // them instead of only surfacing a limit as a 429 after the fact.
   if (request.method === "GET" && url.pathname === "/api/limits") return accountLimits(request);
+  // Activity feed and webhooks. Every handler authenticates itself.
+  if (request.method === "GET" && url.pathname === "/api/activity") return activityFeed(request);
+  if (request.method === "GET" && url.pathname === "/api/activity/types") return activityTypes();
+  if (url.pathname === "/api/webhooks") {
+    if (request.method === "GET") return webhooksList(request);
+    if (request.method === "POST") return webhookCreate(request);
+  }
+  const webhookRecord = /^\/api\/webhooks\/([a-z0-9_]+)$/.exec(url.pathname);
+  if (request.method === "PATCH" && webhookRecord) return webhookUpdate(request, webhookRecord[1]);
+  if (request.method === "DELETE" && webhookRecord) return webhookDelete(request, webhookRecord[1]);
+  const webhookTestRoute = /^\/api\/webhooks\/([a-z0-9_]+)\/test$/.exec(url.pathname);
+  if (request.method === "POST" && webhookTestRoute) return webhookTest(request, webhookTestRoute[1]);
+  const webhookLog = /^\/api\/webhooks\/([a-z0-9_]+)\/deliveries$/.exec(url.pathname);
+  if (request.method === "GET" && webhookLog) return webhookDeliveries(request, webhookLog[1]);
   const deployment = /^\/api\/projects\/([a-z0-9-]+)\/deployments$/.exec(url.pathname);
   if (request.method === "GET" && url.pathname === "/api/projects") return listProjects(request);
   if (request.method === "GET" && url.pathname === "/api/overview") return dashboardOverview(request);
@@ -357,6 +382,10 @@ async function handle(request: Request): Promise<Response> {
   }
   return new Response("not found", { status: 404 });
 }
+
+// Deliver queued webhooks (events.ts enqueues; the backup timer is another
+// process, so the queue lives in the database rather than in memory).
+startWebhookWorker({ intervalMs: 5000 });
 
 console.log(`Sproutboat control listening on http://${hostname}:${server.port}`);
 
