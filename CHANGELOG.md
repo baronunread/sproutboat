@@ -5,6 +5,32 @@ Changes to the self-hosted Sproutboat platform are recorded here. Read the
 
 ## [Unreleased]
 
+## [0.14.1] - 2026-11-05
+
+Hardening release for the 0.14 line. Update with `sudo sbctl update`.
+
+### Breaking and operator actions
+
+- **Caddy's admin API now listens on a root-only unix socket** (`/run/caddy-admin.sock`, mode 0600) instead of `127.0.0.1:2019`. `systemctl reload caddy` and `sbctl` keep working; anything of yours that talked to port 2019 must use the socket as root (`curl --unix-socket /run/caddy-admin.sock http://x/config/`). Drop-ins in `/etc/sproutboat/caddy.d` are unaffected.
+- **Artifacts, broker state and sprout logs are now kept per account.** The first start after the update moves `artifacts/<digest>` to `artifacts/<account>/<digest>`, `brokers/<digest>` to `brokers/<account>-<digest>` and `logs/sprouts/<digest>.log` alongside, one copy per account that uses the digest, and regenerates `routes.json`. Nothing to do; the log shows one line per moved item. The first redeploy of an unchanged project after the update records a new version instead of reporting "unchanged", because `manifest.json` is now part of the artifact digest.
+- **API keys are no longer browser sessions.** A CLI key still works for every CLI route, but routes that need an interactive session (credential management, CLI approval, account deletion) refuse it, and disabling a member (`ban`) now revokes their keys.
+- **Tighter file modes.** `control.env` is root-only (0600); `backup.key` belongs to the control service (0400); the control database and the `backups` directory are no longer group-readable. Restoring a plaintext backup on a box that has a backup key needs `--allow-plain`.
+- **Request and connection bounds.** Control refuses non-upload bodies over 1 MiB and JSON bodies over 64 KiB; Caddy caps `/api` bodies at 100 MB; the edge caps WebSocket messages at 4 MiB (was 32 MiB) and open sockets at 2048; the egress and edge bound concurrent connections and the units set `LimitNOFILE`.
+- **Control refuses state-changing requests that arrive with a cookie from another origin.** Browser clients must send the dashboard `Origin` (the dashboard does). Clients using `x-api-key` are unaffected. The session cookie is `SameSite=Strict`.
+- **Rate limits use the socket address.** Behind your own proxy set `SPROUTBOAT_TRUSTED_PROXIES` to the proxy's address (for example in a systemd drop-in for `sproutboat-control`) so `X-Forwarded-For` is honoured; loopback (Caddy) is trusted by default.
+
+### Fixed
+
+- The supervisor only trusts a sprout, broker or transfer port once the listening socket belongs to the process it started; a port held by anything else is logged and retried on a fresh one (`/__sb/pool` reports `foreignListeners`). Each sprout runs with an open-file limit (`SPROUTBOAT_SPROUT_NOFILE`, default 1024).
+- Tenant SQL in the bindings broker is screened: `ATTACH`, `DETACH`, `VACUUM INTO` and PRAGMAs outside D1's list are refused, and `trusted_schema` is off.
+- `/internal/tls/allow` answers only to Caddy's own on-demand check on loopback; the public control and dashboard hostnames return 404 for `/internal/tls/*` (`/internal/health` still answers).
+- The certificate-issuance ceiling could be passed by an immediate retry of a refused hostname.
+- A deploy that failed part-way left its upload on disk; uploads are now removed on every path and abandoned ones swept at start. Asset files not listed in `assets.json` are refused.
+- Unverified custom-domain claims expire after 24 hours and a TXT proof by another account supersedes them.
+- The edge drops the `Domain` attribute from cookies a sprout sets and never forwards platform session cookies; `/__sb/pool` ignores requests that carry proxy headers.
+- The egress service enforces its header-read timeout, bounds request-head buffering, concurrent connections and name lookups (5 s, 64 at once).
+- Secrets no longer appear on the sandbox launcher's command line: bubblewrap reads its options from a descriptor and the broker gets its token in the environment.
+
 ## [0.14.0] - 2026-11-05
 
 ### Added
