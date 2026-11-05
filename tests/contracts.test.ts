@@ -516,9 +516,7 @@ describe("memory caps", () => {
     expect(install).toContain("MemoryMax=${EDGE_MAX_MIB}M");
     expect(install).toContain("MemoryHigh=${EDGE_HIGH_MIB}M");
     expect(install).toContain("MemoryMax=256M\nMemoryHigh=224M\nEOF");
-    expect(install.indexOf("10-sproutboat-memory.conf")).toBeLessThan(
-      install.indexOf("systemctl daemon-reload\n\n  # --- start"),
-    );
+    expect(install.indexOf("10-sproutboat-memory.conf")).toBeLessThan(install.indexOf("  # --- start (control first"));
     expect(install).toContain('capped "$BUN" install --frozen-lockfile --silent');
     expect(install).toContain('capped "$BUN" run --silent web:build');
     expect(install).toContain('capped "$BUN" x --bun auth@1.7.1 migrate');
