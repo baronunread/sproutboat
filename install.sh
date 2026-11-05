@@ -345,6 +345,7 @@ env_split() { # env_split NAME KEY...: KEY... are the keys this installer writes
   while IFS= read -r line; do
     case "$line" in
       moved\ *) note "$name.env: moved ${line#moved } to $name.local.env" ;;
+      same\ *) note "$name.env: ${line#same } is already in $name.local.env with the same value" ;;
       kept\ *) warn "$name.env and $name.local.env both set ${line#kept }; keeping the value in $name.local.env (the one the service reads)" ;;
       backup\ *) ok "the old $name.env is kept as ${line#backup }" ;;
     esac

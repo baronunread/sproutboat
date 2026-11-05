@@ -146,9 +146,10 @@ in a generated file that the installer does not write into the matching local fi
 `<name>.env.bak-<UTC time>` (mode `0600`; it holds the token, so delete it once you have checked the result). It
 prints the key names, never the values. Run again, it finds nothing and changes nothing. If a key is set in both
 files, the one in the local file stays, because that is the one the service reads. Settings lost to an update that ran
-before this change are gone: set them again in the local file. A rollback (`sbctl rollback`) restores the generated
-files as they were before the update, with your old keys in them, so a release that does not know the local files
-still finds them.
+before this change are gone: set them again in the local file. Rolling back the update that did the move
+(`sbctl rollback`) restores the generated files as they were before it, with your old keys in them, so the release
+that does not know the local files still finds them. Updating again moves them again; a key already in the local
+file with the same value is dropped, not repeated.
 
 **Unit and process settings** (memory caps, bind addresses, edge tunables such as `SPROUTBOAT_EDGE_CACHE`) are
 systemd drop-ins, not env files: see [Customising Caddy](#customising-caddy) and the memory budget below.

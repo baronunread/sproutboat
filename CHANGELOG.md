@@ -9,7 +9,7 @@ Changes to the self-hosted Sproutboat platform are recorded here. Read the
 
 - **Your settings now live in `*.local.env` files, and `sbctl update` no longer wipes them.** The installer rewrites `control.env`, `egress.env`, `sproutboat.env` and `caddy.env` on every run, so any key you added to them (S3 backup settings, `SPROUTBOAT_BACKUP_ENCRYPT=off`, the limit knobs, `SB_EGRESS_ALLOW`) was lost at the next update. The matching `control.local.env`, `egress.local.env`, `sproutboat.local.env` and `caddy.local.env` are read right after them by the units, win over them, and are never rewritten. See "Where settings live" in `infra/README.md`.
 - **The first update moves your existing settings for you.** Any key it finds in a generated file that the installer does not write goes to the matching local file, and the old file is kept as `<name>.env.bak-<UTC time>` (mode 0600; it holds the token, so delete it once you have checked). It prints key names only. A second update changes nothing. Settings an earlier update already dropped are gone: set them again in the local file. Where to set things, from now on: S3 backup and `SPROUTBOAT_BACKUP_ENCRYPT` and the limits in `control.local.env`, `SB_EGRESS_ALLOW` in `egress.local.env`.
-- A rollback restores the generated files from before the update, with your old keys still in them, so it works with a release that does not know the local files.
+- Rolling back the update that did the move (`sbctl rollback`) restores the generated files from before it, with your old keys still in them, so it works with the release that does not know the local files. Updating again moves them again; a key already in the local file with the same value is dropped, not repeated.
 
 ### Fixed
 

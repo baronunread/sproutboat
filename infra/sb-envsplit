@@ -17,13 +17,14 @@
 # A second run finds nothing to move and changes nothing. If <local-file> already
 # sets a key, its value stays (it is the one systemd reads last), and the entry in
 # <managed-file> is dropped; the copy from step 1 still has it. That is reported as
-# `kept` only when the values differ.
+# `same` when the line is identical (nothing to worry about) and `kept` when the values differ.
 #
 # An entry is a KEY=VALUE line plus its backslash continuation lines. Comments and
 # blank lines stay where they are. A line that is neither (not valid for systemd
 # either) is moved too, so nothing is thrown away. Values are never printed.
 #
-# stdout, one line per event: `moved <KEY>`, `kept <KEY>` (already in <local-file>),
+# stdout, one line per event: `moved <KEY>`, `kept <KEY>` (already in <local-file> with another value),
+# `same <KEY>` (already there, identical),
 # `moved <unrecognized line>`, then `backup <path>`. Exits 0 when the managed file
 # is absent or has nothing foreign.
 set -euo pipefail
@@ -94,7 +95,7 @@ while IFS= read -r line || [ -n "$line" ]; do
       skipping=1
       # The very same line already there (a rollback restores the old file, an update moves it
       # again) is not news; a different value is.
-      grep -qxF -- "$line" "$local_file" || printf 'kept %s\n' "$key"
+      if grep -qxF -- "$line" "$local_file"; then printf 'same %s\n' "$key"; else printf 'kept %s\n' "$key"; fi
     fi
   fi
   [ "$skipping" = 1 ] || printf '%s\n' "$line" >> "$append"

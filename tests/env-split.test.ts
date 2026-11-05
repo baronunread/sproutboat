@@ -116,13 +116,14 @@ describe("sb-envsplit", () => {
     expect(await readFile(managed, "utf8")).toBe(GENERATED);
   });
 
-  test("the same line already in the local file is dropped silently (a rollback, then another update)", async () => {
+  test("the same line already in the local file is dropped and reported as the same (a rollback, then another update)", async () => {
     const managed = join(dir, "control.env");
     const local = join(dir, "control.local.env");
     await writeFile(local, "SPROUTBOAT_BACKUP_ENCRYPT=off\n");
     await writeFile(managed, GENERATED + "SPROUTBOAT_BACKUP_ENCRYPT=off\n");
     const r = split(managed, local, ...OWNED);
     expect(r.code).toBe(0);
+    expect(r.out).toContain("same SPROUTBOAT_BACKUP_ENCRYPT\n");
     expect(r.out).not.toContain("kept");
     expect(r.out).not.toContain("moved");
     expect(await readFile(local, "utf8")).toBe("SPROUTBOAT_BACKUP_ENCRYPT=off\n");
