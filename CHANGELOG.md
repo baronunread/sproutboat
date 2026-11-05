@@ -30,6 +30,17 @@ Changes to the self-hosted Sproutboat platform are recorded here. Read the
   into the generated Caddyfile. The new Caddyfile is validated before it replaces the live one, so a broken drop-in
   stops the update instead of Caddy. Nothing to do unless you want a `www` redirect: see "Customising Caddy" in
   `infra/README.md`.
+- **Bun and Caddy are pinned and verified; the next `sbctl update` replaces both.** Bun goes 1.4.0 -> 1.4.4 and Caddy
+  becomes 2.11.9, each downloaded from its GitHub release and checked against a pinned hash. Caddy is restarted (not
+  reloaded) when its binary changed, so expect a brief TLS blip. With `SB_CF_TOKEN` the Cloudflare Caddy build is
+  still fetched unverified, and the installer warns. See "Pinned dependencies" in `infra/README.md`.
+
+### Changed
+
+- Bun on the box is 1.4.4 (was 1.4.0), matching CI and development. `install.sh` no longer pipes `bun.sh/install`
+  into bash, and an existing install is upgraded when the pinned version changes.
+- Caddy is pinned to 2.11.9 (security fix release) and verified with SHA-512 instead of downloading the latest
+  unverified build.
 
 ### Fixed
 

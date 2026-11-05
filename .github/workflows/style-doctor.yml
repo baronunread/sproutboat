@@ -15,7 +15,7 @@ jobs:
       - uses: actions/checkout@v7
       - uses: oven-sh/setup-bun@v2
         with:
-          bun-version: 1.4.0
+          bun-version: 1.4.4
       # --blocking error (default): only error-severity findings fail the build.
       # --min 90: also fail if the score drops below 90. The naive passive-voice
       # and em-dash-density checks stay advisory.

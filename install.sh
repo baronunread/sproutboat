@@ -21,7 +21,15 @@
 
 set -euo pipefail
 
-BUN_VERSION="1.4.0"
+# Pinned third-party binaries. Bump a version AND its hash together; `sbctl
+# update` re-runs this script and replaces the binary when the pin changes.
+# Hashes are the project-published ones (Bun: SHASUMS256.txt on the release;
+# Caddy: caddy_<version>_checksums.txt, SHA-512).
+BUN_VERSION="1.4.4"
+BUN_SHA256_X64="bf8ccbfb2b0b80159e0f9a6d15c55317add8077534dbc6130a3edb52fccb395c"
+BUN_SHA256_X64_BASELINE="e0446eb55995772eb9894bebae9a6be368d985a8b9271ee124486f9946eedd76"
+CADDY_VERSION="2.11.9"
+CADDY_SHA512_AMD64="0e85544340290a16ce4bfb76fe7d65e9de1bf3a6e67f5ccfff30b30d27ea4c73e078077b7bf3e58ae60b6b12e44327705287059c775bca5782e8ee85ea7edd75"
 ROOT=/opt/sproutboat
 STATE=/var/lib/sproutboat
 ETC=/etc/sproutboat
@@ -45,6 +53,23 @@ warn() { printf '%s !%s %s\n' "$C_WARN" "$C_0" "$*" >&2; }
 die()  { printf '%s ✗%s %s\n' "$C_ERR" "$C_0" "$*" >&2; exit 1; }
 rule() { printf '  %s────────────────────────────────────────────────────%s\n' "$C_DIM" "$C_0"; }
 randhex() { od -An -tx1 -N32 /dev/urandom | tr -d " \n"; }  # 64 hex chars, no external deps
+
+# fetch_verified URL DEST EXPECTED_HASH [sha256|sha512]: download to DEST.part,
+# verify, then move into place. A mismatch removes the download and dies.
+fetch_verified() {
+  local url=$1 dest=$2 want=$3 algo=${4:-sha256} got
+  curl -fsSL --retry 3 "$url" -o "$dest.part" || { rm -f "$dest.part"; die "download failed: $url"; }
+  if command -v "${algo}sum" >/dev/null 2>&1; then
+    got=$("${algo}sum" "$dest.part" | cut -d' ' -f1)
+  else
+    got=$(shasum -a "${algo#sha}" "$dest.part" | cut -d' ' -f1)
+  fi
+  if [ "$got" != "$want" ]; then
+    rm -f "$dest.part"
+    die "$algo mismatch for $url (expected $want, got $got)"
+  fi
+  mv -f "$dest.part" "$dest"
+}
 
 # `curl ... | sudo bash` leaves stdin on the pipe, not the terminal. Prompts and
 # the DNS-wait keypress read from $PROMPT_TTY instead; empty means truly no
@@ -250,26 +275,63 @@ rsync -a --delete --chmod=Du=rwx,Dgo=rx,Fu=rwX,Fgo=rX \
 # Keep the service-visible application root traversable after a staged update.
 install -d -m 0755 -o root -g root "$ROOT"
 
-# --- Bun (pinned) -----------------------------------------------------
-if [ ! -x "$ROOT/bun/bin/bun" ]; then
-  say "Installing Bun v$BUN_VERSION"
-  curl -fsSL https://bun.sh/install | BUN_INSTALL="$ROOT/bun" bash -s "bun-v$BUN_VERSION"
-fi
+# --- Bun (pinned, checksum-verified) ------------------------------------
 BUN="$ROOT/bun/bin/bun"
+BUN_HAVE=
+[ -x "$BUN" ] && BUN_HAVE=$("$BUN" --version 2>/dev/null || true)
+if [ "$BUN_HAVE" != "$BUN_VERSION" ]; then
+  if [ -n "$BUN_HAVE" ]; then say "Upgrading Bun v$BUN_HAVE -> v$BUN_VERSION"; else say "Installing Bun v$BUN_VERSION"; fi
+  # Same rule as the official installer: CPUs without AVX2 need the baseline build.
+  bun_asset=bun-linux-x64; bun_sha=$BUN_SHA256_X64
+  if ! grep -qw avx2 /proc/cpuinfo 2>/dev/null; then bun_asset=bun-linux-x64-baseline; bun_sha=$BUN_SHA256_X64_BASELINE; fi
+  bun_tmp=$(mktemp -d)
+  fetch_verified "https://github.com/oven-sh/bun/releases/download/bun-v$BUN_VERSION/$bun_asset.zip" "$bun_tmp/bun.zip" "$bun_sha" sha256
+  unzip -q "$bun_tmp/bun.zip" -d "$bun_tmp/x"
+  install -d -m 0755 "$ROOT/bun/bin"
+  install -m 0755 "$bun_tmp/x/$bun_asset/bun" "$BUN.new"
+  mv -f "$BUN.new" "$BUN"
+  ln -sf bun "$ROOT/bun/bin/bunx"
+  rm -rf "$bun_tmp"
+  ok "Bun $("$BUN" --version)"
+fi
 
 # --- Caddy ----------------------------------------------------------
 # Stock Caddy is enough: per-hostname certs via HTTP-01 / TLS-ALPN-01, no DNS
-# API. Only add the Cloudflare DNS module if SB_CF_TOKEN is set (DNS-01 — for
-# hosts where inbound :80 is blocked).
-CADDY_DL="https://caddyserver.com/api/download?os=linux&arch=amd64"
-[ -n "${SB_CF_TOKEN:-}" ] && CADDY_DL="$CADDY_DL&p=github.com/caddy-dns/cloudflare"
-if [ ! -x "$CADDY_BIN" ]; then
-  say "Downloading Caddy${SB_CF_TOKEN:+ + caddy-dns/cloudflare}"
-  curl -fsSL "$CADDY_DL" -o "$CADDY_BIN"
-  chmod 0755 "$CADDY_BIN"
-fi
+# API. The stock build is pinned and checksum-verified. Only if SB_CF_TOKEN is
+# set (DNS-01, for hosts where inbound :80 is blocked) do we use the
+# caddyserver.com build API for the Cloudflare DNS module; it builds on demand,
+# so it cannot be pinned by checksum.
+CADDY_HAVE=
+[ -x "$CADDY_BIN" ] && CADDY_HAVE=$("$CADDY_BIN" version 2>/dev/null | head -1 || true)
+CADDY_REPLACED=0
 if [ -n "${SB_CF_TOKEN:-}" ]; then
+  if [ ! -x "$CADDY_BIN" ] || ! "$CADDY_BIN" list-modules 2>/dev/null | grep -q dns.providers.cloudflare; then
+    say "Downloading Caddy + caddy-dns/cloudflare"
+    warn "This Caddy build is not checksum-verified (the caddyserver.com build API builds on demand and is not pinned to v$CADDY_VERSION)."
+    curl -fsSL --retry 3 "https://caddyserver.com/api/download?os=linux&arch=amd64&p=github.com/caddy-dns/cloudflare" -o "$CADDY_BIN.new"
+    chmod 0755 "$CADDY_BIN.new"
+    mv -f "$CADDY_BIN.new" "$CADDY_BIN"
+    CADDY_REPLACED=1
+  fi
   "$CADDY_BIN" list-modules 2>/dev/null | grep -q dns.providers.cloudflare || die "Caddy build lacks the cloudflare DNS module"
+elif [ -x "$CADDY_BIN" ] && "$CADDY_BIN" list-modules 2>/dev/null | grep -q dns.providers.cloudflare; then
+  # An earlier install used the Cloudflare build; without SB_CF_TOKEN in this run, do not swap it for stock.
+  warn "Keeping the existing Caddy with the Cloudflare DNS module (not checksum-verified); set SB_CF_TOKEN to manage it."
+else
+  case "$CADDY_HAVE" in
+    "v$CADDY_VERSION"*) ;;
+    *)
+      if [ -n "$CADDY_HAVE" ]; then say "Upgrading Caddy ${CADDY_HAVE%% *} -> v$CADDY_VERSION"; else say "Installing Caddy v$CADDY_VERSION"; fi
+      caddy_tmp=$(mktemp -d)
+      fetch_verified "https://github.com/caddyserver/caddy/releases/download/v$CADDY_VERSION/caddy_${CADDY_VERSION}_linux_amd64.tar.gz" "$caddy_tmp/caddy.tgz" "$CADDY_SHA512_AMD64" sha512
+      tar -xzf "$caddy_tmp/caddy.tgz" -C "$caddy_tmp" caddy
+      install -m 0755 "$caddy_tmp/caddy" "$CADDY_BIN.new"
+      mv -f "$CADDY_BIN.new" "$CADDY_BIN"
+      rm -rf "$caddy_tmp"
+      CADDY_REPLACED=1
+      ok "Caddy $("$CADDY_BIN" version | head -1)"
+      ;;
+  esac
 fi
 
 say "Installing application dependencies"
@@ -506,7 +568,8 @@ else
   units=(sproutboat-control sproutboat-egress sproutboat-edge caddy sproutboat-backup.timer)
   systemctl enable sproutboat-control sproutboat-egress sproutboat-edge caddy sproutboat-backup.timer >/dev/null 2>&1
   systemctl restart sproutboat-control sproutboat-egress sproutboat-edge
-  systemctl reload-or-restart caddy
+  # A replaced binary needs a real restart; a reload keeps running the old one.
+  if [ "$CADDY_REPLACED" = 1 ]; then systemctl restart caddy; else systemctl reload-or-restart caddy; fi
   systemctl start sproutboat-backup.timer
   for u in "${units[@]}"; do
     systemctl is-active --quiet "$u" && ok "$u" || warn "$u is not active — check: journalctl -u $u"

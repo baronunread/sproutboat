@@ -481,7 +481,7 @@ Field semantics:
 
 ### 11.3 Installer, updater, sbctl [S]
 
-- `install.sh`: creates users `sproutboat-control`/`sproutboat-edge` and group `sproutboat`; dirs `logs` (0770 edge), `brokers` and `resources` (2770 edge), `activation` (2770 control); rsyncs the checkout to `/opt/sproutboat` excluding `.git node_modules /bun /apps/web/dist ...`; installs pinned Bun (`BUN_VERSION="1.4.0"` -> `/opt/sproutboat/bun/bin/bun`); `bun install --frozen-lockfile`; builds the dashboard; writes `/etc/sproutboat/{sproutboat,control,egress,caddy,update}.env`; copies units, `sbctl`, and `sb-update`; `systemctl restart sproutboat-control sproutboat-egress sproutboat-edge`; `reload-or-restart caddy`; the edge has no build step (Bun runs the TypeScript), no Rust/compiler on the host, apt/dnf installs `bubblewrap curl git patch rsync unzip ...`.
+- `install.sh`: creates users `sproutboat-control`/`sproutboat-edge` and group `sproutboat`; dirs `logs` (0770 edge), `brokers` and `resources` (2770 edge), `activation` (2770 control); rsyncs the checkout to `/opt/sproutboat` excluding `.git node_modules /bun /apps/web/dist ...`; installs pinned Bun (`BUN_VERSION="1.4.4"` -> `/opt/sproutboat/bun/bin/bun`); `bun install --frozen-lockfile`; builds the dashboard; writes `/etc/sproutboat/{sproutboat,control,egress,caddy,update}.env`; copies units, `sbctl`, and `sb-update`; `systemctl restart sproutboat-control sproutboat-egress sproutboat-edge`; `reload-or-restart caddy`; the edge has no build step (Bun runs the TypeScript), no Rust/compiler on the host, apt/dnf installs `bubblewrap curl git patch rsync unzip ...`.
 - `sbctl update` -> `infra/sb-update` (installed to `/usr/local/lib/sproutboat/update`): `git fetch --depth 1` of the latest `v*` tag (or pinned ref) into a private stage dir, then runs that checkout's `install.sh --upgrade` (env `SB_UPDATE=1 SB_PULL=0 ...`). It never names the edge. Prod moves only on `v*` tags.
 - `sbctl restart|up|down|logs edge|restore`: plain `systemctl`/`journalctl` on `sproutboat-edge`; `restore` stops control + edge + backup timer, restores, chowns `brokers`/`resources` to `sproutboat-edge:sproutboat`.
 - Other harnesses that spawn the edge: `tests/tail.e2e.test.ts` (control + edge + stand-in sprout, expects `x-sb-cpu-ms`, uncaught signature, `x-sb-uncaught` marker, log fields), `tests/service-bindings/platform.ts` (`bun services/edge/src/main.ts` with `PORT=0`, `SPROUTBOAT_EDGE_CACHE=off`, optional `SB_SUITE_EDGE_ROOT`), `tools/dev-local.ts` (`bun run edge` behind portless).
@@ -522,7 +522,7 @@ Each item says what Bun did and what a faithful rewrite should decide. [V] unles
 17. **Unhandled rejection in `process.on("SIGHUP", async ...)`** is fatal in Bun; nothing in production sends SIGHUP except `systemctl reload`, so a bad `routes.json` plus `systemctl reload sproutboat-edge` kills the edge, and `Restart=always` then crash-loops at boot until the file is fixed.
 18. **Stale route objects** after any reload discard in-flight cache fills (3.4).
 19. **Log written before the work for assets** (5.2) and **after** for proxied bodies; the two give different notions of `durationMs`.
-20. **Bun version drift.** Local runs used 1.4.4; the box pins 1.4.0. Header casing, idle-timer granularity and dev error pages are Bun internals and may differ by patch version.
+20. **Bun version drift.** Local runs used 1.4.4; the box pins 1.4.4 (same as local). Header casing, idle-timer granularity and dev error pages are Bun internals and may differ by patch version.
 
 ## 13. Intentional differences (Rust fixes Bun bugs)
 

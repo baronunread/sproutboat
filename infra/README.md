@@ -23,6 +23,30 @@ built by the CLI (Porffor + Zig), never here.
 Non-interactive: set `SB_DOMAIN`, `SB_ACME_EMAIL`, `SB_ADMIN`. GitHub sign-in is
 optional — add `SB_GITHUB_CLIENT_ID` / `SB_GITHUB_CLIENT_SECRET` to enable it.
 
+## Pinned dependencies
+
+`install.sh` installs two third-party binaries at exact, checksum-verified versions:
+
+| Tool  | Version | Where                                              | Verified against                             |
+| ----- | ------- | -------------------------------------------------- | -------------------------------------------- |
+| Bun   | 1.4.4   | `/opt/sproutboat/bun/bin/bun` (`bunx` links to it) | SHA-256 from the release's `SHASUMS256.txt`  |
+| Caddy | 2.11.9  | `/usr/local/bin/caddy-sproutboat`                  | SHA-512 from `caddy_<version>_checksums.txt` |
+
+The pins (`BUN_VERSION`, `BUN_SHA256_X64`, `BUN_SHA256_X64_BASELINE`, `CADDY_VERSION`,
+`CADDY_SHA512_AMD64`) are constants at the top of `install.sh`; CI uses the same Bun version.
+CPUs without AVX2 get the Bun baseline build. A download whose hash does not match is
+discarded and the install stops.
+
+`sbctl update` re-runs the installer, so a changed pin replaces the binary on the next
+update. The installer compares `bun --version` and `caddy version` with the pin on every
+run and does nothing when they match. When Caddy was replaced, the installer restarts it
+(a reload would keep running the old binary).
+
+With `SB_CF_TOKEN` set (Cloudflare DNS-01), Caddy comes from the caddyserver.com build API
+because the stock build lacks the DNS module. That build is made on demand, so it is **not**
+checksum-verified or pinned to the version above; the installer prints a warning. It is
+only fetched when the binary is missing or lacks the module.
+
 ## DNS
 
 **One record:** `*.<domain>` A → host IP, **DNS only** (grey cloud, so
