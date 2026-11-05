@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { authFile } from "./helpers";
+import { authFile, gotoHydrated } from "./helpers";
 
 test("project deletion requires the exact typed name", async ({ browser }) => {
   const context = await browser.newContext({ storageState: authFile("test-admin") });
@@ -30,14 +30,16 @@ test("project deletion requires the exact typed name", async ({ browser }) => {
 test("account deletion signs out and redirects to /login", async ({ browser }) => {
   const context = await browser.newContext({ storageState: authFile("deletable") });
   const page = await context.newPage();
-  await page.goto("/settings");
+  await gotoHydrated(page, "/settings");
 
-  const del = page.getByRole("button", { name: /^delete account$/i });
+  // The danger zone opens a dialog; the delete button inside stays disabled until the username matches.
+  const open = page.getByRole("button", { name: /^delete account$/i });
+  await expect(open).toBeEnabled(); // the account (and so the expected username) has loaded
+  await open.click();
+  const dialog = page.getByRole("dialog", { name: /delete your account/i });
+  const del = dialog.getByRole("button", { name: /delete my account/i });
   await expect(del).toBeDisabled();
-  // The field is disabled until the account (and so the expected username) loads.
-  const confirmField = page.getByLabel(/type deletable to confirm/i);
-  await expect(confirmField).toBeEnabled();
-  await confirmField.fill("deletable");
+  await dialog.getByLabel(/type deletable to confirm/i).fill("deletable");
   await expect(del).toBeEnabled();
 
   await del.click();

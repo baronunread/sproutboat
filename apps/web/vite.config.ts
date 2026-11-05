@@ -1,4 +1,3 @@
-import { fileURLToPath } from "node:url";
 import { createLogger, defineConfig } from "vite";
 import { tanstackStart } from "@tanstack/react-start/plugin/vite";
 import react from "@vitejs/plugin-react";
@@ -21,8 +20,6 @@ export default defineConfig({
   // serves directly — no sproutboat-web service.
   customLogger: logger,
   plugins: [tailwindcss(), tanstackStart({ spa: { enabled: true } }), react()],
-  // shadcn generates components that import from "@/components/ui/*".
-  resolve: { alias: { "@": fileURLToPath(new URL("./src", import.meta.url)) } },
   server: {
     port: Number(process.env.PORT) || 5173,
     proxy: {

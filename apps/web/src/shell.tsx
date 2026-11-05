@@ -1,5 +1,6 @@
 import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
 import {
+  ActivityIcon,
   Avatar,
   Badge,
   Button,
@@ -101,6 +102,7 @@ const ROUTES = [
   { id: "overview", to: "/", label: "Overview", exact: true, icon: <HomeIcon /> },
   { id: "projects", to: "/projects", label: "Sprouts", icon: <FolderIcon /> },
   { id: "queues", to: "/queues", label: "Queues", icon: <InboxIcon /> },
+  { id: "activity", to: "/activity", label: "Activity", icon: <ActivityIcon /> },
   { id: "kv", to: "/kv", label: "KV", icon: <KeyIcon /> },
   { id: "d1", to: "/d1", label: "D1", icon: <DatabaseIcon /> },
   { id: "r2", to: "/r2", label: "R2", icon: <DatabaseIcon /> },
@@ -149,13 +151,19 @@ const PALETTE_PREFIXES = [{ scope: "sprout", label: "Sprouts" }];
 /** `loaded` turns true the first time the palette opens: until then a page load pays nothing for the project list. */
 function usePaletteGroups(loaded: boolean, isAdmin: boolean): PaletteGroup[] {
   const { data } = useJson<Overview>(loaded ? "/api/overview" : null);
-  const pages: PaletteItem[] = ROUTES.filter((route) => route.id !== "admin" || isAdmin).map((route) => ({
-    id: `route:${route.id}`,
-    label: route.label,
-    hint: route.to,
-    icon: route.icon,
-    keywords: route.id === "projects" ? "projects sprouts deploy" : undefined,
-  }));
+  const pages: PaletteItem[] = ROUTES.flatMap((route) =>
+    route.id === "admin" && !isAdmin
+      ? []
+      : [
+          {
+            id: `route:${route.id}`,
+            label: route.label,
+            hint: route.to,
+            icon: route.icon,
+            keywords: route.id === "projects" ? "projects sprouts deploy" : undefined,
+          },
+        ],
+  );
   const projects: PaletteItem[] = (data?.projects ?? []).map((project) => ({
     id: `project:${project.name}`,
     label: project.name,
@@ -289,6 +297,7 @@ export function Shell({ children }: { children: ReactNode }) {
         <NavGroup label="Compute" rail={rail}>
           <NavLink id="projects" pathname={pathname} />
           <NavLink id="queues" pathname={pathname} />
+          <NavLink id="activity" pathname={pathname} />
         </NavGroup>
         <NavGroup label="Storage" rail={rail}>
           <NavLink id="kv" pathname={pathname} />
@@ -331,7 +340,7 @@ export function Shell({ children }: { children: ReactNode }) {
           {children}
         </main>
         <footer className="mt-auto flex flex-wrap items-center justify-center gap-x-6 gap-y-2 px-5 py-5 text-center text-xs text-fg-muted shadow-[inset_0_1px_0_var(--sb-hairline)] sm:px-8">
-          <span>Sproutboat experimental VPS platform</span>
+          <span>Sproutboat Community</span>
           <span>© {new Date().getFullYear()} Sproutboat</span>
         </footer>
       </div>

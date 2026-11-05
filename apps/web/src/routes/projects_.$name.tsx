@@ -24,6 +24,7 @@ const TABS = [
   { to: "/projects/$name/deployments", suffix: "/deployments", label: "Deployments", exact: false },
   { to: "/projects/$name/metrics", suffix: "/metrics", label: "Metrics", exact: false },
   { to: "/projects/$name/logs", suffix: "/logs", label: "Logs", exact: false },
+  { to: "/projects/$name/activity", suffix: "/activity", label: "Activity", exact: false },
   { to: "/projects/$name/bindings", suffix: "/bindings", label: "Bindings", exact: false },
   { to: "/projects/$name/triggers", suffix: "/triggers", label: "Triggers", exact: false },
   { to: "/projects/$name/settings", suffix: "/settings", label: "Settings", exact: false },

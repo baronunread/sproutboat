@@ -10,6 +10,7 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as ActivityRouteImport } from './routes/activity'
 import { Route as AdminRouteImport } from './routes/admin'
 import { Route as CliAuthorizeRouteImport } from './routes/cli-authorize'
 import { Route as D1RouteImport } from './routes/d1'
@@ -23,16 +24,14 @@ import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as AdminIndexRouteImport } from './routes/admin.index'
 import { Route as AdminBackupsRouteImport } from './routes/admin.backups'
 import { Route as AdminUsersRouteImport } from './routes/admin.users'
-import { Route as D1NewRouteImport } from './routes/d1_.new'
-import { Route as KvNewRouteImport } from './routes/kv_.new'
 import { Route as ProjectsNameRouteImport } from './routes/projects_.$name'
-import { Route as QueuesNewRouteImport } from './routes/queues_.new'
 import { Route as R2IdRouteImport } from './routes/r2_.$id'
-import { Route as R2NewRouteImport } from './routes/r2_.new'
 import { Route as SettingsIndexRouteImport } from './routes/settings.index'
 import { Route as SettingsTokensRouteImport } from './routes/settings.tokens'
 import { Route as SettingsUsageRouteImport } from './routes/settings.usage'
+import { Route as SettingsWebhooksRouteImport } from './routes/settings.webhooks'
 import { Route as ProjectsNameIndexRouteImport } from './routes/projects_.$name.index'
+import { Route as ProjectsNameActivityRouteImport } from './routes/projects_.$name.activity'
 import { Route as ProjectsNameBindingsRouteImport } from './routes/projects_.$name.bindings'
 import { Route as ProjectsNameDeploymentsRouteImport } from './routes/projects_.$name.deployments'
 import { Route as ProjectsNameLogsRouteImport } from './routes/projects_.$name.logs'
@@ -44,6 +43,11 @@ import { Route as ProjectsNameDeploymentsIdRouteImport } from './routes/projects
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ActivityRoute = ActivityRouteImport.update({
+  id: '/activity',
+  path: '/activity',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AdminRoute = AdminRouteImport.update({
@@ -111,34 +115,14 @@ const AdminUsersRoute = AdminUsersRouteImport.update({
   path: '/users',
   getParentRoute: () => AdminRoute,
 } as any)
-const D1NewRoute = D1NewRouteImport.update({
-  id: '/d1_/new',
-  path: '/d1/new',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const KvNewRoute = KvNewRouteImport.update({
-  id: '/kv_/new',
-  path: '/kv/new',
-  getParentRoute: () => rootRouteImport,
-} as any)
 const ProjectsNameRoute = ProjectsNameRouteImport.update({
   id: '/projects_/$name',
   path: '/projects/$name',
   getParentRoute: () => rootRouteImport,
 } as any)
-const QueuesNewRoute = QueuesNewRouteImport.update({
-  id: '/queues_/new',
-  path: '/queues/new',
-  getParentRoute: () => rootRouteImport,
-} as any)
 const R2IdRoute = R2IdRouteImport.update({
   id: '/r2_/$id',
   path: '/r2/$id',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const R2NewRoute = R2NewRouteImport.update({
-  id: '/r2_/new',
-  path: '/r2/new',
   getParentRoute: () => rootRouteImport,
 } as any)
 const SettingsIndexRoute = SettingsIndexRouteImport.update({
@@ -156,9 +140,19 @@ const SettingsUsageRoute = SettingsUsageRouteImport.update({
   path: '/usage',
   getParentRoute: () => SettingsRoute,
 } as any)
+const SettingsWebhooksRoute = SettingsWebhooksRouteImport.update({
+  id: '/webhooks',
+  path: '/webhooks',
+  getParentRoute: () => SettingsRoute,
+} as any)
 const ProjectsNameIndexRoute = ProjectsNameIndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => ProjectsNameRoute,
+} as any)
+const ProjectsNameActivityRoute = ProjectsNameActivityRouteImport.update({
+  id: '/activity',
+  path: '/activity',
   getParentRoute: () => ProjectsNameRoute,
 } as any)
 const ProjectsNameBindingsRoute = ProjectsNameBindingsRouteImport.update({
@@ -200,6 +194,7 @@ const ProjectsNameDeploymentsIdRoute =
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/activity': typeof ActivityRoute
   '/admin': typeof AdminRouteWithChildren
   '/cli-authorize': typeof CliAuthorizeRoute
   '/d1': typeof D1Route
@@ -212,16 +207,14 @@ export interface FileRoutesByFullPath {
   '/settings': typeof SettingsRouteWithChildren
   '/admin/backups': typeof AdminBackupsRoute
   '/admin/users': typeof AdminUsersRoute
-  '/d1/new': typeof D1NewRoute
-  '/kv/new': typeof KvNewRoute
   '/projects/$name': typeof ProjectsNameRouteWithChildren
-  '/queues/new': typeof QueuesNewRoute
   '/r2/$id': typeof R2IdRoute
-  '/r2/new': typeof R2NewRoute
   '/settings/tokens': typeof SettingsTokensRoute
   '/settings/usage': typeof SettingsUsageRoute
+  '/settings/webhooks': typeof SettingsWebhooksRoute
   '/admin/': typeof AdminIndexRoute
   '/settings/': typeof SettingsIndexRoute
+  '/projects/$name/activity': typeof ProjectsNameActivityRoute
   '/projects/$name/bindings': typeof ProjectsNameBindingsRoute
   '/projects/$name/deployments': typeof ProjectsNameDeploymentsRoute
   '/projects/$name/logs': typeof ProjectsNameLogsRoute
@@ -233,6 +226,7 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/activity': typeof ActivityRoute
   '/cli-authorize': typeof CliAuthorizeRoute
   '/d1': typeof D1Route
   '/kv': typeof KvRoute
@@ -243,15 +237,13 @@ export interface FileRoutesByTo {
   '/r2': typeof R2Route
   '/admin/backups': typeof AdminBackupsRoute
   '/admin/users': typeof AdminUsersRoute
-  '/d1/new': typeof D1NewRoute
-  '/kv/new': typeof KvNewRoute
-  '/queues/new': typeof QueuesNewRoute
   '/r2/$id': typeof R2IdRoute
-  '/r2/new': typeof R2NewRoute
   '/settings/tokens': typeof SettingsTokensRoute
   '/settings/usage': typeof SettingsUsageRoute
+  '/settings/webhooks': typeof SettingsWebhooksRoute
   '/admin': typeof AdminIndexRoute
   '/settings': typeof SettingsIndexRoute
+  '/projects/$name/activity': typeof ProjectsNameActivityRoute
   '/projects/$name/bindings': typeof ProjectsNameBindingsRoute
   '/projects/$name/deployments': typeof ProjectsNameDeploymentsRoute
   '/projects/$name/logs': typeof ProjectsNameLogsRoute
@@ -264,6 +256,7 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/activity': typeof ActivityRoute
   '/admin': typeof AdminRouteWithChildren
   '/cli-authorize': typeof CliAuthorizeRoute
   '/d1': typeof D1Route
@@ -276,16 +269,14 @@ export interface FileRoutesById {
   '/settings': typeof SettingsRouteWithChildren
   '/admin/backups': typeof AdminBackupsRoute
   '/admin/users': typeof AdminUsersRoute
-  '/d1_/new': typeof D1NewRoute
-  '/kv_/new': typeof KvNewRoute
   '/projects_/$name': typeof ProjectsNameRouteWithChildren
-  '/queues_/new': typeof QueuesNewRoute
   '/r2_/$id': typeof R2IdRoute
-  '/r2_/new': typeof R2NewRoute
   '/settings/tokens': typeof SettingsTokensRoute
   '/settings/usage': typeof SettingsUsageRoute
+  '/settings/webhooks': typeof SettingsWebhooksRoute
   '/admin/': typeof AdminIndexRoute
   '/settings/': typeof SettingsIndexRoute
+  '/projects_/$name/activity': typeof ProjectsNameActivityRoute
   '/projects_/$name/bindings': typeof ProjectsNameBindingsRoute
   '/projects_/$name/deployments': typeof ProjectsNameDeploymentsRoute
   '/projects_/$name/logs': typeof ProjectsNameLogsRoute
@@ -299,6 +290,7 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/activity'
     | '/admin'
     | '/cli-authorize'
     | '/d1'
@@ -311,16 +303,14 @@ export interface FileRouteTypes {
     | '/settings'
     | '/admin/backups'
     | '/admin/users'
-    | '/d1/new'
-    | '/kv/new'
     | '/projects/$name'
-    | '/queues/new'
     | '/r2/$id'
-    | '/r2/new'
     | '/settings/tokens'
     | '/settings/usage'
+    | '/settings/webhooks'
     | '/admin/'
     | '/settings/'
+    | '/projects/$name/activity'
     | '/projects/$name/bindings'
     | '/projects/$name/deployments'
     | '/projects/$name/logs'
@@ -332,6 +322,7 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/activity'
     | '/cli-authorize'
     | '/d1'
     | '/kv'
@@ -342,15 +333,13 @@ export interface FileRouteTypes {
     | '/r2'
     | '/admin/backups'
     | '/admin/users'
-    | '/d1/new'
-    | '/kv/new'
-    | '/queues/new'
     | '/r2/$id'
-    | '/r2/new'
     | '/settings/tokens'
     | '/settings/usage'
+    | '/settings/webhooks'
     | '/admin'
     | '/settings'
+    | '/projects/$name/activity'
     | '/projects/$name/bindings'
     | '/projects/$name/deployments'
     | '/projects/$name/logs'
@@ -362,6 +351,7 @@ export interface FileRouteTypes {
   id:
     | '__root__'
     | '/'
+    | '/activity'
     | '/admin'
     | '/cli-authorize'
     | '/d1'
@@ -374,16 +364,14 @@ export interface FileRouteTypes {
     | '/settings'
     | '/admin/backups'
     | '/admin/users'
-    | '/d1_/new'
-    | '/kv_/new'
     | '/projects_/$name'
-    | '/queues_/new'
     | '/r2_/$id'
-    | '/r2_/new'
     | '/settings/tokens'
     | '/settings/usage'
+    | '/settings/webhooks'
     | '/admin/'
     | '/settings/'
+    | '/projects_/$name/activity'
     | '/projects_/$name/bindings'
     | '/projects_/$name/deployments'
     | '/projects_/$name/logs'
@@ -396,6 +384,7 @@ export interface FileRouteTypes {
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  ActivityRoute: typeof ActivityRoute
   AdminRoute: typeof AdminRouteWithChildren
   CliAuthorizeRoute: typeof CliAuthorizeRoute
   D1Route: typeof D1Route
@@ -406,12 +395,8 @@ export interface RootRouteChildren {
   QueuesRoute: typeof QueuesRoute
   R2Route: typeof R2Route
   SettingsRoute: typeof SettingsRouteWithChildren
-  D1NewRoute: typeof D1NewRoute
-  KvNewRoute: typeof KvNewRoute
   ProjectsNameRoute: typeof ProjectsNameRouteWithChildren
-  QueuesNewRoute: typeof QueuesNewRoute
   R2IdRoute: typeof R2IdRoute
-  R2NewRoute: typeof R2NewRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -421,6 +406,13 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/'
       preLoaderRoute: typeof IndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/activity': {
+      id: '/activity'
+      path: '/activity'
+      fullPath: '/activity'
+      preLoaderRoute: typeof ActivityRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/admin': {
@@ -514,20 +506,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AdminUsersRouteImport
       parentRoute: typeof AdminRoute
     }
-    '/d1_/new': {
-      id: '/d1_/new'
-      path: '/d1/new'
-      fullPath: '/d1/new'
-      preLoaderRoute: typeof D1NewRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/kv_/new': {
-      id: '/kv_/new'
-      path: '/kv/new'
-      fullPath: '/kv/new'
-      preLoaderRoute: typeof KvNewRouteImport
-      parentRoute: typeof rootRouteImport
-    }
     '/projects_/$name': {
       id: '/projects_/$name'
       path: '/projects/$name'
@@ -535,25 +513,11 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ProjectsNameRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/queues_/new': {
-      id: '/queues_/new'
-      path: '/queues/new'
-      fullPath: '/queues/new'
-      preLoaderRoute: typeof QueuesNewRouteImport
-      parentRoute: typeof rootRouteImport
-    }
     '/r2_/$id': {
       id: '/r2_/$id'
       path: '/r2/$id'
       fullPath: '/r2/$id'
       preLoaderRoute: typeof R2IdRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/r2_/new': {
-      id: '/r2_/new'
-      path: '/r2/new'
-      fullPath: '/r2/new'
-      preLoaderRoute: typeof R2NewRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/settings/': {
@@ -577,11 +541,25 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof SettingsUsageRouteImport
       parentRoute: typeof SettingsRoute
     }
+    '/settings/webhooks': {
+      id: '/settings/webhooks'
+      path: '/webhooks'
+      fullPath: '/settings/webhooks'
+      preLoaderRoute: typeof SettingsWebhooksRouteImport
+      parentRoute: typeof SettingsRoute
+    }
     '/projects_/$name/': {
       id: '/projects_/$name/'
       path: '/'
       fullPath: '/projects/$name/'
       preLoaderRoute: typeof ProjectsNameIndexRouteImport
+      parentRoute: typeof ProjectsNameRoute
+    }
+    '/projects_/$name/activity': {
+      id: '/projects_/$name/activity'
+      path: '/activity'
+      fullPath: '/projects/$name/activity'
+      preLoaderRoute: typeof ProjectsNameActivityRouteImport
       parentRoute: typeof ProjectsNameRoute
     }
     '/projects_/$name/bindings': {
@@ -653,12 +631,14 @@ const AdminRouteWithChildren = AdminRoute._addFileChildren(AdminRouteChildren)
 interface SettingsRouteChildren {
   SettingsTokensRoute: typeof SettingsTokensRoute
   SettingsUsageRoute: typeof SettingsUsageRoute
+  SettingsWebhooksRoute: typeof SettingsWebhooksRoute
   SettingsIndexRoute: typeof SettingsIndexRoute
 }
 
 const SettingsRouteChildren: SettingsRouteChildren = {
   SettingsTokensRoute: SettingsTokensRoute,
   SettingsUsageRoute: SettingsUsageRoute,
+  SettingsWebhooksRoute: SettingsWebhooksRoute,
   SettingsIndexRoute: SettingsIndexRoute,
 }
 
@@ -667,6 +647,7 @@ const SettingsRouteWithChildren = SettingsRoute._addFileChildren(
 )
 
 interface ProjectsNameRouteChildren {
+  ProjectsNameActivityRoute: typeof ProjectsNameActivityRoute
   ProjectsNameBindingsRoute: typeof ProjectsNameBindingsRoute
   ProjectsNameDeploymentsRoute: typeof ProjectsNameDeploymentsRoute
   ProjectsNameLogsRoute: typeof ProjectsNameLogsRoute
@@ -678,6 +659,7 @@ interface ProjectsNameRouteChildren {
 }
 
 const ProjectsNameRouteChildren: ProjectsNameRouteChildren = {
+  ProjectsNameActivityRoute: ProjectsNameActivityRoute,
   ProjectsNameBindingsRoute: ProjectsNameBindingsRoute,
   ProjectsNameDeploymentsRoute: ProjectsNameDeploymentsRoute,
   ProjectsNameLogsRoute: ProjectsNameLogsRoute,
@@ -694,6 +676,7 @@ const ProjectsNameRouteWithChildren = ProjectsNameRoute._addFileChildren(
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  ActivityRoute: ActivityRoute,
   AdminRoute: AdminRouteWithChildren,
   CliAuthorizeRoute: CliAuthorizeRoute,
   D1Route: D1Route,
@@ -704,12 +687,8 @@ const rootRouteChildren: RootRouteChildren = {
   QueuesRoute: QueuesRoute,
   R2Route: R2Route,
   SettingsRoute: SettingsRouteWithChildren,
-  D1NewRoute: D1NewRoute,
-  KvNewRoute: KvNewRoute,
   ProjectsNameRoute: ProjectsNameRouteWithChildren,
-  QueuesNewRoute: QueuesNewRoute,
   R2IdRoute: R2IdRoute,
-  R2NewRoute: R2NewRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

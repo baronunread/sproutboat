@@ -1,24 +1,35 @@
-import { useCallback, useEffect, useState } from "react";
-import { createFileRoute } from "@tanstack/react-router";
 import {
+  Badge,
+  Banner,
   Button,
-  Copy,
-  FILTER_BAR,
-  FILTER_FIELD,
-  FILTER_SEARCH,
-  FORM_ACTIONS,
-  Panel,
-  PanelHeading,
-  RECORD_TITLE,
-  RecordList,
-  RecordRow,
-  SelectField,
-  Status,
-  StatusMessage,
-  TextField,
-} from "../components";
-import { USERNAME_RULE, relativeTime } from "../dashboard-data";
-import { cn } from "@/lib/utils";
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogTitle,
+  DialogTrigger,
+  EmptyState,
+  Field,
+  Input,
+  Pagination,
+  SensitiveInput,
+  Table,
+  TableBody,
+  TableCell,
+  TableEmpty,
+  TableError,
+  TableHead,
+  TableHeader,
+  TableLoading,
+  TableRow,
+  toast,
+} from "@sproutboat/ikada";
+import { createFileRoute } from "@tanstack/react-router";
+import { useCallback, useEffect, useState } from "react";
+import type { FormEvent } from "react";
+import { ConfirmDialog } from "../confirm-dialog";
+import { USERNAME_RULE, mutate, relativeTime } from "../dashboard-data";
 
 export const Route = createFileRoute("/admin/users")({ component: AdminUsers });
 
@@ -29,8 +40,6 @@ type UserRow = {
   image: string | null;
   role: string;
   banned: boolean;
-  banReason: string | null;
-  banExpires: string | null;
   createdAt: string;
   projects: number;
   deployments: number;
@@ -38,25 +47,7 @@ type UserRow = {
 };
 type UsersPage = { users: UserRow[]; total: number; limit: number; offset: number };
 
-type Deployment = {
-  id: string;
-  project: string;
-  hostname: string;
-  artifact: string;
-  deployedAt: string;
-  active: boolean;
-};
-type Session = { id: string; createdAt: string; expiresAt: string; ipAddress: string | null; userAgent: string | null };
-type Detail = { user: UserRow; deployments: Deployment[]; sessions: Session[] };
-type ActionBody = { reason?: string; expiresIn?: number };
-
 const PAGE = 50;
-const DURATIONS: ReadonlyArray<readonly [string, number]> = [
-  ["Permanent", 0],
-  ["1 day", 86_400],
-  ["7 days", 604_800],
-  ["30 days", 2_592_000],
-];
 
 function AdminUsers() {
   const [page, setPage] = useState<UsersPage>();
@@ -64,7 +55,6 @@ function AdminUsers() {
   const [query, setQuery] = useState("");
   const [offset, setOffset] = useState(0);
   const [note, setNote] = useState("");
-  const [creating, setCreating] = useState(false);
 
   const load = useCallback(async () => {
     setState("loading");
@@ -87,87 +77,149 @@ function AdminUsers() {
     void load();
   }, [load]);
 
-  const act = async (id: string, path: string, body?: ActionBody) => {
+  /** `disable` and `enable` keep calling the ban and unban endpoints; the reason and expiry fields are gone from the UI. */
+  const act = async (user: UserRow, path: "ban" | "unban") => {
     setNote("");
-    try {
-      const response = await fetch(`/api/admin/users/${encodeURIComponent(id)}/${path}`, {
-        method: "POST",
-        credentials: "include",
-        headers: body ? { "content-type": "application/json" } : undefined,
-        body: body ? JSON.stringify(body) : undefined,
-      });
-      if (!response.ok) {
-        setNote("That action failed. Refresh and try again.");
-        return;
-      }
-      await load();
-    } catch {
-      setNote("Could not reach the control plane. Try again.");
+    const failure = await mutate(`/api/admin/users/${encodeURIComponent(user.id)}/${path}`, { method: "POST" });
+    if (failure) {
+      setNote("That action failed. Refresh and try again.");
+      return failure;
     }
+    toast.add({
+      tone: "success",
+      title: path === "ban" ? `Disabled ${user.email}` : `Enabled ${user.email}`,
+      description: path === "ban" ? "Their routes stopped serving." : "Their routes serve again.",
+    });
+    await load();
+    return null;
   };
 
+  const pageCount = page ? Math.max(1, Math.ceil(page.total / PAGE)) : 1;
+
   return (
-    <Panel variant="wide">
-      <PanelHeading
-        title="Users"
-        description="Accounts are created here - there is no self-service sign-up. Banning an account stops its routes immediately."
-        action={
-          !creating && (
-            <Button variant="primary" onClick={() => setCreating(true)}>
-              Create user
-            </Button>
-          )
-        }
-      />
-
-      {creating && <CreateUserForm onCreated={() => void load()} onClose={() => setCreating(false)} />}
-
-      <div className={FILTER_BAR}>
-        <TextField
-          label="Search users"
-          type="search"
-          fieldClassName={FILTER_SEARCH}
-          placeholder="Search by email"
-          value={query}
-          onChange={(event) => {
-            setOffset(0);
-            setQuery(event.target.value);
-          }}
-        />
+    <div className="flex flex-col gap-6">
+      <div className="flex flex-wrap items-end justify-between gap-x-6 gap-y-4">
+        <div className="w-full max-w-md">
+          <Field label="Search users" className="[&>label]:sr-only">
+            <Input
+              type="search"
+              placeholder="Search by email"
+              value={query}
+              onChange={(event) => {
+                setOffset(0);
+                setQuery(event.target.value);
+              }}
+            />
+          </Field>
+        </div>
+        <CreateUserDialog onCreated={() => void load()} />
       </div>
-      {note && <StatusMessage tone="error">{note}</StatusMessage>}
+      <p className="text-base text-fg-muted">
+        Accounts are created here: there is no self-service sign-up. Disabling an account stops its routes immediately.
+      </p>
+      {note ? <Banner tone="danger">{note}</Banner> : null}
 
-      {state === "loading" ? (
-        <p className="min-h-56 px-5 pt-12 text-muted-foreground group-[.is-padded]/panel:px-0" aria-live="polite">
-          Loading users…
-        </p>
-      ) : state === "error" || !page ? (
-        <StatusMessage tone="error">Could not load users. Refresh and try again.</StatusMessage>
-      ) : page.users.length === 0 ? (
-        <p className="px-5 py-12 text-center text-[0.84rem] leading-relaxed text-muted-foreground group-[.is-padded]/panel:px-0 group-[.is-padded]/panel:py-5 group-[.is-padded]/panel:text-start [&_code]:text-foreground">
-          No accounts match.
-        </p>
+      {state === "ready" && page && page.users.length === 0 && !query.trim() ? (
+        <div className="rounded-xl bg-surface p-4 shadow-card">
+          <EmptyState title="No accounts yet" description="Create the first one with the button above." />
+        </div>
       ) : (
-        <>
-          <ul className="m-0 mt-4 list-none p-0" aria-label="User accounts">
-            {page.users.map((user) => (
-              <UserItem key={user.id} user={user} onAct={act} />
-            ))}
-          </ul>
-          <div className="mt-4 flex items-center justify-center gap-4 text-[0.78rem] text-muted-foreground">
-            <Button disabled={offset === 0} onClick={() => setOffset(Math.max(0, offset - PAGE))}>
-              Previous
-            </Button>
-            <span>
-              {offset + 1}-{Math.min(offset + page.users.length, page.total)} of {page.total}
-            </span>
-            <Button disabled={offset + PAGE >= page.total} onClick={() => setOffset(offset + PAGE)}>
-              Next
-            </Button>
-          </div>
-        </>
+        <Table label="User accounts" aria-busy={state === "loading" || undefined}>
+          <TableHeader>
+            <TableRow className="hover:bg-transparent">
+              <TableHead>Account</TableHead>
+              <TableHead hideBelow="lg">Role</TableHead>
+              <TableHead hideBelow="md" className="text-end">
+                Projects
+              </TableHead>
+              <TableHead hideBelow="xl">Joined</TableHead>
+              <TableHead hideBelow="sm">Status</TableHead>
+              <TableHead className="text-end">
+                <span className="sr-only">Actions</span>
+              </TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {state === "loading" && !page ? (
+              <TableLoading columns={6} />
+            ) : state === "error" ? (
+              <TableError colSpan={6} title="Could not load users">
+                Refresh and try again.
+              </TableError>
+            ) : page && page.users.length === 0 ? (
+              <TableEmpty colSpan={6}>
+                <span className="text-fg-muted">No accounts match “{query.trim()}”.</span>
+              </TableEmpty>
+            ) : (
+              page?.users.map((user) => (
+                <TableRow key={user.id}>
+                  <TableCell className="min-w-36">
+                    <span className="block break-all font-semibold">{user.email}</span>
+                    {user.name ? <span className="block text-sm text-fg-muted">{user.name}</span> : null}
+                    <div className="mt-1 @sm:hidden">
+                      {user.banned ? (
+                        <Badge tone="warning" dot>
+                          Disabled
+                        </Badge>
+                      ) : (
+                        <Badge tone="success" dot>
+                          Active
+                        </Badge>
+                      )}
+                    </div>
+                  </TableCell>
+                  <TableCell hideBelow="lg" className="text-fg-muted">
+                    {user.role}
+                  </TableCell>
+                  <TableCell hideBelow="md" className="text-end tabular-nums">
+                    {user.projects}
+                  </TableCell>
+                  <TableCell hideBelow="xl" className="whitespace-nowrap text-fg-muted">
+                    {relativeTime(user.createdAt)}
+                  </TableCell>
+                  <TableCell hideBelow="sm">
+                    {user.banned ? (
+                      <Badge tone="warning" dot>
+                        Disabled
+                      </Badge>
+                    ) : (
+                      <Badge tone="success" dot>
+                        Active
+                      </Badge>
+                    )}
+                  </TableCell>
+                  <TableCell className="text-end">
+                    {user.banned ? (
+                      <Button size="sm" aria-label={`Enable ${user.email}`} onClick={() => void act(user, "unban")}>
+                        Enable
+                      </Button>
+                    ) : (
+                      <ConfirmDialog
+                        trigger="Disable"
+                        triggerLabel={`Disable ${user.email}`}
+                        title={`Disable ${user.email}?`}
+                        description="Their routes stop serving immediately. You can enable the account again at any time."
+                        confirmLabel="Disable account"
+                        onConfirm={() => act(user, "ban")}
+                      />
+                    )}
+                  </TableCell>
+                </TableRow>
+              ))
+            )}
+          </TableBody>
+        </Table>
       )}
-    </Panel>
+      {pageCount > 1 ? (
+        <div className="flex justify-center">
+          <Pagination
+            page={Math.floor(offset / PAGE) + 1}
+            pageCount={pageCount}
+            onPageChange={(next) => setOffset((next - 1) * PAGE)}
+          />
+        </div>
+      ) : null}
+    </div>
   );
 }
 
@@ -178,7 +230,8 @@ function randomPassword(): string {
     .slice(0, 20);
 }
 
-function CreateUserForm({ onCreated, onClose }: { onCreated: () => void; onClose: () => void }) {
+function CreateUserDialog({ onCreated }: { onCreated: () => void }) {
+  const [open, setOpen] = useState(false);
   const [email, setEmail] = useState("");
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
@@ -186,7 +239,18 @@ function CreateUserForm({ onCreated, onClose }: { onCreated: () => void; onClose
   const [error, setError] = useState("");
   const [done, setDone] = useState<{ email: string; username: string; password: string } | null>(null);
 
-  const submit = async (event: React.FormEvent) => {
+  function onOpenChange(next: boolean) {
+    setOpen(next);
+    if (!next) {
+      setEmail("");
+      setUsername("");
+      setPassword("");
+      setError("");
+      setDone(null);
+    }
+  }
+
+  const submit = async (event: FormEvent) => {
     event.preventDefault();
     if (busy) return;
     setBusy(true);
@@ -205,9 +269,6 @@ function CreateUserForm({ onCreated, onClose }: { onCreated: () => void; onClose
         return;
       }
       setDone({ email: email.trim(), username: username.trim(), password });
-      setEmail("");
-      setUsername("");
-      setPassword("");
       onCreated();
     } catch {
       setError("Could not reach the control plane.");
@@ -216,238 +277,103 @@ function CreateUserForm({ onCreated, onClose }: { onCreated: () => void; onClose
     }
   };
 
-  if (done) {
-    return (
-      <StatusMessage tone="success">
-        Created <code>{done.username}</code> ({done.email}). Starting password: <code>{done.password}</code>
-        <Copy value={done.password} /> - copy it now, it isn&apos;t shown again.
-      </StatusMessage>
-    );
-  }
-
   return (
-    // Its own bordered block: without one it runs straight into the search bar
-    // and the user list below, and reads as part of them.
-    <form className="mt-5 border-b border-border pb-6" onSubmit={submit}>
-      <div className="grid max-w-[46rem] grid-cols-[repeat(auto-fit,minmax(14rem,1fr))] gap-x-5 gap-y-6">
-        <TextField
-          label="Email"
-          type="email"
-          autoComplete="off"
-          required
-          value={email}
-          onChange={(event) => {
-            setEmail(event.target.value);
-            setError("");
-          }}
-          hint="The address they sign in with, or link GitHub to."
-        />
-        <TextField
-          label="Namespace"
-          required
-          autoComplete="off"
-          spellCheck={false}
-          value={username}
-          onChange={(event) => {
-            setUsername(event.target.value.toLowerCase());
-            setError("");
-          }}
-          hint="3-32 lowercase letters, digits and hyphens. It appears in every route they deploy."
-          error={
-            username !== "" && !USERNAME_RULE.test(username) ? "Use 3-32 lowercase letters, digits or hyphens." : null
-          }
-        />
-        <TextField
-          label="Starting password"
-          type="text"
-          autoComplete="off"
-          spellCheck={false}
-          required
-          minLength={10}
-          value={password}
-          onChange={(event) => {
-            setPassword(event.target.value);
-            setError("");
-          }}
-          hint="At least 10 characters. Shown once, here, so hand it over before you close this form."
-          error={password !== "" && password.length < 10 ? "Use at least 10 characters." : error || null}
-          footer={
-            <Button variant="quiet" onClick={() => setPassword(randomPassword())}>
-              Generate a password
-            </Button>
-          }
-        />
-      </div>
-      <div data-slot="form-actions" className={cn(FORM_ACTIONS, "mt-6")}>
-        <Button variant="quiet" onClick={onClose}>
-          Cancel
-        </Button>
-        <Button
-          type="submit"
-          variant="primary"
-          busy={busy}
-          busyLabel="Creating…"
-          disabled={!email || !username || password.length < 10}
-        >
-          Create account
-        </Button>
-      </div>
-    </form>
-  );
-}
-
-function UserItem({
-  user,
-  onAct,
-}: {
-  user: UserRow;
-  onAct: (id: string, path: string, body?: ActionBody) => Promise<void>;
-}) {
-  const [open, setOpen] = useState(false);
-  const [banning, setBanning] = useState(false);
-  const [banBusy, setBanBusy] = useState(false);
-  const [reason, setReason] = useState("");
-  const [duration, setDuration] = useState(0);
-  const [detail, setDetail] = useState<Detail>();
-  const [detailState, setDetailState] = useState<"idle" | "loading" | "ready" | "error">("idle");
-
-  useEffect(() => {
-    if (!open || detailState !== "idle") return;
-    let ignore = false;
-    const load = async () => {
-      setDetailState("loading");
-      try {
-        const response = await fetch(`/api/admin/users/${encodeURIComponent(user.id)}`, { credentials: "include" });
-        if (ignore) return;
-        if (!response.ok) {
-          setDetailState("error");
-          return;
-        }
-        // SAFETY: a 2xx from /api/admin/users/:id is the Detail contract.
-        const body = (await response.json()) as Detail;
-        if (ignore) return;
-        setDetail(body);
-        setDetailState("ready");
-      } catch {
-        if (!ignore) setDetailState("error");
-      }
-    };
-    void load();
-    return () => {
-      ignore = true;
-    };
-  }, [open, detailState, user.id]);
-
-  const submitBan = async () => {
-    setBanBusy(true);
-    try {
-      await onAct(user.id, "ban", { reason: reason.trim() || undefined, expiresIn: duration || undefined });
-    } finally {
-      setBanBusy(false);
-    }
-    setBanning(false);
-    setReason("");
-  };
-
-  return (
-    <li className="border-t border-border py-3 first:border-t-0 hover:bg-accent">
-      <div className="flex flex-wrap items-center gap-x-4 gap-y-2 [&>button:first-child]:min-w-0 [&>button:first-child]:flex-[1_1_14rem] [&>button:not(:first-child)]:flex-none [&>small]:order-9 [&>small]:-mt-1 [&>small]:basis-full [&>small]:text-[0.72rem] [&>small]:text-muted-foreground [&>span]:flex-none [&>span]:text-[0.72rem] [&>span]:text-muted-foreground">
-        <button type="button" className={RECORD_TITLE} aria-expanded={open} onClick={() => setOpen((value) => !value)}>
-          {user.email}
-        </button>
-        <small>
-          {user.name ?? "-"} · {user.role} · joined {relativeTime(user.createdAt)}
-        </small>
-        <span>
-          {user.projects} proj · {user.deployments} dep
-        </span>
-        <Status live={!user.banned}>{user.banned ? "Banned" : "Active"}</Status>
-        {user.banned ? (
-          <Button onClick={() => void onAct(user.id, "unban")}>Unban</Button>
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogTrigger render={<Button variant="primary" />}>Create user</DialogTrigger>
+      <DialogContent>
+        {done ? (
+          <div className="flex flex-col gap-4">
+            <div>
+              <DialogTitle>Created {done.username}</DialogTitle>
+              <DialogDescription>
+                {done.email} can sign in now. Copy the starting password: it is not shown again.
+              </DialogDescription>
+            </div>
+            <Field label="Starting password">
+              <SensitiveInput readOnly copyable defaultRevealed value={done.password} mono />
+            </Field>
+            <DialogFooter>
+              <DialogClose render={<Button variant="primary" />}>Done</DialogClose>
+            </DialogFooter>
+          </div>
         ) : (
-          <Button aria-expanded={banning} onClick={() => setBanning((value) => !value)}>
-            Ban
-          </Button>
+          <form onSubmit={(event) => void submit(event)} className="flex flex-col gap-4">
+            <div>
+              <DialogTitle>Create user</DialogTitle>
+              <DialogDescription>The account signs in with this email, or by linking GitHub to it.</DialogDescription>
+            </div>
+            <Field label="Email" required>
+              <Input
+                type="email"
+                autoComplete="off"
+                required
+                value={email}
+                onChange={(event) => {
+                  setEmail(event.target.value);
+                  setError("");
+                }}
+              />
+            </Field>
+            <Field
+              label="Namespace"
+              required
+              description="3-32 lowercase letters, digits and hyphens. It appears in every route they deploy."
+              error={
+                username !== "" && !USERNAME_RULE.test(username)
+                  ? "Use 3-32 lowercase letters, digits or hyphens."
+                  : undefined
+              }
+            >
+              <Input
+                mono
+                autoComplete="off"
+                spellCheck={false}
+                required
+                value={username}
+                onChange={(event) => {
+                  setUsername(event.target.value.toLowerCase());
+                  setError("");
+                }}
+              />
+            </Field>
+            <Field
+              label="Starting password"
+              required
+              description="At least 10 characters. Shown once, so hand it over before you close this dialog."
+              error={password !== "" && password.length < 10 ? "Use at least 10 characters." : error || undefined}
+            >
+              <Input
+                mono
+                autoComplete="off"
+                spellCheck={false}
+                required
+                minLength={10}
+                value={password}
+                onChange={(event) => {
+                  setPassword(event.target.value);
+                  setError("");
+                }}
+              />
+            </Field>
+            <div>
+              <Button size="sm" onClick={() => setPassword(randomPassword())}>
+                Generate a password
+              </Button>
+            </div>
+            <DialogFooter className="mt-2">
+              <DialogClose render={<Button disabled={busy} />}>Cancel</DialogClose>
+              <Button
+                type="submit"
+                variant="primary"
+                loading={busy}
+                disabled={!email || !USERNAME_RULE.test(username) || password.length < 10}
+              >
+                Create account
+              </Button>
+            </DialogFooter>
+          </form>
         )}
-      </div>
-
-      {user.banned && user.banReason && (
-        <p className="mt-3 text-[0.75rem] text-muted-foreground">
-          Reason: {user.banReason}
-          {user.banExpires ? ` · lifts ${relativeTime(user.banExpires)}` : " · permanent"}
-        </p>
-      )}
-
-      {banning && (
-        <div className="mt-4 flex flex-wrap items-end gap-x-2.5 gap-y-4">
-          <TextField
-            label="Ban reason"
-            fieldClassName={FILTER_SEARCH}
-            placeholder="Optional"
-            value={reason}
-            onChange={(event) => setReason(event.target.value)}
-          />
-          <SelectField
-            label="Duration"
-            fieldClassName={FILTER_FIELD}
-            value={String(duration)}
-            options={DURATIONS.map(([label, seconds]) => [String(seconds), label] as const)}
-            onValueChange={(value) => setDuration(Number(value))}
-          />
-          <Button onClick={() => setBanning(false)}>Cancel</Button>
-          <Button variant="danger" busy={banBusy} busyLabel="Banning…" onClick={() => void submitBan()}>
-            Ban account
-          </Button>
-        </div>
-      )}
-
-      {open && (
-        <div className="mt-3 border-l-2 border-border pl-4 [&_h4]:mt-4 [&_h4]:mb-1.5 [&_h4]:text-[0.78rem] [&_h4:first-child]:mt-0">
-          {detailState === "loading" || detailState === "idle" ? (
-            <p className="min-h-56 px-5 pt-12 text-muted-foreground group-[.is-padded]/panel:px-0" aria-live="polite">
-              Loading…
-            </p>
-          ) : detailState === "error" || !detail ? (
-            <StatusMessage tone="error">Could not load this account.</StatusMessage>
-          ) : (
-            <>
-              <h4>Deployments ({detail.deployments.length})</h4>
-              {detail.deployments.length === 0 ? (
-                <p className="mt-3 text-[0.75rem] text-muted-foreground">None.</p>
-              ) : (
-                <RecordList>
-                  {detail.deployments.map((deployment) => (
-                    <RecordRow key={deployment.id}>
-                      <div>
-                        <strong>{deployment.project}</strong>
-                        <small>{deployment.hostname}</small>
-                      </div>
-                      <span>{relativeTime(deployment.deployedAt)}</span>
-                      <Status live={deployment.active}>{deployment.active ? "Active" : "Inactive"}</Status>
-                    </RecordRow>
-                  ))}
-                </RecordList>
-              )}
-              <h4>Sessions ({detail.sessions.length})</h4>
-              {detail.sessions.length === 0 ? (
-                <p className="mt-3 text-[0.75rem] text-muted-foreground">None.</p>
-              ) : (
-                <ul className="m-0 list-none p-0 [&_li]:flex [&_li]:justify-between [&_li]:gap-3 [&_li]:border-t [&_li]:border-border [&_li]:py-1.5 [&_small]:text-muted-foreground">
-                  {detail.sessions.map((session) => (
-                    <li key={session.id}>
-                      <span>{session.ipAddress ?? "unknown IP"}</span>
-                      <small>expires {relativeTime(session.expiresAt)}</small>
-                    </li>
-                  ))}
-                </ul>
-              )}
-              <div className="mt-4">
-                <Button onClick={() => void onAct(user.id, "sessions/revoke")}>Revoke all sessions</Button>
-              </div>
-            </>
-          )}
-        </div>
-      )}
-    </li>
+      </DialogContent>
+    </Dialog>
   );
 }

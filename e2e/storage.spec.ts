@@ -1,46 +1,48 @@
 import { expect, test, type Page } from "@playwright/test";
-import { authFile } from "./helpers";
+import { authFile, gotoHydrated } from "./helpers";
 
-/** Body rows of a resource table, addressed by its caption. */
-const rowsOf = (page: Page, caption: RegExp) => page.getByRole("table", { name: caption }).locator("tbody tr");
+/** Body rows of a resource table: the ikada Table is a labelled scroll region, so it is addressed by that label. */
+const rowsOf = (page: Page, label: RegExp) => page.getByRole("region", { name: label }).getByRole("row");
 
 /**
- * #76 — the surfaces that existed only in the CLI until now: account storage
- * resources, project secrets, and the usage-against-limits view.
+ * #76: the surfaces that existed only in the CLI until now: account storage
+ * resources, project secrets, and the limits view.
  */
 test.use({ storageState: authFile("test-admin") });
 
-test("#77 — KV has its own page: create, rename and delete a namespace", async ({ page }) => {
-  await page.goto("/kv");
+test("#77: KV has its own page: create, rename and delete a namespace", async ({ page }) => {
+  await gotoHydrated(page, "/kv");
   await expect(page.getByRole("heading", { name: "KV namespaces" })).toBeVisible();
 
-  await page.getByRole("link", { name: /create namespace/i }).click();
-  await expect(page).toHaveURL(/\/kv\/new$/);
-  await page.getByLabel(/namespace name/i).fill("e2e-sessions");
   await page.getByRole("button", { name: /create namespace/i }).click();
-  await expect(page).toHaveURL(/\/kv$/);
+  // Toasts are role=dialog too, so each dialog is addressed by its title.
+  const create = page.getByRole("dialog", { name: "Create namespace" });
+  await create.getByLabel("Name").fill("e2e-sessions");
+  await create.getByRole("button", { name: /create namespace/i }).click();
+  await expect(create).toHaveCount(0);
 
   const row = rowsOf(page, /kv namespaces/i).filter({ hasText: "e2e-sessions" });
   await expect(row).toBeVisible();
   // The cell deliberately truncates to 14 characters, so the full id lives in
-  // the title (and on the Copy button) — asserting the whole id against the
-  // row's *text* can never pass.
+  // the title of the code element, which the copy control also copies.
   await expect(row.getByRole("cell").nth(1).locator("code")).toHaveAttribute("title", /^kv_[0-9a-f]{24}$/);
+  await expect(row.getByRole("cell").nth(2)).toContainText(/not bound/i); // the "Used by" column
 
-  await row.getByRole("button", { name: /^rename$/i }).click();
-  await page.getByLabel(/new name for e2e-sessions/i).fill("e2e-renamed");
-  await page.getByRole("button", { name: /^save$/i }).click();
+  await row.getByRole("button", { name: "Rename e2e-sessions" }).click();
+  const rename = page.getByRole("dialog", { name: "Rename e2e-sessions" });
+  await rename.getByLabel("Name").fill("e2e-renamed");
+  await rename.getByRole("button", { name: /^save$/i }).click();
   const renamed = rowsOf(page, /kv namespaces/i).filter({ hasText: "e2e-renamed" });
   await expect(renamed).toBeVisible();
 
-  await renamed.getByRole("button", { name: /^delete$/i }).click();
-  const dialog = page.getByRole("alertdialog");
+  await renamed.getByRole("button", { name: "Delete e2e-renamed" }).click();
+  const dialog = page.getByRole("dialog", { name: "Delete e2e-renamed?" });
   await expect(dialog).toBeVisible();
   await dialog.getByRole("button", { name: /delete namespace/i }).click();
   await expect(rowsOf(page, /kv namespaces/i).filter({ hasText: "e2e-renamed" })).toHaveCount(0);
 });
 
-test("#77 — each kind is its own page and only lists its own resources", async ({ page }) => {
+test("#77: each kind is its own page and only lists its own resources", async ({ page }) => {
   await page.goto("/r2");
   await expect(page.getByRole("heading", { name: "R2 buckets" })).toBeVisible();
   await expect(rowsOf(page, /r2 buckets/i).filter({ hasText: "uploads" })).toBeVisible();
@@ -51,14 +53,22 @@ test("#77 — each kind is its own page and only lists its own resources", async
   await expect(rowsOf(page, /queues/i).filter({ hasText: "jobs" })).toBeVisible();
 });
 
+test("the Used by column links a resource to the project that binds it", async ({ page }) => {
+  await page.goto("/kv");
+  const row = rowsOf(page, /kv namespaces/i).filter({ hasText: "sessions" });
+  await expect(row.getByRole("link", { name: "blog" })).toBeVisible();
+});
+
 test("a malformed name is rejected before submitting", async ({ page }) => {
-  await page.goto("/d1/new");
-  await page.getByLabel(/database name/i).fill("Not A Slug");
-  await expect(page.getByText(/lowercase letters, numbers, and hyphens only/i)).toBeVisible();
-  // The form keeps its submit button enabled so it can explain itself: submitting a bad name stays on the page.
+  await gotoHydrated(page, "/d1");
   await page.getByRole("button", { name: /create database/i }).click();
-  await expect(page).toHaveURL(/\/d1\/new$/);
-  await expect(page.getByText(/lowercase letters, numbers, and hyphens only/i)).toBeVisible();
+  const dialog = page.getByRole("dialog", { name: "Create database" });
+  await dialog.getByLabel("Name").fill("Not A Slug");
+  await expect(dialog.getByText(/lowercase letters, numbers, and hyphens only/i)).toBeVisible();
+  // The form keeps its submit button enabled so it can explain itself: submitting a bad name keeps the dialog open.
+  await dialog.getByRole("button", { name: /create database/i }).click();
+  await expect(dialog).toBeVisible();
+  await expect(dialog.getByText(/lowercase letters, numbers, and hyphens only/i)).toBeVisible();
 });
 
 test("secrets: add and delete a project secret", async ({ page }) => {
@@ -97,11 +107,12 @@ test("a lowercase secret name is rejected inline", async ({ page }) => {
   await expect(form.getByRole("button", { name: /save secret/i })).toBeDisabled();
 });
 
-test("usage page shows the account's caps and per-project rows", async ({ page }) => {
+test("limits page shows the account's caps and per-project rows", async ({ page }) => {
   await page.goto("/settings/usage");
   await expect(page.getByRole("heading", { name: "Account" })).toBeVisible();
-  await expect(page.getByRole("group", { name: "Projects" })).toBeVisible();
-  await expect(page.getByRole("group", { name: "Projects" })).toContainText(/\d+ \/ \d+/);
+  await expect(page.getByText(/protect the box/i)).toBeVisible();
+  await expect(page.getByRole("meter", { name: "Projects" })).toBeVisible();
+  await expect(page.getByRole("meter", { name: "Projects" })).toContainText(/\d+ of \d+/);
   await expect(rowsOf(page, /per-project usage/i).filter({ hasText: "blog" })).toBeVisible();
 });
 
