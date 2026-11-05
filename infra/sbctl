@@ -339,6 +339,14 @@ case "$cmd" in
     systemctl stop sproutboat-backup.timer sproutboat-control sproutboat-edge
     rc=0
     backups_cli restore "$archive" "${rargs[@]}" || rc=$?
+    # An archive from before per-account directories holds the legacy layout, which
+    # control refuses to serve: move it now, as root, while nothing runs.
+    if [ "$rc" = 0 ]; then
+      SPROUTBOAT_DATABASE_PATH="$STATE/sproutboat.sqlite" SPROUTBOAT_ARTIFACTS_DIR="$STATE/artifacts" \
+        SPROUTBOAT_BROKER_STATE_DIR="$STATE/brokers" SPROUTBOAT_LOG_PATH="$STATE/logs/requests.ndjson" \
+        SPROUTBOAT_ROUTE_SNAPSHOT="$STATE/routes.json" \
+        "$ROOT/bun/bin/bun" "$ROOT/apps/control/src/artifact-layout.ts" migrate || rc=$?
+    fi
     # Owners and modes as install.sh sets them: control owns its database, routes
     # and artifacts; the edge owns binding data, which both share through the group.
     for f in sproutboat.sqlite routes.json deployments.json secrets.key artifacts; do

@@ -9,7 +9,20 @@ Changes to the self-hosted Sproutboat platform are recorded here. Read the
 
 - The open design system `@sproutboat/ikada` moved to its own repository, [baronunread/ikada](https://github.com/baronunread/ikada) (history preserved). The dashboard depends on a pinned commit of it until the package is on npm. `packages/ikada` and its publish workflow are gone from this repo.
 
-## [1.0.0-rc.2] - 2026-11-05
+## [1.0.0-rc.3] - 2026-11-05
+
+Replaces rc.2, whose first start on an install from before 0.14 could fail part-way through moving artifacts. Update with `sudo SB_REF=v1.0.0-rc.3 sbctl update`. Ships as 0.14.2 for the 0.14 line.
+
+### Breaking and operator actions
+
+- **The move to per-account artifact directories now happens in the installer**, as root, with control and the edge stopped, right before the services start, instead of inside control on its first start. The update log shows one `layout:` line per moved entry. Control checks the layout at boot and refuses to start (exit 78, one line in its journal, no restart loop) while a deployment still uses `artifacts/<digest>`; re-running `sudo sbctl update` or `sudo bash /opt/sproutboat/install.sh` finishes the move. `sbctl rollback` to 0.14.0, rc.1 or older puts the layout back, binding data included. `sbctl restore` of an older archive migrates it. See "Updating and rolling back" in `infra/README.md`.
+- `logs/sprouts` is now created and kept as `sproutboat-edge:sproutboat` 2770, like `brokers` and `resources`; the installer normalises it on existing installs.
+
+### Fixed
+
+- Everything in rc.2 (below).
+
+## [1.0.0-rc.2] - 2026-11-05 (superseded)
 
 Hardening release. Everything below also ships as 0.14.1 for the 0.14 line. Update with `sudo SB_REF=v1.0.0-rc.2 sbctl update`.
 
