@@ -233,3 +233,32 @@ describe("sb-health in each proxy mode", () => {
     expect(await Bun.file(join(dir, "curled")).text()).toContain("http://127.0.0.1:8787/internal/health");
   });
 });
+
+describe("admin username", () => {
+  const bash = (script: string, env: Record<string, string> = {}) =>
+    Bun.spawnSync(["bash", "-c", script], { env: { PATH: process.env.PATH ?? "", ...env } });
+  const fn = (name: string) => `eval "$(sed -n '/^${name}()/,/^}/p' install.sh)"`;
+
+  test("install.sh refuses the names control reserves, and the list matches identity.ts", async () => {
+    const identity = await Bun.file("apps/control/src/identity.ts").text();
+    const block = /reservedUsernames = new Set\(\[([^\]]*)\]\)/.exec(identity)?.[1] ?? "";
+    const reserved = [...block.matchAll(/"([a-z]+)"/g)].map((m) => m[1]);
+    expect(reserved.length).toBeGreaterThan(3);
+    for (const name of reserved) {
+      expect(bash(`${fn("reserved_username")}; reserved_username ${name}`).exitCode).toBe(0);
+    }
+    expect(bash(`${fn("reserved_username")}; reserved_username rcadmin`).exitCode).toBe(1);
+    const install = await Bun.file("install.sh").text();
+    expect(install).toContain('! reserved_username "$SB_ADMIN" || die');
+    // Every name install.sh knows is one identity.ts reserves, and the other way round.
+    const inScript = /reserved_username\(\) \{\n\s*case "\$1" in ([^)]*)\)/.exec(install)?.[1] ?? "";
+    expect(inScript.split("|").sort()).toEqual([...reserved].sort());
+  });
+
+  test("a pre-install.env box keeps ACME staging across the first update", async () => {
+    const install = await Bun.file("install.sh").text();
+    expect(install).toContain(
+      'grep -q "acme-staging-v02" /etc/caddy/Caddyfile 2>/dev/null; then SB_ACME_STAGING=1; fi',
+    );
+  });
+});
