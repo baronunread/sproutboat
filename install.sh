@@ -1201,8 +1201,11 @@ else
   systemctl enable "${units[@]}" >/dev/null 2>&1
   systemctl restart sproutboat-control sproutboat-egress sproutboat-edge
   # A replaced binary needs a real restart; a reload keeps running the old one.
+  # So does a running instance whose admin endpoint is not the socket the new
+  # Caddyfile names (the first update after the move off port 2019): `caddy
+  # reload` dials the address in the file and cannot reach the old instance.
   if [ "$SB_PROXY" = caddy ]; then
-    if [ "$CADDY_REPLACED" = 1 ]; then systemctl restart caddy; else systemctl reload-or-restart caddy; fi
+    if [ "$CADDY_REPLACED" = 1 ] || ! [ -S /run/caddy-admin.sock ]; then systemctl restart caddy; else systemctl reload-or-restart caddy; fi
   fi
   systemctl start sproutboat-backup.timer
   if [ "$SAFE_UPDATE" = 1 ]; then

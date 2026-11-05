@@ -363,7 +363,7 @@ case "$cmd" in
         cd "$ROOT" && "$ROOT/bun/bin/bun" apps/control/src/auth-admin.ts reset-password ) || rc=$?
     fi
     # No Caddy to reload on an SB_PROXY=external install.
-    [ "$config_applied" = 0 ] || [ "$(env_value "$ETC/install.env" SB_PROXY)" = external ] || systemctl reload-or-restart caddy || true
+    [ "$config_applied" = 0 ] || [ "$(env_value "$ETC/install.env" SB_PROXY)" = external ] || { [ -S /run/caddy-admin.sock ] && systemctl reload-or-restart caddy || systemctl restart caddy; } || true
     [ "$config_applied" = 0 ] || systemctl restart sproutboat-egress || true
     systemctl start sproutboat-control sproutboat-edge sproutboat-backup.timer
     [ "$rc" = 0 ] || die "restore failed (exit $rc); the services were restarted on the state as it was"
