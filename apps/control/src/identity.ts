@@ -4,7 +4,7 @@ import { getAuth } from "./auth";
 export type Actor = {
   id: string;
   username: string;
-  authentication: "session" | "bootstrap";
+  authentication: "session" | "bootstrap" | "token";
   isAdmin: boolean;
 };
 
@@ -98,12 +98,12 @@ export function reserveUsername(userId: string, username: string, options: { all
 export async function actorFor(request: Request): Promise<Actor | undefined> {
   const bootstrapToken = process.env.SPROUTBOAT_BOOTSTRAP_TOKEN;
   const bootstrapUsername = process.env.SPROUTBOAT_BOOTSTRAP_USERNAME;
-  const suppliedBootstrapToken =
+  const suppliedCredential =
     request.headers.get("x-api-key") || request.headers.get("authorization")?.replace(/^Bearer\s+/, "");
   if (
     bootstrapToken &&
     bootstrapUsername &&
-    suppliedBootstrapToken === bootstrapToken &&
+    suppliedCredential === bootstrapToken &&
     validUsername(bootstrapUsername)
   ) {
     return {
@@ -114,8 +114,18 @@ export async function actorFor(request: Request): Promise<Actor | undefined> {
     };
   }
 
-  const session = await getAuth().api.getSession({ headers: request.headers });
-  const user = session?.user;
+  let authentication: Actor["authentication"] = "session";
+  let user: ActorUser | undefined;
+  if (suppliedCredential) {
+    // An API key is a bearer credential, not a browser session: verify it
+    // explicitly and never let it stand in for a cookie session.
+    user = await userForApiKey(suppliedCredential);
+    if (!user) return undefined;
+    authentication = "token";
+  } else {
+    const session = await getAuth().api.getSession({ headers: request.headers });
+    user = session?.user;
+  }
   if (!user) return undefined;
   const profile = profileForUser(user.id);
   if (!profile) return undefined;
@@ -139,7 +149,34 @@ export async function actorFor(request: Request): Promise<Actor | undefined> {
       isAdmin = true;
     }
   }
-  return { id: profile.userId, username: profile.username, authentication: "session", isAdmin };
+  return { id: profile.userId, username: profile.username, authentication, isAdmin };
+}
+
+type ActorUser = {
+  id: string;
+  email: string;
+  role?: string | null;
+  banned?: boolean | number | null;
+  banExpires?: Date | string | number | null;
+};
+
+/** The owner of a valid, enabled API key, or undefined (unknown key, banned owner). */
+async function userForApiKey(key: string): Promise<ActorUser | undefined> {
+  const verified = await getAuth()
+    .api.verifyApiKey({ body: { key } })
+    .catch(() => undefined);
+  const owner = verified?.valid ? verified.key?.referenceId : undefined;
+  if (!owner) return undefined;
+  // SAFETY: selects the Better Auth user columns (admin plugin adds role/banned/banExpires).
+  const found = db()
+    .query("SELECT id, email, role, banned, banExpires FROM user WHERE id = ?")
+    .get(owner) as ActorUser | null;
+  if (!found) return undefined;
+  if (found.banned) {
+    const expires = found.banExpires ? new Date(found.banExpires).getTime() : undefined;
+    if (expires === undefined || expires > Date.now()) return undefined;
+  }
+  return found;
 }
 
 const isoTime = (value: string | number | null): string =>

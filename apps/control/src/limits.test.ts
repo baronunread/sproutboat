@@ -1,7 +1,20 @@
 import { afterEach, beforeEach, expect, test } from "bun:test";
-import { clientIp, guardDeploy, guardNewProject, LIMITS, rateHit, resetLimiter, tlsIssuanceAllowed } from "./limits";
+import {
+  clientIp,
+  guardDeploy,
+  guardNewProject,
+  LIMITS,
+  rateHit,
+  resetLimiter,
+  setPeerAddressResolver,
+  tlsIssuanceAllowed,
+} from "./limits";
 
+let peer: string | undefined;
 beforeEach(() => {
+  peer = "127.0.0.1";
+  setPeerAddressResolver(() => peer);
+  delete process.env.SPROUTBOAT_TRUSTED_PROXIES;
   resetLimiter();
   for (const key of [
     "SPROUTBOAT_DEPLOY_RATE_PER_MIN",
@@ -30,12 +43,41 @@ test("rateHit: window resets after 60s", () => {
   expect(rateHit("k", 1, 60_000)).toBe(0);
 });
 
-test("clientIp: first X-Forwarded-For hop, then X-Real-IP, then 'unknown'", () => {
-  expect(clientIp(new Request("https://c.test", { headers: { "x-forwarded-for": "9.9.9.9, 10.0.0.1" } }))).toBe(
-    "9.9.9.9",
-  );
-  expect(clientIp(new Request("https://c.test", { headers: { "x-real-ip": "8.8.8.8" } }))).toBe("8.8.8.8");
-  expect(clientIp(new Request("https://c.test"))).toBe("unknown");
+const fwd = (headers: Record<string, string>) => new Request("https://c.test", { headers });
+
+test("clientIp: behind a loopback proxy, the last X-Forwarded-For hop, then X-Real-IP, then the peer", () => {
+  expect(clientIp(fwd({ "x-forwarded-for": "6.6.6.6, 9.9.9.9" }))).toBe("9.9.9.9");
+  expect(clientIp(fwd({ "x-real-ip": "8.8.8.8" }))).toBe("8.8.8.8");
+  expect(clientIp(fwd({}))).toBe("127.0.0.1");
+  peer = "::ffff:127.0.0.1";
+  expect(clientIp(fwd({ "x-forwarded-for": "9.9.9.9" }))).toBe("9.9.9.9");
+});
+
+test("clientIp: an untrusted peer's forwarding headers are ignored", () => {
+  peer = "203.0.113.7";
+  expect(clientIp(fwd({ "x-forwarded-for": "1.1.1.1", "x-real-ip": "2.2.2.2" }))).toBe("203.0.113.7");
+});
+
+test("clientIp: SPROUTBOAT_TRUSTED_PROXIES adds addresses and CIDRs", () => {
+  process.env.SPROUTBOAT_TRUSTED_PROXIES = "198.51.100.4, 10.1.0.0/16";
+  for (const trusted of ["198.51.100.4", "10.1.200.9"]) {
+    peer = trusted;
+    expect(clientIp(fwd({ "x-forwarded-for": "9.9.9.9" }))).toBe("9.9.9.9");
+  }
+  peer = "10.2.0.1";
+  expect(clientIp(fwd({ "x-forwarded-for": "9.9.9.9" }))).toBe("10.2.0.1");
+});
+
+test("clientIp: no resolvable peer is 'unknown'", () => {
+  peer = undefined;
+  expect(clientIp(fwd({ "x-forwarded-for": "9.9.9.9" }))).toBe("unknown");
+});
+
+test("rateHit sweeps expired buckets on every hit once the map is large", () => {
+  for (let i = 0; i < 5000; i++) rateHit("k" + i, 1, 0);
+  rateHit("fresh", 1, 120_000);
+  // the expired buckets are gone: a key from the old window starts a new count
+  expect(rateHit("k1", 1, 120_001)).toBe(0);
 });
 
 test("guardDeploy: 429 + Retry-After once the per-account limit is hit", async () => {
@@ -81,4 +123,12 @@ test("LIMITS: env overrides, sane defaults", () => {
   expect(LIMITS.versionsPerProject()).toBe(25);
   process.env.SPROUTBOAT_MAX_VERSIONS_PER_PROJECT = "5";
   expect(LIMITS.versionsPerProject()).toBe(5);
+});
+
+test("tlsIssuanceAllowed: a hostname refused at the cap is not remembered as seen", () => {
+  process.env.SPROUTBOAT_TLS_NEW_CERTS_PER_HOUR = "1";
+  const t = 1_000_000;
+  expect(tlsIssuanceAllowed("a.x.test", t)).toBe(true);
+  expect(tlsIssuanceAllowed("b.x.test", t)).toBe(false);
+  expect(tlsIssuanceAllowed("b.x.test", t + 1000)).toBe(false); // immediate retry stays refused
 });
