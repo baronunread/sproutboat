@@ -556,3 +556,66 @@ test("sprout log fd is O_APPEND: an external truncate leaves no NUL holes", () =
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+// A real listener process. `claimPid` is what the factory reports as the sprout's pid, so a
+// stand-in unrelated process makes the listener look like one the supervisor did not start.
+function realListenerSpawn(foreignFirst: number) {
+  const procs: Bun.Subprocess[] = [];
+  let calls = 0;
+  const spawn: SproutFactory = (_path, port): SproutChild => {
+    calls += 1;
+    const listener = Bun.spawn(
+      [
+        process.execPath,
+        "-e",
+        `Bun.listen({hostname:"127.0.0.1",port:${port},socket:{data(){}}});setInterval(()=>{},1000)`,
+      ],
+      { stdout: "ignore", stderr: "ignore" },
+    );
+    const bystander = Bun.spawn(["sleep", "60"], { stdout: "ignore", stderr: "ignore" });
+    procs.push(listener, bystander);
+    const foreign = calls <= foreignFirst;
+    return {
+      exited: listener.exited,
+      kill: () => {
+        listener.kill(9);
+        bystander.kill(9);
+      },
+      pid: foreign ? bystander.pid : listener.pid,
+    };
+  };
+  return { spawn, calls: () => calls, cleanup: () => procs.forEach((p) => p.kill(9)) };
+}
+
+test.skipIf(process.platform !== "linux")(
+  "a listener the pool did not start is retried once on a fresh port",
+  async () => {
+    const fake = realListenerSpawn(1);
+    const pool = makePool(fake.spawn);
+    try {
+      const endpoint = await pool.endpoint("/tmp/foreign/sprout");
+      expect(fake.calls()).toBe(2);
+      const stats = pool.stats();
+      expect(stats.foreignListeners).toBe(1);
+      expect(stats.spawns).toBe(2);
+      expect(stats.live).toBe(1);
+      expect(stats.portsInUse).toBe(1);
+      expect(endpoint.url).toMatch(/^http:\/\/127\.0\.0\.1:\d+$/);
+    } finally {
+      fake.cleanup();
+    }
+  },
+);
+
+test.skipIf(process.platform !== "linux")("two foreign listeners in a row fail the request", async () => {
+  const fake = realListenerSpawn(2);
+  const pool = makePool(fake.spawn);
+  try {
+    await expect(pool.endpoint("/tmp/foreign2/sprout")).rejects.toThrow("did not start");
+    expect(fake.calls()).toBe(2);
+    expect(pool.stats().foreignListeners).toBe(2);
+    expect(pool.stats().portsInUse).toBe(0);
+  } finally {
+    fake.cleanup();
+  }
+});

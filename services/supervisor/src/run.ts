@@ -3,14 +3,18 @@ import { createHash, randomBytes } from "node:crypto";
 import { basename, dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { connect } from "node:net";
+import { listenerOwner } from "./listener-owner";
 import { sproutCommand } from "./sandbox";
 import {
   brokerBwrapArgs,
+  brokerLaunchCommand,
   brokerEnv,
   brokerSandboxMode,
   nodeModulesOf,
   planBrokerSandbox,
   prepareBrokerHostFiles,
+  withoutToken,
+  writeBwrapArgsFile,
   type BrokerEnv,
   type BrokerPlanInput,
 } from "./broker-sandbox";
@@ -62,7 +66,19 @@ export type SproutChild = {
   enableDispatch?(): void;
   /** The token this sprout trusts from the edge (SB_EDGE_TOKEN): see `isEdgeSecret`. */
   readonly edgeToken?: string;
+  /** The spawned sprout process (the launcher, for a sandboxed one). Used to check who owns the listening socket. */
+  readonly pid?: number;
+  /** The bindings broker process, when the sprout has one. */
+  readonly brokerPid?: number;
 };
+
+/** Something other than the process we spawned is listening on the sprout's port. */
+export class ForeignListenerError extends Error {
+  constructor(readonly port: number) {
+    super(`sprout port ${port} is held by a process the supervisor did not start`);
+    this.name = "ForeignListenerError";
+  }
+}
 
 /**
  * Service-binding calls go from a sprout through its broker to this edge, which routes
@@ -334,6 +350,10 @@ function spawnWithBroker(
   let broker: Bun.Subprocess<"pipe", number | "ignore", number | "ignore"> | null = null;
   let brokerCredential: string | null = null;
   let revokeCredential: (() => void) | null = null;
+  let brokerArgsFile: string | null = null;
+  const removeArgsFile = () => {
+    if (brokerArgsFile) rmSync(brokerArgsFile, { force: true });
+  };
   const edgeToken = randomBytes(24).toString("hex");
   const sproutEnv: SproutEnv = { SB_EDGE_TOKEN: edgeToken };
 
@@ -415,7 +435,9 @@ function spawnWithBroker(
       revokeCredential = registerBindingCredential(brokerCredential, Object.values(services));
     }
     const mode = brokerSandboxMode();
-    let command = args;
+    // The token goes to the broker in its environment (it reads SB_BROKER_TOKEN), not on its command line.
+    const payload = withoutToken(args);
+    let command = payload;
     let env: BrokerEnv;
     if (mode === "bwrap") {
       const plan: BrokerPlanInput = {
@@ -433,7 +455,13 @@ function spawnWithBroker(
       const mounts = planBrokerSandbox(plan);
       prepareBrokerHostFiles(plan, mounts);
       env = brokerEnv(process.env, brokerCredential, { PATH: "/usr/bin:/bin", HOME: "/tmp", TMPDIR: "/tmp" });
-      command = [...brokerBwrapArgs(mounts, env), ...args];
+      env.SB_BROKER_TOKEN = token;
+      // bwrap reads its options from a 0600 file, so no secret is in argv. bash deletes the file once it has it open.
+      brokerArgsFile = resolve(stateDir, `bwrap-${randomBytes(6).toString("hex")}.args`);
+      writeBwrapArgsFile(brokerArgsFile, brokerBwrapArgs(mounts, env));
+      command = brokerLaunchCommand(brokerArgsFile, payload, Bun.which("bwrap") ?? "bwrap");
+      // The sandbox's own environment carries the token; the process that launches it needs none.
+      env = { PATH: "/usr/bin:/bin", HOME: "/tmp", TMPDIR: "/tmp" };
     } else {
       if (process.platform === "linux" && process.env.SPROUTBOAT_UNSAFE_NO_SANDBOX !== "1") {
         throw new Error(
@@ -445,12 +473,14 @@ function spawnWithBroker(
         HOME: process.env.HOME ?? "/tmp",
         TMPDIR: process.env.TMPDIR ?? "/tmp",
       });
+      env.SB_BROKER_TOKEN = token;
     }
     const brokerFd = openLog("w");
     try {
       broker = Bun.spawn(command, { ...withLog(brokerFd), stdin: "pipe", env });
     } catch (cause) {
       revokeCredential?.();
+      removeArgsFile();
       throw cause;
     } finally {
       closeLog(brokerFd);
@@ -467,6 +497,7 @@ function spawnWithBroker(
   }
 
   let sprout: Bun.Subprocess | null = null;
+  let sproutPid: number | undefined;
   let stopped = false;
   const capturedBroker = broker;
   const stop = () => {
@@ -475,6 +506,7 @@ function spawnWithBroker(
     sprout?.kill(9);
     capturedBroker?.kill(9);
     revokeCredential?.();
+    removeArgsFile();
   };
 
   // The broker is a Bun process; a freshly compiled native sprout is ready in
@@ -485,11 +517,22 @@ function spawnWithBroker(
   const exited = (async () => {
     if (capturedBroker) {
       const [up, transferUp] = await Promise.all([awaitPort(port + 10_000, 5_000), awaitPort(port - 10_000, 5_000)]);
+      removeArgsFile();
       if (stopped) return 0;
       // Broker never listened — don't start a sprout that will only crash on its
       // first binding call. Resolve as a failed exit; the pool retries next hit.
       if (!up || !transferUp) {
         capturedBroker.kill(9);
+        return 1;
+      }
+      // A connect succeeds for any listener. The ports must be ours: held by the broker we started.
+      if (
+        listenerOwner(port + 10_000, capturedBroker.pid) === "foreign" ||
+        listenerOwner(port - 10_000, capturedBroker.pid) === "foreign"
+      ) {
+        console.error("broker ports are held by a process the supervisor did not start; retrying on other ports");
+        capturedBroker.kill(9);
+        revokeCredential?.();
         return 1;
       }
     }
@@ -511,6 +554,7 @@ function spawnWithBroker(
       return 1;
     }
     closeLog(sproutFd);
+    sproutPid = sprout.pid;
     // #4 — bind the two lifecycles: a sprout with bindings is useless without
     // its broker, so either exiting tears down the other and the pool respawns
     // the pair on the next request.
@@ -532,6 +576,10 @@ function spawnWithBroker(
       }
     },
     edgeToken,
+    get pid() {
+      return sproutPid;
+    },
+    brokerPid: capturedBroker?.pid,
   };
 }
 
@@ -643,7 +691,18 @@ class SproutServer {
     let wait = 1;
     while (Date.now() < deadline) {
       if (this.#closed) throw new Error("sprout exited before it began listening");
-      if (await listens(this.port)) return;
+      if (await listens(this.port)) {
+        const pid = this.#child.pid;
+        const owner = pid === undefined ? "unsupported" : listenerOwner(this.port, pid);
+        if (owner === "foreign") {
+          this.dispose();
+          console.error(
+            `sprout port ${this.port} is held by a process the supervisor did not start; retrying on another port`,
+          );
+          throw new ForeignListenerError(this.port);
+        }
+        if (owner !== "none") return;
+      }
       await Bun.sleep(wait);
       if (wait < 20) wait = Math.min(20, wait * 2);
     }
@@ -668,6 +727,8 @@ export type PoolStats = {
   timedLive: number;
   /** Failed timed wakes. Retried with capped exponential backoff. */
   timedWakeFailures: number;
+  /** Spawns whose port turned out to be held by a process we did not start. */
+  foreignListeners: number;
 };
 
 export class SproutPool {
@@ -691,6 +752,7 @@ export class SproutPool {
   #readyFailures = 0;
   #idleEvictions = 0;
   #timedWakeFailures = 0;
+  #foreignListeners = 0;
 
   constructor({
     spawn = spawnSprout,
@@ -750,6 +812,25 @@ export class SproutPool {
     services?: Record<string, string> | null,
     r2?: R2Runtime | null,
     dispatchDisabled = false,
+  ): Promise<Endpoint> {
+    // A port another process already held is not retried on, so a second attempt gets a freshly probed one.
+    for (let attempt = 1; ; attempt++) {
+      try {
+        return await this.#endpointOnce(sproutPath, secretsPath, services, r2, dispatchDisabled);
+      } catch (error) {
+        if (!(error instanceof ForeignListenerError)) throw error;
+        this.#foreignListeners += 1;
+        if (attempt >= 2) throw error;
+      }
+    }
+  }
+
+  async #endpointOnce(
+    sproutPath: string,
+    secretsPath: string | null | undefined,
+    services: Record<string, string> | null | undefined,
+    r2: R2Runtime | null | undefined,
+    dispatchDisabled: boolean,
   ): Promise<Endpoint> {
     const key = runtimeKey(sproutPath, secretsPath, services, r2);
     let server = this.#servers.get(key);
@@ -972,6 +1053,7 @@ export class SproutPool {
       timedConfigured: this.#timed.size,
       timedLive,
       timedWakeFailures: this.#timedWakeFailures,
+      foreignListeners: this.#foreignListeners,
     };
   }
 }
