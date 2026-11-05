@@ -55,8 +55,8 @@ jobs:
           done
           cat dev-local.log
           exit 1
-      # global-setup reseeds with --reset --e2e before the first test.
-      - run: bun run seed --reset --e2e
+      # No separate seed step: global-setup runs `seed --reset --e2e` before the first test, and a
+      # second seed straight after would hit Better Auth's sign-in rate limit.
       - run: bun run e2e
       - if: failure()
         uses: actions/upload-artifact@v4

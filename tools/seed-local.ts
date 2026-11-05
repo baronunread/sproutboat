@@ -117,14 +117,25 @@ async function signIn(login: string): Promise<{ cookie: string; id: string }> {
   };
   const header = () => [...jar].map(([k, v]) => `${k}=${v}`).join("; ");
 
-  let res = await fetchInsecure(`${controlUrl}/api/auth/sign-in/social`, {
-    method: "POST",
-    headers: { "content-type": "application/json", origin: dashboardUrl },
-    body: JSON.stringify({ provider: "github", callbackURL: `${dashboardUrl}/profile` }),
-  });
+  // Better Auth rate-limits sign-in per client (429). A second seed run right after the first,
+  // which is what a CI job that seeds and then lets Playwright's global-setup seed again does,
+  // lands inside that window, so wait it out instead of failing.
+  const startSignIn = () =>
+    fetchInsecure(`${controlUrl}/api/auth/sign-in/social`, {
+      method: "POST",
+      headers: { "content-type": "application/json", origin: dashboardUrl },
+      body: JSON.stringify({ provider: "github", callbackURL: `${dashboardUrl}/profile` }),
+    });
+  let res = await startSignIn();
+  for (let attempt = 0; res.status === 429 && attempt < 4; attempt += 1) {
+    await Bun.sleep(10_000);
+    res = await startSignIn();
+  }
   stash(res);
+  const text = await res.text();
   // SAFETY: Better Auth sign-in/social returns { url } on success.
-  const { url } = (await res.json()) as { url: string };
+  const { url } = JSON.parse(text) as { url?: string };
+  if (!url) throw new Error(`sign-in/social for ${login} returned ${res.status} without a url: ${text.slice(0, 300)}`);
   const state = new URL(url).searchParams.get("state") ?? "";
   const authorize = await fetch(`${emulatorUrl}/login/oauth/callback`, {
     method: "POST",
