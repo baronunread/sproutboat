@@ -64,7 +64,7 @@ function createAuth() {
   const apiKeyPlugin = apiKey({
     defaultPrefix: "sproutboat_",
     apiKeyHeaders: "x-api-key",
-    enableSessionForAPIKeys: true,
+    enableSessionForAPIKeys: false,
     rateLimit: { enabled: true, maxRequests: 120, timeWindow: 60_000 },
   });
   const useEmulator = Boolean(githubEmulatorUrl && clientId && clientSecret);
@@ -135,8 +135,17 @@ function createAuth() {
       // dev only; production leaves this unset and stays secure.
       useSecureCookies: process.env.SPROUTBOAT_INSECURE_COOKIES === "1" ? false : true,
       crossSubDomainCookies: { enabled: false },
-      // Caddy is the only public listener and sets X-Forwarded-For, so the
-      // auth rate limiter can bucket per real client IP.
+      // The session cookie is SameSite=Strict. The GitHub OAuth round trip is
+      // unaffected: the callback is a top-level GET navigation that only needs
+      // the (default, Lax) state cookie, and it *sets* the session cookie; the
+      // SPA is same-site with this API, so its XHRs carry the cookie. A link
+      // from another site lands on the dashboard without the cookie once, and
+      // the SPA's first API call (same-site) then has it. Other cookies keep
+      // their defaults.
+      cookies: { session_token: { attributes: { sameSite: "strict" } } },
+      // main.ts rewrites these headers on /api/auth/* requests to the client
+      // address resolved from the socket (limits.clientIp), so the auth rate
+      // limiter buckets per real client IP and cannot be spoofed.
       ipAddress: { ipAddressHeaders: ["x-forwarded-for", "x-real-ip"] },
     },
   });
