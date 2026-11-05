@@ -46,6 +46,7 @@ const buckets = new Map<string, { count: number; resetAt: number }>();
 
 /** @returns seconds to wait, or 0 if under the limit. */
 export function rateHit(key: string, limit: number, now = Date.now()): number {
+  sweep(now);
   const bucket = buckets.get(key);
   if (!bucket || now >= bucket.resetAt) {
     buckets.set(key, { count: 1, resetAt: now + WINDOW_MS });
@@ -64,14 +65,69 @@ function sweep(now = Date.now()): void {
   for (const [key, bucket] of buckets) if (now >= bucket.resetAt) buckets.delete(key);
 }
 
-/** First hop of X-Forwarded-For (Caddy sets it); "unknown" if absent. */
+type PeerResolver = (request: Request) => string | undefined;
+let peerResolver: PeerResolver = () => undefined;
+
+/** main.ts registers the socket address lookup (`server.requestIP`). */
+export function setPeerAddressResolver(resolver: PeerResolver): void {
+  peerResolver = resolver;
+}
+
+const normalizeAddress = (address: string): string => {
+  const lower = address.trim().toLowerCase();
+  return lower.startsWith("::ffff:") && lower.includes(".") ? lower.slice(7) : lower;
+};
+
+function ipv4ToInt(address: string): number | undefined {
+  const parts = address.split(".");
+  if (parts.length !== 4) return undefined;
+  let value = 0;
+  for (const part of parts) {
+    if (!/^\d{1,3}$/.test(part) || Number(part) > 255) return undefined;
+    value = value * 256 + Number(part);
+  }
+  return value;
+}
+
+function matchesProxy(peer: string, entry: string): boolean {
+  const [base, bits] = entry.split("/");
+  const address = normalizeAddress(base);
+  if (bits === undefined) return normalizeAddress(peer) === address;
+  const a = ipv4ToInt(normalizeAddress(peer));
+  const b = ipv4ToInt(address);
+  const prefix = Number(bits);
+  if (a === undefined || b === undefined || !Number.isInteger(prefix) || prefix < 0 || prefix > 32) return false;
+  if (prefix === 0) return true;
+  const shift = 32 - prefix;
+  return Math.floor(a / 2 ** shift) === Math.floor(b / 2 ** shift);
+}
+
+/** Loopback, plus SPROUTBOAT_TRUSTED_PROXIES (comma-separated addresses or IPv4 CIDRs). */
+function trustedProxy(peer: string): boolean {
+  const normal = normalizeAddress(peer);
+  if (normal === "::1" || normal.startsWith("127.")) return true;
+  return (process.env.SPROUTBOAT_TRUSTED_PROXIES || "")
+    .split(",")
+    .map((entry) => entry.trim())
+    .filter(Boolean)
+    .some((entry) => matchesProxy(peer, entry));
+}
+
+/**
+ * The caller's address. Forwarding headers are honoured only when the socket
+ * peer is a trusted proxy, and then only the last hop (the one the proxy
+ * appended); otherwise the peer address itself is used.
+ */
 export function clientIp(request: Request): string {
+  const peer = peerResolver(request);
+  if (!peer) return "unknown";
+  if (!trustedProxy(peer)) return normalizeAddress(peer);
   const forwarded = request.headers.get("x-forwarded-for");
   if (forwarded) {
-    const first = forwarded.split(",")[0]?.trim();
-    if (first) return first;
+    const last = forwarded.split(",").at(-1)?.trim();
+    if (last) return last;
   }
-  return request.headers.get("x-real-ip")?.trim() || "unknown";
+  return request.headers.get("x-real-ip")?.trim() || normalizeAddress(peer);
 }
 
 const eventLogPath = (): string =>
@@ -102,7 +158,6 @@ function tooMany(retryAfterSec: number, message: string): Response {
  * send back, or null to proceed.
  */
 export async function guardDeploy(actorId: string, request: Request): Promise<Response | null> {
-  sweep();
   const ip = clientIp(request);
   const byIp = rateHit(`deploy:ip:${ip}`, LIMITS.deployPerIp());
   if (byIp > 0) {
@@ -153,12 +208,15 @@ let tlsApprovals: number[] = []; // approval timestamps for NEW hostnames, last 
  */
 export function tlsIssuanceAllowed(hostname: string, now = Date.now()): boolean {
   const last = tlsSeen.get(hostname);
-  tlsSeen.set(hostname, now);
-  if (last !== undefined && now - last < 24 * HOUR_MS) return true; // repeat within a day
+  if (last !== undefined && now - last < 24 * HOUR_MS) {
+    tlsSeen.set(hostname, now);
+    return true; // repeat within a day
+  }
   tlsApprovals = tlsApprovals.filter((ms) => now - ms < HOUR_MS);
   const cap = num("SPROUTBOAT_TLS_NEW_CERTS_PER_HOUR", 20);
   if (tlsApprovals.length >= cap) return false;
   tlsApprovals.push(now);
+  tlsSeen.set(hostname, now); // only an allowed hostname counts as seen
   // keep the seen-map from growing forever
   if (tlsSeen.size > 8192) for (const [key, ms] of tlsSeen) if (now - ms > 48 * HOUR_MS) tlsSeen.delete(key);
   return true;

@@ -1,6 +1,7 @@
 import { getAuth } from "./auth";
+import { readJsonObject, type JsonInput } from "./body";
 import { backupPath, createBackup, deleteBackup, listBackups } from "./backups";
-import { actorFor, reserveUsername, validUsername } from "./identity";
+import { actorFor, reserveUsername, revokeAllCredentials, validUsername } from "./identity";
 import { globalLogTotals } from "./logs";
 import { banOwner, globalStats, ownerDeployments, ownerRollups, syncRoutes, unbanOwner } from "./store";
 
@@ -171,8 +172,6 @@ export async function adminUserDetail(request: Request, id: string): Promise<Res
   return Response.json({ user: publicUser(user), deployments, sessions });
 }
 
-type JsonInput = string | number | boolean | null | undefined | JsonInput[] | { readonly [key: string]: JsonInput };
-
 const asText = (value: JsonInput): string | undefined =>
   Object(value) !== value && value === String(value) && String(value).trim() ? String(value).trim() : undefined;
 const asPositive = (value: JsonInput): number | undefined =>
@@ -192,7 +191,7 @@ const MIN_PASSWORD = 10;
 export async function adminCreateUser(request: Request): Promise<Response> {
   const denied = await requireAdmin(request);
   if (denied) return denied;
-  const body = await request.json().catch(() => ({}));
+  const body = await readJsonObject(request);
   const email = asText(body.email)?.toLowerCase();
   const username = asText(body.username);
   const password = asText(body.password);
@@ -232,10 +231,11 @@ export async function adminCreateUser(request: Request): Promise<Response> {
 export async function banUser(request: Request, id: string): Promise<Response> {
   const denied = await requireAdmin(request);
   if (denied) return denied;
-  const body = await request.json().catch(() => ({}));
+  const body = await readJsonObject(request);
   const banReason = asText(body.reason);
   const banExpiresIn = asPositive(body.expiresIn);
   await getAuth().api.banUser({ body: { userId: id, banReason, banExpiresIn }, headers: request.headers });
+  revokeAllCredentials(id);
   banOwner(id);
   await syncRoutes();
   return Response.json({ banned: id, routesStopped: true });
