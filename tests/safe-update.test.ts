@@ -282,6 +282,12 @@ describe("sb-snapshot and sb-rollback", () => {
     await rm(log);
     expect((await rollback()).code).toBe(0);
     expect((await readFile(log, "utf8")).trim().split("\n").at(-1)).toBe("reload-or-restart caddy");
+    // A Caddyfile whose admin endpoint differs from the restored one: `caddy reload`
+    // would dial an address the running instance does not serve, so restart.
+    await rm(log);
+    await put(join(dir, "etc/caddy/Caddyfile"), '{\n\tadmin "unix//run/caddy-admin.sock|0600"\n}\n');
+    expect((await rollback()).code).toBe(0);
+    expect((await readFile(log, "utf8")).trim().split("\n").at(-1)).toBe("restart caddy");
   });
 
   test("rollback exits non-zero and points at the backup when the host stays unhealthy", async () => {

@@ -537,6 +537,8 @@ describe("Phase A contracts", () => {
     expect(install).toContain("curl -fsSL --retry 3");
     expect(install).toContain('[ "$BUN_HAVE" != "$BUN_VERSION" ]');
     expect(install).toContain('"v$CADDY_VERSION"*) ;;');
+    // The first update after the admin endpoint moves to the socket must restart, not reload.
+    expect(install).toContain('[ "$CADDY_REPLACED" = 1 ] || ! [ -S /run/caddy-admin.sock ]');
     expect(install).toContain("grep -qw avx2 /proc/cpuinfo");
     expect(install).toContain("sha512");
     expect(install).toContain('if [ "$CADDY_REPLACED" = 1 ]; then systemctl restart caddy;');

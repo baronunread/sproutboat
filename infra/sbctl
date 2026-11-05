@@ -336,7 +336,7 @@ case "$cmd" in
         set +a
         cd "$ROOT" && "$ROOT/bun/bin/bun" apps/control/src/auth-admin.ts reset-password ) || rc=$?
     fi
-    [ "$config_applied" = 0 ] || systemctl reload-or-restart caddy || true
+    [ "$config_applied" = 0 ] || { [ -S /run/caddy-admin.sock ] && systemctl reload-or-restart caddy || systemctl restart caddy; } || true
     [ "$config_applied" = 0 ] || systemctl restart sproutboat-egress || true
     systemctl start sproutboat-control sproutboat-edge sproutboat-backup.timer
     [ "$rc" = 0 ] || die "restore failed (exit $rc); the services were restarted on the state as it was"

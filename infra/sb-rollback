@@ -46,6 +46,10 @@ own() { [ -n "$PFX" ] || chown "$@"; }
 
 caddy_changed=0
 if [ -f "$PREV/usr/local/bin/caddy-sproutboat" ] && ! cmp -s "$PREV/usr/local/bin/caddy-sproutboat" "$CADDY_BIN"; then caddy_changed=1; fi
+# A Caddyfile that names a different admin endpoint also needs a restart: `caddy reload`
+# dials the address in the restored file, which the running instance does not serve.
+admin_line() { sed -n "s/^[[:space:]]*admin[[:space:]][[:space:]]*//p" "$1" 2>/dev/null | head -1; }
+if [ -f "$PREV/etc/caddy/Caddyfile" ] && [ "$(admin_line "$PREV/etc/caddy/Caddyfile")" != "$(admin_line "$PFX/etc/caddy/Caddyfile")" ]; then caddy_changed=1; fi
 
 # 1. The release tree, with Bun, node_modules and the built dashboard.
 rsync -a --checksum --delete "$PREV/tree/" "$ROOT/"
