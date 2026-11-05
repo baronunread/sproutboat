@@ -281,22 +281,87 @@ for you.
 ## Backups
 
 `sproutboat-backup.timer` runs `apps/control/src/backups.ts` daily, writing one
-`sproutboat-<date>.tar.gz` under `/var/lib/sproutboat/backups/`. It holds the
-control database, every binding store under `resources/` and `brokers/` (KV, D1,
-R2, queues, Durable Objects), R2 object bodies, the artifact directory, the
-route snapshot and `secrets.key`. Each SQLite file is snapshotted with
-`VACUUM INTO`, so the backup is consistent while the edge keeps writing. The newest
-`SPROUTBOAT_BACKUP_KEEP` (default 7) are kept.
+archive under `/var/lib/sproutboat/backups/`; the newest `SPROUTBOAT_BACKUP_KEEP`
+(default 7) are kept. An archive holds:
+
+- the control database, every binding store under `resources/` and `brokers/`
+  (KV, D1, R2, queues, Durable Objects), R2 object bodies, the artifact
+  directory, the route snapshot and `secrets.key`. Each SQLite file is
+  snapshotted with `VACUUM INTO`, so the backup is consistent while the edge
+  keeps writing;
+- the host config under `config/`: every file in `/etc/sproutboat` (env files,
+  `backup.key`) as `config/etc/sproutboat/`, and Caddy's data directory
+  (certificates and ACME accounts, no lock files) as `config/caddy/`;
+- `manifest.json`, the first member: format, platform version, creation time,
+  whether config is included, and the size, sha256 and mode of every file.
 
 Admin -> **Backups** in the dashboard lists them, takes one on demand, and
-downloads or deletes an archive. On-demand: `systemctl start sproutboat-backup`.
+downloads or deletes an archive. CLI: `sudo sbctl backup now`, `sbctl backup list`.
+
+### Encryption and the key
+
+Archives are encrypted at rest by default and are named
+`sproutboat-<date>.tar.gz.enc`. The key is `/etc/sproutboat/backup.key`: 64 hex
+characters (32 random bytes), created by `install.sh` on first run and kept across
+updates, mode `0640 root:sproutboat` so the backup user can read it.
+`SPROUTBOAT_BACKUP_KEY_FILE` (written to `control.env`) overrides the path.
+
+**Copy `/etc/sproutboat/backup.key` off the box** (password manager, secret
+store). Without it every encrypted archive is unreadable, including the ones in
+S3. Archives made with `backup.key` also carry a copy of it inside `config/`, so
+keep the key somewhere the archive is not.
+
+The format, for anyone who needs to read one by hand: the ASCII magic `SBBK1\n`
+(6 bytes), a 12-byte random nonce, the AES-256-GCM ciphertext of a gzip tar
+stream, then the 16-byte GCM tag. The key is the 32 bytes decoded from the hex
+file, used directly (no KDF). Nothing unencrypted is written to disk on the way:
+`tar` is piped through the cipher into the output file.
+
+`SPROUTBOAT_BACKUP_ENCRYPT=off` in `control.env` writes plain `.tar.gz` instead.
+Older plain archives keep working everywhere. With encryption off and an S3
+target configured, the backup logs a warning: the archive, with `secrets.key` and
+your env files, would leave the box in clear.
+
+### Verify
+
+Every archive is verified right after it is written; a failure fails the unit
+(`systemctl status sproutboat-backup`) and deletes the bad archive.
+
+```sh
+sudo sbctl backup verify /var/lib/sproutboat/backups/sproutboat-<date>.tar.gz.enc
+sudo sbctl backup verify <archive> --full --key /path/to/backup.key
+```
+
+The default check decrypts and streams the archive through `tar`: the GCM tag
+proves it is intact and the key is right, and gzip and tar check their own
+structure. It prints the manifest summary. `--full` also extracts to a scratch
+directory, checks every size and sha256 against the manifest, runs
+`PRAGMA integrity_check` on every SQLite file, and removes the scratch
+directory. Exit status 1 with a one-line reason on any failure ("wrong backup
+key or corrupted archive" for a bad key or tag).
+
+### Config snapshot timing
+
+The backup user cannot read `/etc/sproutboat/egress.env`, `update.env` or Caddy's
+data. A root step, `/usr/local/lib/sproutboat/backup-stage`, copies them into
+`/var/lib/sproutboat/config-snapshot/` (mode 0700, owned by the backup user);
+the archive includes that snapshot. The step runs as `ExecStartPre=+` of
+`sproutboat-backup.service`, so a nightly backup always has a fresh snapshot,
+and once at the end of every install or update. **A backup started from the
+dashboard uses the snapshot as of the last nightly run or update**, so a
+certificate renewed since then is not in it. Run `sudo sbctl backup now` when
+you need a backup with config as of this minute. Caddy's data directory is
+found from the caddy unit (`XDG_DATA_HOME`, else the home of its `User=`, root
+when unset), then `/var/lib/caddy/.local/share/caddy` and
+`/root/.local/share/caddy`; `backup-stage --print-caddy-dir` shows the result.
 
 ### Off-box copy (S3-compatible)
 
 Set these in `/etc/sproutboat/control.env` and every new archive is uploaded and
 the remote copies are pruned to the same retention. An upload failure never
-fails the backup — the local archive still exists, and the dashboard shows the
-per-archive **Off-box** state.
+fails the backup: the local archive still exists, and the dashboard shows the
+per-archive **Off-box** state. Archives are encrypted before upload; keep it that
+way (see above).
 
 ```sh
 SPROUTBOAT_BACKUP_S3_BUCKET=my-sproutboat-backups
@@ -307,7 +372,7 @@ SPROUTBOAT_BACKUP_S3_REGION=auto
 SPROUTBOAT_BACKUP_S3_PREFIX=host-1                                          # optional key prefix
 ```
 
-Works with AWS S3, Cloudflare R2, Backblaze B2, MinIO — anything S3-compatible.
+Works with AWS S3, Cloudflare R2, Backblaze B2, MinIO, anything S3-compatible.
 Still keep taking provider snapshots.
 
 ### Restore
@@ -315,22 +380,45 @@ Still keep taking provider snapshots.
 Onto a fresh install (run `install.sh` first, so the users and units exist):
 
 ```sh
-sudo sbctl restore /path/to/sproutboat-<date>.tar.gz --force
+sudo sbctl restore /path/to/sproutboat-<date>.tar.gz.enc --force --key /path/to/backup.key
 ```
 
-`sbctl restore` stops control, the edge and the backup timer, then restores the
-archive. It gives control its database, routes and artifacts, and the edge its
-binding data, group-writable as `install.sh` sets it. Then it starts the
-services again. The fresh install already has a `sproutboat.sqlite`, so the
-restore needs `--force`.
+A fresh install has its own, different `backup.key`, so pass the old one with
+`--key`; once the archive's config is restored, `/etc/sproutboat/backup.key` is the
+old key again. Flags: `--force` (the fresh install already has a
+`sproutboat.sqlite`), `--no-config` (state only), `--key FILE`, `--allow-newer`
+(see below). Plain `sbctl restore <archive> [--force]` still works.
 
-The restore checks the whole archive first. It stops on a truncated or foreign
-file, or on a member outside the state dir. Before unpacking, it deletes the
-`-wal`, `-shm` and `-journal` files beside every database in the archive,
-because SQLite would replay the install's own log over the restored file.
-Without `--force` it refuses a state dir that already has a `sproutboat.sqlite`.
+The order, in full:
+
+1. The archive is read end to end first (for an encrypted one, every byte is
+   authenticated before anything is extracted). It stops on a truncated or
+   foreign file, a wrong key, a member outside the state dir, or an archive from
+   a newer platform version than the one running (`--force` does not override
+   that; `--allow-newer` does).
+2. `sbctl` stops the backup timer, control and the edge.
+3. State is restored: the `-wal`, `-shm` and `-journal` files beside every
+   database are deleted first (SQLite would replay the install's own log over
+   the restored file). `config/` is extracted to a scratch directory, never the
+   state dir.
+4. Owners and modes are reset: control owns its database, routes and artifacts;
+   the edge owns binding data, group-writable.
+5. Config is applied: `config/etc/sproutboat/*` is copied over `/etc/sproutboat/`
+   with the modes `install.sh` uses, Caddy's data is copied into its data
+   directory, and `/root/sproutboat-admin.env` is rewritten from the restored
+   `control.env`.
+6. The admin password is reset to the current `SPROUTBOAT_BOOTSTRAP_TOKEN` with
+   `bun apps/control/src/auth-admin.ts reset-password`. The database holds the
+   admin hash from the old box while `control.env` holds the token to log in with;
+   before this step the CLI token and the dashboard password could differ. It
+   runs for every restore, so it also fixes archives made without config.
+7. Caddy is reloaded, the egress service restarted if config was applied, then
+   control, the edge and the timer start.
+
 It warns when the archive has no `secrets.key` and `SPROUTBOAT_SECRETS_KEY` is
 unset, and when the archive predates binding-data backups (no `resources/`).
+After restoring config the domain and tokens are the old box's: if the new box
+has a different IP, update DNS before expecting certificates to renew.
 
 ## Limits and abuse controls (#25)
 
@@ -354,9 +442,9 @@ change applies on the next deploy or sprout restart, like Cloudflare.
 
 Encrypted at rest with AES-256-GCM. The key is `SPROUTBOAT_SECRETS_KEY` (base64,
 32 bytes) if set, otherwise `<state>/secrets.key` — 32 random bytes written mode
-`0600` on first use. **The backup archive includes `secrets.key`**; if you rely
-on an off-box `SPROUTBOAT_BACKUP_S3_*` copy, understand that the key travels with
-the ciphertext there. To keep them separate, set `SPROUTBOAT_SECRETS_KEY` from a
+`0600` on first use. **The backup archive includes `secrets.key`**. Archives are encrypted with
+`backup.key` (see Backups), so an off-box copy does not carry it in clear unless
+you turn encryption off. To keep the two apart anyway, set `SPROUTBOAT_SECRETS_KEY` from a
 secret store your box reads at boot and delete `<state>/secrets.key`.
 
 Rejections are written to `<state>/logs/control.ndjson` as

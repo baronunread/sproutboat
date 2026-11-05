@@ -1,0 +1,91 @@
+#!/usr/bin/env bash
+#
+# sb-backup-stage: copy the host config the unprivileged backup user cannot
+# read into /var/lib/sproutboat/config-snapshot/, where createBackup() picks
+# it up. Installed to /usr/local/lib/sproutboat/backup-stage by install.sh; run
+# as root by sproutboat-backup.service (ExecStartPre=+, so it sits outside the
+# unit's sandbox) and once at the end of every install or update.
+#
+#   etc/sproutboat/   every file in /etc/sproutboat (env files, backup.key)
+#   caddy/            Caddy's data dir: certificates and ACME accounts, no locks
+#
+#   backup-stage                    refresh the snapshot (idempotent, quiet)
+#   backup-stage --print-caddy-dir  print the Caddy data dir (sbctl restore uses it)
+#
+# SB_ETC, SB_STATE, SB_SYSTEMCTL and SB_CADDY_CANDIDATES (colon-separated)
+# override the defaults for tests; SB_STAGE_NONROOT=1 lets a test run unprivileged.
+set -euo pipefail
+
+ETC=${SB_ETC:-/etc/sproutboat}
+STATE=${SB_STATE:-/var/lib/sproutboat}
+SYSTEMCTL=${SB_SYSTEMCTL:-systemctl}
+SNAP="$STATE/config-snapshot"
+BACKUP_USER=sproutboat-control
+BACKUP_GROUP=sproutboat
+
+die() { printf 'backup-stage: %s\n' "$*" >&2; exit 1; }
+
+home_of() {
+  local h
+  h=$(getent passwd "$1" 2>/dev/null | cut -d: -f6) || true
+  [ -n "$h" ] || h=$(eval "printf '%s' ~$1")
+  printf '%s' "$h"
+}
+
+# Where Caddy keeps certificates: $XDG_DATA_HOME/caddy, else
+# $HOME/.local/share/caddy of the user the unit runs as (root when it has no
+# User=; that is the unit install.sh writes when the distro ships none). A
+# distro package runs as user caddy. Echo the candidates in priority order.
+caddy_candidates() {
+  local env xdg user home f
+  env=$("$SYSTEMCTL" show -p Environment --value caddy 2>/dev/null || true)
+  xdg=$(printf '%s\n' "$env" | tr ' ' '\n' | sed -n 's/^"\{0,1\}XDG_DATA_HOME=//p' | tr -d '"' | sed -n 1p)
+  if [ -z "$xdg" ]; then
+    # EnvironmentFile= entries print as "<path> (ignore_errors=yes)".
+    while read -r f _; do
+      [ -n "$f" ] && [ -r "$f" ] || continue
+      xdg=$(sed -n 's/^XDG_DATA_HOME=//p' "$f" | tr -d '"' | sed -n 1p)
+      [ -z "$xdg" ] || break
+    done < <("$SYSTEMCTL" show -p EnvironmentFiles --value caddy 2>/dev/null || true)
+  fi
+  user=$("$SYSTEMCTL" show -p User --value caddy 2>/dev/null || true)
+  home=$(home_of "${user:-root}")
+  [ -z "$xdg" ] || printf '%s\n' "$xdg/caddy"
+  printf '%s\n' "$home/.local/share/caddy"
+  if [ -n "${SB_CADDY_CANDIDATES:-}" ]; then
+    printf '%s\n' "$SB_CADDY_CANDIDATES" | tr ':' '\n'
+  else
+    printf '%s\n' /var/lib/caddy/.local/share/caddy /root/.local/share/caddy
+  fi
+}
+
+# First candidate that already holds certificates; fails when there is none.
+find_caddy_dir() {
+  local d
+  while read -r d; do
+    [ -d "$d/certificates" ] && { printf '%s\n' "$d"; return 0; }
+  done < <(caddy_candidates)
+  return 1
+}
+
+if [ "${1:-}" = --print-caddy-dir ]; then
+  # A fresh install has no certificates yet: fall back to the unit's own rule,
+  # which is where Caddy will create them.
+  find_caddy_dir || caddy_candidates | sed -n 1p
+  exit 0
+fi
+[ $# -eq 0 ] || die "usage: backup-stage [--print-caddy-dir]"
+[ "$(id -u)" = 0 ] || [ "${SB_STAGE_NONROOT:-0}" = 1 ] || die "run as root"
+command -v rsync >/dev/null || die "rsync is not installed"
+
+install -d -m 0700 "$SNAP" "$SNAP/etc"
+rsync -aq --delete "$ETC/" "$SNAP/etc/sproutboat/"
+if caddy=$(find_caddy_dir); then
+  rsync -aq --delete --exclude=/locks/ "$caddy/" "$SNAP/caddy/"
+else
+  rm -rf "$SNAP/caddy"
+fi
+if [ "$(id -u)" = 0 ]; then
+  chown -R "$BACKUP_USER:$BACKUP_GROUP" "$SNAP"
+fi
+chmod 0700 "$SNAP"

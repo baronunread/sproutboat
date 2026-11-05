@@ -9,6 +9,10 @@ Group=sproutboat
 WorkingDirectory=/opt/sproutboat
 # Storage paths + SPROUTBOAT_BACKUP_KEEP, written by install.sh.
 EnvironmentFile=-/etc/sproutboat/control.env
+# Root step outside the sandbox (the `+` prefix, see systemd.service(5)): copies
+# /etc/sproutboat and Caddy's data dir, which this user cannot read, into
+# /var/lib/sproutboat/config-snapshot for the archive.
+ExecStartPre=+/usr/local/lib/sproutboat/backup-stage
 ExecStart=/opt/sproutboat/bun/bin/bun apps/control/src/backups.ts
 NoNewPrivileges=true
 PrivateTmp=true

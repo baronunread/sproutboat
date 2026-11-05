@@ -77,7 +77,7 @@ function AdminBackups() {
     <Panel variant="wide">
       <PanelHeading
         title="Backups"
-        description="The control database, binding data (KV, D1, R2, queues, Durable Objects), artifacts and route snapshot, one gzipped archive each. A timer takes one daily; the last seven are kept."
+        description="The control database, binding data (KV, D1, R2, queues, Durable Objects), artifacts, route snapshot and host config, one encrypted archive each. A timer takes one daily; the last seven are kept."
         action={
           <Button busy={busy} busyLabel="Backing up…" onClick={() => void backUpNow()}>
             Back up now

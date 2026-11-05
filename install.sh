@@ -90,6 +90,7 @@ if [ "${1:-}" = --uninstall ]; then
   systemctl daemon-reload
   rm -f "$CADDY_BIN" /usr/local/bin/sbctl /etc/sysctl.d/80-sproutboat-userns.conf /root/sproutboat-admin.env
   # /etc/sproutboat holds caddy.d (operator drop-ins) and goes even with --keep-state: copy it first.
+  rm -f /usr/local/lib/sproutboat/backup-stage
   rm -rf "$ROOT" /opt/sproutboat-src /etc/sproutboat /etc/caddy
   [ "$KEEP_STATE" = 1 ] || rm -rf "$STATE"
   for u in sproutboat-control sproutboat-edge; do id "$u" >/dev/null 2>&1 && userdel "$u" || true; done
@@ -289,6 +290,19 @@ say "Building the dashboard"
 ( cd "$ROOT" && "$BUN" run --silent web:build >/dev/null ) && ok "dashboard built -> $ROOT/apps/web/dist"
 [ -d "$ROOT/apps/web/dist" ] && chmod -R a+rX "$ROOT/apps/web/dist"
 
+# Backups are encrypted at rest with this key (AES-256-GCM, no KDF: it is
+# already random). Created once and kept across updates; the backup user reads
+# it through the sproutboat group. Without a copy off the box, every backup is
+# unreadable after losing the disk.
+BACKUP_KEY_FILE=$ETC/backup.key
+if [ ! -s "$BACKUP_KEY_FILE" ]; then
+  ( umask 077; randhex > "$BACKUP_KEY_FILE" )
+  BACKUP_KEY_IS_NEW=1
+else
+  BACKUP_KEY_IS_NEW=0
+fi
+chown root:sproutboat "$BACKUP_KEY_FILE"; chmod 0640 "$BACKUP_KEY_FILE"
+
 # --- write env BEFORE starting services -----------------------------
 say "Writing $ETC/{sproutboat,control}.env"
 umask 077
@@ -303,6 +317,7 @@ chown root:sproutboat "$ETC/sproutboat.env"; chmod 0640 "$ETC/sproutboat.env"
   echo "SPROUTBOAT_ADMIN_EMAILS=$SB_ACME_EMAIL"
   echo "BETTER_AUTH_SECRET=$BETTER_AUTH_SECRET"
   echo "BETTER_AUTH_URL=$DASH_URL"
+  echo "SPROUTBOAT_BACKUP_KEY_FILE=$BACKUP_KEY_FILE"
   if [ -n "$SB_GITHUB_CLIENT_ID" ] && [ -n "$SB_GITHUB_CLIENT_SECRET" ]; then
     echo "GITHUB_CLIENT_ID=$SB_GITHUB_CLIENT_ID"
     echo "GITHUB_CLIENT_SECRET=$SB_GITHUB_CLIENT_SECRET"
@@ -471,6 +486,7 @@ install -m 0644 "$ROOT/infra/systemd/sproutboat-backup.timer"   /etc/systemd/sys
 install -m 0755 "$ROOT/infra/sbctl" /usr/local/bin/sbctl
 install -d -m 0755 -o root -g root /usr/local/lib/sproutboat
 install -m 0755 "$ROOT/infra/sb-update" /usr/local/lib/sproutboat/update
+install -m 0755 "$ROOT/infra/sb-backup-stage" /usr/local/lib/sproutboat/backup-stage
 
 # --- Better Auth schema (dashboard + admin token login) ---------------
 say "Migrating the auth database"
@@ -519,6 +535,13 @@ else
     || warn "preflight reported problems — run 'sudo sbctl preflight' for detail; deployments need bubblewrap working"
 fi
 
+# Snapshot /etc/sproutboat and Caddy's data for the backups. The nightly unit
+# refreshes it itself; this covers dashboard-triggered backups until then.
+# Best-effort: a staging problem must not fail an install or update.
+if [ "$SKIP_SERVICES" != 1 ]; then
+  /usr/local/lib/sproutboat/backup-stage || warn "could not stage config for backups; check: /usr/local/lib/sproutboat/backup-stage"
+fi
+
 # Keep the token retrievable — the SSH scrollback is not a safe home for it.
 printf 'SPROUTBOAT_API_URL=https://control.%s\nSPROUTBOAT_TOKEN=%s\n' "$SB_DOMAIN" "$ADMIN_TOKEN" > /root/sproutboat-admin.env
 chmod 0600 /root/sproutboat-admin.env
@@ -560,5 +583,7 @@ note "sbctl update            stage a fresh release, then run its installer"
 note "sbctl uninstall         remove everything (--keep-state to keep the db)"
 
 say "Backups"
-note "daily to $STATE/backups (last 7 kept); manage under Admin -> Backups"
+note "daily to $STATE/backups (last 7 kept, encrypted); manage under Admin -> Backups"
+warn "copy $BACKUP_KEY_FILE off this box now (password manager or secret store): without it every backup is unreadable"
+if [ "$BACKUP_KEY_IS_NEW" = 1 ]; then note "backup key created: $BACKUP_KEY_FILE"; fi
 warn "take a provider snapshot now, and copy backups off-box"
