@@ -1,9 +1,10 @@
 import { closeSync, existsSync, mkdirSync, openSync, readFileSync, rmSync } from "node:fs";
 import { createHash, randomBytes } from "node:crypto";
-import { basename, dirname, resolve } from "node:path";
+import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { connect } from "node:net";
 import { listenerOwner } from "./listener-owner";
+import { runtimeName } from "./runtime-name";
 import { sproutCommand } from "./sandbox";
 import {
   brokerBwrapArgs,
@@ -363,7 +364,7 @@ function spawnWithBroker(
   // `sproutboat tail --sprout`. `"ignore"` when there's no log dir (dev/tests)
   // or the open fails.
   const sproutLogPath = process.env.SPROUTBOAT_LOG_PATH
-    ? resolve(dirname(process.env.SPROUTBOAT_LOG_PATH), "sprouts", `${basename(workerDir)}.log`)
+    ? resolve(dirname(process.env.SPROUTBOAT_LOG_PATH), "sprouts", `${runtimeName(sproutPath)}.log`)
     : null;
   const openLog = (mode: "w" | "a"): number | "ignore" => {
     if (!sproutLogPath) return "ignore";
@@ -391,7 +392,7 @@ function spawnWithBroker(
     const stateBase =
       process.env.SPROUTBOAT_BROKER_STATE_DIR ||
       (process.env.SPROUTBOAT_LOG_PATH ? resolve(dirname(process.env.SPROUTBOAT_LOG_PATH), "brokers") : workerDir);
-    const stateDir = resolve(stateBase, basename(workerDir));
+    const stateDir = resolve(stateBase, runtimeName(sproutPath));
     mkdirSync(resolve(stateDir, "d1"), { recursive: true });
     // #74 — account-level KV/R2/queue/D1 resources live in one shared dir keyed
     // by their globally-unique `<kind>_<24hex>` id (not per-deployment, not
@@ -692,8 +693,12 @@ class SproutServer {
     while (Date.now() < deadline) {
       if (this.#closed) throw new Error("sprout exited before it began listening");
       if (await listens(this.port)) {
+        // A real child reports its pid once the sprout is spawned (undefined while its
+        // broker is still starting: keep waiting, a listener now is not ours). A test
+        // factory with no pid at all is trusted as before.
         const pid = this.#child.pid;
-        const owner = pid === undefined ? "unsupported" : listenerOwner(this.port, pid);
+        const owner =
+          pid === undefined ? ("pid" in this.#child ? "none" : "unsupported") : listenerOwner(this.port, pid);
         if (owner === "foreign") {
           this.dispose();
           console.error(
