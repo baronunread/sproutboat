@@ -86,7 +86,15 @@ if [ -n "${SPROUTBOAT_SPROUT_SECCOMP:-}" ]; then
   fi
 fi
 
-launch=(bwrap "${bwrap_args[@]}" -- "$sprout" "$@")
+# The bubblewrap options (they carry the broker token as --setenv) go to bwrap on a
+# descriptor, NUL separated, instead of its command line, which any local user can
+# read from /proc/<pid>/cmdline. printf is a builtin, so no process ever has them in argv.
+exec {args_fd}< <(printf '%s\0' "${bwrap_args[@]}")
+launch=(bwrap --args "$args_fd" -- "$sprout" "$@")
+
+# One sprout cannot hold thousands of sockets or files.
+nofile=${SPROUTBOAT_SPROUT_NOFILE:-1024}
+ulimit -n "$nofile" 2>/dev/null || echo "sprout-sandbox: could not set the open file limit to $nofile" >&2
 
 cgroup_mode=${SPROUTBOAT_SPROUT_CGROUP:-auto}
 if [ "$cgroup_mode" != "off" ]; then
