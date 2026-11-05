@@ -1,16 +1,8 @@
+import { Banner, Button, Field, Input, StatusDot, Switch, cn } from "@sproutboat/ikada";
 import { useEffect, useReducer, useRef, useState } from "react";
-import {
-  BADGE,
-  Button,
-  FILTER_BAR,
-  FILTER_FIELD,
-  FILTER_SEARCH,
-  Panel,
-  PanelHeading,
-  SelectField,
-  StatusMessage,
-  TextField,
-} from "./components";
+import type { ReactNode } from "react";
+import { LogCell, LogRow, statusTone } from "./log-row";
+import { FilterSelect, Section } from "./project-ui";
 import {
   EMPTY_TAIL,
   eventPath,
@@ -26,38 +18,34 @@ import {
   type TailState,
   type TailRow,
 } from "./tail-state";
-import { cn } from "@/lib/utils";
 
 const STATUS_OPTIONS = [
-  ["all", "All statuses"],
-  ["ok", "Succeeded"],
-  ["error", "Errors"],
-  ["2xx", "2xx"],
-  ["3xx", "3xx"],
-  ["4xx", "4xx"],
-  ["5xx", "5xx"],
-] as const;
+  { value: "all", label: "All statuses" },
+  { value: "ok", label: "Succeeded" },
+  { value: "error", label: "Errors" },
+  { value: "2xx", label: "2xx" },
+  { value: "3xx", label: "3xx" },
+  { value: "4xx", label: "4xx" },
+  { value: "5xx", label: "5xx" },
+];
 const METHOD_OPTIONS = [
-  ["all", "All methods"],
-  ["GET", "GET"],
-  ["POST", "POST"],
-  ["PUT", "PUT"],
-  ["PATCH", "PATCH"],
-  ["DELETE", "DELETE"],
-  ["HEAD", "HEAD"],
-] as const;
+  { value: "all", label: "All methods" },
+  { value: "GET", label: "GET" },
+  { value: "POST", label: "POST" },
+  { value: "PUT", label: "PUT" },
+  { value: "PATCH", label: "PATCH" },
+  { value: "DELETE", label: "DELETE" },
+  { value: "HEAD", label: "HEAD" },
+];
 const SAMPLING_OPTIONS = [
-  ["1", "Every event"],
-  ["0.5", "Half"],
-  ["0.1", "One in ten"],
-  ["0.01", "One in a hundred"],
-] as const;
+  { value: "1", label: "Every event" },
+  { value: "0.5", label: "Half" },
+  { value: "0.1", label: "One in ten" },
+  { value: "0.01", label: "One in a hundred" },
+];
 
 const CLOCK = new Intl.DateTimeFormat(undefined, { hour: "2-digit", minute: "2-digit", second: "2-digit" });
 const FULL_TIME = new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "medium" });
-
-const STATUS_TONE = (status: number) =>
-  status >= 500 ? "text-coral" : status >= 400 ? "text-coral" : status >= 300 ? "text-sky" : "text-success";
 
 type Link = "off" | "connecting" | "live" | "reconnecting";
 
@@ -159,87 +147,77 @@ export function LiveTail({ name, active }: { name: string; active: boolean }) {
   };
 
   const label = link === "live" ? (state.paused ? "Paused" : "Live") : link === "off" ? "Off" : "Connecting";
+  const dot =
+    link === "live" && !state.paused ? (
+      <StatusDot status="success" live label={label} />
+    ) : link === "off" ? (
+      <StatusDot status="neutral" label={label} />
+    ) : (
+      <StatusDot status="warning" pulse={link !== "live"} label={label} />
+    );
 
   return (
-    <Panel variant="wide" aria-label="Live tail">
-      <PanelHeading
-        title="Live tail"
-        description="Requests, console output and errors from this app as they happen."
-        action={
-          <div className="flex shrink-0 items-center gap-2.5">
-            <span
-              role="status"
-              className={cn(
-                "text-[0.75rem]",
-                link === "live" && !state.paused
-                  ? "text-brand before:mr-1.5 before:inline-block before:size-1.5 before:rounded-full before:bg-brand before:content-['']"
-                  : "text-muted-foreground",
-              )}
-            >
-              {label}
-            </span>
-            <Button variant={running ? "danger" : "quiet"} onClick={() => setRunning((on) => !on)}>
-              {running ? "Stop live tail" : "Start live tail"}
-            </Button>
-          </div>
-        }
-      />
-
+    <Section
+      id="live-tail"
+      title="Live tail"
+      description="Requests, console output and errors from this app as they happen."
+      action={
+        <>
+          <span role="status" className="text-base">
+            {dot}
+          </span>
+          <Switch label="Stream events" checked={running} onCheckedChange={setRunning} />
+        </>
+      }
+    >
       {!active && (
-        <StatusMessage>This project has no active route right now, so no new events will arrive.</StatusMessage>
+        <Banner tone="info">This project has no active route right now, so no new events will arrive.</Banner>
       )}
 
-      <search className={FILTER_BAR}>
-        <SelectField
+      <search className="flex flex-wrap items-end gap-3">
+        <FilterSelect
           label="Status"
-          fieldClassName={FILTER_FIELD}
           value={filters.status}
           options={STATUS_OPTIONS}
           onValueChange={(value) => setFilter("status", value)}
         />
-        <SelectField
+        <FilterSelect
           label="Method"
-          fieldClassName={FILTER_FIELD}
           value={filters.method}
           options={METHOD_OPTIONS}
           onValueChange={(value) => setFilter("method", value)}
         />
-        <SelectField
+        <FilterSelect
           label="Sampling"
-          fieldClassName={FILTER_FIELD}
           value={filters.sampling}
           options={SAMPLING_OPTIONS}
           onValueChange={(value) => setFilter("sampling", value)}
         />
-        <TextField
-          label="Search"
-          type="search"
-          fieldClassName={FILTER_SEARCH}
-          placeholder="URL, console text, or error text"
-          value={searchText}
-          onChange={(event) => onSearch(event.target.value)}
-        />
-        <Button variant="quiet" disabled={!filtered} onClick={resetFilters}>
+        <Field label="Search" className="sm:max-w-md sm:flex-1">
+          <Input
+            type="search"
+            placeholder="URL, console text, or error text"
+            value={searchText}
+            onChange={(event) => onSearch(event.target.value)}
+          />
+        </Field>
+        <Button disabled={!filtered} onClick={resetFilters}>
           Reset
         </Button>
       </search>
 
-      <div className="mb-3 flex flex-wrap items-center gap-2.5">
-        <Button
-          variant="quiet"
-          disabled={!running}
-          onClick={() => dispatch({ type: state.paused ? "resume" : "pause" })}
-        >
+      <div className="flex flex-wrap items-center gap-2">
+        <Button size="sm" disabled={!running} onClick={() => dispatch({ type: state.paused ? "resume" : "pause" })}>
           {state.paused ? "Resume" : "Pause"}
         </Button>
         <Button
-          variant="quiet"
+          size="sm"
           disabled={state.rows.length === 0 && state.pending.length === 0}
           onClick={() => dispatch({ type: "clear" })}
         >
           Clear
         </Button>
-        <span className="text-[0.75rem] text-muted-foreground tabular-nums" aria-live="polite">
+        <span className="text-sm text-fg-muted tabular-nums" aria-live="polite">
           {state.paused && state.pending.length > 0
             ? `${state.pending.length} new while paused`
             : `${state.rows.length} ${state.rows.length === 1 ? "event" : "events"}`}
@@ -247,12 +225,12 @@ export function LiveTail({ name, active }: { name: string; active: boolean }) {
         </span>
       </div>
 
-      {note && <StatusMessage>{note}</StatusMessage>}
+      {note && <Banner tone="warning">{note}</Banner>}
       {state.dropped > 0 && (
-        <StatusMessage tone="error">
+        <Banner tone="danger">
           {state.dropped} {state.dropped === 1 ? "event was" : "events were"} skipped because the app is producing more
-          than the tail's rate limit. Narrow the filters or lower the sampling rate to see everything that matters.
-        </StatusMessage>
+          than the tail&apos;s rate limit. Narrow the filters or lower the sampling rate to see everything that matters.
+        </Banner>
       )}
 
       <div className="relative">
@@ -262,16 +240,17 @@ export function LiveTail({ name, active }: { name: string; active: boolean }) {
           role="log"
           aria-label="Live events"
           aria-live="off"
+          // oxlint-disable-next-line jsx-a11y/no-noninteractive-tabindex -- a scroll region must be keyboard-focusable
           tabIndex={0}
-          className="h-[22rem] overflow-auto rounded-md border border-border bg-background focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none"
+          className="h-[22rem] overflow-auto rounded-lg bg-code-bg shadow-card outline-hidden focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-focus"
         >
           {state.rows.length === 0 ? (
-            <p className="m-0 px-4 py-5 text-[0.84rem] leading-relaxed text-muted-foreground">
+            <p className="m-0 px-4 py-5 text-base text-fg-muted">
               {running
                 ? filtered
                   ? "Waiting for events that match these filters."
                   : "Waiting for traffic. Send a request to this app and it shows up here."
-                : "Start the live tail to stream events. Console lines appear on their own: the runtime does not say which request printed them."}
+                : "Turn on the live tail to stream events. Console lines appear on their own: the runtime does not say which request printed them."}
             </p>
           ) : (
             <ol className="m-0 list-none p-0">
@@ -282,24 +261,20 @@ export function LiveTail({ name, active }: { name: string; active: boolean }) {
           )}
         </div>
         {behind && (
-          <Button variant="quiet" className="absolute end-3 bottom-3 bg-card" onClick={jumpToLatest}>
+          <Button size="sm" variant="primary" className="absolute end-3 bottom-3" onClick={jumpToLatest}>
             Jump to latest
           </Button>
         )}
       </div>
-    </Panel>
+    </Section>
   );
 }
-
-const LINE =
-  "flex flex-wrap items-baseline gap-x-3 gap-y-0.5 border-t border-border px-3.5 py-2 first:border-t-0 hover:bg-accent";
-const TIME = "shrink-0 font-mono text-[0.72rem] text-muted-foreground tabular-nums";
 
 function TailLine({ row }: { row: TailRow }) {
   const { event } = row;
   const when = (
     <time
-      className={TIME}
+      className="shrink-0 text-xs text-fg-muted tabular-nums"
       dateTime={new Date(event.eventTimestamp).toISOString()}
       title={FULL_TIME.format(event.eventTimestamp)}
     >
@@ -311,72 +286,63 @@ function TailLine({ row }: { row: TailRow }) {
   const [exception] = event.exceptions;
   if (exception)
     return (
-      <li className={cn(LINE, "bg-destructive/6")}>
-        {when}
-        <span className="w-9 shrink-0 font-mono text-[0.7rem] text-coral uppercase">error</span>
+      <LogRow time={when} failed>
+        <LogCell tone="danger" className="w-10 shrink-0 text-xs uppercase">
+          error
+        </LogCell>
         <div className="min-w-0 flex-[1_1_14rem]">
-          <p className="m-0 font-mono text-[0.78rem] leading-relaxed font-semibold break-words text-coral">
+          <p className="m-0 font-semibold break-words text-danger-fg">
             {exception.name}: {exception.message}
           </p>
           {exception.stack && (
             <details className="mt-1">
-              <summary className="cursor-pointer text-[0.72rem] text-muted-foreground hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring">
+              <summary className="cursor-pointer rounded-xs text-xs text-fg-muted outline-hidden hover:text-fg focus-visible:outline-2 focus-visible:outline-focus">
                 Stack trace
               </summary>
-              <pre className="mt-1.5 mb-0 overflow-x-auto font-mono text-[0.72rem] leading-relaxed text-muted-foreground">
-                {exception.stack}
-              </pre>
+              <pre className="mt-1.5 mb-0 overflow-x-auto text-xs text-fg-muted">{exception.stack}</pre>
             </details>
           )}
         </div>
-      </li>
+      </LogRow>
     );
   if (!log) return null;
   return (
-    <li className={LINE}>
-      {when}
-      <span
-        className={cn(
-          "w-9 shrink-0 font-mono text-[0.7rem] uppercase",
-          log.level === "error" ? "text-coral" : "text-sky",
-        )}
-      >
+    <LogRow time={when}>
+      <LogCell tone={log.level === "error" ? "danger" : "info"} className="w-10 shrink-0 text-xs uppercase">
         {log.level}
-      </span>
-      <span className="min-w-0 flex-[1_1_14rem] font-mono text-[0.78rem] leading-relaxed break-words whitespace-pre-wrap">
-        {log.message.join(" ")}
-      </span>
-    </li>
+      </LogCell>
+      <LogCell className="min-w-0 flex-[1_1_14rem] break-words whitespace-pre-wrap">{log.message.join(" ")}</LogCell>
+    </LogRow>
   );
 }
 
-function RequestLine({ event, when }: { event: TailEvent; when: React.ReactNode }) {
+function RequestLine({ event, when }: { event: TailEvent; when: ReactNode }) {
   if (!event.event) return null;
   const { request, response } = event.event;
   const cpu = event.cpuTime === null ? null : `${Number(event.cpuTime.toFixed(1))} ms cpu`;
   return (
-    <li className={LINE}>
-      {when}
-      <span className="w-12 shrink-0 font-mono text-[0.75rem] font-semibold">{request.method}</span>
-      <span className="min-w-0 flex-[1_1_12rem] font-mono text-[0.78rem] break-all" title={request.url}>
+    <LogRow time={when}>
+      <LogCell className="w-12 shrink-0 font-semibold">{request.method}</LogCell>
+      <LogCell className="min-w-0 flex-[1_1_12rem] break-all" title={request.url}>
         {eventPath(request.url)}
-      </span>
-      <span
-        className={cn(
-          "w-9 shrink-0 text-end font-mono text-[0.78rem] font-semibold tabular-nums",
-          STATUS_TONE(response.status),
-        )}
-      >
+      </LogCell>
+      <LogCell tone={statusTone(response.status)} className="w-9 shrink-0 text-end font-semibold tabular-nums">
         {response.status}
-      </span>
-      <span className={cn("shrink-0 sm:w-[7.5rem]", event.outcome === "ok" && "max-sm:hidden")}>
-        {event.outcome !== "ok" && <span className={cn(BADGE, "text-coral")}>{event.outcome}</span>}
-      </span>
-      <span className="shrink-0 text-[0.72rem] max-sm:basis-full sm:w-[8.5rem] sm:text-end text-muted-foreground tabular-nums">
+      </LogCell>
+      <LogCell
+        tone="danger"
+        className={cn("shrink-0 text-xs sm:w-[7.5rem]", event.outcome === "ok" && "max-sm:hidden")}
+      >
+        {event.outcome === "ok" ? null : event.outcome}
+      </LogCell>
+      <LogCell
+        tone="default"
+        className="shrink-0 text-xs text-fg-muted tabular-nums max-sm:basis-full sm:w-[8.5rem] sm:text-end"
+      >
         {cpu ? `${cpu}, ` : ""}
         {event.wallTime} ms
-      </span>
-    </li>
+      </LogCell>
+    </LogRow>
   );
 }
 

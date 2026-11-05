@@ -1,5 +1,5 @@
+import { Banner } from "@sproutboat/ikada";
 import { createFileRoute } from "@tanstack/react-router";
-import { StatusMessage } from "../components";
 import { useProject } from "../dashboard-data";
 import { TrafficCharts } from "../traffic-charts";
 
@@ -9,13 +9,11 @@ export const Route = createFileRoute("/projects_/$name/metrics")({ component: Pr
 function ProjectMetrics() {
   const { name, active } = useProject();
   return (
-    <>
+    <div className="flex flex-col gap-4">
       {!active && (
-        <StatusMessage>
-          This project has no active route right now - these charts cover past traffic only.
-        </StatusMessage>
+        <Banner tone="info">This project has no active route right now. These charts cover past traffic only.</Banner>
       )}
       <TrafficCharts name={name} />
-    </>
+    </div>
   );
 }

@@ -1,6 +1,19 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
-import { DataTable, Panel, PanelHeading, RecordList, RecordRow, StatusMessage } from "../components";
+import {
+  Badge,
+  Banner,
+  CopyId,
+  EmptyState,
+  Link,
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@sproutboat/ikada";
+import { createFileRoute, Link as RouterLink } from "@tanstack/react-router";
 import { useJson, useProject } from "../dashboard-data";
+import { LoadingLine, Section } from "../project-ui";
 
 /**
  * #76 - what the active version can actually reach: the bindings baked into its
@@ -112,13 +125,18 @@ function ProjectBindings() {
 
   if (!activeVersion) {
     return (
-      <Panel>
-        <PanelHeading title="Bindings" description="What the running version can reach." />
-        <p className="px-5 py-12 text-center text-[0.84rem] leading-relaxed text-muted-foreground group-[.is-padded]/panel:px-0 group-[.is-padded]/panel:py-5 group-[.is-padded]/panel:text-start [&_code]:text-foreground">
-          No active version. Bindings are declared in <code>sproutboat.jsonc</code> and baked into an artifact at build
-          time, so they appear here once a version is serving.
-        </p>
-      </Panel>
+      <Section id="bindings" title="Bindings" description="What the running version can reach.">
+        <EmptyState
+          as="h3"
+          title="No active version"
+          description={
+            <>
+              Bindings are declared in <code>sproutboat.jsonc</code> and baked into an artifact at build time, so they
+              appear here once a version is serving.
+            </>
+          }
+        />
+      </Section>
     );
   }
 
@@ -126,92 +144,95 @@ function ProjectBindings() {
   const rows = bindings ? rowsFor(bindings, data?.resources ?? []) : [];
 
   return (
-    <>
-      <Panel variant="wide">
-        <PanelHeading
-          title="Bindings"
-          description={
-            <>
-              Declared by the active version&apos;s artifact. Change <code>sproutboat.jsonc</code> and redeploy to alter
-              them.
-            </>
-          }
-        />
-
+    <div className="flex flex-col gap-4">
+      <Section
+        id="bindings"
+        title="Bindings"
+        description={
+          <>
+            Declared by the active version&apos;s artifact. Change <code>sproutboat.jsonc</code> and redeploy to alter
+            them.
+          </>
+        }
+      >
         {state === "loading" ? (
-          <p className="min-h-56 px-5 pt-12 text-muted-foreground group-[.is-padded]/panel:px-0" aria-live="polite">
-            Loading bindings…
-          </p>
+          <LoadingLine label="Loading bindings…" />
         ) : state === "error" ? (
-          <StatusMessage tone="error">Could not load bindings. Refresh and try again.</StatusMessage>
+          <Banner tone="danger">Could not load bindings. Refresh and try again.</Banner>
         ) : !bindings ? (
-          <p className="px-5 py-12 text-center text-[0.84rem] leading-relaxed text-muted-foreground group-[.is-padded]/panel:px-0 group-[.is-padded]/panel:py-5 group-[.is-padded]/panel:text-start [&_code]:text-foreground">
-            This version declares no bindings{data?.manifestError ? ` (${data.manifestError})` : ""}. Add them under{" "}
-            <code>bindings</code> in <code>sproutboat.jsonc</code> and redeploy.
-          </p>
-        ) : rows.length === 0 ? (
-          <p className="px-5 py-12 text-center text-[0.84rem] leading-relaxed text-muted-foreground group-[.is-padded]/panel:px-0 group-[.is-padded]/panel:py-5 group-[.is-padded]/panel:text-start [&_code]:text-foreground">
-            This version declares no bindings.
-          </p>
-        ) : (
-          <DataTable
-            caption="Bindings declared by the active version"
-            head={
-              <tr>
-                <th scope="col">Binding</th>
-                <th scope="col">Type</th>
-                <th scope="col">Target</th>
-              </tr>
+          <EmptyState
+            as="h3"
+            title="No bindings declared"
+            description={
+              <>
+                This version declares no bindings{data?.manifestError ? ` (${data.manifestError})` : ""}. Add them under{" "}
+                <code>bindings</code> in <code>sproutboat.jsonc</code> and redeploy.
+              </>
             }
-          >
-            {rows.map((row) => (
-              <tr key={`${row.kind}:${row.binding}:${row.target}`}>
-                <td>
-                  <code>{row.binding}</code>
-                </td>
-                <td>{KIND_LABEL.get(row.kind) ?? row.kind}</td>
-                <td>
-                  {row.resourceId && KIND_PAGE.has(row.kind) ? (
-                    <Link
-                      className="text-[0.8rem] text-sky underline-offset-2 hover:underline"
-                      to={KIND_PAGE.get(row.kind)!}
-                    >
-                      {row.target}
-                    </Link>
-                  ) : (
-                    row.target
-                  )}
-                  {row.resourceId && (
-                    <small className="text-muted-foreground">
-                      {" "}
-                      · <code>{row.resourceId}</code>
-                    </small>
-                  )}
-                </td>
-              </tr>
-            ))}
-          </DataTable>
+          />
+        ) : rows.length === 0 ? (
+          <EmptyState as="h3" title="No bindings declared" description="This version declares no bindings." />
+        ) : (
+          <Table label="Bindings declared by the active version" containerClassName="shadow-none ring-1 ring-hairline">
+            <TableHeader>
+              <TableRow className="hover:bg-transparent">
+                <TableHead>Binding</TableHead>
+                <TableHead>Type</TableHead>
+                <TableHead>Target</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {rows.map((row) => (
+                <TableRow key={`${row.kind}:${row.binding}:${row.target}`}>
+                  <TableCell className="font-mono text-sm">{row.binding}</TableCell>
+                  <TableCell>
+                    <Badge tone="neutral">{KIND_LABEL.get(row.kind) ?? row.kind}</Badge>
+                  </TableCell>
+                  <TableCell className="min-w-0">
+                    <span className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                      {row.resourceId && KIND_PAGE.has(row.kind) ? (
+                        <Link render={<RouterLink to={KIND_PAGE.get(row.kind) ?? "/"} />}>{row.target}</Link>
+                      ) : (
+                        <span className="break-all">{row.target}</span>
+                      )}
+                      {row.resourceId ? (
+                        <CopyId value={row.resourceId} label={`Copy ${row.binding} resource ID`} />
+                      ) : null}
+                    </span>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
         )}
-      </Panel>
+      </Section>
 
       {bindings && bindings.crons.length > 0 && (
-        <Panel>
-          <PanelHeading
-            title="Declared cron triggers"
-            description="Frozen in the artifact, and fired against the active version. Run history is not surfaced yet (#81)."
-          />
-          <RecordList>
-            {bindings.crons.map((expression) => (
-              <RecordRow key={expression}>
-                <div>
-                  <code>{expression}</code>
-                </div>
-                <span>Scheduled</span>
-              </RecordRow>
-            ))}
-          </RecordList>
-        </Panel>
+        <Section
+          id="crons"
+          title="Declared cron triggers"
+          description="Frozen in the artifact, and fired against the active version. Run history is not surfaced yet (#81)."
+        >
+          <Table label="Declared cron triggers" containerClassName="shadow-none ring-1 ring-hairline">
+            <TableHeader>
+              <TableRow className="hover:bg-transparent">
+                <TableHead>Schedule</TableHead>
+                <TableHead>State</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {bindings.crons.map((expression) => (
+                <TableRow key={expression}>
+                  <TableCell className="font-mono text-sm">{expression}</TableCell>
+                  <TableCell>
+                    <Badge tone="info">Scheduled</Badge>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </Section>
       )}
-    </>
+    </div>
   );
 }

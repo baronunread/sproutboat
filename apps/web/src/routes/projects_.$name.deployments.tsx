@@ -1,70 +1,105 @@
-import { useState } from "react";
-import { createFileRoute, Link } from "@tanstack/react-router";
 import {
   Button,
-  FILTER_BAR,
-  FILTER_FIELD,
-  FILTER_SEARCH,
-  Panel,
-  PanelHeading,
-  RECORD_TITLE,
-  RecordList,
-  RecordRow,
-  SelectField,
-  Status,
-  TextField,
-} from "../components";
+  CopyId,
+  EmptyState,
+  Field,
+  Input,
+  Link,
+  MetricTile,
+  StatusDot,
+  Table,
+  TableBody,
+  TableCell,
+  TableEmpty,
+  TableHead,
+  TableHeader,
+  TableRow,
+  formatBytes,
+  formatNumber,
+} from "@sproutboat/ikada";
+import { Sparkline } from "@sproutboat/ikada/charts";
+import { createFileRoute, Link as RouterLink } from "@tanstack/react-router";
+import { useState } from "react";
 import { relativeTime, useProject } from "../dashboard-data";
-import { cn } from "@/lib/utils";
+import { FilterSelect, Section, fullTime } from "../project-ui";
+import { RollbackDialog } from "../rollback-dialog";
+import type { RollbackTarget } from "../rollback-dialog";
 
 export const Route = createFileRoute("/projects_/$name/deployments")({ component: ProjectDeployments });
 
 const STATE_OPTIONS = [
-  ["all", "All versions"],
-  ["active", "Active"],
-  ["inactive", "Inactive"],
-] as const;
+  { value: "all", label: "All versions" },
+  { value: "active", label: "Active" },
+  { value: "inactive", label: "Inactive" },
+];
 const PAGE = 20;
 
-function sizeLabel(value: number): string {
-  if (Math.abs(value) < 1024) return `${value} B`;
-  if (Math.abs(value) < 1024 * 1024) return `${(value / 1024).toFixed(1)} KiB`;
-  return `${(value / (1024 * 1024)).toFixed(2)} MiB`;
-}
-
-function SizeTrend({ sizes }: { sizes: number[] }) {
-  const latest = sizes.at(-1)!;
-  const previous = sizes.at(-2)!;
-  const min = Math.min(...sizes);
-  const spread = Math.max(...sizes) - min;
-  const points = sizes
-    .map((size, index) => `${(index / (sizes.length - 1)) * 100},${20 - (spread ? ((size - min) / spread) * 16 : 8)}`)
-    .join(" ");
+function Tiles({
+  sizes,
+  compiles,
+  versions,
+  inactive,
+}: {
+  sizes: number[];
+  compiles: number[];
+  versions: number;
+  inactive: number;
+}) {
+  const latest = sizes.at(-1) ?? 0;
+  const previous = sizes.at(-2) ?? latest;
   const difference = latest - previous;
+  const compile = compiles.at(-1);
   return (
-    <section className="mx-5 mb-5 border border-border px-4 py-3" aria-label="Binary size trend">
-      <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
-        <h2 className="text-sm font-semibold">Binary size trend</h2>
-        <p className="text-sm tabular-nums">
-          {sizeLabel(latest)} latest,{" "}
-          {difference === 0 ? "no change" : `${difference > 0 ? "+" : ""}${sizeLabel(difference)} vs previous`}
-        </p>
-      </div>
-      <svg className="mt-3 block h-12 w-full" viewBox="0 0 100 20" preserveAspectRatio="none" aria-hidden="true">
-        <polyline points={points} fill="none" stroke="var(--sky)" strokeWidth="1.5" vectorEffect="non-scaling-stroke" />
-      </svg>
-      <p className="mt-2 text-xs text-muted-foreground">
-        {sizes.length} versions, oldest to newest. Exact sizes are listed below.
-      </p>
+    <section aria-label="Version statistics" className="grid gap-3 sm:grid-cols-3">
+      <MetricTile
+        label="Binary size"
+        noData={sizes.length === 0}
+        value={formatBytes(latest)}
+        hint={
+          difference === 0
+            ? "No change vs previous"
+            : `${difference > 0 ? "+" : "-"}${formatBytes(Math.abs(difference))} vs previous`
+        }
+        sparkline={
+          sizes.length > 1 ? (
+            <Sparkline
+              data={sizes}
+              ariaLabel="Binary size per version, oldest to newest"
+              formatValue={(value) => formatBytes(value)}
+              formatPoint={(index) => `Version ${index + 1} of ${sizes.length}`}
+            />
+          ) : undefined
+        }
+      />
+      <MetricTile
+        label="Compile time"
+        noData={compile === undefined}
+        value={compile === undefined ? "-" : formatNumber(compile)}
+        unit="ms"
+        hint="Latest version"
+        sparkline={
+          compiles.length > 1 ? (
+            <Sparkline
+              data={compiles}
+              color="series"
+              ariaLabel="Compile time per version, oldest to newest"
+              formatValue={(value) => `${formatNumber(value)} ms`}
+              formatPoint={(index) => `Version ${index + 1} of ${compiles.length}`}
+            />
+          ) : undefined
+        }
+      />
+      <MetricTile label="Versions" value={String(versions)} hint={`${inactive} inactive, kept for roll back`} />
     </section>
   );
 }
 
 function ProjectDeployments() {
-  const { name, deployments } = useProject();
+  const { name, deployments, refresh } = useProject();
   const [status, setStatus] = useState("all");
   const [query, setQuery] = useState("");
   const [shown, setShown] = useState(PAGE);
+  const [target, setTarget] = useState<RollbackTarget | null>(null);
 
   const needle = query.trim().toLowerCase();
   const matching = deployments.filter((deployment) => {
@@ -77,79 +112,128 @@ function ProjectDeployments() {
   const sizes = deployments
     .flatMap((deployment) => (deployment.binarySize === null ? [] : [deployment.binarySize]))
     .reverse();
+  const compiles = deployments
+    .flatMap((deployment) => (deployment.compileMs === null ? [] : [deployment.compileMs]))
+    .reverse();
 
   return (
-    <Panel variant="bare">
-      <PanelHeading
-        title="Deployments"
-        description={`${deployments.length} immutable version${deployments.length === 1 ? "" : "s"}, newest first.`}
+    <div className="flex flex-col gap-4">
+      <Tiles
+        sizes={sizes}
+        compiles={compiles}
+        versions={deployments.length}
+        inactive={deployments.filter((deployment) => !deployment.active).length}
       />
 
-      {sizes.length > 1 && <SizeTrend sizes={sizes} />}
+      <Section
+        id="versions"
+        title="Deployments"
+        description={`${deployments.length} immutable version${deployments.length === 1 ? "" : "s"}, newest first.`}
+      >
+        <search className="flex flex-wrap items-end gap-3">
+          <FilterSelect
+            label="State"
+            value={status}
+            options={STATE_OPTIONS}
+            onValueChange={(value) => {
+              setStatus(value);
+              setShown(PAGE);
+            }}
+          />
+          <Field label="Search" className="sm:max-w-md sm:flex-1">
+            <Input
+              type="search"
+              placeholder="Match version id, artifact digest or hostname"
+              value={query}
+              onChange={(event) => {
+                setQuery(event.target.value);
+                setShown(PAGE);
+              }}
+            />
+          </Field>
+        </search>
 
-      <div className={cn(FILTER_BAR, "px-5")}>
-        <SelectField
-          label="State"
-          fieldClassName={FILTER_FIELD}
-          value={status}
-          options={STATE_OPTIONS}
-          onValueChange={(value) => {
-            setStatus(value);
-            setShown(PAGE);
-          }}
-        />
-        <TextField
-          label="Search"
-          type="search"
-          fieldClassName={FILTER_SEARCH}
-          placeholder="Match version id, artifact digest or hostname"
-          value={query}
-          onChange={(event) => {
-            setQuery(event.target.value);
-            setShown(PAGE);
-          }}
-        />
-      </div>
+        {matching.length === 0 ? (
+          <EmptyState as="h3" title="No versions match" description="Change the filters to see more versions." />
+        ) : (
+          <>
+            <Table label="Versions" containerClassName="shadow-none ring-1 ring-hairline">
+              <TableHeader>
+                <TableRow className="hover:bg-transparent">
+                  <TableHead>Version</TableHead>
+                  <TableHead hideBelow="lg">Artifact</TableHead>
+                  <TableHead hideBelow="2xl" className="text-end">
+                    Size
+                  </TableHead>
+                  <TableHead hideBelow="md">Deployed</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead className="text-end">
+                    <span className="sr-only">Actions</span>
+                  </TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {visible.map((deployment) => (
+                  <TableRow key={deployment.id}>
+                    <TableCell className="min-w-0">
+                      <Link
+                        render={
+                          <RouterLink to="/projects/$name/deployments/$id" params={{ name, id: deployment.id }} />
+                        }
+                        className="font-mono text-sm"
+                      >
+                        {deployment.id.slice(0, 8)}
+                      </Link>
+                    </TableCell>
+                    <TableCell hideBelow="lg">
+                      <CopyId
+                        value={deployment.artifact}
+                        display={deployment.artifact.slice(0, 12)}
+                        label={`Copy artifact digest of ${deployment.id.slice(0, 8)}`}
+                      />
+                    </TableCell>
+                    <TableCell hideBelow="2xl" className="text-end whitespace-nowrap tabular-nums text-fg-muted">
+                      {deployment.binarySize === null ? "-" : formatBytes(deployment.binarySize)}
+                      {deployment.compileMs === null ? "" : `, ${deployment.compileMs} ms compile`}
+                    </TableCell>
+                    <TableCell hideBelow="md" className="whitespace-nowrap text-fg-muted tabular-nums">
+                      <span title={fullTime(deployment.deployedAt)}>{relativeTime(deployment.deployedAt)}</span>
+                    </TableCell>
+                    <TableCell className="whitespace-nowrap">
+                      {deployment.active ? (
+                        <StatusDot status="success" live label="Active" />
+                      ) : (
+                        <StatusDot status="neutral" label="Inactive" />
+                      )}
+                    </TableCell>
+                    <TableCell className="text-end">
+                      {deployment.active ? null : (
+                        <Button
+                          size="sm"
+                          aria-label={`Roll back to ${deployment.id.slice(0, 8)}`}
+                          onClick={() => setTarget({ id: deployment.id, hostname: deployment.hostname })}
+                        >
+                          Roll back
+                        </Button>
+                      )}
+                    </TableCell>
+                  </TableRow>
+                ))}
+                {visible.length === 0 ? <TableEmpty colSpan={6}>No versions.</TableEmpty> : null}
+              </TableBody>
+            </Table>
+            {matching.length > visible.length && (
+              <div>
+                <Button onClick={() => setShown((current) => current + PAGE)}>
+                  Show more ({matching.length - visible.length} left)
+                </Button>
+              </div>
+            )}
+          </>
+        )}
+      </Section>
 
-      {matching.length === 0 ? (
-        <p className="px-5 py-12 text-center text-[0.84rem] leading-relaxed text-muted-foreground group-[.is-padded]/panel:px-0 group-[.is-padded]/panel:py-5 group-[.is-padded]/panel:text-start [&_code]:text-foreground">
-          No versions match these filters.
-        </p>
-      ) : (
-        <>
-          <RecordList aria-label="Versions">
-            {visible.map((deployment) => (
-              <RecordRow key={deployment.id}>
-                <div>
-                  <Link
-                    className={RECORD_TITLE}
-                    to="/projects/$name/deployments/$id"
-                    params={{ name, id: deployment.id }}
-                  >
-                    {deployment.id.slice(0, 8)}
-                  </Link>
-                  <small>{deployment.hostname}</small>
-                </div>
-                <code title={`Artifact ${deployment.artifact}`}>Artifact {deployment.artifact.slice(0, 12)}</code>
-                <span className="tabular-nums">
-                  Size {deployment.binarySize === null ? "unavailable" : sizeLabel(deployment.binarySize)}
-                  <br />
-                  Compile {deployment.compileMs === null ? "unavailable" : `${deployment.compileMs} ms`}
-                </span>
-                <span>{relativeTime(deployment.deployedAt)}</span>
-                <Status live={deployment.active}>{deployment.active ? "Active" : "Inactive"}</Status>
-              </RecordRow>
-            ))}
-          </RecordList>
-          {matching.length > visible.length && (
-            <div className="mx-5 my-4">
-              <Button variant="quiet" onClick={() => setShown((current) => current + PAGE)}>
-                Show more ({matching.length - visible.length} left)
-              </Button>
-            </div>
-          )}
-        </>
-      )}
-    </Panel>
+      <RollbackDialog name={name} target={target} onClose={() => setTarget(null)} onDone={refresh} />
+    </div>
   );
 }

@@ -1,22 +1,34 @@
-import { useState } from "react";
-import { createFileRoute } from "@tanstack/react-router";
 import {
+  Badge,
+  Banner,
   Button,
-  ConfirmButton,
-  Copy,
-  FORM,
-  FORM_ACTIONS,
-  Panel,
-  PanelHeading,
-  RECORD_NOTE,
-  RecordList,
-  RecordRow,
-  Status,
-  StatusMessage,
-  TextField,
-} from "../components";
+  CodeBlock,
+  CopyId,
+  DescriptionList,
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogTitle,
+  DialogTrigger,
+  EmptyState,
+  Field,
+  Input,
+  StatusDot,
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+  toast,
+} from "@sproutboat/ikada";
+import { createFileRoute } from "@tanstack/react-router";
+import { useState } from "react";
+import type { FormEvent } from "react";
 import { mutate, useJson, useProject } from "../dashboard-data";
-import { cn } from "@/lib/utils";
+import { LoadingLine, Section } from "../project-ui";
 
 /**
  * #76 - Triggers: every way a request reaches this project. The generated
@@ -39,66 +51,266 @@ const HOSTNAME_RULE = /^(?=.{1,253}$)[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a
 function ProjectTriggers() {
   const { name, active } = useProject();
   return (
-    <>
-      <Panel variant="wide">
-        <PanelHeading
-          title="Route"
-          description="Generated from the project and your namespace. It always serves the active version."
+    <div className="flex flex-col gap-4">
+      <Section
+        id="route"
+        title="Route"
+        description="Generated from the project and your namespace. It always serves the active version."
+      >
+        <DescriptionList
+          items={[
+            {
+              id: "hostname",
+              term: "Generated hostname",
+              details: active ? (
+                <CopyId value={active.hostname} label="Copy generated hostname" />
+              ) : (
+                <code className="font-mono text-sm text-fg-muted">{name}.&lt;namespace&gt;.sproutboat.com</code>
+              ),
+            },
+            {
+              id: "state",
+              term: "State",
+              details: active ? (
+                <StatusDot status="success" live label="Serving the active version" />
+              ) : (
+                <StatusDot status="neutral" label="Not serving: deploy a version or roll one back" />
+              ),
+            },
+          ]}
         />
-        <dl className="mt-5 grid grid-cols-[repeat(auto-fit,minmax(16rem,1fr))] gap-x-8 gap-y-4 [&_code]:text-[0.78rem] [&_dd]:mt-1 [&_dd]:text-[0.85rem] [&_dd]:[overflow-wrap:anywhere] [&_dt]:text-[0.72rem] [&_dt]:tracking-wide [&_dt]:text-muted-foreground [&_dt]:uppercase">
-          <div>
-            <dt>Generated hostname</dt>
-            <dd>
-              <code>{active ? active.hostname : `${name}.<namespace>.sproutboat.com`}</code>
-              {active && <Copy value={active.hostname} />}
-            </dd>
-          </div>
-          <div>
-            <dt>State</dt>
-            <dd>{active ? "Serving the active version" : "Not serving - deploy a version or roll one back"}</dd>
-          </div>
-        </dl>
-      </Panel>
+      </Section>
 
       <CustomDomains name={name} hasActive={Boolean(active)} />
 
-      <Panel>
-        <PanelHeading
-          title="Scheduled triggers"
-          description="Cron schedules declared in the artifact fire against the active version."
-        />
-        <p className="mt-3 text-[0.75rem] text-muted-foreground">
+      <Section
+        id="scheduled"
+        title="Scheduled triggers"
+        description="Cron schedules declared in the artifact fire against the active version."
+      >
+        <p className="text-base text-fg-muted [&_code]:font-mono [&_code]:text-sm [&_code]:text-fg">
           A <code>triggers.crons</code> entry in <code>sproutboat.jsonc</code> is frozen into the artifact and invokes
           your <code>scheduled()</code> handler on the active version. The declared schedules for this project are on
           the Bindings tab; per-run history is tracked in issue #81.
         </p>
-      </Panel>
-    </>
+      </Section>
+    </div>
   );
 }
 
 function CustomDomains({ name, hasActive }: { name: string; hasActive: boolean }) {
   const base = `/api/projects/${encodeURIComponent(name)}/domains`;
   const { data, state, refresh } = useJson<DomainRecord[]>(base);
+  const [reachability, setReachability] = useState<Record<string, DomainRecord>>({});
+  const [verifying, setVerifying] = useState<string | null>(null);
+  const [removing, setRemoving] = useState<string | null>(null);
+
+  const list = data ?? [];
+
+  const verify = async (domain: string) => {
+    setVerifying(domain);
+    try {
+      const response = await fetch(`${base}/${domain}/verify`, { method: "POST", credentials: "include" });
+      if (!response.ok) {
+        // SAFETY: an error body from the domains endpoint is { error?: string }.
+        const failure = (await response.json().catch(() => ({}))) as { error?: string };
+        toast.add({
+          tone: "danger",
+          title: `Could not verify ${domain}`,
+          description: failure.error ?? "Verification failed. Check the TXT record and try again.",
+        });
+        return;
+      }
+      // SAFETY: a 2xx from verify is a DomainRecord, with reachability attached.
+      const body = (await response.json()) as DomainRecord;
+      setReachability((current) => ({ ...current, [domain]: body }));
+      toast.add({ tone: "success", title: `${domain} is verified` });
+      await refresh();
+    } catch {
+      toast.add({
+        tone: "danger",
+        title: `Could not verify ${domain}`,
+        description: "Could not reach the control plane. Try again.",
+      });
+    } finally {
+      setVerifying(null);
+    }
+  };
+
+  const remove = async (domain: string) => {
+    const failure = await mutate(`${base}/${domain}`, { method: "DELETE" });
+    if (failure) toast.add({ tone: "danger", title: `Could not remove ${domain}`, description: failure });
+    else toast.add({ tone: "success", title: `Removed ${domain}` });
+    setRemoving(null);
+    await refresh();
+  };
+
+  return (
+    <Section
+      id="domains"
+      title="Custom domains"
+      description="Point your own hostname at this project. It serves the active version alongside the generated hostname."
+      action={
+        <AddDomain
+          base={base}
+          disabled={!hasActive}
+          onAdded={async (created) => {
+            setReachability((current) => ({ ...current, [created.hostname]: created }));
+            await refresh();
+          }}
+        />
+      }
+    >
+      {!hasActive && (
+        <Banner tone="info">Deploy a version before attaching a domain: there is nothing for it to serve yet.</Banner>
+      )}
+
+      {state === "loading" ? (
+        <LoadingLine label="Loading domains…" />
+      ) : state === "error" ? (
+        <Banner tone="danger">Could not load custom domains.</Banner>
+      ) : list.length === 0 ? (
+        <EmptyState
+          as="h3"
+          title="No custom domains attached"
+          description="Add a hostname, then prove you own it with a TXT record."
+        />
+      ) : (
+        <Table label="Custom domains" containerClassName="shadow-none ring-1 ring-hairline">
+          <TableHeader>
+            <TableRow className="hover:bg-transparent">
+              <TableHead>Hostname</TableHead>
+              <TableHead>Status</TableHead>
+              <TableHead className="text-end">
+                <span className="sr-only">Actions</span>
+              </TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {list.map((domain) => (
+              <TableRow key={domain.hostname}>
+                <TableCell className="font-mono text-sm break-all">{domain.hostname}</TableCell>
+                <TableCell>
+                  {domain.verified ? (
+                    <Badge tone="success" dot>
+                      Verified
+                    </Badge>
+                  ) : (
+                    <Badge tone="warning">Pending</Badge>
+                  )}
+                </TableCell>
+                <TableCell className="text-end">
+                  <span className="inline-flex flex-wrap justify-end gap-2">
+                    {domain.verified ? null : (
+                      <Button
+                        size="sm"
+                        loading={verifying === domain.hostname}
+                        aria-label={`Verify ${domain.hostname}`}
+                        onClick={() => void verify(domain.hostname)}
+                      >
+                        Verify
+                      </Button>
+                    )}
+                    <Button
+                      size="sm"
+                      aria-label={`Remove ${domain.hostname}`}
+                      onClick={() => setRemoving(domain.hostname)}
+                    >
+                      Remove
+                    </Button>
+                  </span>
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      )}
+
+      {list.map((domain) => {
+        const detail = reachability[domain.hostname];
+        const record = domain.verification;
+        if (!record && !detail?.warning && !detail?.serverAddresses?.length) return null;
+        return (
+          <div key={`${domain.hostname}:notes`} className="flex min-w-0 flex-col gap-2">
+            <h3 className="font-mono text-sm font-semibold break-all">{domain.hostname}</h3>
+            <div className="flex flex-col gap-2">
+              {record ? (
+                <>
+                  <p className="text-sm text-fg-muted">Add this DNS record at your provider, then verify.</p>
+                  <CodeBlock
+                    label={`DNS ${record.type} record for ${domain.hostname}`}
+                    code={`${record.name}  ${record.type}  ${record.value}`}
+                    wrap
+                  />
+                </>
+              ) : null}
+              {detail?.warning ? <Banner tone="warning">{detail.warning}</Banner> : null}
+              {detail?.serverAddresses?.length ? (
+                <p className="text-sm text-fg-muted">
+                  Point an A/AAAA record at{" "}
+                  <code className="font-mono text-fg">{detail.serverAddresses.join(", ")}</code>, DNS-only.
+                </p>
+              ) : null}
+            </div>
+          </div>
+        );
+      })}
+
+      <Dialog open={removing !== null} onOpenChange={(open) => (open ? undefined : setRemoving(null))}>
+        <DialogContent>
+          <div className="flex flex-col gap-4">
+            <div>
+              <DialogTitle>Remove {removing}?</DialogTitle>
+              <DialogDescription>
+                This hostname stops serving this project immediately. You can attach it again later.
+              </DialogDescription>
+            </div>
+            <DialogFooter className="mt-0">
+              <DialogClose render={<Button />}>Cancel</DialogClose>
+              <Button variant="danger" onClick={() => removing && void remove(removing)}>
+                Remove domain
+              </Button>
+            </DialogFooter>
+          </div>
+        </DialogContent>
+      </Dialog>
+    </Section>
+  );
+}
+
+function AddDomain({
+  base,
+  disabled,
+  onAdded,
+}: {
+  base: string;
+  disabled: boolean;
+  onAdded: (created: DomainRecord) => Promise<void>;
+}) {
+  const [open, setOpen] = useState(false);
   const [hostname, setHostname] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [note, setNote] = useState<{ text: string; tone: "success" | "error" } | null>(null);
-  const [reachability, setReachability] = useState<Record<string, DomainRecord>>({});
 
-  const list = data ?? [];
-  const invalid = hostname.trim() !== "" && !HOSTNAME_RULE.test(hostname.trim().toLowerCase());
+  const wanted = hostname.trim().toLowerCase();
+  const invalid = wanted !== "" && !HOSTNAME_RULE.test(wanted);
 
-  const add = async (event: React.FormEvent) => {
+  const onOpenChange = (next: boolean) => {
+    setOpen(next);
+    if (!next) {
+      setHostname("");
+      setError(null);
+    }
+  };
+
+  const add = async (event: FormEvent) => {
     event.preventDefault();
-    const wanted = hostname.trim().toLowerCase();
     if (!HOSTNAME_RULE.test(wanted)) {
       setError("Enter a full hostname, like www.example.com.");
       return;
     }
     setBusy(true);
     setError(null);
-    setNote(null);
     try {
       const response = await fetch(base, {
         method: "POST",
@@ -114,10 +326,13 @@ function CustomDomains({ name, hasActive }: { name: string; hasActive: boolean }
       }
       // SAFETY: a 2xx from POST domains is a DomainRecord with serverAddresses.
       const created = (await response.json()) as DomainRecord;
-      setReachability((current) => ({ ...current, [created.hostname]: created }));
-      setHostname("");
-      setNote({ text: `Added ${created.hostname}. Add the TXT record below, then verify.`, tone: "success" });
-      await refresh();
+      toast.add({
+        tone: "success",
+        title: `Added ${created.hostname}`,
+        description: "Add the TXT record shown in the list, then verify.",
+      });
+      onOpenChange(false);
+      await onAdded(created);
     } catch {
       setError("Could not reach the control plane. Try again.");
     } finally {
@@ -125,132 +340,43 @@ function CustomDomains({ name, hasActive }: { name: string; hasActive: boolean }
     }
   };
 
-  const verify = async (domain: string) => {
-    setNote(null);
-    try {
-      const response = await fetch(`${base}/${domain}/verify`, { method: "POST", credentials: "include" });
-      if (!response.ok) {
-        // SAFETY: an error body from the domains endpoint is { error?: string }.
-        const failure = (await response.json().catch(() => ({}))) as { error?: string };
-        setNote({ text: failure.error ?? "Verification failed. Check the TXT record and try again.", tone: "error" });
-        return;
-      }
-      // SAFETY: a 2xx from verify is a DomainRecord, with reachability attached.
-      const body = (await response.json()) as DomainRecord;
-      setReachability((current) => ({ ...current, [domain]: body }));
-      setNote({ text: `${domain} is verified.`, tone: "success" });
-      await refresh();
-    } catch {
-      setNote({ text: "Could not reach the control plane. Try again.", tone: "error" });
-    }
-  };
-
-  const remove = async (domain: string) => {
-    const failure = await mutate(`${base}/${domain}`, { method: "DELETE" });
-    setNote({ text: failure ?? `Removed ${domain}.`, tone: failure ? "error" : "success" });
-    await refresh();
-  };
-
   return (
-    <Panel>
-      <PanelHeading
-        title="Custom domains"
-        description="Point your own hostname at this project. It serves the active version alongside the generated hostname."
-      />
-
-      {note && <StatusMessage tone={note.tone}>{note.text}</StatusMessage>}
-
-      {state === "loading" ? (
-        <p className="min-h-56 px-5 pt-12 text-muted-foreground group-[.is-padded]/panel:px-0" aria-live="polite">
-          Loading domains…
-        </p>
-      ) : state === "error" ? (
-        <StatusMessage tone="error">Could not load custom domains.</StatusMessage>
-      ) : list.length === 0 ? (
-        <p className="px-5 py-12 text-center text-[0.84rem] leading-relaxed text-muted-foreground group-[.is-padded]/panel:px-0 group-[.is-padded]/panel:py-5 group-[.is-padded]/panel:text-start [&_code]:text-foreground">
-          No custom domains attached.
-        </p>
-      ) : (
-        <RecordList>
-          {list.map((domain) => {
-            const detail = reachability[domain.hostname];
-            return (
-              <RecordRow key={domain.hostname}>
-                <div>
-                  <strong>{domain.hostname}</strong>
-                </div>
-                <Status live={domain.verified}>{domain.verified ? "Verified" : "Pending"}</Status>
-                {!domain.verified && (
-                  <Button variant="quiet" onClick={() => void verify(domain.hostname)}>
-                    Verify
-                  </Button>
-                )}
-                <ConfirmButton
-                  label="Remove"
-                  busyLabel="Removing…"
-                  triggerVariant="quiet"
-                  title={`Remove ${domain.hostname}?`}
-                  description={
-                    <>This hostname stops serving this project immediately. You can attach it again later.</>
-                  }
-                  confirmLabel="Remove domain"
-                  onConfirm={() => remove(domain.hostname)}
-                />
-                {domain.verification && (
-                  <p className={RECORD_NOTE}>
-                    Add DNS <code>{domain.verification.type}</code> <code>{domain.verification.name}</code> ={" "}
-                    <code>{domain.verification.value}</code>
-                    <Copy value={domain.verification.value} />
-                  </p>
-                )}
-                {detail?.warning && <p className={cn(RECORD_NOTE, "text-destructive")}>{detail.warning}</p>}
-                {detail?.serverAddresses?.length ? (
-                  <p className={RECORD_NOTE}>
-                    Point an A/AAAA record at <code>{detail.serverAddresses.join(", ")}</code>, DNS-only.
-                  </p>
-                ) : null}
-              </RecordRow>
-            );
-          })}
-        </RecordList>
-      )}
-
-      {!hasActive && (
-        <StatusMessage>
-          Deploy a version before attaching a domain - there is nothing for it to serve yet.
-        </StatusMessage>
-      )}
-
-      <hr className="mt-6" />
-      <form className={FORM} onSubmit={(event) => void add(event)}>
-        <TextField
-          label="Add a hostname"
-          type="text"
-          inputMode="url"
-          autoComplete="off"
-          spellCheck={false}
-          placeholder="www.example.com"
-          value={hostname}
-          disabled={!hasActive}
-          onChange={(event) => {
-            setHostname(event.target.value);
-            setError(null);
-          }}
-          hint="A TXT record proves ownership; an A or AAAA record sends traffic here."
-          error={invalid ? "Enter a full hostname, like www.example.com." : error}
-        />
-        <div data-slot="form-actions" className={FORM_ACTIONS}>
-          <Button
-            type="submit"
-            variant="primary"
-            busy={busy}
-            busyLabel="Adding…"
-            disabled={!hasActive || !hostname.trim() || invalid}
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogTrigger render={<Button variant="primary" disabled={disabled} />}>Add domain</DialogTrigger>
+      <DialogContent>
+        <form onSubmit={(event) => void add(event)} className="flex flex-col gap-4">
+          <div>
+            <DialogTitle>Add a custom domain</DialogTitle>
+            <DialogDescription>
+              A TXT record proves ownership; an A or AAAA record sends traffic here.
+            </DialogDescription>
+          </div>
+          <Field
+            label="Hostname"
+            error={invalid ? "Enter a full hostname, like www.example.com." : error}
+            description="For example www.example.com."
           >
-            Add domain
-          </Button>
-        </div>
-      </form>
-    </Panel>
+            <Input
+              type="text"
+              inputMode="url"
+              autoComplete="off"
+              spellCheck={false}
+              placeholder="www.example.com"
+              value={hostname}
+              onChange={(event) => {
+                setHostname(event.target.value);
+                setError(null);
+              }}
+            />
+          </Field>
+          <DialogFooter className="mt-0">
+            <DialogClose render={<Button disabled={busy} />}>Cancel</DialogClose>
+            <Button type="submit" variant="primary" loading={busy} disabled={!wanted || invalid}>
+              Add domain
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
   );
 }

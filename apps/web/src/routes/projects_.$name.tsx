@@ -1,29 +1,37 @@
+import {
+  Badge,
+  Banner,
+  Breadcrumbs,
+  CopyId,
+  EmptyState,
+  PageHeader,
+  PageTab,
+  PageTabs,
+  Skeleton,
+  buttonStyles,
+} from "@sproutboat/ikada";
+import { createFileRoute, Link as RouterLink, Outlet, useRouterState } from "@tanstack/react-router";
 import { useCallback } from "react";
-import { createFileRoute, Link, Outlet } from "@tanstack/react-router";
-
 import { ProjectProvider, useJson, useOverview, type ProjectDeployment } from "../dashboard-data";
-import { buttonVariants } from "@/components/ui/button";
-import { Panel, StatusMessage } from "../components";
 
 export const Route = createFileRoute("/projects_/$name")({
   component: ProjectLayout,
   head: ({ params }) => ({ meta: [{ title: `${params.name} · Sproutboat` }] }),
 });
 
-const activeProps = { "aria-current": "page" as const };
-
 const TABS = [
-  ["/projects/$name", "Overview", true],
-  ["/projects/$name/metrics", "Metrics", false],
-  ["/projects/$name/logs", "Logs", false],
-  ["/projects/$name/deployments", "Deployments", false],
-  ["/projects/$name/bindings", "Bindings", false],
-  ["/projects/$name/triggers", "Triggers", false],
-  ["/projects/$name/settings", "Settings", false],
+  { to: "/projects/$name", suffix: "", label: "Overview", exact: true },
+  { to: "/projects/$name/deployments", suffix: "/deployments", label: "Deployments", exact: false },
+  { to: "/projects/$name/metrics", suffix: "/metrics", label: "Metrics", exact: false },
+  { to: "/projects/$name/logs", suffix: "/logs", label: "Logs", exact: false },
+  { to: "/projects/$name/bindings", suffix: "/bindings", label: "Bindings", exact: false },
+  { to: "/projects/$name/triggers", suffix: "/triggers", label: "Triggers", exact: false },
+  { to: "/projects/$name/settings", suffix: "/settings", label: "Settings", exact: false },
 ] as const;
 
 function ProjectLayout() {
   const { name } = Route.useParams();
+  const pathname = useRouterState({ select: (state) => state.location.pathname });
   const { data: overview, state, refresh: refreshOverview } = useOverview();
   // #76 - the project's own version list, so Deployments is complete and paged
   // here rather than cut to whatever fit in the account-wide overview.
@@ -32,66 +40,106 @@ function ProjectLayout() {
   const active = overview?.projects.find((project) => project.name === name);
   const exists = deployments.length > 0;
   const loading = state === "loading" || versions.state === "loading";
+  const failed = state === "error" || versions.state === "error";
 
   const refresh = useCallback(async () => {
     await Promise.all([refreshOverview(), versions.refresh()]);
   }, [refreshOverview, versions]);
 
+  const base = `/projects/${encodeURIComponent(name)}`;
+  const isCurrent = (tab: (typeof TABS)[number]) =>
+    tab.exact
+      ? pathname === base || pathname === `${base}/`
+      : pathname === `${base}${tab.suffix}` || pathname.startsWith(`${base}${tab.suffix}/`);
+  const showTabs = !loading && !failed && exists;
+
   return (
-    <>
-      <section className="mb-8 flex items-center justify-between gap-8 border-b border-border pb-7 max-[800px]:mb-10 max-[800px]:flex-col max-[800px]:items-start [&_h1]:m-0 [&_h1]:text-[1.85rem] [&_h1]:font-bold [&_h1]:tracking-[-0.035em] [&_h1]:max-[480px]:text-[1.6rem] [&_p]:mt-1.5 [&_p]:max-w-[38rem] [&_p]:text-[0.875rem] [&_p]:leading-normal [&_p]:text-muted-foreground">
-        <div>
-          <p className="m-0 mb-2 text-[0.78rem] text-muted-foreground [&_a]:underline-offset-2 [&_a:hover]:underline [&>span]:mx-1.5">
-            <Link to="/projects">Sprouts</Link> <span>/</span> {name}
-          </p>
-          <h1>{name}</h1>
-          {!loading && (active ? <p>{active.hostname}</p> : <p>No active route - every version is inactive.</p>)}
-        </div>
-        {active && (
-          <a
-            className={buttonVariants({ variant: "outline", className: "text-[0.82rem]" })}
-            href={`https://${active.hostname}`}
-          >
-            Open route
-          </a>
-        )}
-      </section>
+    <div className="flex flex-col gap-6">
+      <PageHeader
+        breadcrumbs={
+          <Breadcrumbs
+            items={[
+              { label: "Sprouts", href: "/projects", render: <RouterLink to="/projects" /> },
+              { label: name, id: "project" },
+            ]}
+          />
+        }
+        title={name}
+        status={
+          loading || !exists ? undefined : active ? (
+            <Badge tone="success" dot live>
+              Serving
+            </Badge>
+          ) : (
+            <Badge tone="neutral">Not serving</Badge>
+          )
+        }
+        description={
+          loading ? (
+            <Skeleton className="h-4 w-56" />
+          ) : !exists ? undefined : active ? (
+            <CopyId value={active.hostname} label="Copy route hostname" className="max-w-full" />
+          ) : (
+            "No active route: every version is inactive."
+          )
+        }
+        actions={
+          active ? (
+            <a
+              className={buttonStyles({ variant: "secondary" })}
+              href={`https://${active.hostname}`}
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              Open route
+            </a>
+          ) : undefined
+        }
+        tabs={
+          showTabs ? (
+            <PageTabs label="Project sections">
+              {TABS.map((tab) => (
+                <PageTab
+                  key={tab.to}
+                  current={isCurrent(tab)}
+                  render={
+                    <RouterLink to={tab.to} params={{ name }} activeOptions={tab.exact ? { exact: true } : undefined} />
+                  }
+                >
+                  {tab.label}
+                </PageTab>
+              ))}
+            </PageTabs>
+          ) : undefined
+        }
+      />
 
       {loading ? (
-        <Panel variant="bare" className="min-h-56 px-5 pt-12 text-muted-foreground" aria-live="polite">
-          Loading project…
-        </Panel>
-      ) : state === "error" || versions.state === "error" ? (
-        <StatusMessage tone="error">Could not load this project. Refresh and try again.</StatusMessage>
+        <div className="flex min-h-56 flex-col gap-3" aria-live="polite" aria-busy="true">
+          <Skeleton className="h-24 w-full" />
+          <Skeleton className="h-40 w-full" />
+          <span className="sr-only">Loading project…</span>
+        </div>
+      ) : failed ? (
+        <Banner tone="danger">Could not load this project. Refresh and try again.</Banner>
       ) : !exists ? (
-        <Panel variant="bare">
-          <h2>No project named {name}</h2>
-          <p>It may have been deleted, or the URL is wrong.</p>
-          <Link className={buttonVariants({ variant: "default", className: "text-[0.82rem]" })} to="/projects">
-            Back to projects
-          </Link>
-        </Panel>
+        <div className="rounded-xl bg-surface p-4 shadow-card">
+          <EmptyState
+            as="h2"
+            title={`No project named ${name}`}
+            description="It may have been deleted, or the URL is wrong."
+            action={
+              <RouterLink to="/projects" className={buttonStyles({ variant: "primary" })}>
+                Back to sprouts
+              </RouterLink>
+            }
+          />
+        </div>
       ) : (
-        <>
-          <nav className="mb-6 flex flex-wrap gap-1 border-b border-border" aria-label="Project sections">
-            {TABS.map(([to, label, exact]) => (
-              <Link
-                key={to}
-                to={to}
-                params={{ name }}
-                activeOptions={exact ? { exact: true } : undefined}
-                activeProps={activeProps}
-                className="-mb-px border-b-2 border-transparent px-3 py-2 text-[0.85rem] text-muted-foreground no-underline hover:text-foreground aria-[current=page]:border-brand aria-[current=page]:text-foreground"
-              >
-                {label}
-              </Link>
-            ))}
-          </nav>
-          <ProjectProvider value={{ name, deployments, active, refresh }}>
-            <Outlet />
-          </ProjectProvider>
-        </>
+        <ProjectProvider value={{ name, deployments, active, refresh }}>
+          <Outlet />
+        </ProjectProvider>
       )}
-    </>
+    </div>
   );
 }

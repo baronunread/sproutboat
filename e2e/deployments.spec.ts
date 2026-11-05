@@ -5,7 +5,7 @@ test.use({ storageState: authFile("test-admin") });
 
 test("deployment detail shows the immutable record and manifest", async ({ page }) => {
   await page.goto("/projects/blog/deployments");
-  await page.getByRole("list", { name: "Versions" }).getByRole("link").first().click();
+  await page.getByRole("region", { name: "Versions" }).getByRole("link").first().click();
   await expect(page).toHaveURL(/\/projects\/blog\/deployments\/[0-9a-f-]{36}$/);
 
   await expect(page.getByText("Deployment ID")).toBeVisible();
@@ -18,7 +18,7 @@ test("deployment detail shows the immutable record and manifest", async ({ page 
 test("roll back an inactive version, then it becomes active", async ({ page }) => {
   await page.goto("/projects/blog/deployments");
   // blog has 3 versions; the last row is the oldest / inactive
-  const rows = page.getByRole("list", { name: "Versions" }).getByRole("listitem");
+  const rows = page.getByRole("region", { name: "Versions" }).locator("tbody tr");
   await rows.last().getByRole("link").click();
   await expect(page).toHaveURL(/\/projects\/blog\/deployments\/[0-9a-f-]{36}$/);
 
@@ -32,16 +32,32 @@ test("roll back an inactive version, then it becomes active", async ({ page }) =
     .getByText(/^(Active|Inactive)$/);
   await expect(status).toHaveText("Inactive");
   await page.getByRole("button", { name: /roll back to this version/i }).click();
-  const dialog = page.getByRole("alertdialog");
+  const dialog = page.getByRole("dialog");
   await expect(dialog).toBeVisible();
   await dialog.getByRole("button", { name: /^roll back$/i }).click();
   await expect(status).toHaveText("Active");
+  await expect(page.getByText(/rolled back to/i)).toBeVisible();
   await expect(page.getByRole("button", { name: /roll back to this version/i })).toHaveCount(0);
+
+  // The list rolls back too: the same confirm dialog, from a row.
+  await page.goto("/projects/blog/deployments");
+  const older = page
+    .getByRole("region", { name: "Versions" })
+    .locator("tbody tr")
+    .filter({ hasText: "Inactive" })
+    .first();
+  await older.getByRole("button", { name: /^roll back to/i }).click();
+  await expect(page.getByRole("dialog")).toBeVisible();
+  await page
+    .getByRole("dialog")
+    .getByRole("button", { name: /^cancel$/i })
+    .click();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
 });
 
 test("the active version cannot be deleted", async ({ page }) => {
   await page.goto("/projects/api/deployments");
-  await page.getByRole("list", { name: "Versions" }).getByRole("link").first().click();
+  await page.getByRole("region", { name: "Versions" }).getByRole("link").first().click();
   await expect(page.getByText(/active version can't be rolled back or deleted/i)).toBeVisible();
   await expect(page.getByRole("button", { name: /delete version/i })).toHaveCount(0);
 });

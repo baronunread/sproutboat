@@ -14,9 +14,9 @@ test("control room: navigate every section, back/forward, and deep links", async
 
   const sections = page.getByRole("navigation", { name: "Project sections" });
   for (const [label, path] of [
+    ["Deployments", "/projects/blog/deployments"],
     ["Metrics", "/projects/blog/metrics"],
     ["Logs", "/projects/blog/logs"],
-    ["Deployments", "/projects/blog/deployments"],
     ["Bindings", "/projects/blog/bindings"],
     ["Triggers", "/projects/blog/triggers"],
     ["Settings", "/projects/blog/settings"],

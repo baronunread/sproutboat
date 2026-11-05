@@ -65,28 +65,36 @@ test("secrets: add and delete a project secret", async ({ page }) => {
   await page.goto("/projects/blog/settings");
   await expect(page.getByRole("heading", { name: "Secrets" })).toBeVisible();
 
-  await page.getByLabel("Name").fill("E2E_TOKEN");
-  await page.getByLabel("Value").fill("s3cret-value");
-  await page.getByRole("button", { name: /add secret/i }).click();
+  await page.getByRole("button", { name: /^add secret$/i }).click();
+  const form = page.getByRole("dialog");
+  await form.getByLabel("Name").fill("E2E_TOKEN");
+  const value = form.getByLabel("Value", { exact: true });
+  await value.fill("s3cret-value");
+  await expect(value).toHaveAttribute("type", "password");
+  await form.getByRole("button", { name: /show value/i }).click();
+  await expect(value).toHaveAttribute("type", "text");
+  await form.getByRole("button", { name: /save secret/i }).click();
 
-  const row = page.getByRole("list", { name: "Secrets" }).getByRole("listitem").filter({ hasText: "E2E_TOKEN" });
+  const row = page.getByRole("region", { name: "Secrets" }).locator("tbody tr").filter({ hasText: "E2E_TOKEN" });
   await expect(row).toBeVisible();
-  await expect(page.getByText(/applies on the next deploy/i)).toBeVisible();
+  await expect(page.getByText(/applies on the next deploy/i).first()).toBeVisible();
   await expect(row).not.toContainText("s3cret-value"); // the API never returns a value
 
-  await row.getByRole("button", { name: /^delete$/i }).click();
-  const dialog = page.getByRole("alertdialog");
+  await row.getByRole("button", { name: /^delete/i }).click();
+  const dialog = page.getByRole("dialog");
   await dialog.getByRole("button", { name: /delete secret/i }).click();
   await expect(
-    page.getByRole("list", { name: "Secrets" }).getByRole("listitem").filter({ hasText: "E2E_TOKEN" }),
+    page.getByRole("region", { name: "Secrets" }).locator("tbody tr").filter({ hasText: "E2E_TOKEN" }),
   ).toHaveCount(0);
 });
 
 test("a lowercase secret name is rejected inline", async ({ page }) => {
   await page.goto("/projects/blog/settings");
-  await page.getByLabel("Name").fill("lower_case");
-  await expect(page.getByText(/upper_snake_case/i).first()).toBeVisible();
-  await expect(page.getByRole("button", { name: /add secret/i })).toBeDisabled();
+  await page.getByRole("button", { name: /^add secret$/i }).click();
+  const form = page.getByRole("dialog");
+  await form.getByLabel("Name").fill("lower case");
+  await expect(form.getByText(/upper_snake_case/i).first()).toBeVisible();
+  await expect(form.getByRole("button", { name: /save secret/i })).toBeDisabled();
 });
 
 test("usage page shows the account's caps and per-project rows", async ({ page }) => {
@@ -106,5 +114,6 @@ test("triggers tab holds the route and custom domains", async ({ page }) => {
   await page.goto("/projects/blog/triggers");
   await expect(page.getByRole("heading", { name: "Route" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Custom domains" })).toBeVisible();
-  await expect(page.getByLabel(/add a hostname/i)).toBeVisible();
+  await page.getByRole("button", { name: /^add domain$/i }).click();
+  await expect(page.getByRole("dialog").getByLabel(/hostname/i)).toBeVisible();
 });
