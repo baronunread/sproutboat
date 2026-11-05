@@ -12,6 +12,7 @@
  */
 import { Resolver, resolveTxt } from "node:dns/promises";
 import { randomUUID } from "node:crypto";
+import { recordEvent } from "./events";
 import { actorFor, type Actor } from "./identity";
 import { LIMITS } from "./limits";
 import { deploymentDomain } from "./deployments";
@@ -99,7 +100,8 @@ async function withReachability<T extends object>(
 ): Promise<T | (T & { warning: string; serverAddresses: string[] })> {
   const servers = await serverAddresses(deploymentDomain());
   if (servers.length === 0) return view;
-  const hits = (await addressesOf(hostname)).some((addr) => servers.includes(addr));
+  const ours = new Set(servers);
+  const hits = (await addressesOf(hostname)).some((addr) => ours.has(addr));
   if (hits) return view;
   return {
     ...view,
@@ -165,10 +167,23 @@ export async function addDomain(request: Request, project: string): Promise<Resp
   const token = randomUUID().replace(/-/g, "");
   const created = addCustomDomain({ hostname, ownerId: actor.id, project, token });
   if (!created) return Response.json({ error: "that hostname is already claimed" }, { status: 409 });
+  recordEvent({
+    ownerId: actor.id,
+    project,
+    type: "domain.added",
+    actor: actor.username,
+    summary: `Added domain ${hostname} to ${project}`,
+    data: { hostname },
+  });
   return Response.json({ ...publicView(created), serverAddresses: await serverAddresses(base) }, { status: 201 });
 }
 
-export async function verifyDomain(request: Request, project: string, hostname: string): Promise<Response> {
+export async function verifyDomain(
+  request: Request,
+  project: string,
+  hostname: string,
+  lookupTxt: typeof resolveTxt = resolveTxt,
+): Promise<Response> {
   const actor = await authorized(request);
   if (actor instanceof Response) return actor;
 
@@ -179,7 +194,7 @@ export async function verifyDomain(request: Request, project: string, hostname: 
   const want = `${TXT_PREFIX}${domain.token}`;
   let records: string[][];
   try {
-    records = await resolveTxt(txtName(domain.hostname));
+    records = await lookupTxt(txtName(domain.hostname));
   } catch (error) {
     const code = error instanceof Error && "code" in error ? String(error.code) : "";
     const detail = code === "ENOTFOUND" || code === "ENODATA" ? "no TXT record found" : "TXT lookup failed";
@@ -198,6 +213,14 @@ export async function verifyDomain(request: Request, project: string, hostname: 
 
   markCustomDomainVerified(actor.id, project, domain.hostname);
   await syncRoutes();
+  recordEvent({
+    ownerId: actor.id,
+    project,
+    type: "domain.verified",
+    actor: actor.username,
+    summary: `Verified domain ${domain.hostname} on ${project}`,
+    data: { hostname: domain.hostname },
+  });
 
   // TXT proved ownership; the reachability note tells the owner whether an A
   // record still needs adding before the domain will actually load.
@@ -211,5 +234,13 @@ export async function deleteDomain(request: Request, project: string, hostname: 
   const removed = deleteCustomDomain(actor.id, project, hostname.toLowerCase());
   if (!removed) return Response.json({ error: "domain not found" }, { status: 404 });
   await syncRoutes();
+  recordEvent({
+    ownerId: actor.id,
+    project,
+    type: "domain.removed",
+    actor: actor.username,
+    summary: `Removed domain ${hostname.toLowerCase()} from ${project}`,
+    data: { hostname: hostname.toLowerCase() },
+  });
   return Response.json({ deleted: hostname.toLowerCase() });
 }

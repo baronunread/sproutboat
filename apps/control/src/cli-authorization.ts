@@ -1,7 +1,8 @@
 import { createHash, randomBytes } from "node:crypto";
 import { Database } from "bun:sqlite";
 import { getAuth } from "./auth";
-import { actorFor, listCredentials, revokeAllCredentials, revokeCredential } from "./identity";
+import { recordEvent } from "./events";
+import { actorFor, listCredentials, profileForUser, revokeAllCredentials, revokeCredential } from "./identity";
 
 type Authorization = {
   user_code: string;
@@ -108,6 +109,13 @@ export async function exchangeCliAuthorization(deviceCode: string | undefined): 
     db()
       .query("UPDATE cli_authorizations SET state = 'issued', token_issued_at = ? WHERE user_code = ?")
       .run(new Date().toISOString(), record.user_code);
+    recordEvent({
+      ownerId: record.user_id,
+      type: "token.created",
+      actor: profileForUser(record.user_id)?.username ?? record.user_id,
+      summary: "Created a CLI token",
+      data: { name: "Sproutboat CLI", keyId: result.id ?? null },
+    });
     return Response.json({ token: key });
   } catch (error) {
     db()
@@ -125,12 +133,12 @@ export async function exchangeCliAuthorization(deviceCode: string | undefined): 
  * list or revoke credentials (keeps the browser session and CLI keys separate).
  * Ownership is enforced by scoping every query to the caller's user id.
  */
-async function sessionUser(request: Request): Promise<{ id: string } | Response> {
+async function sessionUser(request: Request): Promise<{ id: string; username: string } | Response> {
   const actor = await actorFor(request).catch(() => undefined);
   if (!actor) return Response.json({ error: "sign in required" }, { status: 401 });
   if (actor.authentication !== "session")
     return Response.json({ error: "manage CLI credentials from the dashboard, not a CLI token" }, { status: 403 });
-  return { id: actor.id };
+  return { id: actor.id, username: actor.username };
 }
 
 export async function listCliCredentials(request: Request): Promise<Response> {
@@ -142,13 +150,28 @@ export async function listCliCredentials(request: Request): Promise<Response> {
 export async function revokeCliCredential(request: Request, id: string): Promise<Response> {
   const user = await sessionUser(request);
   if (user instanceof Response) return user;
-  return revokeCredential(user.id, id)
-    ? Response.json({ revoked: id })
-    : Response.json({ error: "credential not found" }, { status: 404 });
+  if (!revokeCredential(user.id, id)) return Response.json({ error: "credential not found" }, { status: 404 });
+  recordEvent({
+    ownerId: user.id,
+    type: "token.revoked",
+    actor: user.username,
+    summary: "Revoked a CLI token",
+    data: { keyId: id },
+  });
+  return Response.json({ revoked: id });
 }
 
 export async function revokeAllCliCredentials(request: Request): Promise<Response> {
   const user = await sessionUser(request);
   if (user instanceof Response) return user;
-  return Response.json({ revoked: revokeAllCredentials(user.id) });
+  const count = revokeAllCredentials(user.id);
+  if (count > 0)
+    recordEvent({
+      ownerId: user.id,
+      type: "token.revoked",
+      actor: user.username,
+      summary: `Revoked all CLI tokens (${count})`,
+      data: { all: true, count },
+    });
+  return Response.json({ revoked: count });
 }

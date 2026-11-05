@@ -7,6 +7,7 @@
  * the next deploy or sprout restart, matching Cloudflare ("secrets apply to the
  * next deployment"). The API never returns a secret value, only its name.
  */
+import { recordEvent } from "./events";
 import { actorFor, type Actor } from "./identity";
 import { LIMITS } from "./limits";
 import { deleteSecret, projectDeployments, secretCount, secretNames, setSecret, syncRoutes } from "./store";
@@ -60,6 +61,14 @@ export async function putSecret(request: Request, project: string, name: string)
 
   setSecret(actor.id, project, name, value);
   await syncRoutes();
+  recordEvent({
+    ownerId: actor.id,
+    project,
+    type: "secret.set",
+    actor: actor.username,
+    summary: `${isNew ? "Set" : "Updated"} secret ${name} on ${project}`,
+    data: { name },
+  });
   return Response.json({ name, set: true, appliesOn: "next deploy or sprout restart" }, { status: isNew ? 201 : 200 });
 }
 
@@ -68,5 +77,13 @@ export async function removeSecret(request: Request, project: string, name: stri
   if (actor instanceof Response) return actor;
   if (!deleteSecret(actor.id, project, name)) return Response.json({ error: "secret not found" }, { status: 404 });
   await syncRoutes();
+  recordEvent({
+    ownerId: actor.id,
+    project,
+    type: "secret.deleted",
+    actor: actor.username,
+    summary: `Deleted secret ${name} from ${project}`,
+    data: { name },
+  });
   return Response.json({ deleted: name });
 }

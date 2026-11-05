@@ -39,6 +39,12 @@ export const LIMITS = {
   secretsPerProject: () => num("SPROUTBOAT_MAX_SECRETS_PER_PROJECT", 64),
   /** account-level storage resources one account may hold (#74) */
   resourcesPerAccount: () => num("SPROUTBOAT_MAX_RESOURCES_PER_ACCOUNT", 100),
+  /** webhooks one account may register */
+  webhooksPerAccount: () => num("SPROUTBOAT_MAX_WEBHOOKS_PER_ACCOUNT", 10),
+  /** days of Activity events kept */
+  eventsKeepDays: () => num("SPROUTBOAT_EVENTS_KEEP_DAYS", 365),
+  /** rows of Activity events kept, oldest dropped first */
+  eventsMaxRows: () => num("SPROUTBOAT_EVENTS_MAX_ROWS", 50000),
 };
 
 const WINDOW_MS = 60_000;
@@ -198,6 +204,9 @@ export async function accountLimits(request: Request): Promise<Response> {
       domainsPerProject: LIMITS.domainsPerProject(),
       secretsPerProject: LIMITS.secretsPerProject(),
       resourcesPerAccount: LIMITS.resourcesPerAccount(),
+      webhooksPerAccount: LIMITS.webhooksPerAccount(),
+      eventsKeepDays: LIMITS.eventsKeepDays(),
+      eventsMaxRows: LIMITS.eventsMaxRows(),
       deployPerAccountPerMinute: LIMITS.deployPerAccount(),
       deployPerIpPerMinute: LIMITS.deployPerIp(),
     },

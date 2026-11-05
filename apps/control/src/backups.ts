@@ -32,6 +32,7 @@ import { createCipheriv, createDecipheriv, randomBytes } from "node:crypto";
 import { chmod, copyFile, link, mkdir, mkdtemp, open, readdir, rename, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, dirname, join, relative, resolve } from "node:path";
+import { recordEvent, SYSTEM_OWNER } from "./events";
 import { CONTROL_VERSION } from "./version";
 
 const NAME_RE = /^sproutboat-\d{8}-\d{6}\.tar\.gz(\.enc)?$/;
@@ -501,7 +502,35 @@ async function manifestFiles(root: string): Promise<BackupManifest["files"]> {
   return files.toSorted((a, b) => (a.path < b.path ? -1 : 1));
 }
 
-export async function createBackup(): Promise<BackupEntry> {
+/**
+ * Take a backup and record the outcome in the Activity feed (system events,
+ * visible to admins only). `actor` is who asked: the timer by default.
+ */
+export async function createBackup(options: { actor?: string } = {}): Promise<BackupEntry> {
+  const actor = options.actor ?? "timer";
+  try {
+    const entry = await writeBackup();
+    recordEvent({
+      ownerId: SYSTEM_OWNER,
+      type: "backup.created",
+      actor,
+      summary: `Backup ${entry.name} created`,
+      data: { name: entry.name, sizeBytes: entry.sizeBytes, encrypted: entry.encrypted, offsite: entry.offsite },
+    });
+    return entry;
+  } catch (error) {
+    recordEvent({
+      ownerId: SYSTEM_OWNER,
+      type: "backup.failed",
+      actor,
+      summary: "Backup failed",
+      data: { error: error instanceof Error ? error.message : String(error) },
+    });
+    throw error;
+  }
+}
+
+async function writeBackup(): Promise<BackupEntry> {
   const dir = backupsDir();
   await mkdir(dir, { recursive: true });
   const encrypt = encryptionOn();

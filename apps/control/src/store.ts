@@ -181,6 +181,45 @@ function connection(): Database {
       PRIMARY KEY (deployment_id, resource_id)
     );
     CREATE INDEX IF NOT EXISTS deployment_resources_by_resource ON deployment_resources(resource_id);
+    -- Activity events and webhooks (events.ts, webhooks.ts). Additive; 0.14.0 ignores these tables.
+    CREATE TABLE IF NOT EXISTS events (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      ts TEXT NOT NULL,
+      owner_id TEXT NOT NULL,
+      project TEXT,
+      type TEXT NOT NULL,
+      actor TEXT,
+      summary TEXT NOT NULL,
+      data TEXT NOT NULL DEFAULT '{}'
+    );
+    CREATE INDEX IF NOT EXISTS events_by_owner ON events(owner_id, id);
+    CREATE INDEX IF NOT EXISTS events_by_owner_project ON events(owner_id, project, id);
+    CREATE TABLE IF NOT EXISTS webhooks (
+      id TEXT PRIMARY KEY,
+      owner_id TEXT NOT NULL,
+      url TEXT NOT NULL,
+      types TEXT NOT NULL DEFAULT '[]',
+      format TEXT NOT NULL DEFAULT 'json',
+      secret_ciphertext TEXT NOT NULL,
+      enabled INTEGER NOT NULL DEFAULT 1,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS webhooks_by_owner ON webhooks(owner_id);
+    CREATE TABLE IF NOT EXISTS webhook_deliveries (
+      id TEXT PRIMARY KEY,
+      webhook_id TEXT NOT NULL,
+      event_id INTEGER NOT NULL,
+      attempt INTEGER NOT NULL DEFAULT 0,
+      state TEXT NOT NULL,
+      http_status INTEGER,
+      error TEXT,
+      next_attempt_at TEXT,
+      created_at TEXT NOT NULL,
+      delivered_at TEXT
+    );
+    CREATE INDEX IF NOT EXISTS webhook_deliveries_by_webhook ON webhook_deliveries(webhook_id, created_at);
+    CREATE INDEX IF NOT EXISTS webhook_deliveries_due ON webhook_deliveries(state, next_attempt_at);
   `);
   // worker -> sprout rename: bring a pre-rename DB's column name forward.
   // SAFETY: PRAGMA table_info rows always expose a string `name` column.
@@ -1066,6 +1105,11 @@ export async function sweepBrokerState(): Promise<string[]> {
     }),
   );
   return removed.filter((name): name is string => name !== null);
+}
+
+/** The shared connection, for the events and webhooks modules (same file, same pragmas). */
+export function storeDatabase(): Database {
+  return connection();
 }
 
 /** Test/ops helper: close and forget the connection. */

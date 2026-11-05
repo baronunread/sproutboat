@@ -423,3 +423,45 @@ test("createBackup: warns when off-box upload is configured without encryption",
   expect(entry.warning).toContain("encryption is off");
   expect(entry.offsite).toBe(false);
 });
+
+test("events recorded before a backup restore with it; the backup itself is recorded as a system event", async () => {
+  const store = await import("./store");
+  const events = await import("./events");
+  store.closeStore();
+  events.recordEvent({
+    ownerId: "user-1",
+    project: "app",
+    type: "secret.set",
+    actor: "alice",
+    summary: "Set secret API_KEY on app",
+    data: { name: "API_KEY" },
+  });
+  const entry = await mod.createBackup();
+  const live = events.listEvents({ all: true, limit: 10 }).events;
+  expect(live.map((event) => event.type)).toEqual(["backup.created", "secret.set"]);
+  expect(live[0]).toMatchObject({
+    ownerId: "system",
+    actor: "timer",
+    data: { name: entry.name, encrypted: false, offsite: false },
+  });
+  store.closeStore();
+
+  const fresh = await mkdtemp(join(tmpdir(), "sb-restore-events-"));
+  try {
+    process.env.SPROUTBOAT_STATE_DIR = fresh;
+    process.env.SPROUTBOAT_DATABASE_PATH = join(fresh, "sproutboat.sqlite");
+    await mod.restoreBackup(join(dir, "backups", entry.name));
+    const restored = new Database(join(fresh, "sproutboat.sqlite"), { readonly: true });
+    try {
+      const rows = restored
+        .query<{ type: string; owner_id: string; data: string }, []>("SELECT type, owner_id, data FROM events")
+        .all();
+      expect(rows).toEqual([{ type: "secret.set", owner_id: "user-1", data: '{"name":"API_KEY"}' }]);
+    } finally {
+      restored.close();
+    }
+  } finally {
+    store.closeStore();
+    await rm(fresh, { recursive: true, force: true });
+  }
+});
