@@ -494,7 +494,9 @@ describe("memory caps", () => {
       ["control", "edge", "egress", "backup"].map((u) => read(`sproutboat-${u}`)),
     );
     expect(control).toContain("MemoryMax=384M\nMemoryHigh=320M");
-    expect(egress).toContain("MemoryMax=512M\nMemoryHigh=448M");
+    // Rust is the default engine; the sb-engine Bun drop-in restores the old cap.
+    expect(egress).toContain("MemoryMax=128M\nMemoryHigh=112M");
+    expect(await Bun.file("infra/sb-engine").text()).toContain("'MemoryMax=512M' 'MemoryHigh=448M'");
     expect(edge).toContain("MemoryMax=1536M\nMemoryHigh=1280M");
     expect(edge).toContain("MemorySwapMax=0");
     expect(edge).toContain("CPUQuota=200%");

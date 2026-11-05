@@ -59,7 +59,7 @@ Changes to the self-hosted Sproutboat platform are recorded here. Read the
 
 ### Changed
 
-- Memory caps on every unit: control 384M, egress 512M, caddy 256M, backup 512M (niced, idle I/O), each with a
+- Memory caps on every unit: control 384M, egress 128M on Rust (512M on Bun), caddy 256M, backup 512M (niced, idle I/O), each with a
   `MemoryHigh`. The edge cap is now computed from RAM at install time instead of a fixed 2500M.
 - Control, edge and egress keep retrying every 2 s after crashes (`StartLimitIntervalSec=0`).
 - Bun on the box is 1.4.4 (was 1.4.0), matching CI and development. `install.sh` no longer pipes `bun.sh/install`
