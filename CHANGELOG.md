@@ -5,6 +5,32 @@ Changes to the self-hosted Sproutboat platform are recorded here. Read the
 
 ## [Unreleased]
 
+## [1.0.0-rc.1] - 2026-11-05
+
+The first release candidate of Sproutboat Community 1.0: the single-machine, self-hosted edition. Three things are new: a homelab install mode, an Activity history with webhooks, and the dashboard rebuilt on the open design system `@sproutboat/ikada`.
+
+### Breaking and operator actions
+
+- **A release candidate is not picked up by `sbctl update`.** The updater follows the newest `vX.Y.Z` tag, and `1.0.0-rc.1` is a pre-release, so an existing box stays on 0.14.0 until you ask for it: `SB_REF=v1.0.0-rc.1 sudo sbctl update`. `sbctl update --check` with the same `SB_REF` shows this entry first. Rolling back is `sudo sbctl rollback`; the database changes below are additive and 0.14.0 ignores them.
+- **Database: three new tables** (`events`, `webhooks`, `webhook_deliveries`), created at the first start. Nothing existing is altered. Backups include them; a 0.14.0 restore of a 1.0.0-rc.1 archive is refused by the version gate as before (`--allow-newer` overrides).
+- **The control unit now reads `/etc/sproutboat/egress.env`** (`EnvironmentFile`) and starts after the egress service, so webhook deliveries can leave through the egress service. `sbctl update` writes the unit; no action needed.
+- **`/etc/sproutboat/install.env` is new** and records the install mode (`SB_MODE`, `SB_PROXY`, `SB_FIREWALL`, `SB_SSH_PORT`, `SB_SCHEME`, `SB_BIND_HOST`, `SB_BIND_ALLOW`, `SB_ACME_STAGING`). An existing box becomes `public` with Caddy and ufw managed as before; a box that was installed with `SB_ACME_STAGING=1` keeps staging (the installer reads the old Caddyfile once). `sbctl mode` prints the file.
+- **The installer refuses a reserved admin username** (`admin`, `www`, `api`, `status`, `docs`, `support`, `cli`, `dashboard`, `sproutboat`): control reserves those namespaces, so an install with one of them had an admin token that never authenticated. Existing installs are not re-validated.
+- **Dashboard:** the namespace claim flow and the `/profile` claim form are gone (accounts are created by the admin, who reserves the namespace). The admin Users page no longer shows ban reasons, ban expiry or per-user sessions; disable and enable remain. "Usage and limits" is now "Limits".
+
+### Added
+
+- **Homelab install mode** (#353): `install.sh --homelab` (or `SB_MODE=homelab`) for a box behind your own reverse proxy, on a LAN, or over Tailscale. Caddy and ufw become optional (`SB_PROXY=external`, `SB_FIREWALL=off`), no public IPv4 is assumed, control serves the dashboard itself, the health gate, `sbctl`, backups, restore and rollback all work without Caddy, and `sbctl update` keeps the mode. `SB_BIND_HOST` can widen the listen address with an explicit `IPAddressAllow` list. DNS-01 through Cloudflare (`SB_CF_TOKEN`) stays optional and is now remembered across updates. Recipes for nginx, Traefik, Caddy elsewhere, LAN-only with local DNS, Tailscale and DNS-01 are in `docs/homelab.md`.
+- **Activity events** (#354): control records deploys (started, succeeded, failed), activations and rollbacks, version and project deletes, project creation, secrets set or deleted (names only, never values), domains added, verified or removed, API tokens created or revoked, members created, disabled or enabled, backups created or failed. `GET /api/activity` lists them with filters by project, type (`deploy.*`), time window and cursor; `GET /api/activity/types` lists the vocabulary. Retention: `SPROUTBOAT_EVENTS_KEEP_DAYS` (365) and `SPROUTBOAT_EVENTS_MAX_ROWS` (50000).
+- **Webhooks** (#354): per-account endpoints with a type filter and a generic JSON or Discord format (`/api/webhooks`). Every payload is signed (`x-sproutboat-signature: t=<unix>,v1=<hex HMAC-SHA256>`), retried with backoff (30 s, 2 min, 10 min, 1 h) and logged per delivery. Deliveries leave only through the egress service, so a webhook that resolves to a private or reserved address is refused unless the operator allows it with `SB_EGRESS_ALLOW`. Cap: `SPROUTBOAT_MAX_WEBHOOKS_PER_ACCOUNT` (10).
+- **Dashboard on ikada** (#355, #357, #358): every screen now uses `@sproutboat/ikada` components and tokens (dark and light, Figtree and JetBrains Mono): shell with sidebar and command palette, login and CLI authorization, overview, sprouts, project overview, deployments with rollback, metrics, logs and live tail, bindings, triggers, settings (secrets, names only), storage, account settings, API tokens, limits, admin System, Users and Backups, the new **Activity** page (account-wide and per project) and **Webhooks** settings. ikada gained a router-link adapter, Avatar, SegmentedControl, RadioGroup, SensitiveInput, DescriptionList, Pagination and CodeBlock; the Cloud-only RuntimeChip, FallbackPill and TrafficSplitBar left the open package.
+- Playwright end-to-end tests run in CI against the real local stack (`SPROUTBOAT_E2E_PLAIN=1` in `tools/dev-local.ts`).
+
+### Fixed
+
+- `SB_ADMIN=admin` (and the other reserved names) no longer produce an install whose admin token cannot authenticate (#356).
+- `SB_CF_TOKEN` and `SB_ACME_STAGING` survive `sbctl update`; before, an update without them silently switched Caddy back to HTTP-01 and production ACME.
+
 ## [0.14.0] - 2026-11-05
 
 ### Added
