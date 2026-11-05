@@ -60,10 +60,16 @@ export type Mount = {
   dest: string;
 };
 
-/** The node_modules directory that holds the broker package (found from the path of one of its files), or null. */
+/**
+ * The node_modules directory the broker resolves its package from (found from the real path of one of the
+ * package's files), or null. It is the OUTERMOST one: with Bun's isolated linker (what a workspace install uses)
+ * the real path is `<root>/node_modules/.bun/<pkg>/node_modules/<pkg>/...`, and the broker finds the package
+ * through the `<root>/node_modules/<pkg>` symlink, so binding the innermost directory (the package's own
+ * private store) leaves that symlink, and the broker's import, dangling.
+ */
 export function nodeModulesOf(file: string): string | null {
   const path = resolve(file);
-  const at = path.lastIndexOf("/node_modules/");
+  const at = path.indexOf("/node_modules/");
   return at >= 0 ? path.slice(0, at + "/node_modules".length) : null;
 }
 

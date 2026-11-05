@@ -140,6 +140,16 @@ describe("what a broker is given", () => {
     expect(ownerDirName("bootstrap:../../etc")).toMatch(/^[0-9a-f]{32}$/);
   });
 
+  test("the node_modules to bind is the outermost one, so an isolated (workspace) install keeps its symlinks", () => {
+    // Hoisted layout.
+    expect(nodeModulesOf("/srv/app/node_modules/@sproutboat/wire/dist/broker.js")).toBe("/srv/app/node_modules");
+    // Isolated layout: the real path is inside the package's private store under node_modules/.bun.
+    expect(
+      nodeModulesOf("/srv/app/node_modules/.bun/@sproutboat+wire@0.21.4/node_modules/@sproutboat/wire/dist/broker.js"),
+    ).toBe("/srv/app/node_modules");
+    expect(nodeModulesOf("/srv/app/src/broker.js")).toBeNull();
+  });
+
   test("a malformed or traversing resource id in bindings.json is dropped, not mounted", () => {
     const hostile = bindings({
       resources: {
