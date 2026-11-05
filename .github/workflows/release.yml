@@ -1,0 +1,65 @@
+name: release
+
+# Builds the Rust edge and egress for the installer (install.sh fetches them from the
+# GitHub Release of the tag it installs). Tag pushes attach them to that tag's release.
+# workflow_dispatch builds a branch or sha into a pre-release, for testing before a tag.
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "Branch, tag or sha to build"
+        required: true
+      release:
+        description: "Pre-release tag to attach the binaries to (for example engines-test-1)"
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  engines:
+    runs-on: ubuntu-latest
+    env:
+      TARGET: x86_64-unknown-linux-musl
+      RELEASE_TAG: ${{ github.event_name == 'push' && github.ref_name || inputs.release }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event_name == 'push' && github.ref || inputs.ref }}
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-unknown-linux-musl
+      - run: sudo apt-get update -qq && sudo apt-get install -y -qq musl-tools
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            services/edge-rs
+            services/egress-rs
+          key: x86_64-unknown-linux-musl-release
+      - run: cargo build --locked --release --target "$TARGET"
+        working-directory: services/edge-rs
+      - run: cargo build --locked --release --target "$TARGET"
+        working-directory: services/egress-rs
+      - name: Collect, strip and checksum
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          cp "services/edge-rs/target/$TARGET/release/sproutboat-edge" dist/sproutboat-edge-linux-x64
+          cp "services/egress-rs/target/$TARGET/release/sproutboat-egress" dist/sproutboat-egress-linux-x64
+          strip dist/sproutboat-edge-linux-x64 dist/sproutboat-egress-linux-x64
+          file dist/*
+          (cd dist && sha256sum sproutboat-edge-linux-x64 sproutboat-egress-linux-x64 > SHA256SUMS && cat SHA256SUMS)
+      - name: Attach to the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if ! gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            prerelease=()
+            [ "${{ github.event_name }}" = workflow_dispatch ] && prerelease=(--prerelease --target "$(git rev-parse HEAD)")
+            gh release create "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --notes "see CHANGELOG.md" "${prerelease[@]}"
+          fi
+          gh release upload "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --clobber \
+            dist/sproutboat-edge-linux-x64 dist/sproutboat-egress-linux-x64 dist/SHA256SUMS

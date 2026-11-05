@@ -223,13 +223,7 @@ instead (#252). That's a separate unit outside the edge's cgroup, listening on
   on this host, add `SB_EGRESS_ALLOW=10.0.0.5` (comma-separated exact
   addresses, or `*`) to `/etc/sproutboat/egress.env` and run
   `systemctl restart sproutboat-egress`. Re-running the installer keeps it.
-- **Rust egress (opt-in, not the default):** `services/egress-rs` is a drop-in
-  for the Bun service with the same token, port and checks (contract:
-  `services/egress-rs/BEHAVIOUR.md`). To try it on a host, install
-  `infra/systemd/sproutboat-egress.service.d/rust.conf.example` as `rust.conf` and
-  the musl binary at `/opt/sproutboat/bin/sproutboat-egress`, then
-  `systemctl daemon-reload && systemctl restart sproutboat-egress`. Remove
-  `rust.conf` to go back. The installer does not ship the binary yet.
+- **Engines:** the egress runs as the Rust binary by default; see [Engines](#engines).
 
 ```sh
 sbctl status   # sproutboat-egress should be active
@@ -267,6 +261,34 @@ Off Linux the sandbox is skipped and the sprout is spawned directly. On a Linux
 dev box that is fine to trust, `SPROUTBOAT_SPROUT_SANDBOX=none` plus
 `SPROUTBOAT_UNSAFE_NO_SANDBOX=1` does the same (for the sprout and its broker);
 anything else is refused.
+
+## Engines
+
+The edge and the egress run as static Rust binaries (`services/edge-rs`, `services/egress-rs`). The Bun
+implementations (`services/edge`, `@sproutboat/wire`) stay as a fallback.
+
+- **Where they live:** `/usr/local/lib/sproutboat/bin/{sproutboat-edge,sproutboat-egress}`, root-owned, mode 0755,
+  outside the `rsync --delete` tree. The units name them directly.
+- **Where they come from:** the installer downloads `SHA256SUMS` and both binaries from the GitHub Release of the exact
+  tag it installs (built by `.github/workflows/release.yml`), verifies the checksums, and installs them atomically.
+  Re-running skips the download when the installed hashes already match.
+- **Unreleased builds:** `SB_ENGINE_DIR=<dir>` uses a local directory holding `sproutboat-edge-linux-x64`,
+  `sproutboat-egress-linux-x64` and `SHA256SUMS` instead. `SB_ENGINE_BASE_URL` overrides the download base. The
+  release workflow can also be run by hand (`workflow_dispatch`) to publish a pre-release for a branch.
+- **Choosing an engine:** `/etc/sproutboat/engine.env` holds `SB_EDGE=rust|bun` and `SB_EGRESS=rust|bun`. A fresh
+  install defaults to `rust` for both; an existing file is kept on update; `SB_EDGE` / `SB_EGRESS` in the
+  installer environment override it. `sbctl engine` shows the current engines and `sbctl engine rust|bun` switches
+  both and restarts them. `bun` works through generated `10-engine.conf` drop-ins (`infra/sb-engine`, installed as
+  `/usr/local/lib/sproutboat/engine`); `rust` removes them.
+- **Automatic fallback:** if the binaries cannot be downloaded or verified, the installer warns and continues. With no
+  Rust binaries installed at all it selects `bun` for both; with older ones it keeps them and the engine choice, and
+  warns that they are stale (a ref that is not a `vX.Y.Z` tag, such as `main`, has no published binaries). On a fresh
+  install it also probes `127.0.0.1:8080/__sb/pool` and `127.0.0.1:8070` for 20 s after the restart and switches both to
+  Bun if the Rust engines do not answer.
+- **Bun is still required:** the Rust edge runs the Bun supervisor (`services/supervisor/src/sidecar.ts`) as a
+  sidecar (`SPROUTBOAT_BUN` in the unit), and control and `sbctl preflight` run on Bun.
+- **Limits:** the Rust egress is small, so its cap is `MemoryMax=128M` / `MemoryHigh=112M` (the Bun fallback gets
+  512M / 448M from its drop-in). Both listen on 8070 (HTTP) and 8071 (the connect tunnel), loopback only.
 
 ## First deploy
 

@@ -1,0 +1,94 @@
+#!/usr/bin/env bash
+#
+# sb-engine: choose the edge and egress engine (Rust default, Bun fallback).
+# Installed to /usr/local/lib/sproutboat/engine by install.sh; `sbctl engine` calls it.
+#
+#   sb-engine apply                       write or remove the systemd drop-ins from engine.env (no restart)
+#   sb-engine status                      engine per service and the installed binaries
+#   sb-engine set <edge|egress|both> <rust|bun>   update engine.env, then apply
+#
+# The base units run the Rust binaries. For `bun` this writes 10-engine.conf drop-ins that
+# put the Bun commands back; for `rust` it removes them.
+#
+# Test hooks: SB_ENGINE_ROOT=<dir> prefixes every path (/etc, /usr/local/lib), and
+# SB_ENGINE_NO_RELOAD=1 skips systemctl daemon-reload.
+set -euo pipefail
+
+PFX=${SB_ENGINE_ROOT:-}
+ETC=$PFX/etc/sproutboat
+ENGINE_ENV=$ETC/engine.env
+UNIT_DIR=$PFX/etc/systemd/system
+BIN_DIR=$PFX/usr/local/lib/sproutboat/bin
+BUN=/opt/sproutboat/bun/bin/bun
+
+die() { printf 'sb-engine: %s\n' "$*" >&2; exit 1; }
+
+engine_of() { # engine_of <SB_EDGE|SB_EGRESS>: rust unless engine.env says bun
+  local v=""
+  [ -f "$ENGINE_ENV" ] && v=$(sed -n "s/^$1=//p" "$ENGINE_ENV" | head -1)
+  case "$v" in bun) echo bun ;; *) echo rust ;; esac
+}
+
+dropin_path() { echo "$UNIT_DIR/sproutboat-$1.service.d/10-engine.conf"; }
+
+write_dropin() { # write_dropin <edge|egress> <rust|bun>
+  local svc=$1 engine=$2 f
+  f=$(dropin_path "$svc")
+  if [ "$engine" = rust ]; then
+    rm -f "$f"
+    rmdir "$(dirname "$f")" 2>/dev/null || true
+    return 0
+  fi
+  install -d -m 0755 "$(dirname "$f")"
+  case "$svc" in
+    edge)
+      printf '%s\n' '[Service]' 'ExecStart=' "ExecStart=$BUN services/edge/src/main.ts" > "$f" ;;
+    egress)
+      printf '%s\n' '[Service]' 'ExecStart=' \
+        "ExecStart=$BUN node_modules/@sproutboat/wire/src/egress.ts --host 127.0.0.1 --port 8070" \
+        'MemoryMax=512M' 'MemoryHigh=448M' > "$f" ;;
+  esac
+  chmod 0644 "$f"
+}
+
+reload() { [ "${SB_ENGINE_NO_RELOAD:-0}" = 1 ] || systemctl daemon-reload; }
+
+cmd_apply() {
+  write_dropin edge "$(engine_of SB_EDGE)"
+  write_dropin egress "$(engine_of SB_EGRESS)"
+  reload
+}
+
+short_sha() { if [ -f "$1" ]; then sha256sum "$1" | cut -c1-12; else echo "not installed"; fi; }
+
+cmd_status() {
+  printf 'edge    %-5s  %s\n' "$(engine_of SB_EDGE)" "sproutboat-edge sha256 $(short_sha "$BIN_DIR/sproutboat-edge")"
+  printf 'egress  %-5s  %s\n' "$(engine_of SB_EGRESS)" "sproutboat-egress sha256 $(short_sha "$BIN_DIR/sproutboat-egress")"
+}
+
+cmd_set() {
+  local which=${1:-} engine=${2:-} edge egress
+  case "$which" in edge|egress|both) ;; *) die "usage: sb-engine set <edge|egress|both> <rust|bun>" ;; esac
+  case "$engine" in rust|bun) ;; *) die "usage: sb-engine set <edge|egress|both> <rust|bun>" ;; esac
+  edge=$(engine_of SB_EDGE); egress=$(engine_of SB_EGRESS)
+  case "$which" in edge) edge=$engine ;; egress) egress=$engine ;; both) edge=$engine; egress=$engine ;; esac
+  if [ "$engine" = rust ]; then
+    [ "$which" = egress ] || [ -x "$BIN_DIR/sproutboat-edge" ] || die "no Rust edge binary at $BIN_DIR/sproutboat-edge (re-run the installer)"
+    [ "$which" = edge ] || [ -x "$BIN_DIR/sproutboat-egress" ] || die "no Rust egress binary at $BIN_DIR/sproutboat-egress (re-run the installer)"
+  fi
+  install -d -m 0750 "$ETC"
+  printf 'SB_EDGE=%s\nSB_EGRESS=%s\n' "$edge" "$egress" > "$ENGINE_ENV.new"
+  chmod 0644 "$ENGINE_ENV.new"
+  mv "$ENGINE_ENV.new" "$ENGINE_ENV"
+  cmd_apply
+}
+
+# Source guard: tests can `source` this file to call the functions.
+if [ "${BASH_SOURCE[0]}" = "$0" ]; then
+  case "${1:-status}" in
+    apply) cmd_apply ;;
+    status) cmd_status ;;
+    set) shift; cmd_set "$@" ;;
+    *) die "usage: sb-engine apply | status | set <edge|egress|both> <rust|bun>" ;;
+  esac
+fi

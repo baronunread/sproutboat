@@ -16,6 +16,9 @@
 # SB_SKIP_DNS_CHECK=1 — don't wait for DNS to resolve.
 #
 # By default this installs the newest released version (the highest `v*` tag).
+# The Rust edge and egress binaries are fetched from the GitHub Release of that tag;
+# SB_ENGINE_DIR=<dir> installs a local build instead, SB_EDGE / SB_EGRESS (rust|bun) pick
+# the engines (kept in /etc/sproutboat/engine.env; see infra/README.md, Engines).
 # SB_REF=v0.1.0 pins a version, SB_REF=main tracks the development branch, and
 # `sbctl update` moves to the newest release unless SB_REF says otherwise.
 
@@ -154,7 +157,7 @@ if [ "${1:-}" = --uninstall ]; then
   rm -f /etc/systemd/system/sproutboat-control.service /etc/systemd/system/sproutboat-edge.service \
         /etc/systemd/system/sproutboat-egress.service \
         /etc/systemd/system/sproutboat-backup.service /etc/systemd/system/sproutboat-backup.timer
-  rm -rf /etc/systemd/system/caddy.service.d /etc/systemd/system/sproutboat-edge.service.d
+  rm -rf /etc/systemd/system/sproutboat-edge.service.d /etc/systemd/system/sproutboat-egress.service.d /etc/systemd/system/caddy.service.d
   # only remove caddy.service if this installer created it (has our marker path)
   grep -q "$CADDY_BIN" /etc/systemd/system/caddy.service 2>/dev/null && rm -f /etc/systemd/system/caddy.service
   systemctl daemon-reload
@@ -162,7 +165,7 @@ if [ "${1:-}" = --uninstall ]; then
         /etc/logrotate.d/sproutboat /etc/systemd/journald.conf.d/sproutboat.conf
   rm -f /usr/local/lib/sproutboat/backup-stage
   # /etc/sproutboat holds caddy.d (operator drop-ins) and goes even with --keep-state: copy it first.
-  rm -rf "$ROOT" /opt/sproutboat-src /etc/sproutboat /etc/caddy
+  rm -rf "$ROOT" /usr/local/lib/sproutboat /opt/sproutboat-src /etc/sproutboat /etc/caddy
   [ "$KEEP_STATE" = 1 ] || rm -rf "$STATE"
   for u in sproutboat-control sproutboat-edge; do id "$u" >/dev/null 2>&1 && userdel "$u" || true; done
   getent group sproutboat >/dev/null && groupdel sproutboat 2>/dev/null || true
@@ -320,7 +323,7 @@ check_build_memory
 say "Syncing $SRC -> $ROOT"
 rsync -a --delete --chmod=Du=rwx,Dgo=rx,Fu=rwX,Fgo=rX \
   --exclude .git --exclude node_modules --exclude .phase0 --exclude .sproutboat --exclude .local \
-  --exclude /bun --exclude /apps/web/dist --exclude /apps/web/.tanstack \
+  --exclude /bun --exclude /bin --exclude /apps/web/dist --exclude /apps/web/.tanstack \
   "$SRC"/ "$ROOT"/
 # Keep the service-visible application root traversable after a staged update.
 install -d -m 0755 -o root -g root "$ROOT"
@@ -344,6 +347,134 @@ if [ "$BUN_HAVE" != "$BUN_VERSION" ]; then
   rm -rf "$bun_tmp"
   ok "Bun $("$BUN" --version)"
 fi
+
+# --- Rust engines (edge + egress) -------------------------------------
+# The edge and egress run as static Rust binaries from the GitHub Release of the tag
+# being installed (.github/workflows/release.yml). They live OUTSIDE the rsync --delete
+# tree. SB_ENGINE_DIR=<dir> (the two binaries plus SHA256SUMS) installs an unreleased
+# build instead; SB_ENGINE_BASE_URL overrides the download base. Any failure here is a
+# warning, never fatal: the Bun engines remain available (infra/sb-engine).
+ENGINE_DIR=/usr/local/lib/sproutboat/bin
+ENGINE_FILES=(sproutboat-edge sproutboat-egress)
+ENGINE_STATUS=pending   # installed | current | stale | none (recorded for the summary)
+ENGINE_NOTE=
+
+engine_asset() { echo "$1-linux-x64"; }
+
+# sums_hash <SHA256SUMS> <asset>: the hash listed for an asset, empty if absent.
+sums_hash() { awk -v f="$2" '$2 == f || $2 == "*" f { print $1; exit }' "$1"; }
+
+engines_present() { # every binary already installed
+  local n
+  for n in "${ENGINE_FILES[@]}"; do [ -x "$ENGINE_DIR/$n" ] || return 1; done
+}
+
+engines_match() { # engines_match <SHA256SUMS>: installed binaries equal the listed hashes
+  local n want have
+  for n in "${ENGINE_FILES[@]}"; do
+    [ -x "$ENGINE_DIR/$n" ] || return 1
+    want=$(sums_hash "$1" "$(engine_asset "$n")")
+    [ -n "$want" ] || return 1
+    have=$(sha256sum "$ENGINE_DIR/$n" | cut -d' ' -f1)
+    [ "$have" = "$want" ] || return 1
+  done
+}
+
+# verify_engines <dir>: SHA256SUMS in <dir> lists and matches both binaries.
+verify_engines() {
+  local n want have
+  [ -s "$1/SHA256SUMS" ] || return 1
+  for n in "${ENGINE_FILES[@]}"; do
+    want=$(sums_hash "$1/SHA256SUMS" "$(engine_asset "$n")")
+    [ -n "$want" ] || return 1
+    have=$(sha256sum "$1/$(engine_asset "$n")" | cut -d' ' -f1)
+    [ "$have" = "$want" ] || return 1
+  done
+}
+
+# fetch_engines <dest>: put SHA256SUMS and the binaries in <dest>. Returns non-zero when
+# there is no source for this run.
+fetch_engines() {
+  local dest=$1 tag=${SB_REF:-} n base
+  if [ -n "${SB_ENGINE_DIR:-}" ]; then
+    [ -f "$SB_ENGINE_DIR/SHA256SUMS" ] || { ENGINE_NOTE="$SB_ENGINE_DIR/SHA256SUMS not found"; return 1; }
+    cp "$SB_ENGINE_DIR/SHA256SUMS" "$dest/SHA256SUMS"
+    for n in "${ENGINE_FILES[@]}"; do
+      cp "$SB_ENGINE_DIR/$(engine_asset "$n")" "$dest/" 2>/dev/null \
+        || cp "$SB_ENGINE_DIR/$n" "$dest/$(engine_asset "$n")" 2>/dev/null \
+        || { ENGINE_NOTE="$SB_ENGINE_DIR lacks $n"; return 1; }
+    done
+    return 0
+  fi
+  if [ -z "$tag" ] && [ -d "$SRC/.git" ]; then tag=$(git -C "$SRC" describe --tags --exact-match HEAD 2>/dev/null || true); fi
+  if ! [[ "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+    ENGINE_NOTE="'${tag:-no ref}' is not a vX.Y.Z release, so there are no published engine binaries (use SB_ENGINE_DIR for a local build)"
+    return 1
+  fi
+  base=${SB_ENGINE_BASE_URL:-https://github.com/baronunread/sproutboat/releases/download}/$tag
+  curl -fsSL --retry 2 -m 60 "$base/SHA256SUMS" -o "$dest/SHA256SUMS" || { ENGINE_NOTE="could not download $base/SHA256SUMS"; return 1; }
+  if engines_match "$dest/SHA256SUMS"; then return 0; fi
+  for n in "${ENGINE_FILES[@]}"; do
+    curl -fsSL --retry 2 -m 300 "$base/$(engine_asset "$n")" -o "$dest/$(engine_asset "$n")" \
+      || { ENGINE_NOTE="could not download $base/$(engine_asset "$n")"; return 1; }
+  done
+}
+
+install_engines() {
+  local tmp n
+  install -d -m 0755 -o root -g root /usr/local/lib/sproutboat "$ENGINE_DIR"
+  tmp=$(mktemp -d)
+  if fetch_engines "$tmp"; then
+    if engines_match "$tmp/SHA256SUMS"; then
+      ENGINE_STATUS=current; ENGINE_NOTE="Rust engines already match the release"
+      ok "$ENGINE_NOTE"
+    elif verify_engines "$tmp"; then
+      for n in "${ENGINE_FILES[@]}"; do
+        install -m 0755 -o root -g root "$tmp/$(engine_asset "$n")" "$ENGINE_DIR/$n.new"
+        mv -f "$ENGINE_DIR/$n.new" "$ENGINE_DIR/$n"
+      done
+      ENGINE_STATUS=installed; ENGINE_NOTE="Rust engines installed in $ENGINE_DIR"
+      ok "$ENGINE_NOTE"
+    else
+      ENGINE_NOTE="checksum verification of the engine binaries failed"
+    fi
+  fi
+  rm -rf "$tmp"
+  [ "$ENGINE_STATUS" = pending ] || return 0
+  if engines_present; then
+    ENGINE_STATUS=stale
+    warn "$ENGINE_NOTE: keeping the Rust engines from a previous install, which may be stale"
+  else
+    ENGINE_STATUS=none
+    warn "$ENGINE_NOTE: no Rust engines installed, falling back to the Bun engines for now"
+  fi
+}
+
+# engines_healthy <seconds>: the edge pool route (loopback Host) and the egress both
+# answer HTTP within the time. Any HTTP status counts for the egress.
+engines_healthy() {
+  local deadline=$((SECONDS + $1))
+  while [ "$SECONDS" -lt "$deadline" ]; do
+    if curl -s -o /dev/null -m 2 -H 'Host: 127.0.0.1' http://127.0.0.1:8080/__sb/pool \
+      && curl -s -o /dev/null -m 2 http://127.0.0.1:8070/; then return 0; fi
+    sleep 1
+  done
+  return 1
+}
+
+say "Installing the Rust engines (edge, egress)"
+install_engines || true
+# engine.env: SB_EDGE / SB_EGRESS = rust|bun. A fresh install defaults to rust; an
+# existing file is kept (an operator who chose bun stays on bun); SB_EDGE / SB_EGRESS in
+# the environment override. With no Rust binaries at all, fall back to bun.
+ENGINE_EDGE=${SB_EDGE:-$(val_env "$ETC/engine.env" SB_EDGE)}; ENGINE_EDGE=${ENGINE_EDGE:-rust}
+ENGINE_EGRESS=${SB_EGRESS:-$(val_env "$ETC/engine.env" SB_EGRESS)}; ENGINE_EGRESS=${ENGINE_EGRESS:-rust}
+case "$ENGINE_EDGE" in rust|bun) ;; *) die "SB_EDGE must be rust or bun" ;; esac
+case "$ENGINE_EGRESS" in rust|bun) ;; *) die "SB_EGRESS must be rust or bun" ;; esac
+if [ "$ENGINE_STATUS" = none ]; then ENGINE_EDGE=bun; ENGINE_EGRESS=bun; fi
+printf 'SB_EDGE=%s\nSB_EGRESS=%s\n' "$ENGINE_EDGE" "$ENGINE_EGRESS" > "$ETC/engine.env"
+chown root:root "$ETC/engine.env"; chmod 0644 "$ETC/engine.env"
+note "engines: edge=$ENGINE_EDGE egress=$ENGINE_EGRESS"
 
 # --- Caddy ----------------------------------------------------------
 # Stock Caddy is enough: per-hostname certs via HTTP-01 / TLS-ALPN-01, no DNS
@@ -621,6 +752,9 @@ install -m 0644 "$ROOT/infra/journald/sproutboat.conf" /etc/systemd/journald.con
 install -d -m 0755 -o root -g root /usr/local/lib/sproutboat
 install -m 0755 "$ROOT/infra/sb-update" /usr/local/lib/sproutboat/update
 install -m 0755 "$ROOT/infra/sb-backup-stage" /usr/local/lib/sproutboat/backup-stage
+install -m 0755 "$ROOT/infra/sb-engine" /usr/local/lib/sproutboat/engine
+# Bun-fallback drop-ins (or none, for rust) before systemd re-reads the units.
+SB_ENGINE_NO_RELOAD=1 /usr/local/lib/sproutboat/engine apply
 
 # --- Better Auth schema (dashboard + admin token login) ---------------
 say "Migrating the auth database"
@@ -667,6 +801,23 @@ else
   for u in "${units[@]}"; do
     systemctl is-active --quiet "$u" && ok "$u" || warn "$u is not active — check: journalctl -u $u"
   done
+
+  # --- engine health probe (fresh installs only) --------------------
+  # An update has its own health gate and rollback. On a fresh install, if the Rust
+  # engines do not answer within 20 s, switch both to Bun and carry on.
+  if [ "${SB_UPDATE:-0}" != 1 ] && { [ "$ENGINE_EDGE" = rust ] || [ "$ENGINE_EGRESS" = rust ]; }; then
+    say "Checking the Rust engines"
+    if engines_healthy 20; then
+      ok "edge answers on 127.0.0.1:8080, egress on 127.0.0.1:8070"
+    else
+      warn "THE RUST ENGINES DID NOT ANSWER within 20 s: switching edge and egress to the Bun engines"
+      warn "see: journalctl -u sproutboat-edge -u sproutboat-egress; retry later with 'sudo sbctl engine rust'"
+      /usr/local/lib/sproutboat/engine set both bun
+      ENGINE_EDGE=bun; ENGINE_EGRESS=bun
+      systemctl restart sproutboat-egress sproutboat-edge
+      if engines_healthy 20; then ok "Bun engines are answering"; else warn "the Bun engines did not answer either: check journalctl -u sproutboat-edge"; fi
+    fi
+  fi
 
   # --- verify ---------------------------------------------------
   say "Runtime preflight"
@@ -719,6 +870,7 @@ say "Operate  (sudo sbctl <cmd>)"
 note "sbctl status            health of every unit"
 note "sbctl logs [control|edge|caddy]   follow logs"
 note "sbctl down / sbctl up   pause / resume everything"
+note "sbctl engine [rust|bun] show or switch the edge and egress engines (now: edge=$ENGINE_EDGE egress=$ENGINE_EGRESS)"
 note "sbctl update            stage a fresh release, then run its installer"
 note "sbctl uninstall         remove everything (--keep-state to keep the db)"
 

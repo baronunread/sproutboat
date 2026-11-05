@@ -47,7 +47,7 @@ SB_EGRESS_TOKEN=... [SB_EGRESS_ALLOW=...] sproutboat-egress [--host 127.0.0.1] [
 | Signals                        | SIGTERM / SIGINT exit 0 (Bun: default signal handling).                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
 | Port in use                    | Exit 1 with a message on stderr.                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
 
-systemd: the unit is unchanged apart from `ExecStart`; see `infra/systemd/sproutboat-egress.service.d/rust.conf.example`.
+systemd: this is the default egress. `sproutboat-egress.service` runs `/usr/local/lib/sproutboat/bin/sproutboat-egress --host 127.0.0.1 --port 8070` with `MemoryMax=128M`; `sbctl engine bun` swaps in the Bun egress through a generated drop-in (`infra/sb-engine`). See the Engines section of `infra/README.md`.
 
 ## 3. HTTP contract
 
