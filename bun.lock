@@ -11,7 +11,7 @@
         "@sproutboat/artifact": "^0.3.0",
         "@sproutboat/assets": "^0.3.0",
         "@sproutboat/config": "^0.6.0",
-        "@sproutboat/ikada": "github:baronunread/ikada#86eec51d9a2c4a8d535dd2979e19492d43d436c1",
+        "@sproutboat/ikada": "github:baronunread/ikada#bf34cdd57dc3dde77e84e75faadb41001eaa1a59",
         "@sproutboat/runtime": "^0.41.0",
         "@sproutboat/toolchain": "^0.21.3",
         "@sproutboat/wire": "^0.21.4",
@@ -404,7 +404,7 @@
 
     "@sproutboat/config": ["@sproutboat/config@0.6.0", "", {}, "sha512-fx7B412Sy4YEDXMSaUx07+GyAOQDOaGSW7kO4hmA1SZBUsRX3evx+zH7tyFv6b0PHxP+htkySl+8wZUdWc0vjA=="],
 
-    "@sproutboat/ikada": ["@sproutboat/ikada@github:baronunread/ikada#86eec51", { "dependencies": { "@base-ui/react": "^1.9.0", "@tanstack/charts": "1.2.1", "clsx": "^2.1.1", "tailwind-merge": "^3.6.0", "tailwind-variants": "^4.0.1" }, "peerDependencies": { "react": "^19", "react-dom": "^19", "tailwindcss": "^4.3" } }, "baronunread-ikada-86eec51", "sha512-Bnh1QRLKW6f6j2Q8try5lhPIOYfeKRrONuO77nSkBIO138yEkqUR11Q67bSpU07GdYmn8xh/2NuVMGRLvdPasg=="],
+    "@sproutboat/ikada": ["@sproutboat/ikada@github:baronunread/ikada#bf34cdd", { "dependencies": { "@base-ui/react": "^1.9.0", "@tanstack/charts": "1.2.1", "clsx": "^2.1.1", "tailwind-merge": "^3.6.0", "tailwind-variants": "^4.0.1" }, "peerDependencies": { "react": "^19", "react-dom": "^19", "tailwindcss": "^4.3" } }, "baronunread-ikada-bf34cdd", "sha512-+t9AOckVVWXdEV/T7Dg287pTfKrR/Jpkj+fT5RKQu9akILZXoMwXzNiSWJXrXs/TaJgcEYHOc71k43Hq8/DmkQ=="],
 
     "@sproutboat/runtime": ["@sproutboat/runtime@0.41.0", "", {}, "sha512-HEvLE24U1WwqGwZ5nwvGE6irvL9eWtv+Ltl4cPbYhvKef34y64KalYR6jXVdi/u4KrAXOAYK+kN9wUt4Sgvqlw=="],
 

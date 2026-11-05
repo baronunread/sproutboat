@@ -37,7 +37,7 @@
     "@sproutboat/artifact": "^0.3.0",
     "@sproutboat/assets": "^0.3.0",
     "@sproutboat/config": "^0.6.0",
-    "@sproutboat/ikada": "github:baronunread/ikada#86eec51d9a2c4a8d535dd2979e19492d43d436c1",
+    "@sproutboat/ikada": "github:baronunread/ikada#bf34cdd57dc3dde77e84e75faadb41001eaa1a59",
     "@sproutboat/runtime": "^0.41.0",
     "@sproutboat/toolchain": "^0.21.3",
     "@sproutboat/wire": "^0.21.4",
