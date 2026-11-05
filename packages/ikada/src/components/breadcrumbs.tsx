@@ -1,3 +1,4 @@
+import { useRender } from "@base-ui/react/use-render";
 import { Fragment } from "react";
 import type { ComponentProps, ReactNode } from "react";
 import { cn, coarseTarget, focusRing } from "../lib/cn";
@@ -8,9 +9,11 @@ export interface BreadcrumbItem {
   label: ReactNode;
   /** Plain text label for the overflow menu when `label` is not a string. */
   text?: string;
-  /** Stable key. Defaults to `href`, then `text`; the current page needs none. */
+  /** Stable key. Defaults to `href`, then `text`; give one to every item but the current page when it has neither. */
   id?: string;
   href?: string;
+  /** Hand the link to a router: `<RouterLink to="/projects" />`. Used instead of `href`. */
+  render?: useRender.ComponentProps<"a">["render"];
   onClick?: () => void;
 }
 
@@ -28,6 +31,15 @@ const linkStyles = cn(
 );
 
 function Crumb({ item, current }: { item: BreadcrumbItem; current: boolean }) {
+  // An undefined href would override the one on a router link, so only set it when there is one.
+  const shared = { onClick: item.onClick, className: cn(linkStyles, "block truncate"), children: item.label };
+  const linkProps = item.href === undefined ? shared : { ...shared, href: item.href };
+  const link = useRender({
+    defaultTagName: "a",
+    render: item.render,
+    enabled: !current && Boolean(item.href ?? item.render),
+    props: linkProps,
+  });
   if (current) {
     return (
       <span aria-current="page" className="block truncate font-medium text-fg">
@@ -35,14 +47,12 @@ function Crumb({ item, current }: { item: BreadcrumbItem; current: boolean }) {
       </span>
     );
   }
-  return item.href ? (
-    <a href={item.href} onClick={item.onClick} className={cn(linkStyles, "block truncate")}>
-      {item.label}
-    </a>
-  ) : (
-    <button type="button" onClick={item.onClick} className={cn(linkStyles, "block truncate")}>
-      {item.label}
-    </button>
+  return (
+    link ?? (
+      <button type="button" onClick={item.onClick} className={cn(linkStyles, "block truncate")}>
+        {item.label}
+      </button>
+    )
   );
 }
 
@@ -78,13 +88,14 @@ export function Breadcrumbs({ items, maxItems = 4, className, ref, ...props }: B
                           key={h.id ?? h.href ?? h.text}
                           onClick={h.onClick}
                           render={
-                            h.href
+                            h.render ??
+                            (h.href
                               ? (props) => (
                                   <a {...props} href={h.href}>
                                     {props.children}
                                   </a>
                                 )
-                              : undefined
+                              : undefined)
                           }
                         >
                           {h.text ?? h.label}

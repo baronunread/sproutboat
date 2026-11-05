@@ -19,39 +19,28 @@ function Group({ label, children }: { label: string; children: ReactNode }) {
   );
 }
 
-const logDialog = () =>
-  toast.add({ title: "Build log", description: "Opens the build log dialog in the app.", tone: "neutral" });
-
 /** The deploy scenarios share one toast, like one deploy: a new run morphs the same toast (a failed one included). */
 function useDeploy() {
   const run = useRef(0);
   const current = useRef<DeployToast | null>(null);
 
-  async function start(mode: "ok" | "fallback" | "failed") {
+  async function start(mode: "ok" | "failed") {
     const id = ++run.current;
     const d =
       current.current && current.current.id && toast.has(current.current.id)
         ? current.current
         : (current.current = deployToast({
             name: NAME,
-            onViewLog: logDialog,
             onRetry: () => void start("ok"),
             meta: { project: "field-notes" },
           }));
-    d.queued();
-    await sleep(1400);
-    if (id !== run.current) return;
-    d.building();
+    d.uploaded(0.2);
     for (let i = 1; i <= 6; i++) {
-      await sleep(mode === "ok" ? 600 : 500);
+      await sleep(mode === "ok" ? 500 : 400);
       if (id !== run.current) return;
-      d.progress(0.16 + (0.44 * i) / 6);
+      d.progress(0.2 + (0.7 * i) / 6);
     }
-    if (mode === "fallback") return d.fallback("No standalone build for crypto-bind");
     if (mode === "failed") return d.failed("TS2304 in routes/index.ts");
-    d.canary();
-    await sleep(2400);
-    if (id !== run.current) return;
     d.live();
   }
   return start;
@@ -80,9 +69,9 @@ function mixed() {
   const items = [
     { tone: "info", title: "Teammate invited", description: "sam@fieldnotes.dev" },
     { tone: "success", title: "Domain verified", description: "notes.fieldnotes.dev" },
-    { tone: "warning", title: "billing-hooks v12 on supervisor", description: "Slower cold start" },
+    { tone: "warning", title: "billing-hooks has no domain", description: "Add one to serve it" },
     { tone: "info", title: "Secret rotated", description: "STRIPE_WEBHOOK" },
-    { tone: "success", title: "Deployed search-api v30", description: "Canary passed" },
+    { tone: "success", title: "Deployed search-api v30", description: "Uploaded and live" },
   ] as const;
   items.forEach((item, i) => setTimeout(() => toast.add(item), i * 280));
 }
@@ -93,9 +82,8 @@ export function ToastLab() {
   const [saving, setSaving] = useState(false);
   return (
     <>
-      <Group label="Deploy: one toast morphs Queued, Building, Canary, Live. The progress line shows only while in flight.">
+      <Group label="Deploy: one toast morphs Uploaded, then Live. The progress line shows only while in flight.">
         <Button onClick={() => void start("ok")}>Deploy</Button>
-        <Button onClick={() => void start("fallback")}>Fallback (amber)</Button>
         <Button onClick={() => void start("failed")}>Failed (red, Retry)</Button>
       </Group>
       <Group label="Merging and Undo">
@@ -118,8 +106,8 @@ export function ToastLab() {
         <Button
           onClick={() =>
             toast.add({
-              title: "Fell back to supervisor",
-              description: "sproutd refused to load v12; it runs on the supervisor.",
+              title: "Domain not verified",
+              description: "The TXT record has not propagated yet.",
               tone: "warning",
             })
           }

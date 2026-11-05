@@ -1,3 +1,4 @@
+import { useRender } from "@base-ui/react/use-render";
 import type { ComponentProps, ReactNode } from "react";
 import { cn, coarseTarget, focusRing, type WithClass } from "../lib/cn";
 
@@ -5,7 +6,7 @@ export interface PageHeaderProps extends Omit<ComponentProps<"header">, "title">
   /** Usually <Breadcrumbs />. */
   breadcrumbs?: ReactNode;
   title: ReactNode;
-  /** Next to the title: a StatusDot, Badge or RuntimeChip. */
+  /** Next to the title: a StatusDot or Badge. */
   status?: ReactNode;
   /** One muted line under the title: domain, repo, branch. */
   description?: ReactNode;
@@ -66,26 +67,28 @@ export function PageTabs({
   );
 }
 
-export interface PageTabProps extends WithClass<ComponentProps<"a">> {
+export interface PageTabProps extends WithClass<useRender.ComponentProps<"a">> {
   current?: boolean;
 }
 
-export function PageTab({ current = false, className, ref, ...props }: PageTabProps) {
-  return (
-    <li>
-      <a
-        ref={ref}
-        aria-current={current ? "page" : undefined}
-        className={cn(
-          "relative -mb-px inline-flex h-10 items-center whitespace-nowrap rounded-xs text-base font-medium text-fg-muted",
-          "transition-colors duration-(--sb-duration-hover) ease-hover hover:text-fg aria-[current=page]:text-fg",
-          "after:absolute after:inset-x-0 after:bottom-0 after:h-0.5 after:rounded-full after:bg-fg after:opacity-0 after:transition-opacity after:duration-(--sb-duration-hover) aria-[current=page]:after:opacity-100",
-          coarseTarget,
-          focusRing,
-          className,
-        )}
-        {...props}
-      />
-    </li>
-  );
+/** One tab link. With a router, `render={<RouterLink to="/x" />}`. */
+export function PageTab({ current = false, className, ref, render, ...props }: PageTabProps) {
+  const tab = useRender({
+    defaultTagName: "a",
+    render,
+    ref,
+    props: {
+      "aria-current": current ? "page" : undefined,
+      className: cn(
+        "relative -mb-px inline-flex h-10 items-center whitespace-nowrap rounded-xs text-base font-medium text-fg-muted",
+        "transition-colors duration-(--sb-duration-hover) ease-hover hover:text-fg aria-[current=page]:text-fg",
+        "after:absolute after:inset-x-0 after:bottom-0 after:h-0.5 after:rounded-full after:bg-fg after:opacity-0 after:transition-opacity after:duration-(--sb-duration-hover) aria-[current=page]:after:opacity-100",
+        coarseTarget,
+        focusRing,
+        className,
+      ),
+      ...props,
+    },
+  });
+  return <li>{tab}</li>;
 }

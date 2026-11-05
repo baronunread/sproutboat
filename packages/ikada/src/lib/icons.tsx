@@ -193,3 +193,43 @@ export const InboxIcon = (props: IconProps) => (
     <path d="M2.5 9.5h3.2l.8 1.5h3l.8-1.5h3.2" />
   </Icon>
 );
+export const EyeIcon = (props: IconProps) => (
+  <Icon {...props}>
+    <path d="M1.5 8S4 3.5 8 3.5 14.5 8 14.5 8 12 12.5 8 12.5 1.5 8 1.5 8Z" />
+    <circle cx="8" cy="8" r="2" />
+  </Icon>
+);
+export const EyeOffIcon = (props: IconProps) => (
+  <Icon {...props}>
+    <path d="M2 2l12 12" />
+    <path d="M6.6 3.8A6.2 6.2 0 0 1 8 3.5C12 3.5 14.5 8 14.5 8a11 11 0 0 1-2 2.5M9.5 12.2a6 6 0 0 1-1.5.3C4 12.5 1.5 8 1.5 8a11 11 0 0 1 2.6-3.1" />
+    <path d="M6.6 6.6a2 2 0 0 0 2.8 2.8" />
+  </Icon>
+);
+export const ChevronLeftIcon = (props: IconProps) => (
+  <Icon {...props}>
+    <path d="m10 4-4 4 4 4" />
+  </Icon>
+);
+export const LogOutIcon = (props: IconProps) => (
+  <Icon {...props}>
+    <path d="M6.5 2.5h-3a1 1 0 0 0-1 1v9a1 1 0 0 0 1 1h3M10 5l3 3-3 3M13 8H6" />
+  </Icon>
+);
+export const UserIcon = (props: IconProps) => (
+  <Icon {...props}>
+    <circle cx="8" cy="5.5" r="2.5" />
+    <path d="M3 13.5c.5-2.4 2.5-3.5 5-3.5s4.5 1.1 5 3.5" />
+  </Icon>
+);
+export const ShieldIcon = (props: IconProps) => (
+  <Icon {...props}>
+    <path d="M8 2 3 3.8v3.9c0 3 2.1 5.2 5 6.3 2.9-1.1 5-3.3 5-6.3V3.8L8 2Z" />
+  </Icon>
+);
+export const CpuIcon = (props: IconProps) => (
+  <Icon {...props}>
+    <rect x="4" y="4" width="8" height="8" rx="1.5" />
+    <path d="M6.5 6.5h3v3h-3zM6 2v2M10 2v2M6 12v2M10 12v2M2 6h2M2 10h2M12 6h2M12 10h2" />
+  </Icon>
+);

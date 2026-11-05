@@ -43,11 +43,11 @@ export interface ToastOptions {
   key?: string;
   /** Marks a step the activity feed should skip (Queued, Building). Subscribers decide. */
   silent?: boolean;
-  /** Free-form data for history subscribers: project, kind, runtime. */
+  /** Free-form data for history subscribers: project, kind. */
   meta?: ToastMeta;
 }
 
-/** Free-form facts for history subscribers: project, kind, runtime. */
+/** Free-form facts for history subscribers: project, kind. */
 export type ToastMeta = Record<string, string | number | boolean | undefined>;
 
 export type ToastPatch = Partial<Omit<ToastOptions, "id" | "merge" | "key">>;
@@ -369,8 +369,6 @@ export interface DeployToastOptions {
   /** Shown as the description, e.g. "field-notes v48". */
   name: string;
   meta?: ToastMeta;
-  /** Adds a "View build log" action to the fallback state. */
-  onViewLog?: () => void;
   /** Adds a red Retry action to the failed state. */
   onRetry?: () => void;
 }
@@ -378,24 +376,21 @@ export interface DeployToastOptions {
 export interface DeployToast {
   /** The toast's id once the first step has run. */
   readonly id: string | undefined;
-  queued: () => void;
-  building: (progress?: number) => void;
-  canary: (progress?: number) => void;
+  /** The artifact reached the box and is being activated. */
+  uploaded: (progress?: number) => void;
   /** Move the progress line without changing the step. */
   progress: (value: number) => void;
   live: () => void;
-  /** Live, but on the supervisor. Amber: working, only differently. */
-  fallback: (reason?: string) => void;
   /** Red, with a Retry action when `onRetry` is given. */
   failed: (reason?: string) => void;
 }
 
 /**
- * Queued, Building, Canary, Live as one toast that morphs in place. The progress line shows only while
- * the deploy is in flight; Live, fallback and failed end it. Only those three end states are not `silent`.
+ * Uploaded, then Live, as one toast that morphs in place. The progress line shows only while the deploy
+ * is in flight; Live and failed end it. Only those two end states are not `silent`.
  */
 export function deployToast(options: DeployToastOptions): DeployToast {
-  const { name, onViewLog, onRetry } = options;
+  const { name, onRetry } = options;
   let id: string | undefined;
   const meta = (kind: string, extra?: ToastMeta) => ({ ...options.meta, kind, name, ...extra });
 
@@ -410,11 +405,8 @@ export function deployToast(options: DeployToastOptions): DeployToast {
     get id() {
       return id;
     },
-    queued: () => show({ ...flight, title: "Queued", tone: "neutral", progress: 0.08, meta: meta("deploy") }),
-    building: (progress = 0.16) =>
-      show({ ...flight, title: "Building", tone: "info", busy: true, progress, meta: meta("deploy") }),
-    canary: (progress = 0.82) =>
-      show({ ...flight, title: "Canary 10%", tone: "info", busy: true, progress, meta: meta("deploy") }),
+    uploaded: (progress = 0.6) =>
+      show({ ...flight, title: "Uploaded", tone: "info", busy: true, progress, meta: meta("deploy") }),
     progress: (value) => {
       if (id !== undefined && toast.has(id)) toast.update(id, { progress: value });
     },
@@ -427,23 +419,11 @@ export function deployToast(options: DeployToastOptions): DeployToast {
         actions: [],
         silent: false,
         duration: 6000,
-        meta: meta("deploy", { runtime: "sproutd" }),
-      }),
-    fallback: (reason = "slower cold start") =>
-      show({
-        title: "Live on supervisor",
-        description: `${name} · ${reason}`,
-        tone: "warning",
-        busy: false,
-        progress: null,
-        silent: false,
-        duration: 12000,
-        actions: onViewLog ? [{ label: "View build log", variant: "ghost", onClick: () => onViewLog() }] : [],
-        meta: meta("fallback", { runtime: "supervisor", reason }),
+        meta: meta("deploy"),
       }),
     failed: (reason = "see the build log") =>
       show({
-        title: "Build failed",
+        title: "Deploy failed",
         description: `${name} · ${reason}`,
         tone: "danger",
         busy: false,

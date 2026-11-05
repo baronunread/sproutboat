@@ -202,8 +202,8 @@ describe("Select", () => {
 
 describe("Badge, StatusDot, Skeleton", () => {
   test("StatusDot always has a text label, dot is hidden from AT", () => {
-    render(<StatusDot status="warning" label="Fell back to supervisor" />);
-    expect(screen.getByText("Fell back to supervisor")).toBeTruthy();
+    render(<StatusDot status="warning" label="Domain not verified" />);
+    expect(screen.getByText("Domain not verified")).toBeTruthy();
     expect(document.querySelector("[aria-hidden=true]")).toBeTruthy();
   });
 
@@ -212,13 +212,13 @@ describe("Badge, StatusDot, Skeleton", () => {
     expect(screen.getByText("Ready").className).toContain("sr-only");
   });
 
-  test("fallback is amber, never red", () => {
+  test("warning is amber, never red", () => {
     render(
       <Badge tone="warning" dot>
-        Fallback
+        Degraded
       </Badge>,
     );
-    const cls = screen.getByText("Fallback").className;
+    const cls = screen.getByText("Degraded").className;
     expect(cls).toContain("warn");
     expect(cls).not.toContain("danger");
   });

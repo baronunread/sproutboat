@@ -9,7 +9,6 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-  TrafficSplitBar,
   UsageMeter,
   formatBytes,
   formatCompact,
@@ -83,22 +82,6 @@ describe("number formatting in components", () => {
   test("MetricTile honours locale", () => {
     render(<MetricTile label="Requests" amount={1_280_000} locale="de" />);
     expect(screen.getByText(/^1,28\sMio\.$/)).toBeTruthy();
-  });
-
-  test("TrafficSplitBar formats percentages in the locale", () => {
-    render(
-      <TrafficSplitBar
-        locale="de"
-        versions={[
-          { id: "a", label: "v1", percent: 87.5 },
-          { id: "b", label: "v2", percent: 12.5 },
-        ]}
-      />,
-    );
-    expect(screen.getByText("87,5%")).toBeTruthy();
-    cleanup();
-    render(<TrafficSplitBar versions={[{ id: "a", label: "v1", percent: 87.5 }]} />);
-    expect(screen.getByText("87.5%")).toBeTruthy();
   });
 });
 

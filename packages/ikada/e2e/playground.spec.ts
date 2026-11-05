@@ -50,3 +50,29 @@ test("keyboard focus shows a visible ring", async ({ page }) => {
   });
   expect(outline).toBe("solid 2px");
 });
+
+// The app batch: Avatar, SegmentedControl, RadioGroup, SensitiveInput, DescriptionList, Pagination, CodeBlock
+// and the router link adapter. Captured on its own so a layout change there is easy to review.
+for (const width of widths) {
+  for (const theme of themes) {
+    test(`app pieces ${theme} ${width}px: no overflow, reveal works`, async ({ page }, info) => {
+      await page.setViewportSize({ width, height: 900 });
+      await page.goto(`/?view=${theme}`);
+      const section = page
+        .locator("section")
+        .filter({ has: page.locator('[data-section="Account and app pieces"]') })
+        .last();
+      await section.scrollIntoViewIfNeeded();
+      await expect(section.getByRole("heading", { name: "Account and app pieces" })).toBeVisible();
+      const password = section.getByLabel("Password", { exact: true });
+      await expect(password).toHaveAttribute("type", "password");
+      await section.getByRole("button", { name: "Show value" }).first().click();
+      await expect(password).toHaveAttribute("type", "text");
+      await section.getByRole("button", { name: "Next page" }).first().click();
+      await expect(section.getByRole("button", { name: "Page 7" }).first()).toHaveAttribute("aria-current", "page");
+      const overflow = await page.evaluate(() => document.documentElement.scrollWidth - innerWidth);
+      expect(overflow).toBe(0);
+      await section.screenshot({ path: info.outputPath(`app-pieces-${theme}-${width}.png`) });
+    });
+  }
+}

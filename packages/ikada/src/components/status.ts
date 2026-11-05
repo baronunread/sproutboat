@@ -1,6 +1,6 @@
 /**
- * Status vocabulary shared by Badge, StatusDot, Toast and (later) RuntimeChip.
- * `warning` is amber and means "working, but not the usual way".
+ * Status vocabulary shared by Badge, StatusDot, Toast.
+ * `warning` is amber and means "needs attention, but still working".
  * `danger` is red and means "failed, needs action".
  * Each status also has its own shape (see StatusGlyph), so color is never the only signal.
  */

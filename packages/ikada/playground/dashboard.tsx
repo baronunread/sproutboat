@@ -1,18 +1,17 @@
 import { useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 import { Sparkline } from "../src/charts/sparkline";
+import { Badge } from "../src/components/badge";
 import { Banner } from "../src/components/banner";
 import { Breadcrumbs } from "../src/components/breadcrumbs";
 import { Button } from "../src/components/button";
 import { CommandPalette, shortcutLabel, useCommandPaletteShortcut } from "../src/components/command-palette";
 import type { PaletteGroup, PaletteItem } from "../src/components/command-palette";
 import { EmptyState } from "../src/components/empty-state";
-import { FallbackPill } from "../src/components/fallback-pill";
 import { Kbd } from "../src/components/kbd";
 import { Meter, UsageMeter } from "../src/components/meter";
 import { MetricTile } from "../src/components/metric-tile";
 import { PageHeader, PageTab, PageTabs } from "../src/components/page-header";
-import { RuntimeChip } from "../src/components/runtime-chip";
 import {
   Sidebar,
   SidebarFooter,
@@ -37,7 +36,6 @@ import {
   nextSort,
 } from "../src/components/table";
 import type { SortDirection } from "../src/components/table";
-import { TrafficSplitBar } from "../src/components/traffic-split-bar";
 import { Checkbox } from "../src/components/checkbox";
 import {
   ActivityIcon,
@@ -209,7 +207,11 @@ function LayoutSection() {
           <PageHeader
             breadcrumbs={<Breadcrumbs items={crumbs} />}
             title="field-notes"
-            status={<RuntimeChip runtime="sproutd" />}
+            status={
+              <Badge tone="success" dot live>
+                Live
+              </Badge>
+            }
             description="notes.fernhill.dev · fernhill/field-notes · main"
             actions={
               <>
@@ -285,9 +287,7 @@ interface Deployment {
   message: string;
   status: "success" | "info" | "neutral" | "danger";
   statusLabel: string;
-  runtime: "sproutd" | "supervisor";
   author: string;
-  fellBack?: boolean;
   live?: boolean;
   age: number;
   ageLabel: string;
@@ -300,8 +300,7 @@ const deployments: Deployment[] = [
     sha: "e5c71d4",
     message: "Stream note export via R2",
     status: "info",
-    statusLabel: "Canary 10%",
-    runtime: "sproutd",
+    statusLabel: "Uploaded",
     author: "maya",
     age: 14,
     ageLabel: "14m",
@@ -312,9 +311,8 @@ const deployments: Deployment[] = [
     sha: "a3f9c21",
     message: "Search v2 ranking weights",
     status: "success",
-    statusLabel: "Live 90%",
+    statusLabel: "Live",
     live: true,
-    runtime: "sproutd",
     author: "joel",
     age: 120,
     ageLabel: "2h",
@@ -326,9 +324,7 @@ const deployments: Deployment[] = [
     message: "Enable queue consumer for digests",
     status: "neutral",
     statusLabel: "Superseded",
-    runtime: "supervisor",
     author: "maya",
-    fellBack: true,
     age: 420,
     ageLabel: "7h",
   },
@@ -339,7 +335,6 @@ const deployments: Deployment[] = [
     message: "Hotfix: export timeout",
     status: "danger",
     statusLabel: "Rolled back",
-    runtime: "sproutd",
     author: "priya",
     age: 1440,
     ageLabel: "1d",
@@ -351,15 +346,11 @@ const deployments: Deployment[] = [
     message: "Pin markdown renderer",
     status: "neutral",
     statusLabel: "Superseded",
-    runtime: "sproutd",
     author: "joel",
     age: 2880,
     ageLabel: "2d",
   },
 ];
-
-const FALLBACK_REASON =
-  "abi_rejected: the build uses an API the sproutd runtime rejected, so the supervisor serves it.";
 
 function DeploymentsTable({
   rows,
@@ -398,7 +389,6 @@ function DeploymentsTable({
           </TableHead>
           <TableHead hideBelow="sm">Message</TableHead>
           <TableHead>Status</TableHead>
-          <TableHead hideBelow="lg">Runtime</TableHead>
           <TableHead hideBelow="3xl">Author</TableHead>
           <TableHead
             hideBelow="md"
@@ -432,14 +422,10 @@ function DeploymentsTable({
             </TableCell>
             <TableCell hideBelow="sm">{d.message}</TableCell>
             <TableCell className="whitespace-nowrap">
-              {/* Critical status lives in a column that never hides, so the fallback survives at 390px. */}
-              <div className="flex flex-col items-start gap-1 py-1.5">
+              {/* Critical status lives in a column that never hides, so a failure survives at 390px. */}
+              <div className="py-1.5">
                 <StatusDot status={d.status} live={d.live} label={d.statusLabel} />
-                {d.fellBack ? <FallbackPill compact reason={FALLBACK_REASON} /> : null}
               </div>
-            </TableCell>
-            <TableCell hideBelow="lg">
-              <RuntimeChip runtime={d.runtime} />
             </TableCell>
             <TableCell hideBelow="3xl" className="whitespace-nowrap text-fg-muted">
               {d.author}
@@ -491,7 +477,7 @@ function TableSection() {
           />
         </div>
       </Row>
-      <Row label="Responsive columns: Runtime hides below 32rem, Age below 28rem, Author below 48rem, measured on the table's own width">
+      <Row label="Responsive columns: Age hides below 28rem, Author below 48rem, measured on the table's own width">
         <div className="flex w-full flex-wrap items-start gap-4">
           <div className="w-[22rem] max-w-full">
             <DeploymentsTable label="Deployments, narrow container" rows={deployments.slice(0, 3)} />
@@ -601,48 +587,7 @@ function MeterSection() {
 
 function SproutboatSection() {
   return (
-    <Section
-      title="Runtime, traffic and metrics"
-      hint="The Sproutboat pieces. sproutd is neutral, the supervisor fallback is amber and never red."
-    >
-      <Row label="RuntimeChip: sproutd, supervisor, unknown">
-        <RuntimeChip runtime="sproutd" />
-        <RuntimeChip runtime="supervisor" />
-        <RuntimeChip runtime="unknown" />
-      </Row>
-      <Row label="FallbackPill: hover or focus it for the reason (a tooltip); without a reason; as a link">
-        <FallbackPill reason={FALLBACK_REASON} defaultOpen={openState === "fallback"} />
-        <FallbackPill />
-        <FallbackPill href="#details" reason="abi_rejected" />
-      </Row>
-      <Row label="TrafficSplitBar: one version, two, three or more, zero traffic. Tab through the segments.">
-        <div className="grid w-full gap-6 lg:grid-cols-2">
-          <TrafficSplitBar label="Traffic, one version" versions={[{ id: "v47", label: "v47", percent: 100 }]} />
-          <TrafficSplitBar
-            label="Traffic, two versions"
-            versions={[
-              { id: "v47", label: "v47", percent: 90, note: "live" },
-              { id: "v48", label: "v48", percent: 10, note: "canary" },
-            ]}
-          />
-          <TrafficSplitBar
-            label="Traffic, four versions"
-            versions={[
-              { id: "v47", label: "v47", percent: 60 },
-              { id: "v48", label: "v48", percent: 25 },
-              { id: "v46", label: "v46", percent: 14.5 },
-              { id: "v45", label: "v45", percent: 0.5 },
-            ]}
-          />
-          <TrafficSplitBar
-            label="Traffic, none"
-            versions={[
-              { id: "v47", label: "v47", percent: 0 },
-              { id: "v48", label: "v48", percent: 0 },
-            ]}
-          />
-        </div>
-      </Row>
+    <Section title="Metrics" hint="Headline numbers with a trend. Amber is degraded but working, never red.">
       <Row label="MetricTile: value and unit with a delta up and down, loading, no data">
         <div className="grid w-full gap-3 sm:grid-cols-2 xl:grid-cols-3">
           <MetricTile
@@ -669,7 +614,7 @@ function SproutboatSection() {
             sparkline={<Sparkline data={p99Spark} color="series" ariaLabel="CPU time, last 24 hours" />}
           />
           <MetricTile label="Cold starts" loading />
-          <MetricTile label="Served by supervisor" noData emptyText="No fallback in this range" />
+          <MetricTile label="Cache hits" noData emptyText="No cache traffic in this range" />
         </div>
       </Row>
     </Section>
@@ -822,11 +767,11 @@ export function DashboardPreview() {
               />
               <Banner
                 tone="warning"
-                title="v46 is served by the supervisor"
+                title="notes.fernhill.dev is not verified"
                 action={<Button size="sm">See why</Button>}
                 dismissible
               >
-                It fell back after the ABI check rejected the build. Traffic is unaffected.
+                The TXT record has not propagated yet. Traffic on the default host is unaffected.
               </Banner>
               <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
                 <MetricTile
@@ -855,22 +800,15 @@ export function DashboardPreview() {
                 />
               </div>
               <section
-                aria-labelledby="split-title"
+                aria-labelledby="usage-title"
                 className="flex flex-col gap-3 rounded-xl bg-surface p-4 shadow-card"
               >
                 <div className="flex flex-wrap items-baseline justify-between gap-2">
-                  <h2 id="split-title" className="text-md font-semibold">
-                    Live deployment
+                  <h2 id="usage-title" className="text-md font-semibold">
+                    Usage
                   </h2>
                   <span className="text-sm text-fg-muted">Production · 14.8 req/s total</span>
                 </div>
-                <TrafficSplitBar
-                  label="Production traffic split"
-                  versions={[
-                    { id: "v47", label: "v47", percent: 90, note: "live" },
-                    { id: "v48", label: "v48", percent: 10, note: "canary" },
-                  ]}
-                />
                 <UsageMeter label="Requests this month" used={860_000} limit={1_000_000} />
               </section>
               <section aria-labelledby="deploys-title" className="flex flex-col gap-3">
@@ -923,7 +861,7 @@ export function DashboardSections() {
       <PaletteSection />
       <Section
         title="Dashboard preview"
-        hint="One project page composed from the components above: Sidebar, PageHeader with breadcrumbs and tabs, MetricTiles, TrafficSplitBar, a deployments Table, an EmptyState and the palette. Narrow frames switch the sidebar to its drawer."
+        hint="One project page composed from the components above: Sidebar, PageHeader with breadcrumbs and tabs, MetricTiles, a usage meter, a deployments Table, an EmptyState and the palette. Narrow frames switch the sidebar to its drawer."
       >
         <DashboardPreview />
       </Section>
