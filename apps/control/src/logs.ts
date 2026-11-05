@@ -1,5 +1,5 @@
 import { Buffer } from "node:buffer";
-import { dirname, resolve } from "node:path";
+import { basename, dirname, resolve } from "node:path";
 
 /**
  * #3: bounded, filterable edge-log history + a live tail for one project's
@@ -453,17 +453,25 @@ export async function readLogTailText(hostname: HostFilter, limit = 100): Promis
 }
 
 /**
- * Tail of a deployment's sprout+broker stdout/stderr — the plain-text file the
- * supervisor tees each running instance to (`sprouts/<artifact digest>.log`
- * beside the request log). Empty string when the deployment has never started
- * or produced no output. `digest` is the artifact-dir name, i.e.
- * `basename(dirname(sproutPath))`.
+ * The name the supervisor gives a running sprout's log file and broker-state directory:
+ * the last two directory segments of its path joined with a dash, i.e.
+ * `<ownerDir>-<digest>` for `artifacts/<ownerDir>/<digest>/sprout`. The supervisor derives it with the
+ * identical formula (services/supervisor/src/runtime-name.ts; tests/contracts.test.ts pins them together).
  */
-export const sproutLogFile = (digest: string): string => resolve(dirname(logPath()), "sprouts", `${digest}.log`);
+export const runtimeName = (sproutPath: string): string =>
+  `${basename(dirname(dirname(sproutPath)))}-${basename(dirname(sproutPath))}`;
 
-export async function readSproutLogText(digest: string, maxBytes = 64 * 1024): Promise<string> {
+/**
+ * Tail of a deployment's sprout+broker stdout/stderr, the plain-text file the
+ * supervisor tees each running instance to (`sprouts/<runtime name>.log`
+ * beside the request log). Empty string when the deployment has never started
+ * or produced no output. `name` is `runtimeName(sproutPath)`.
+ */
+export const sproutLogFile = (name: string): string => resolve(dirname(logPath()), "sprouts", `${name}.log`);
+
+export async function readSproutLogText(name: string, maxBytes = 64 * 1024): Promise<string> {
   try {
-    const file = Bun.file(sproutLogFile(digest));
+    const file = Bun.file(sproutLogFile(name));
     const size = file.size;
     return await file.slice(Math.max(0, size - maxBytes), size).text();
   } catch {
