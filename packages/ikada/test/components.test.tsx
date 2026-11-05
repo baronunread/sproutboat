@@ -15,6 +15,8 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
   DropdownMenuTrigger,
   Field,
   IconButton,
@@ -202,8 +204,8 @@ describe("Select", () => {
 
 describe("Badge, StatusDot, Skeleton", () => {
   test("StatusDot always has a text label, dot is hidden from AT", () => {
-    render(<StatusDot status="warning" label="Fell back to supervisor" />);
-    expect(screen.getByText("Fell back to supervisor")).toBeTruthy();
+    render(<StatusDot status="warning" label="Domain not verified" />);
+    expect(screen.getByText("Domain not verified")).toBeTruthy();
     expect(document.querySelector("[aria-hidden=true]")).toBeTruthy();
   });
 
@@ -212,13 +214,13 @@ describe("Badge, StatusDot, Skeleton", () => {
     expect(screen.getByText("Ready").className).toContain("sr-only");
   });
 
-  test("fallback is amber, never red", () => {
+  test("warning is amber, never red", () => {
     render(
       <Badge tone="warning" dot>
-        Fallback
+        Degraded
       </Badge>,
     );
-    const cls = screen.getByText("Fallback").className;
+    const cls = screen.getByText("Degraded").className;
     expect(cls).toContain("warn");
     expect(cls).not.toContain("danger");
   });
@@ -226,6 +228,27 @@ describe("Badge, StatusDot, Skeleton", () => {
   test("skeleton is decorative", () => {
     const { container } = render(<Skeleton />);
     expect(container.firstElementChild?.getAttribute("aria-hidden")).toBe("true");
+  });
+});
+
+describe("DropdownMenu radio items", () => {
+  test("choosing a radio item reports its value and checks it", async () => {
+    let chosen = "";
+    render(
+      <DropdownMenu>
+        <DropdownMenuTrigger render={<Button />}>Theme</DropdownMenuTrigger>
+        <DropdownMenuContent>
+          <DropdownMenuRadioGroup defaultValue="system" onValueChange={(v) => (chosen = String(v))}>
+            <DropdownMenuRadioItem value="system">System</DropdownMenuRadioItem>
+            <DropdownMenuRadioItem value="light">Light</DropdownMenuRadioItem>
+          </DropdownMenuRadioGroup>
+        </DropdownMenuContent>
+      </DropdownMenu>,
+    );
+    await userEvent.click(screen.getByRole("button", { name: "Theme" }));
+    expect((await screen.findByRole("menuitemradio", { name: "System" })).getAttribute("aria-checked")).toBe("true");
+    await userEvent.click(screen.getByRole("menuitemradio", { name: "Light" }));
+    expect(chosen).toBe("light");
   });
 });
 

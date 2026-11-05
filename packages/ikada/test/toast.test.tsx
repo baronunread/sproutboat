@@ -70,13 +70,13 @@ describe("update in place", () => {
     await waitFor(() => expect(document.querySelector("[data-progress]")).toBeNull());
   });
 
-  test("deployToast runs Queued, Building, Canary, Live as one toast and ends the progress line", async () => {
+  test("deployToast runs Uploaded, then Live as one toast and ends the progress line", async () => {
     const d = deployToast({ name: "field-notes v48" });
-    act(() => d.queued());
-    await screen.findByText("Queued");
+    act(() => d.uploaded());
+    await screen.findByText("Uploaded");
     const id = d.id ?? "";
-    act(() => d.building());
-    act(() => d.canary());
+    expect(document.querySelector("[data-progress]")).toBeTruthy();
+    act(() => d.progress(0.9));
     act(() => d.live());
     await waitFor(() => expect(screen.getAllByText("Live").length).toBeGreaterThan(0));
     expect(d.id).toBe(id);
@@ -84,13 +84,10 @@ describe("update in place", () => {
     expect(document.querySelector("[data-progress]")).toBeNull();
   });
 
-  test("fallback is amber with a log action; failed is red with Retry", async () => {
+  test("failed is red with Retry", async () => {
     let retried = 0;
-    const d = deployToast({ name: "field-notes v48", onViewLog: () => undefined, onRetry: () => (retried += 1) });
-    act(() => d.fallback("no standalone build"));
-    await screen.findByText("Live on supervisor");
-    expect(document.querySelector("[data-tone=warning]")).toBeTruthy();
-    expect(screen.getByRole("button", { name: "View build log" })).toBeTruthy();
+    const d = deployToast({ name: "field-notes v48", onRetry: () => (retried += 1) });
+    act(() => d.uploaded());
     act(() => d.failed("TS2304"));
     await waitFor(() => expect(document.querySelector("[data-tone=danger]")).toBeTruthy());
     const retry = await screen.findAllByRole("button", { name: "Retry", hidden: true });

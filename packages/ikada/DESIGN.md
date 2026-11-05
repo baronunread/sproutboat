@@ -9,7 +9,7 @@
 1. **Soft, layered.** Surfaces separate by a gentle step in tone and a layered shadow, not by borders everywhere. Canvas, surface, well and raised each sit one step apart. Hairlines are kept for table rules and dividers.
 2. **Concentric radii.** Outer radius = inner radius + padding: controls 8, a well 10 (rows 6 inside it), cards, menus and dialogs 12.
 3. **Green is rare.** Sprout green (hue about 150) appears only on primary actions and success. Focus is neutral ink, never green. Everything else is neutral grey or a status color that stays well away from it.
-4. **Amber is not red.** A version that fell back to the supervisor is working, only differently. It is amber. Red is reserved for errors that need action and for destructive controls.
+4. **Amber is not red.** Something degraded but still working (a domain waiting on its DNS record, usage near its limit) is amber. Red is reserved for errors that need action and for destructive controls.
 5. **Status is shape plus word.** Every status shows its own shape (circle, triangle, cross, ring, square) and a label. Color alone is never the message.
 6. **Overlays are clearly raised.** Menus, selects, popovers, dialogs and toasts use the lighter `raised` surface with a layered shadow, in dark as well as light.
 7. **Dense but readable.** 14px body, 36px controls, 48px table rows. Density changes sizes of boxes, never type.
@@ -198,16 +198,16 @@ Every pair below is asserted by `test/tokens.test.ts`. Text needs 4.5:1, large t
 | `chart-5xx`      | `well`         | 3:1 (ui)     | 7.30:1 pass  | 4.24:1 pass  | Chart mark                                  |
 | `chart-other`    | `well`         | 3:1 (ui)     | 7.30:1 pass  | 4.35:1 pass  | Chart mark                                  |
 | `chart-series`   | `well`         | 3:1 (ui)     | 8.17:1 pass  | 4.56:1 pass  | Chart mark                                  |
-| `fg`             | `hover`        | 3:1 (ui)     | 11.99:1 pass | 13.87:1 pass | Traffic split segment on its track          |
-| `chart-requests` | `hover`        | 3:1 (ui)     | 6.43:1 pass  | 3.92:1 pass  | Traffic split segment on its track          |
-| `chart-series`   | `hover`        | 3:1 (ui)     | 6.26:1 pass  | 4.08:1 pass  | Traffic split segment on its track          |
-| `chart-3xx`      | `hover`        | 3:1 (ui)     | 7.05:1 pass  | 3.10:1 pass  | Traffic split segment on its track          |
-| `chart-other`    | `hover`        | 3:1 (ui)     | 5.59:1 pass  | 3.89:1 pass  | Traffic split segment on its track          |
-| `fg`             | `surface`      | 3:1 (ui)     | 14.60:1 pass | 17.07:1 pass | Traffic split segment and legend swatch     |
-| `chart-requests` | `surface`      | 3:1 (ui)     | 7.83:1 pass  | 4.82:1 pass  | Traffic split segment and legend swatch     |
-| `chart-series`   | `surface`      | 3:1 (ui)     | 7.62:1 pass  | 5.02:1 pass  | Traffic split segment and legend swatch     |
-| `chart-3xx`      | `surface`      | 3:1 (ui)     | 8.58:1 pass  | 3.81:1 pass  | Traffic split segment and legend swatch     |
-| `chart-other`    | `surface`      | 3:1 (ui)     | 6.81:1 pass  | 4.78:1 pass  | Traffic split segment and legend swatch     |
+| `fg`             | `hover`        | 3:1 (ui)     | 11.99:1 pass | 13.87:1 pass | Chart segment on its track                  |
+| `chart-requests` | `hover`        | 3:1 (ui)     | 6.43:1 pass  | 3.92:1 pass  | Chart segment on its track                  |
+| `chart-series`   | `hover`        | 3:1 (ui)     | 6.26:1 pass  | 4.08:1 pass  | Chart segment on its track                  |
+| `chart-3xx`      | `hover`        | 3:1 (ui)     | 7.05:1 pass  | 3.10:1 pass  | Chart segment on its track                  |
+| `chart-other`    | `hover`        | 3:1 (ui)     | 5.59:1 pass  | 3.89:1 pass  | Chart segment on its track                  |
+| `fg`             | `surface`      | 3:1 (ui)     | 14.60:1 pass | 17.07:1 pass | Chart segment and legend swatch             |
+| `chart-requests` | `surface`      | 3:1 (ui)     | 7.83:1 pass  | 4.82:1 pass  | Chart segment and legend swatch             |
+| `chart-series`   | `surface`      | 3:1 (ui)     | 7.62:1 pass  | 5.02:1 pass  | Chart segment and legend swatch             |
+| `chart-3xx`      | `surface`      | 3:1 (ui)     | 8.58:1 pass  | 3.81:1 pass  | Chart segment and legend swatch             |
+| `chart-other`    | `surface`      | 3:1 (ui)     | 6.81:1 pass  | 4.78:1 pass  | Chart segment and legend swatch             |
 | `fg-muted`       | `hover`        | 4.5:1 (text) | 6.46:1 pass  | 6.22:1 pass  | Table sort icon and header text on hover    |
 | `fg`             | `hover`        | 4.5:1 (text) | 11.99:1 pass | 13.87:1 pass | Selected table row and current sidebar item |
 | `fg-muted`       | `well`         | 4.5:1 (text) | 8.44:1 pass  | 6.96:1 pass  | Empty state icon                            |
@@ -233,7 +233,7 @@ Hairlines are decorative dividers and are deliberately below 3:1. They never car
 | Meaning                 | Family          | Use for                                                                 | Never use for                                               |
 | ----------------------- | --------------- | ----------------------------------------------------------------------- | ----------------------------------------------------------- |
 | Success, primary action | `brand` (green) | Primary button, ready or healthy state, success toast, checked controls | Decoration, links, selection, charts with no status meaning |
-| Degraded but working    | `warn` (amber)  | "Fell back to supervisor", usage near its limit, deprecations           | Errors, anything that blocks the user                       |
+| Degraded but working    | `warn` (amber)  | an unverified domain, usage near its limit, deprecations                | Errors, anything that blocks the user                       |
 | Failure needing action  | `danger`        | Failed deploy, validation errors, destructive buttons, the danger zone  | Fallback, warnings, emphasis                                |
 | Neutral information     | `info` (blue)   | Notices, in-progress states                                             | Success or failure                                          |
 | Idle, unknown, off      | `neutral-*`     | Stopped, no data, disabled                                              | Anything with a deadline                                    |
@@ -379,7 +379,7 @@ One `ToastProvider` near the root, one `toast` object anywhere. A toast is a sta
 - **Deck.** The newest toast sits in front; older ones peek 10px behind it, 5% narrower, up to three. Hover or keyboard focus fans the deck out into a readable history and pauses every timer. Timers also pause while the tab is hidden. Touch: tap to expand.
 - **Dismiss.** Close button, Escape on the focused toast, a swipe past 40px, or a flick (0.4px/ms) either way. A released drag springs back on a damped spring (`linear()` easing, no JavaScript per frame). `Alt+T` (or F6) focuses the newest toast and the region is labelled with the shortcut.
 - **Update in place.** `toast.update(id, patch)` crossfades text and glyph (blur-masked, 300ms ease-out) and animates the height. The progress line (3px, tone colour) shows only while `progress` is a number; `progress: null` ends it.
-- **deployToast.** `deployToast({ name })` returns `queued() building() canary() progress(n) live() fallback(reason) failed(reason)` for one toast that morphs through the deploy. Fallback is amber, failed is red with Retry. Only the end states are not `silent`.
+- **deployToast.** `deployToast({ name })` returns `uploaded(progress) progress(n) live() failed(reason)` for one toast that morphs through the deploy: Uploaded, then Live. Failed is red with Retry. Only the end states are not `silent`.
 - **Merging.** Identical toasts (same tone, title, description, or `key`) become one with a ×N counter, move to the front and restart the timer. `merge: false` or an explicit `id` opts out.
 - **Undo.** `toast.undo({ title, onUndo, confirmTitle })`: an icon-only round ghost button (the ↩ hook arrow, `UndoIcon`) before the dismiss ×. Accessible name "Undo"; the tooltip adds the shortcut, ⌘Z on Mac and Ctrl Z elsewhere; the hit area is 40px. Clicking it runs `onUndo` and swaps the toast in place to the confirmation. ⌘Z or Ctrl Z does the same for the newest toast still on screen that has an Undo; it is ignored while focus is in an input, textarea, select or contenteditable (the browser undo keeps working) and on auto-repeat. No countdown ring, no time-left bar, no spin.
 - **History hook.** `<ToastProvider onToast>` and `toast.subscribe(fn)` receive `add`, `merge`, `update` and `close` events with a plain snapshot (`tone, title, description, count, silent, meta`). The Activity feed and the bell will subscribe to this (both are P1 in INVENTORY.md); neither exists yet.
@@ -451,7 +451,9 @@ Use compact for log viewers, resource tables with many rows, and panels the user
 - Icon-only controls require `label`, which becomes `aria-label` and the tooltip text.
 - Loading disables interaction with `aria-busy` and `data-loading`, but keeps the button's width so nothing shifts.
 - Menus with a checkbox or radio item reserve one fixed 1.5rem gutter (`--sb-gutter`) for every item, so item text lines up whether or not a row shows a check. Never pad only the checked row.
-- Tables: `hideBelow` is for low-priority columns only (message, author, age). Never put critical status inside a column that can hide: a fallback, failure or degraded signal goes in the always-visible Status cell (or the version cell), so it survives at 390px. The dashboard preview puts the "Fell back to supervisor" pill under the status for this reason.
+- Tables: `hideBelow` is for low-priority columns only (message, author, age). Never put critical status inside a column that can hide: a failure or degraded signal goes in the always-visible Status cell (or the version cell), so it survives at 390px.
+- Router links: every component that renders an `<a>` (`Link`, `SidebarItem`, `PageTab`, a `Breadcrumbs` item) takes a `render` prop, so a router can supply the element: `<SidebarItem render={<RouterLink to="/projects" />}>Sprouts</SidebarItem>`. ikada merges its class, ref and handlers into it, so there is one link component per app and no `href` to keep in sync. Without `render` they are plain anchors.
+- Secrets: tokens and passwords use `SensitiveInput` (masked, with a reveal button and an optional copy button), never a plain `type="password"` Input with a hand-built toggle.
 - Charts live in `@sproutboat/ikada/charts`: `TimeseriesChart` (with a dashed deploy marker) and `Sparkline` wrap TanStack Charts and read only the `chart-*` tokens, so they follow the theme with no rebuild.
 - Positioned layers (Tooltip, Popover, Menu, Select) flip and shift inside the viewport and use `collisionPadding`.
 - Dialogs trap focus, restore it on close, and close on Escape. Destructive dialogs focus the cancel action first.

@@ -29,7 +29,7 @@ export interface TimeseriesSeries {
 
 export interface DeployMarker {
   time: number;
-  /** Short label printed beside the rule, e.g. "v48 canary". */
+  /** Short label printed beside the rule, e.g. "v48". */
   label: string;
 }
 

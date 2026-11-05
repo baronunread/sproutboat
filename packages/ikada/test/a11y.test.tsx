@@ -9,17 +9,16 @@ import {
   Button,
   CommandPalette,
   EmptyState,
-  FallbackPill,
   Meter,
   MetricTile,
   PageHeader,
   PageTab,
   PageTabs,
-  RuntimeChip,
   Sidebar,
   SidebarItem,
   SidebarNav,
   Spinner,
+  StatusDot,
   Table,
   TableBody,
   TableCell,
@@ -30,7 +29,6 @@ import {
   TableLoading,
   TableRow,
   TooltipProvider,
-  TrafficSplitBar,
   UsageMeter,
 } from "../src";
 import { DashboardPreview } from "../playground/dashboard";
@@ -86,7 +84,7 @@ describe("axe: no violations", () => {
             />
           }
           title="field-notes"
-          status={<RuntimeChip runtime="sproutd" />}
+          status={<StatusDot status="success" label="Live" />}
           actions={<Button>Deploy</Button>}
           tabs={
             <PageTabs>
@@ -167,7 +165,7 @@ describe("axe: no violations", () => {
     );
   });
 
-  test("Meter, UsageMeter, RuntimeChip, FallbackPill, TrafficSplitBar, MetricTile", async () => {
+  test("Meter, UsageMeter, MetricTile", async () => {
     await expectClean(
       <TooltipProvider>
         <Meter label="Build minutes" value={40} />
@@ -176,15 +174,6 @@ describe("axe: no violations", () => {
         <UsageMeter label="Builds" used={100} limit={100} />
         <UsageMeter label="Seats" used={5} limit={5} blocked />
         <UsageMeter label="Bandwidth" used={5} limit={null} />
-        <RuntimeChip runtime="supervisor" />
-        <FallbackPill reason="abi_rejected" />
-        <TrafficSplitBar
-          versions={[
-            { id: "a", label: "v47", percent: 90 },
-            { id: "b", label: "v48", percent: 10 },
-          ]}
-        />
-        <TrafficSplitBar label="None" versions={[{ id: "a", label: "v47", percent: 0 }]} />
         <MetricTile label="Requests" value="1.2" unit="M" delta={{ value: "3%", direction: "up" }} />
         <MetricTile label="Loading" loading />
         <MetricTile label="Empty" noData />

@@ -147,8 +147,8 @@ function ToastOnLoad() {
         duration: 0,
       });
       toast.add({
-        title: "Fell back to supervisor",
-        description: "sproutd refused to load v12.",
+        title: "Domain not verified",
+        description: "The TXT record has not propagated yet.",
         tone: "warning",
         duration: 0,
       });

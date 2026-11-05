@@ -7,13 +7,11 @@ import {
   Breadcrumbs,
   CommandPalette,
   EmptyState,
-  FallbackPill,
   Meter,
   MetricTile,
   PageHeader,
   PageTab,
   PageTabs,
-  RuntimeChip,
   Sidebar,
   SidebarItem,
   SidebarNav,
@@ -30,7 +28,6 @@ import {
   TableLoading,
   TableRow,
   TooltipProvider,
-  TrafficSplitBar,
   UsageMeter,
   nextSort,
   parsePrefix,
@@ -373,84 +370,6 @@ describe("Meter and UsageMeter", () => {
   });
 });
 
-describe("RuntimeChip and FallbackPill", () => {
-  test("sproutd is neutral, supervisor is amber, unknown is neutral", () => {
-    render(
-      <>
-        <RuntimeChip runtime="sproutd" />
-        <RuntimeChip runtime="supervisor" />
-        <RuntimeChip runtime="unknown" />
-      </>,
-    );
-    expect(screen.getByText("sproutd").className).toContain("bg-neutral-soft");
-    expect(screen.getByText("supervisor").className).toContain("bg-warn-soft");
-    expect(screen.getByText("supervisor").className).not.toContain("danger");
-    expect(screen.getByText("unknown").className).toContain("bg-neutral-soft");
-  });
-  test("compact FallbackPill shows short text but keeps the full accessible name", () => {
-    render(<FallbackPill compact />);
-    const pill = screen.getByRole("button", { name: "Fell back to supervisor" });
-    expect(pill.textContent).toBe("Fell back");
-  });
-  test("FallbackPill is amber, never red, focusable, and shows the reason in a tooltip", async () => {
-    render(
-      <TooltipProvider delay={0}>
-        <FallbackPill reason="abi_rejected" defaultOpen />
-      </TooltipProvider>,
-    );
-    const pill = screen.getByRole("button", { name: "Fell back to supervisor" });
-    expect(pill.className).toContain("bg-warn-soft");
-    expect(pill.className).not.toContain("danger");
-    expect(await screen.findByText("abi_rejected")).toBeTruthy();
-  });
-  test("a custom label and no reason means no tooltip", () => {
-    render(<FallbackPill>Served by supervisor</FallbackPill>);
-    expect(screen.getByRole("button", { name: "Served by supervisor" })).toBeTruthy();
-  });
-});
-
-describe("TrafficSplitBar", () => {
-  const two = [
-    { id: "a", label: "v47", percent: 90 },
-    { id: "b", label: "v48", percent: 10 },
-  ];
-  test("each version is a keyboard-focusable meter with readable value text", async () => {
-    render(<TrafficSplitBar versions={two} />);
-    expect(screen.getByRole("group", { name: "Traffic split" })).toBeTruthy();
-    const meters = screen.getAllByRole("meter");
-    expect(meters).toHaveLength(2);
-    expect(meters[0]?.getAttribute("aria-valuetext")).toBe("v47, 90% of traffic");
-    expect(meters[1]?.getAttribute("value")).toBe("10");
-    await userEvent.tab();
-    expect(document.activeElement).toBe(meters[0]);
-    await userEvent.tab();
-    expect(document.activeElement).toBe(meters[1]);
-  });
-  test("a single version fills the bar", () => {
-    render(<TrafficSplitBar versions={[{ id: "a", label: "v47", percent: 100 }]} />);
-    expect(screen.getAllByRole("meter")).toHaveLength(1);
-  });
-  test("three or more versions all appear, zero-percent ones only in the legend", () => {
-    render(
-      <TrafficSplitBar
-        versions={[
-          { id: "a", label: "v47", percent: 60 },
-          { id: "b", label: "v48", percent: 30 },
-          { id: "c", label: "v46", percent: 10 },
-          { id: "d", label: "v45", percent: 0 },
-        ]}
-      />,
-    );
-    expect(screen.getAllByRole("meter")).toHaveLength(3);
-    expect(document.body.textContent).toContain("v45");
-  });
-  test("zero traffic says so and has no meters", () => {
-    render(<TrafficSplitBar versions={[{ id: "a", label: "v47", percent: 0 }]} />);
-    expect(screen.queryAllByRole("meter")).toHaveLength(0);
-    expect(document.body.textContent).toContain("No traffic yet");
-  });
-});
-
 describe("MetricTile", () => {
   test("shows value, unit, delta direction in words, hint and the sparkline slot", () => {
     render(
@@ -481,11 +400,17 @@ describe("MetricTile", () => {
   });
   test("no data shows a dash and the reason", () => {
     render(
-      <MetricTile label="Fallback" noData emptyText="No fallback" value="5" delta={{ value: "1", direction: "up" }} />,
+      <MetricTile
+        label="Cache hits"
+        noData
+        emptyText="No cache traffic"
+        value="5"
+        delta={{ value: "1", direction: "up" }}
+      />,
     );
-    const tile = screen.getByRole("group", { name: "Fallback" });
+    const tile = screen.getByRole("group", { name: "Cache hits" });
     expect(tile.textContent).toContain("—");
-    expect(tile.textContent).toContain("No fallback");
+    expect(tile.textContent).toContain("No cache traffic");
     expect(tile.textContent).not.toContain("Up");
   });
 });

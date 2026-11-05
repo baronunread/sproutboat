@@ -72,12 +72,12 @@ export const pairs: Pair[] = [
   ...focusSurfaces.map((bg) => pair("focus", bg, "ui", "Focus ring")),
   pair("danger", "surface", "ui", "Destructive button fill"),
   ...markBackdrops.flatMap((bg) => chartMarks.map((name) => pair(name, bg, "ui", "Chart mark"))),
-  // TrafficSplitBar segments sit on a hover-toned track. Meter fills sit on the surface (an outlined track), already covered by the dot pairs.
+  // Chart segments in a split bar sit on a hover-toned track. Meter fills sit on the surface (an outlined track), already covered by the dot pairs.
   ...(["fg", "chart-requests", "chart-series", "chart-3xx", "chart-other"] as const).map((fg) =>
-    pair(fg, "hover", "ui", "Traffic split segment on its track"),
+    pair(fg, "hover", "ui", "Chart segment on its track"),
   ),
   ...(["fg", "chart-requests", "chart-series", "chart-3xx", "chart-other"] as const).map((fg) =>
-    pair(fg, "surface", "ui", "Traffic split segment and legend swatch"),
+    pair(fg, "surface", "ui", "Chart segment and legend swatch"),
   ),
   pair("fg-muted", "hover", "text", "Table sort icon and header text on hover"),
   pair("fg", "hover", "text", "Selected table row and current sidebar item"),

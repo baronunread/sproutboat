@@ -6,14 +6,19 @@ test("project deletion requires the exact typed name", async ({ browser }) => {
   const page = await context.newPage();
   await page.goto("/projects");
 
-  const row = page.getByRole("list", { name: "Sprouts" }).getByRole("listitem").filter({ hasText: "scratch" });
-  await row.getByRole("button", { name: /^delete$/i }).click();
+  const row = page
+    .getByRole("region", { name: "Sprouts", exact: true })
+    .getByRole("row")
+    .filter({ hasText: "scratch" });
+  await row.getByRole("button", { name: "Delete scratch" }).click();
 
-  const confirmButton = row.getByRole("button", { name: /delete permanently/i });
+  // The confirmation is a dialog, portalled out of the row.
+  const dialog = page.getByRole("dialog");
+  const confirmButton = dialog.getByRole("button", { name: /delete permanently/i });
   await expect(confirmButton).toBeDisabled();
-  await row.getByPlaceholder("scratch").fill("wrong");
+  await dialog.getByPlaceholder("scratch").fill("wrong");
   await expect(confirmButton).toBeDisabled();
-  await row.getByPlaceholder("scratch").fill("scratch");
+  await dialog.getByPlaceholder("scratch").fill("scratch");
   await expect(confirmButton).toBeEnabled();
 
   await confirmButton.click();

@@ -23,6 +23,8 @@ import {
   DropdownMenuGroup,
   DropdownMenuItem,
   DropdownMenuLabel,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "../src/components/dropdown-menu";
@@ -48,6 +50,7 @@ import { Tabs, TabsList, TabsPanel, TabsTab } from "../src/components/tabs";
 import { toast } from "../src/components/toast";
 import { Tooltip } from "../src/components/tooltip";
 import { ToastLab } from "./toast-lab";
+import { AppPiecesSection } from "./app-pieces";
 import { DashboardSections } from "./dashboard";
 import { openState, Row, Section } from "./parts";
 export { openState };
@@ -63,7 +66,7 @@ const regions = [
 const statuses: { status: Status; label: string; live?: boolean }[] = [
   { status: "success", label: "Ready" },
   { status: "success", label: "Live", live: true },
-  { status: "warning", label: "Fell back to supervisor" },
+  { status: "warning", label: "Domain not verified" },
   { status: "danger", label: "Build failed" },
   { status: "info", label: "Building" },
   { status: "neutral", label: "Stopped" },
@@ -82,7 +85,7 @@ const status = ["brand", "warn", "danger", "info", "neutral"] as const;
 const chart = ["requests", "errors", "deploy", "2xx", "3xx", "4xx", "5xx", "other", "series"] as const;
 const variants = ["primary", "secondary", "ghost", "danger"] as const;
 const names = { primary: "Create project", secondary: "Cancel", ghost: "Skip", danger: "Delete project" };
-const deploy = { time: DEPLOY_HOUR, label: "v48 canary" };
+const deploy = { time: DEPLOY_HOUR, label: "v48" };
 const format = { formatTime: clock };
 const perMinute = (v: number): string => `${v.toLocaleString()} req/min`;
 const errPerMinute = (v: number): string => `${v} err/min`;
@@ -273,7 +276,7 @@ function FormSection() {
         <Field label="Region (empty)">
           <Select options={regions} placeholder="Choose a region" />
         </Field>
-        <Field label="Runtime (disabled)">
+        <Field label="Region (disabled)">
           <Select options={regions} disabled defaultValue="iad" />
         </Field>
         <Field label="Region (invalid)" error="Pick a region to deploy to.">
@@ -305,7 +308,7 @@ function StatusSection() {
   return (
     <Section
       title="Badge and StatusDot"
-      hint="Amber is the fallback, never red. Every status has its own shape as well as its color."
+      hint="Amber is degraded but working, never red. Every status has its own shape as well as its color."
     >
       <Row label="Badge with shape">
         {statuses.map((s) => (
@@ -330,7 +333,7 @@ function StatusSection() {
       </Row>
       <Row label="StatusDot, label hidden visually (still announced)">
         <StatusDot status="success" label="Ready" hideLabel />
-        <StatusDot status="warning" label="Fell back to supervisor" hideLabel />
+        <StatusDot status="warning" label="Domain not verified" hideLabel />
         <StatusDot status="danger" label="Build failed" hideLabel />
       </Row>
     </Section>
@@ -393,6 +396,19 @@ function OverlaySection() {
             </DropdownMenuGroup>
             <DropdownMenuSeparator />
             <DropdownMenuItem destructive>Delete deployment</DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+        <DropdownMenu>
+          <DropdownMenuTrigger render={<Button variant="secondary" />}>Radio items</DropdownMenuTrigger>
+          <DropdownMenuContent align="start">
+            <DropdownMenuGroup>
+              <DropdownMenuLabel>Theme</DropdownMenuLabel>
+              <DropdownMenuRadioGroup defaultValue="system">
+                <DropdownMenuRadioItem value="system">System</DropdownMenuRadioItem>
+                <DropdownMenuRadioItem value="light">Light</DropdownMenuRadioItem>
+                <DropdownMenuRadioItem value="dark">Dark</DropdownMenuRadioItem>
+              </DropdownMenuRadioGroup>
+            </DropdownMenuGroup>
           </DropdownMenuContent>
         </DropdownMenu>
         <DropdownMenu>
@@ -610,6 +626,7 @@ export function Gallery() {
       <OverlaySection />
       <TabsSection />
       <MiscSection />
+      <AppPiecesSection />
       <ChartsSection />
       <MotionSection />
       <DashboardSections />

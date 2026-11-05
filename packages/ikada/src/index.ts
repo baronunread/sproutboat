@@ -22,6 +22,8 @@ export {
   DropdownMenuGroup,
   DropdownMenuItem,
   DropdownMenuLabel,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "./components/dropdown-menu";
@@ -83,8 +85,6 @@ export { CommandPalette, parsePrefix, shortcutLabel, useCommandPaletteShortcut }
 export type { CommandPaletteProps, PaletteGroup, PaletteItem, PalettePrefix } from "./components/command-palette";
 export { EmptyState } from "./components/empty-state";
 export type { EmptyStateProps } from "./components/empty-state";
-export { FallbackPill } from "./components/fallback-pill";
-export type { FallbackPillProps } from "./components/fallback-pill";
 export { Kbd } from "./components/kbd";
 export { Meter, UsageMeter, usageState } from "./components/meter";
 export type { MeterProps, MeterTone, UsageMeterProps } from "./components/meter";
@@ -92,8 +92,6 @@ export { MetricTile } from "./components/metric-tile";
 export type { MetricDelta, MetricTileProps } from "./components/metric-tile";
 export { PageHeader, PageTab, PageTabs } from "./components/page-header";
 export type { PageHeaderProps, PageTabProps } from "./components/page-header";
-export { RuntimeChip } from "./components/runtime-chip";
-export type { Runtime, RuntimeChipProps } from "./components/runtime-chip";
 export {
   Sidebar,
   SidebarFooter,
@@ -128,5 +126,17 @@ export type {
   TableProps,
   TableRowProps,
 } from "./components/table";
-export { TrafficSplitBar, trafficFill } from "./components/traffic-split-bar";
-export type { TrafficSplitBarProps, TrafficVersion } from "./components/traffic-split-bar";
+export { Avatar } from "./components/avatar";
+export type { AvatarProps } from "./components/avatar";
+export { CodeBlock } from "./components/code-block";
+export type { CodeBlockProps } from "./components/code-block";
+export { DescriptionList } from "./components/description-list";
+export type { DescriptionItem, DescriptionListProps } from "./components/description-list";
+export { Pagination, pageRange } from "./components/pagination";
+export type { PaginationProps } from "./components/pagination";
+export { RadioGroup } from "./components/radio-group";
+export type { RadioGroupProps, RadioOption } from "./components/radio-group";
+export { SegmentedControl } from "./components/segmented-control";
+export type { SegmentedControlProps, SegmentedOption } from "./components/segmented-control";
+export { SensitiveInput } from "./components/sensitive-input";
+export type { SensitiveInputProps } from "./components/sensitive-input";

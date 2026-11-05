@@ -1,6 +1,7 @@
 import { Dialog as BaseDialog } from "@base-ui/react/dialog";
+import { useRender } from "@base-ui/react/use-render";
 import { createContext, useCallback, useContext, useMemo, useState, useSyncExternalStore } from "react";
-import type { ComponentProps, ReactNode } from "react";
+import type { ComponentProps, MouseEvent, ReactNode } from "react";
 import { cn, coarseTarget, focusRing, type WithClass } from "../lib/cn";
 import { MenuIcon, SidebarIcon } from "../lib/icons";
 import { usePortalContainer } from "../lib/portal";
@@ -134,8 +135,9 @@ export function SidebarNav({
   );
 }
 
-export interface SidebarItemProps extends WithClass<Omit<ComponentProps<"a">, "children" | "href">> {
-  href: string;
+export interface SidebarItemProps extends WithClass<Omit<useRender.ComponentProps<"a">, "children">> {
+  /** Plain destination. With a router, leave it out and pass `render={<RouterLink to="/x" />}`. */
+  href?: string;
   icon?: ReactNode;
   /** Marks the page you are on: `aria-current="page"` and a raised fill. */
   current?: boolean;
@@ -146,7 +148,6 @@ export interface SidebarItemProps extends WithClass<Omit<ComponentProps<"a">, "c
 
 /** In the rail the label hides visually (it stays the accessible name) and a tooltip shows it. */
 export function SidebarItem({
-  href,
   icon,
   current = false,
   trailing,
@@ -154,19 +155,21 @@ export function SidebarItem({
   children,
   onClick,
   ref,
+  render,
   ...props
 }: SidebarItemProps) {
   const { rail, drawer, closeDrawer } = useContext(SidebarContext);
-  const link = (
-    <a
-      ref={ref}
-      href={href}
-      aria-current={current ? "page" : undefined}
-      onClick={(e) => {
+  const link = useRender({
+    defaultTagName: "a",
+    render,
+    ref,
+    props: {
+      "aria-current": current ? "page" : undefined,
+      onClick: (e: MouseEvent<HTMLAnchorElement>) => {
         onClick?.(e);
         if (drawer) closeDrawer();
-      }}
-      className={cn(
+      },
+      className: cn(
         "flex h-9 items-center gap-2.5 rounded-md px-2.5 text-base font-medium text-fg-muted",
         "transition-colors duration-(--sb-duration-hover) ease-hover hover:bg-hover hover:text-fg",
         "aria-[current=page]:bg-hover aria-[current=page]:text-fg aria-[current=page]:shadow-pill",
@@ -174,14 +177,17 @@ export function SidebarItem({
         "pointer-coarse:h-11",
         focusRing,
         className,
-      )}
-      {...props}
-    >
-      {icon}
-      <span className={cn("min-w-0 flex-1 truncate", rail && "sr-only")}>{children}</span>
-      {rail ? null : trailing}
-    </a>
-  );
+      ),
+      ...props,
+      children: (
+        <>
+          {icon}
+          <span className={cn("min-w-0 flex-1 truncate", rail && "sr-only")}>{children}</span>
+          {rail ? null : trailing}
+        </>
+      ),
+    },
+  });
   return (
     <li>
       {rail ? (

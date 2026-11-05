@@ -1,132 +1,41 @@
-import { useState } from "react";
-import { createFileRoute, Link } from "@tanstack/react-router";
-import { Avatar, Button, FORM, FORM_ACTIONS, Panel, PanelHeading, TextField } from "../components";
-import { USERNAME_RULE, useAccount } from "../dashboard-data";
+import { Avatar, DescriptionList, Link, PageHeader } from "@sproutboat/ikada";
+import { createFileRoute, Link as RouterLink } from "@tanstack/react-router";
+import { useAccount } from "../dashboard-data";
 
 export const Route = createFileRoute("/profile")({
   component: Profile,
   head: () => ({ meta: [{ title: "Profile · Sproutboat" }] }),
 });
 
+/** A read-only account card. Namespaces are assigned when an account is created, so there is nothing to edit here. */
 function Profile() {
-  const { account, refresh } = useAccount();
-  const [profile, setProfile] = useState<{ username: string }>();
-  const [username, setUsername] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  const trimmed = username.trim().toLowerCase();
-  const invalid = trimmed !== "" && !USERNAME_RULE.test(trimmed);
-
-  const reserve = async (event: React.FormEvent) => {
-    event.preventDefault();
-    if (!USERNAME_RULE.test(trimmed)) {
-      setError("Use 3-32 lowercase letters, digits or hyphens.");
-      return;
-    }
-    setBusy(true);
-    setError(null);
-    try {
-      const response = await fetch("/api/account/namespace", {
-        method: "POST",
-        credentials: "include",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ username: trimmed }),
-      });
-      if (!response.ok) {
-        // SAFETY: an error body from this endpoint is { error: string }.
-        const body = (await response.json().catch(() => ({}))) as { error?: string };
-        setError(body.error ?? "Choose an available 3-32 character lowercase namespace.");
-        return;
-      }
-      // SAFETY: successful namespace reservation returns the updated profile contract.
-      const body = (await response.json()) as { profile: { username: string } };
-      setProfile(body.profile);
-      refresh();
-    } catch {
-      setError("Could not reach the control plane. Try again.");
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const currentProfile = profile ?? account?.profile;
-  const identityLabel = currentProfile?.username || account?.user?.name || "account";
-
+  const { account } = useAccount();
+  const username = account?.profile?.username;
+  const name = username || account?.user?.name || "account";
   return (
-    <>
-      <section className="mb-8 flex items-center justify-between gap-8 border-b border-border pb-7 max-[800px]:mb-10 max-[800px]:flex-col max-[800px]:items-start [&_h1]:m-0 [&_h1]:text-[1.85rem] [&_h1]:font-bold [&_h1]:tracking-[-0.035em] [&_h1]:max-[480px]:text-[1.6rem] [&_p]:mt-1.5 [&_p]:max-w-[38rem] [&_p]:text-[0.875rem] [&_p]:leading-normal [&_p]:text-muted-foreground">
-        <div>
-          <h1>Profile</h1>
-          <p>Your deployment namespace is used in every project route.</p>
+    <div className="flex max-w-2xl flex-col gap-6">
+      <PageHeader title="Profile" description="Your deployment namespace is used in every project route." />
+      <section aria-label="Account" className="flex flex-col gap-5 rounded-xl bg-surface p-5 shadow-card sm:p-6">
+        <div className="flex items-center gap-4">
+          <Avatar name={name} src={account?.user?.image} size="lg" />
+          <div className="min-w-0">
+            <h2 className="truncate text-lg font-bold">{name}</h2>
+            {account?.user?.email ? <p className="truncate text-base text-fg-muted">{account.user.email}</p> : null}
+          </div>
         </div>
+        <DescriptionList
+          items={[
+            { id: "namespace", term: "Namespace", details: username ?? "Not assigned", mono: Boolean(username) },
+            { id: "name", term: "Name", details: account?.user?.name ?? "Not set" },
+            { id: "email", term: "Email", details: account?.user?.email ?? "Not set" },
+            { id: "role", term: "Role", details: account?.isAdmin ? "Admin" : "Member" },
+          ]}
+        />
+        <p className="text-sm text-fg-muted">Namespace changes are unavailable while deployments exist.</p>
       </section>
-      <Panel>
-        {currentProfile ? (
-          <>
-            <div className="mb-4 flex items-center gap-4 [&_h2]:m-0 [&>div>p]:mt-1 [&>div>p]:text-[0.8rem] [&>div>p]:text-muted-foreground [&>div>p]:[overflow-wrap:anywhere]">
-              <span className="flex size-12 shrink-0 items-center justify-center overflow-hidden rounded-[10px] bg-secondary text-[1.1rem] font-semibold">
-                <Avatar image={account?.user?.image} label={identityLabel} />
-              </span>
-              <div>
-                <h2>{currentProfile.username}</h2>
-                {account?.user?.name && (
-                  <p>
-                    {account.user.name}
-                    {account.user.email ? ` · ${account.user.email}` : ""}
-                  </p>
-                )}
-              </div>
-            </div>
-            <p className="mt-3 text-[0.75rem] text-muted-foreground">
-              Namespace changes are unavailable while deployments exist.
-            </p>
-          </>
-        ) : (
-          <>
-            <PanelHeading
-              title="Claim your namespace"
-              description={
-                <>
-                  Choose the name that will appear in routes such as <code>hello.name.sproutboat.com</code>.
-                </>
-              }
-            />
-            <form className={FORM} onSubmit={(event) => void reserve(event)}>
-              <TextField
-                label="Namespace"
-                value={username}
-                onChange={(event) => {
-                  setUsername(event.target.value);
-                  setError(null);
-                }}
-                placeholder="your-name"
-                autoComplete="off"
-                spellCheck={false}
-                required
-                hint="3-32 characters: lowercase letters, digits and hyphens."
-                error={invalid ? "Use 3-32 lowercase letters, digits or hyphens." : error}
-              />
-              <div data-slot="form-actions" className={FORM_ACTIONS}>
-                <Button
-                  type="submit"
-                  variant="primary"
-                  busy={busy}
-                  busyLabel="Reserving…"
-                  disabled={!trimmed || invalid}
-                >
-                  Reserve
-                </Button>
-              </div>
-            </form>
-          </>
-        )}
-        <p className="mt-8">
-          <Link className="text-[0.8rem] text-sky underline-offset-2 hover:underline" to="/settings">
-            Appearance settings
-          </Link>
-        </p>
-      </Panel>
-    </>
+      <p>
+        <Link render={<RouterLink to="/settings" />}>Appearance and account settings</Link>
+      </p>
+    </div>
   );
 }
