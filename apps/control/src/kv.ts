@@ -1,5 +1,5 @@
 import { Database } from "bun:sqlite";
-import { mkdirSync } from "node:fs";
+import { existsSync, mkdirSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { actorFor } from "./identity";
 import { resourceById } from "./store";
@@ -34,15 +34,30 @@ function audit(owned: OwnedKv, operation: string, status: "ok" | "partial" | "re
   console.info(JSON.stringify({ event: "kv", actor: owned.actorId, resourceId: owned.id, operation, status, count }));
 }
 
-function openKv(path: string): Database {
+const KV_SCHEMA =
+  "CREATE TABLE IF NOT EXISTS kv (ns TEXT NOT NULL, key TEXT NOT NULL, value TEXT NOT NULL, PRIMARY KEY (ns, key))";
+
+/**
+ * Routes that only read open the file read-only, so a bug in them cannot write a tenant's data. A namespace
+ * nothing has written to yet has no file: a read-only caller then sees an empty one, and creates nothing.
+ */
+function openKv(path: string, readonly = false): Database {
+  if (readonly) {
+    if (!existsSync(path)) {
+      const empty = new Database(":memory:");
+      empty.exec(KV_SCHEMA);
+      return empty;
+    }
+    const db = new Database(path, { readonly: true });
+    db.exec("PRAGMA busy_timeout = 5000");
+    return db;
+  }
   mkdirSync(dirname(path), { recursive: true });
   const db = new Database(path, { create: true });
   db.exec("PRAGMA journal_mode = WAL");
   db.exec("PRAGMA synchronous = NORMAL");
   db.exec("PRAGMA busy_timeout = 5000");
-  db.exec(
-    "CREATE TABLE IF NOT EXISTS kv (ns TEXT NOT NULL, key TEXT NOT NULL, value TEXT NOT NULL, PRIMARY KEY (ns, key))",
-  );
+  db.exec(KV_SCHEMA);
   return db;
 }
 
@@ -75,7 +90,7 @@ export async function listKvKeys(request: Request, id: string): Promise<Response
   const requested = Number(url.searchParams.get("limit") ?? 100);
   if (!Number.isSafeInteger(requested) || requested < 1 || requested > MAX_LIST_LIMIT)
     return Response.json({ error: `limit must be between 1 and ${MAX_LIST_LIMIT}` }, { status: 400 });
-  const db = openKv(owned.path);
+  const db = openKv(owned.path, true);
   try {
     const rows = db
       .query<{ key: string }, [string, string, string, string, number]>(
@@ -95,7 +110,7 @@ export async function kvKey(request: Request, id: string, key: string): Promise<
   const owned = await ownedKv(request, id);
   if (owned instanceof Response) return owned;
   if (!validKey(key)) return Response.json({ error: `key must be 1-${MAX_KEY_BYTES} UTF-8 bytes` }, { status: 400 });
-  const db = openKv(owned.path);
+  const db = openKv(owned.path, request.method === "GET");
   try {
     if (request.method === "GET") {
       const row = db
@@ -139,7 +154,7 @@ export async function kvBulk(request: Request, id: string, operation: "get" | "p
   const items = Array.isArray(body) ? body : null;
   if (!items || items.length < 1 || items.length > MAX_BULK_ITEMS)
     return Response.json({ error: `body must be an array of 1-${MAX_BULK_ITEMS} items` }, { status: 400 });
-  const db = openKv(owned.path);
+  const db = openKv(owned.path, operation === "get");
   try {
     if (operation === "get") {
       if (!items.every(validKey))

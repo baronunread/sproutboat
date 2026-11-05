@@ -52,7 +52,7 @@ function artifactForm(project: string, seed: string, manifestProject = project):
     sourceHash: `sha256:${"0".repeat(64)}`,
     binaryHash: `sha256:${createHash("sha256").update(bytes).digest("hex")}`,
     binarySize: bytes.length,
-    builtAt: new Date().toISOString(),
+    builtAt: "2026-11-01T00:00:00.000Z", // fixed: the manifest is part of the digest, so a rebuild at another instant is a new version
     compileMs: 12,
   };
   const form = new FormData();

@@ -21,8 +21,10 @@ async function routes(): Promise<
 > {
   return JSON.parse(await readFile(join(dir, "routes.json"), "utf8"));
 }
-async function makeArtifact(digest: string): Promise<string> {
-  const path = join(dir, "artifacts", digest);
+const own = (digest: string, ownerId = "user-1") => join(dir, "artifacts", store.artifactOwnerDir(ownerId), digest);
+const ref = (digest: string, ownerId = "user-1") => ({ ownerId, digest });
+async function makeArtifact(digest: string, ownerId = "user-1"): Promise<string> {
+  const path = own(digest, ownerId);
   await mkdir(path, { recursive: true });
   await writeFile(join(path, "sprout"), "binary");
   return join(path, "sprout");
@@ -34,7 +36,7 @@ const D = (over: Partial<import("./store").Deployment> & { id: string; artifact:
   username: over.username ?? "alice",
   hostname: over.hostname ?? `${over.project ?? "app"}.alice.test`,
   artifact: over.artifact,
-  sproutPath: over.sproutPath ?? join(dir, "artifacts", over.artifact, "sprout"),
+  sproutPath: over.sproutPath ?? join(own(over.artifact, over.ownerId ?? "user-1"), "sprout"),
   deployedAt: over.deployedAt ?? deployedAt(),
 });
 
@@ -65,7 +67,7 @@ test("recordDeployment keeps exactly one active version per project", async () =
   expect(await routes()).toEqual([
     {
       hostname: "app.alice.test",
-      sproutPath: join(dir, "artifacts", b, "sprout"),
+      sproutPath: join(own(b), "sprout"),
       ownerId: "user-1",
       r2ResourceIds: [],
       // #207 — derived from owner + project, so the redeploy above keeps it.
@@ -104,7 +106,7 @@ test("deleteProject drops the route and GCs only unreferenced artifacts", async 
 
   const result = store.deleteProject("user-1", "app");
   expect(result.removed).toBe(3); // d1, d2, d3
-  expect(result.orphanedArtifacts.sort()).toEqual(["a".repeat(64), "b".repeat(64)]); // not shared: still used by "other"
+  expect(result.orphanedArtifacts.map((r) => r.digest).sort()).toEqual(["a".repeat(64), "b".repeat(64)]); // not shared: still used by "other"
   const cleanup = await store.collectArtifacts(result.orphanedArtifacts);
   expect(cleanup.removed.sort()).toEqual(["a".repeat(64), "b".repeat(64)]);
   expect(cleanup.failed).toEqual([]);
@@ -117,14 +119,14 @@ test("deleteOwner removes every project, route, and now-orphaned artifact", asyn
   const result = store.deleteOwner("user-1");
   expect(result.removed).toBe(1); // the "other" deployment
   expect(result.hostnames).toEqual(["other.alice.test"]);
-  expect(result.orphanedArtifacts).toEqual(["c".repeat(64)]);
+  expect(result.orphanedArtifacts).toEqual([ref("c".repeat(64))]);
   await store.syncRoutes();
   expect(await routes()).toEqual([]);
   expect(store.ownerDeployments("user-1")).toEqual([]);
 });
 
 test("collectArtifacts ignores digests it has no record of and never throws", async () => {
-  const out = await store.collectArtifacts(["../etc", "not-hex", "d".repeat(64)]);
+  const out = await store.collectArtifacts(["../etc", "not-hex", "d".repeat(64)].map((digest) => ref(digest)));
   expect(out).toEqual({ removed: [], failed: [] });
 });
 
@@ -133,11 +135,11 @@ test("collectArtifacts never removes an artifact a deployment still references",
   await makeArtifact(e);
   store.recordDeployment(D({ id: "d5", project: "keep", hostname: "keep.alice.test", artifact: e }));
 
-  const out = await store.collectArtifacts([e]);
+  const out = await store.collectArtifacts([ref(e)]);
   expect(out).toEqual({ removed: [], failed: [] });
   let bytesGone = false;
   try {
-    await access(join(dir, "artifacts", e, "sprout"));
+    await access(join(own(e), "sprout"));
   } catch {
     bytesGone = true;
   }
@@ -185,7 +187,7 @@ test("deleteDeployment removes an inactive version only, GCs its orphan, scoped 
   expect(store.deleteDeployment("user-2", "site", "v1")).toBeUndefined();
 
   const gone = store.deleteDeployment("user-1", "site", "v1");
-  expect(gone).toEqual({ deleted: true, active: false, orphanedArtifacts: [h1] });
+  expect(gone).toEqual({ deleted: true, active: false, orphanedArtifacts: [ref(h1)] });
   const cleanup = await store.collectArtifacts(gone?.orphanedArtifacts ?? []);
   expect(cleanup.removed).toEqual([h1]);
   expect(store.projectDeployments("user-1", "site").map((deployment) => deployment.id)).toEqual(["v2"]);
@@ -275,7 +277,7 @@ test("#48 — service bindings resolve to the target's hostname, same owner only
   // The caller declares two service bindings: one to a project its owner has
   // deployed, one to a project owned by somebody else.
   await writeFile(
-    join(dir, "artifacts", caller, "bindings.json"),
+    join(own(caller), "bindings.json"),
     JSON.stringify({
       services: [
         { binding: "API", service: "api" },
@@ -386,12 +388,68 @@ test("sweepBrokerState removes old state of collected artifacts only", async () 
   const kept = "f".repeat(64);
   await makeArtifact(kept);
   store.recordDeployment(D({ id: "d-kept", project: "kept", hostname: "kept.alice.test", artifact: kept }));
+  const name = (owner: string, digest: string) => `${store.artifactOwnerDir(owner)}-${digest}`;
   const old = Date.now() / 1000 - 3600;
-  const names = { collected: "1".repeat(64), live: kept, staging: "2".repeat(64), other: "notes" };
-  for (const name of Object.values(names)) await mkdir(join(brokers, name, "d1"), { recursive: true });
-  for (const name of [names.collected, names.live, names.other]) await utimes(join(brokers, name), old, old);
+  const names = {
+    collected: name("user-1", "1".repeat(64)),
+    live: name("user-1", kept),
+    // the same digest under an owner that holds no row for it is not live
+    otherOwner: name("user-2", kept),
+    staging: name("user-1", "2".repeat(64)),
+    other: "notes",
+  };
+  for (const n of Object.values(names)) await mkdir(join(brokers, n, "d1"), { recursive: true });
+  for (const n of [names.collected, names.live, names.otherOwner, names.other])
+    await utimes(join(brokers, n), old, old);
   // `staging` is recent: a deploy stages its candidate before recording the artifact.
-  expect(await store.sweepBrokerState()).toEqual([names.collected]);
+  expect((await store.sweepBrokerState()).sort()).toEqual([names.collected, names.otherOwner].sort());
   const { readdir } = await import("node:fs/promises");
   expect((await readdir(brokers)).sort()).toEqual([names.staging, names.live, names.other].sort());
+});
+
+test("sweepUploads removes only stale .upload-* directories", async () => {
+  const { utimes } = await import("node:fs/promises");
+  const root = join(dir, "artifacts");
+  await mkdir(join(root, ".upload-old"), { recursive: true });
+  await mkdir(join(root, ".upload-new"), { recursive: true });
+  const old = Date.now() / 1000 - 2 * 3600;
+  await utimes(join(root, ".upload-old"), old, old);
+  expect(await store.sweepUploads()).toEqual([".upload-old"]);
+  const { readdir } = await import("node:fs/promises");
+  expect((await readdir(root)).filter((n) => n.startsWith(".upload-"))).toEqual([".upload-new"]);
+  await rm(join(root, ".upload-new"), { recursive: true });
+});
+
+test("the same digest held by two owners is two artifacts: collecting one leaves the other", async () => {
+  const digest = "9".repeat(64);
+  await makeArtifact(digest, "user-1");
+  await makeArtifact(digest, "user-2");
+  store.recordDeployment(D({ id: "o1", project: "mine", hostname: "mine.alice.test", artifact: digest }));
+  store.recordDeployment(
+    D({ id: "o2", ownerId: "user-2", project: "mine", hostname: "mine.bob.test", artifact: digest }),
+  );
+  const gone = store.deleteProject("user-1", "mine");
+  expect(gone.orphanedArtifacts).toEqual([ref(digest, "user-1")]);
+  expect((await store.collectArtifacts(gone.orphanedArtifacts)).removed).toEqual([digest]);
+  const { access } = await import("node:fs/promises");
+  await expect(access(own(digest, "user-1"))).rejects.toThrow();
+  await access(own(digest, "user-2"));
+  store.deleteOwner("user-2");
+});
+
+test("withArtifactLock runs its callbacks one at a time, even after a failure", async () => {
+  const order: string[] = [];
+  const first = store.withArtifactLock(async () => {
+    order.push("a:start");
+    await Bun.sleep(20);
+    order.push("a:end");
+    throw new Error("boom");
+  });
+  const second = store.withArtifactLock(async () => {
+    order.push("b");
+    return 1;
+  });
+  await expect(first).rejects.toThrow("boom");
+  expect(await second).toBe(1);
+  expect(order).toEqual(["a:start", "a:end", "b"]);
 });

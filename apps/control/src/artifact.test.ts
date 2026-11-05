@@ -189,3 +189,22 @@ test("an unknown extra entry is still rejected", async () => {
   expect(result.ok).toBe(false);
   if (!result.ok) expect(result.errors.join(" ")).toContain("unexpected entries");
 });
+
+test("a file under assets/ that assets.json does not list is rejected, however deep", async () => {
+  const body = "<!doctype html>hi";
+  await seed({
+    assets: {
+      manifest: {
+        notFound: "none",
+        runSproutFirst: false,
+        files: { "/index.html": { hash: sha(Buffer.from(body)), size: body.length, type: "text/html" } },
+      },
+      files: { "/index.html": body },
+    },
+  });
+  await mkdir(join(dir, "assets", "deep", "er"), { recursive: true });
+  await writeFile(join(dir, "assets", "deep", "er", "extra.js"), "alert(1)");
+  const result = await validateArtifactDirectory(dir);
+  expect(result.ok).toBe(false);
+  if (!result.ok) expect(result.errors).toEqual(["assets/deep/er/extra.js is not listed in assets.json"]);
+});
