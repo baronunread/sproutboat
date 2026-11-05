@@ -89,8 +89,8 @@ if [ "${1:-}" = --uninstall ]; then
   grep -q "$CADDY_BIN" /etc/systemd/system/caddy.service 2>/dev/null && rm -f /etc/systemd/system/caddy.service
   systemctl daemon-reload
   rm -f "$CADDY_BIN" /usr/local/bin/sbctl /etc/sysctl.d/80-sproutboat-userns.conf /root/sproutboat-admin.env
-  # /etc/sproutboat holds caddy.d (operator drop-ins) and goes even with --keep-state: copy it first.
   rm -f /usr/local/lib/sproutboat/backup-stage
+  # /etc/sproutboat holds caddy.d (operator drop-ins) and goes even with --keep-state: copy it first.
   rm -rf "$ROOT" /opt/sproutboat-src /etc/sproutboat /etc/caddy
   [ "$KEEP_STATE" = 1 ] || rm -rf "$STATE"
   for u in sproutboat-control sproutboat-edge; do id "$u" >/dev/null 2>&1 && userdel "$u" || true; done
