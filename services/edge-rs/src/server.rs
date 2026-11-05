@@ -9,15 +9,35 @@ use hyper_util::rt::{TokioIo, TokioTimer};
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::net::{TcpListener, TcpStream};
+use tokio::sync::Semaphore;
+
+/// Connections served at once; accepting waits when the process is at the limit.
+pub const MAX_CONNECTIONS: usize = 8192;
 
 /// Accept until shutdown is signalled; connections already open are left to finish.
 pub async fn serve(app: Arc<App>, listener: TcpListener) {
+    serve_limited(app, listener, MAX_CONNECTIONS).await
+}
+
+pub async fn serve_limited(app: Arc<App>, listener: TcpListener, max_connections: usize) {
     let mut shutdown = app.shutdown.subscribe();
+    let slots = Arc::new(Semaphore::new(max_connections));
     loop {
+        let permit = tokio::select! {
+            permit = slots.clone().acquire_owned() => match permit {
+                Ok(permit) => permit,
+                Err(_) => return,
+            },
+            _ = shutdown.changed() => return,
+        };
         tokio::select! {
             accepted = listener.accept() => match accepted {
                 Ok((stream, _)) => {
-                    tokio::spawn(serve_connection(app.clone(), stream));
+                    let app = app.clone();
+                    tokio::spawn(async move {
+                        let _permit = permit;
+                        serve_connection(app, stream).await;
+                    });
                 }
                 Err(error) => {
                     // EMFILE and friends: back off instead of spinning.
