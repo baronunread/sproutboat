@@ -296,4 +296,34 @@ describe("Phase A contracts", () => {
       .nothrow();
     expect(res.exitCode).toBe(0);
   });
+
+  test("Bun and Caddy are pinned, verified and upgraded in place", async () => {
+    const install = await Bun.file("install.sh").text();
+    expect(install).toMatch(/^BUN_VERSION="\d+\.\d+\.\d+"$/m);
+    expect(install).toMatch(/^BUN_SHA256_X64="[0-9a-f]{64}"$/m);
+    expect(install).toMatch(/^BUN_SHA256_X64_BASELINE="[0-9a-f]{64}"$/m);
+    expect(install).toMatch(/^CADDY_VERSION="\d+\.\d+\.\d+"$/m);
+    expect(install).toMatch(/^CADDY_SHA512_AMD64="[0-9a-f]{128}"$/m);
+    expect(install).toContain("fetch_verified() {");
+    expect(install).toContain("curl -fsSL --retry 3");
+    expect(install).toContain('[ "$BUN_HAVE" != "$BUN_VERSION" ]');
+    expect(install).toContain('"v$CADDY_VERSION"*) ;;');
+    expect(install).toContain("grep -qw avx2 /proc/cpuinfo");
+    expect(install).toContain("sha512");
+    expect(install).toContain('if [ "$CADDY_REPLACED" = 1 ]; then systemctl restart caddy;');
+    expect(install).toContain("systemctl restart sproutboat-control sproutboat-egress sproutboat-edge");
+    expect(install).toContain("not checksum-verified");
+    expect(
+      install
+        .split("\n")
+        .filter((l) => !l.trimStart().startsWith("#"))
+        .join("\n"),
+    ).not.toMatch(/curl[^\n]*\|\s*(sudo )?bash/);
+    expect(install).not.toContain("bun.sh/install");
+    for (const wf of ["ci.yml", "style-doctor.yml"]) {
+      const text = await Bun.file(`.github/workflows/${wf}`).text();
+      const v = /^BUN_VERSION="([^"]+)"/m.exec(install)![1];
+      expect(text).toMatch(new RegExp(`bun-version: "?${v.replaceAll(".", "\\.")}"?$`, "m"));
+    }
+  });
 });

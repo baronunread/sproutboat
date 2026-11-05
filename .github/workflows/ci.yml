@@ -12,7 +12,7 @@ jobs:
       - uses: actions/checkout@v7
       - uses: oven-sh/setup-bun@v2
         with:
-          bun-version: "1.4.0"
+          bun-version: "1.4.4"
       # Pulls the sproutboat CLI package (github:baronunread/sproutboat-cli#main,
       # public); bun.lock pins the resolved commit.
       - run: bun install --frozen-lockfile
@@ -52,7 +52,7 @@ jobs:
       - uses: actions/checkout@v7
       - uses: oven-sh/setup-bun@v2
         with:
-          bun-version: "1.4.0"
+          bun-version: "1.4.4"
       - run: bun install --frozen-lockfile
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2

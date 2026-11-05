@@ -131,7 +131,10 @@ try {
   );
   child = Bun.spawn(command, { cwd: process.cwd(), stdio: ["inherit", "inherit", "inherit"] });
   await child.exited;
-  code = child.exitCode ?? 128 + (child.signalCode ? constants.signals[child.signalCode] : 0);
+  // SAFETY: Bun reports signalCode as a signal name at runtime; @types/bun 1.4.4 widened it to include number.
+  code =
+    child.exitCode ??
+    128 + (child.signalCode ? constants.signals[child.signalCode as keyof typeof constants.signals] : 0);
 } catch (error) {
   console.error(`with-local-packages: ${error instanceof Error ? error.message : String(error)}`);
 } finally {
