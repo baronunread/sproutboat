@@ -57,12 +57,16 @@ import {
 } from "./admin";
 import { kvBulk, kvKey, listKvKeys } from "./kv";
 import { listR2Objects, r2Object, r2Usage } from "./r2";
+import { isDashboardRequest, serveDashboard } from "./dashboard-static";
 
 type Route = { hostname: string; sproutPath: string };
 const routesPath = resolve(process.env.SPROUTBOAT_ROUTE_SNAPSHOT || "/var/lib/sproutboat/routes.json");
 const port = Number(process.env.PORT || 8787);
-// Loopback only: Caddy is the sole public listener and reverse-proxies here.
+// Loopback by default: the reverse proxy (Caddy, or the operator's own) forwards here.
+// SB_BIND_HOST in homelab mode can widen it (see docs/homelab.md).
 const hostname = process.env.SPROUTBOAT_BIND_HOST || "127.0.0.1";
+// Set for installs with no Caddy (SB_PROXY=external): control serves the dashboard SPA itself.
+const dashboardDir = process.env.SPROUTBOAT_DASHBOARD_DIR || "";
 
 type JsonValue = string | number | boolean | null | JsonObject | JsonValue[];
 type JsonObject = { [key: string]: JsonValue };
@@ -115,6 +119,7 @@ const server = Bun.serve({
 
 async function handle(request: Request): Promise<Response> {
   const url = new URL(request.url);
+  if (dashboardDir && isDashboardRequest(request, url.pathname)) return serveDashboard(request, dashboardDir);
   if (url.pathname.startsWith("/api/auth/")) {
     // Single-admin box: no self-service registration. The one admin account is
     // seeded by ensureAdminSeeded(); sign-in still works.
