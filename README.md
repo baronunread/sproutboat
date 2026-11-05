@@ -46,6 +46,10 @@ installer fix apply during the same update rather than waiting for another
 upgrade. The bootstrapper records the installed commit in
 `/etc/sproutboat/update.env` and serializes concurrent updates.
 
+Not on a public VPS? Run the installer with `--homelab` to put Sproutboat behind
+your own reverse proxy, on a LAN, or on a tailnet, with no Caddy and no firewall
+changes. See [docs/homelab.md](docs/homelab.md).
+
 Before upgrading, read [CHANGELOG.md](CHANGELOG.md). The public compatibility
 policy and release checklist are in [docs/versioning.md](docs/versioning.md).
 

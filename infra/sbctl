@@ -17,7 +17,13 @@ ROLLBACK=/usr/local/lib/sproutboat/rollback
 PREV=/opt/sproutboat-prev
 ETC=/etc/sproutboat
 ENGINE=/usr/local/lib/sproutboat/engine
-SERVICES=(sproutboat-control sproutboat-egress sproutboat-edge caddy)
+# env_value FILE KEY: the value of KEY=value (parsed, never sourced).
+env_value() { [ -f "$1" ] && sed -n "s/^$2=//p" "$1" | tail -1 || true; }
+# The install mode (see docs/homelab.md). A box without install.env is a public install.
+PROXY=${SB_PROXY:-$(env_value "$ETC/install.env" SB_PROXY)}; PROXY=${PROXY:-caddy}
+SCHEME=${SB_SCHEME:-$(env_value "$ETC/install.env" SB_SCHEME)}; SCHEME=${SCHEME:-https}
+SERVICES=(sproutboat-control sproutboat-egress sproutboat-edge)
+[ "$PROXY" = external ] || SERVICES+=(caddy)
 UNITS=("${SERVICES[@]}" sproutboat-backup.timer)
 
 if [ -t 1 ]; then OK=$'\033[1;32m'; NO=$'\033[1;31m'; D=$'\033[2m'; Z=$'\033[0m'
@@ -31,10 +37,11 @@ sbctl — Sproutboat single-VPS control
 
   sbctl up                 start all services
   sbctl down               stop all services
-  sbctl restart            restart control + edge + caddy
+  sbctl restart            restart control + edge + egress (+ caddy unless SB_PROXY=external)
   sbctl status             one-line health per unit
-  sbctl logs [name] [-n N] follow logs (name: control|edge|caddy|backup; default: all three)
+  sbctl logs [name] [-n N] follow logs (name: control|edge|caddy|backup; default: every service)
   sbctl token              print the admin API URL + token
+  sbctl mode               print the install mode settings (/etc/sproutboat/install.env)
   sbctl memory             memory caps and current use per unit, against MemTotal
   sbctl preflight          re-run the runtime sandbox checks
   sbctl engine             show which engine (rust|bun) runs the edge and egress
@@ -91,6 +98,7 @@ apply_restored_config() {
       [ ! -e "$ETC/$f" ] || { chown root:sproutboat "$ETC/$f"; chmod 0640 "$ETC/$f"; }
     done
     [ ! -e "$ETC/caddy.env" ] || { chown root:root "$ETC/caddy.env"; chmod 0640 "$ETC/caddy.env"; }
+    [ ! -e "$ETC/install.env" ] || { chown root:root "$ETC/install.env"; chmod 0644 "$ETC/install.env"; }
     for f in egress.env update.env; do
       [ ! -e "$ETC/$f" ] || { chown root:root "$ETC/$f"; chmod 0600 "$ETC/$f"; }
     done
@@ -103,8 +111,9 @@ apply_restored_config() {
         . "$ETC/control.env"
         set +a
         umask 077
-        printf 'SPROUTBOAT_API_URL=https://control.%s\nSPROUTBOAT_TOKEN=%s\n' \
-          "$SPROUTBOAT_DEPLOYMENT_DOMAIN" "$SPROUTBOAT_BOOTSTRAP_TOKEN" > "$TOKEN_FILE" ) || return 1
+        scheme=$(env_value "$ETC/install.env" SB_SCHEME); scheme=${scheme:-https}
+        printf 'SPROUTBOAT_API_URL=%s://control.%s\nSPROUTBOAT_TOKEN=%s\n' \
+          "$scheme" "$SPROUTBOAT_DEPLOYMENT_DOMAIN" "$SPROUTBOAT_BOOTSTRAP_TOKEN" > "$TOKEN_FILE" ) || return 1
       chmod 0600 "$TOKEN_FILE"
       printf '  rewrote %s from the restored control.env\n' "$TOKEN_FILE"
     fi
@@ -138,9 +147,6 @@ changelog_range() {
     started { print }
   ' "$1"
 }
-
-# env_value FILE KEY: the value of KEY=value (update.env is parsed, never sourced).
-env_value() { [ -f "$1" ] && sed -n "s/^$2=//p" "$1" | tail -1 || true; }
 
 update_check() {
   local cfg=$ETC/update.env repo pin ref installed commit target tmp
@@ -183,7 +189,7 @@ update_check() {
 
 unit_of() { case "$1" in
   control|edge) echo "sproutboat-$1" ;;
-  caddy) echo caddy ;;
+  caddy) [ "$PROXY" != external ] || die "this install has no Caddy (SB_PROXY=external): look at your own proxy's logs"; echo caddy ;;
   backup) echo sproutboat-backup ;;
   *) die "unknown service '$1' (control|edge|caddy|backup)" ;;
 esac; }
@@ -197,7 +203,7 @@ memory_report() {
   avail=$(awk '/^MemAvailable:/ { print int($2 / 1024) }' /proc/meminfo)
   printf '  MemTotal      %sM\n  MemAvailable  %sM\n\n' "$total" "$avail"
   printf '  %-22s %10s %10s %10s\n' unit MemoryMax MemoryHigh MemoryCurrent
-  for u in sproutboat-control sproutboat-edge sproutboat-egress caddy sproutboat-backup; do
+  for u in sproutboat-control sproutboat-edge sproutboat-egress $([ "$PROXY" = external ] || echo caddy) sproutboat-backup; do
     max=$(systemctl show -p MemoryMax --value "$u" 2>/dev/null || true)
     high=$(systemctl show -p MemoryHigh --value "$u" 2>/dev/null || true)
     cur=$(systemctl show -p MemoryCurrent --value "$u" 2>/dev/null || true)
@@ -233,6 +239,13 @@ case "$cmd" in
     [ -f "$TOKEN_FILE" ] || die "$TOKEN_FILE not found — is this a Sproutboat host?"
     cat "$TOKEN_FILE" ;;
   memory) memory_report ;;
+  mode)
+    if [ -f "$ETC/install.env" ]; then
+      printf '%s\n' "$ETC/install.env:"
+      grep -v '^#' "$ETC/install.env" | sed 's/^/  /'
+    else
+      printf 'no %s: a public install (SB_MODE=public SB_PROXY=caddy SB_FIREWALL=ufw SB_SCHEME=https)\n' "$ETC/install.env"
+    fi ;;
   preflight) exec sh -c "cd '$ROOT' && '$ROOT/bun/bin/bun' run runtime:preflight" ;;
   engine)
     [ -x "$ENGINE" ] || die "$ENGINE missing: re-run the installer once"
@@ -334,7 +347,8 @@ case "$cmd" in
         set +a
         cd "$ROOT" && "$ROOT/bun/bin/bun" apps/control/src/auth-admin.ts reset-password ) || rc=$?
     fi
-    [ "$config_applied" = 0 ] || systemctl reload-or-restart caddy || true
+    # No Caddy to reload on an SB_PROXY=external install.
+    [ "$config_applied" = 0 ] || [ "$(env_value "$ETC/install.env" SB_PROXY)" = external ] || systemctl reload-or-restart caddy || true
     [ "$config_applied" = 0 ] || systemctl restart sproutboat-egress || true
     systemctl start sproutboat-control sproutboat-edge sproutboat-backup.timer
     [ "$rc" = 0 ] || die "restore failed (exit $rc); the services were restarted on the state as it was"

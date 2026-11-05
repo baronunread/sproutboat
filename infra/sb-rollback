@@ -80,6 +80,7 @@ for f in control.env sproutboat.env backup.key; do
   [ ! -e "$ETC/$f" ] || { own root:sproutboat "$ETC/$f"; chmod 0640 "$ETC/$f"; }
 done
 [ ! -e "$ETC/caddy.env" ] || { own root:root "$ETC/caddy.env"; chmod 0640 "$ETC/caddy.env"; }
+[ ! -e "$ETC/install.env" ] || { own root:root "$ETC/install.env"; chmod 0644 "$ETC/install.env"; }
 for f in egress.env update.env; do
   [ ! -e "$ETC/$f" ] || { own root:root "$ETC/$f"; chmod 0600 "$ETC/$f"; }
 done
@@ -90,7 +91,10 @@ own root:root "$ROOT"; chmod 0755 "$ROOT"
 "$SYSTEMCTL" daemon-reload
 "$SYSTEMCTL" restart sproutboat-control sproutboat-egress sproutboat-edge
 # A different Caddy binary needs a real restart; a reload keeps running the old one.
-if [ "$caddy_changed" = 1 ]; then "$SYSTEMCTL" restart caddy; else "$SYSTEMCTL" reload-or-restart caddy; fi
+# An SB_PROXY=external install (install.env, restored above) has no Caddy to restart.
+if [ "$(sed -n 's/^SB_PROXY=//p' "$ETC/install.env" 2>/dev/null | tail -1)" = external ]; then :
+elif [ "$caddy_changed" = 1 ]; then "$SYSTEMCTL" restart caddy
+else "$SYSTEMCTL" reload-or-restart caddy; fi
 
 # 5. Health.
 HEALTH=${SB_HEALTH_BIN:-$LIB/health}

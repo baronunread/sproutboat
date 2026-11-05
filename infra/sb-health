@@ -9,25 +9,42 @@
 # Polls until every check passes or the timeout (SB_HEALTH_TIMEOUT, default 45 s)
 # runs out, then prints one ok/fail line per check from the last attempt and exits
 # 0 (healthy) or 1. Checks:
-#   units    systemctl is-active for control, egress, edge and caddy
+#   units    systemctl is-active for control, egress, edge and caddy (no caddy when SB_PROXY=external)
 #   control  GET :8787/internal/health is 200 with "ok":true
 #   edge     GET :8080/__sb/pool (Host: 127.0.0.1) is 200
 #   egress   GET :8070/ answers with any HTTP status (401 is the normal one)
-#   caddy    GET :80/ answers with any HTTP status (a redirect is the normal one)
+#   caddy    GET :80/ answers with any HTTP status (a redirect is the normal one);
+#            skipped when SB_PROXY=external
+#
+# The install mode comes from $SB_ETC/install.env (default /etc/sproutboat); SB_PROXY and
+# SB_BIND_HOST in the environment win. With a specific non-loopback SB_BIND_HOST the
+# control and edge URLs default to that address.
 #
 # Test and debug overrides: SB_SYSTEMCTL (default systemctl; `true` stubs it),
 # SB_HEALTH_CONTROL_URL, SB_HEALTH_EDGE_URL, SB_HEALTH_EGRESS_URL,
-# SB_HEALTH_CADDY_URL, SB_HEALTH_INTERVAL (seconds between attempts, default 1).
+# SB_HEALTH_CADDY_URL, SB_HEALTH_INTERVAL (seconds between attempts, default 1), SB_ETC.
 set -euo pipefail
 
 SYSTEMCTL=${SB_SYSTEMCTL:-systemctl}
-CONTROL_URL=${SB_HEALTH_CONTROL_URL:-http://127.0.0.1:8787}
-EDGE_URL=${SB_HEALTH_EDGE_URL:-http://127.0.0.1:8080}
+ETC=${SB_ETC:-/etc/sproutboat}
+env_value() { [ -f "$1" ] && sed -n "s/^$2=//p" "$1" | tail -1 || true; }
+PROXY=${SB_PROXY:-$(env_value "$ETC/install.env" SB_PROXY)}; PROXY=${PROXY:-caddy}
+BIND=${SB_BIND_HOST:-$(env_value "$ETC/install.env" SB_BIND_HOST)}
+# Where this box reaches control and the edge: loopback, unless they are bound to one address.
+case "$BIND" in
+  ''|0.0.0.0) HOST=127.0.0.1 ;;
+  ::) HOST="[::1]" ;;
+  *:*) HOST="[$BIND]" ;;
+  *) HOST=$BIND ;;
+esac
+CONTROL_URL=${SB_HEALTH_CONTROL_URL:-http://$HOST:8787}
+EDGE_URL=${SB_HEALTH_EDGE_URL:-http://$HOST:8080}
 EGRESS_URL=${SB_HEALTH_EGRESS_URL:-http://127.0.0.1:8070}
 CADDY_URL=${SB_HEALTH_CADDY_URL:-http://127.0.0.1:80}
 TIMEOUT=${SB_HEALTH_TIMEOUT:-45}
 INTERVAL=${SB_HEALTH_INTERVAL:-1}
-UNITS=(sproutboat-control sproutboat-egress sproutboat-edge caddy)
+UNITS=(sproutboat-control sproutboat-egress sproutboat-edge)
+[ "$PROXY" = external ] || UNITS+=(caddy)
 JSON=0
 
 die() { printf 'sb-health: %s\n' "$*" >&2; exit 2; }
@@ -36,7 +53,7 @@ while [ $# -gt 0 ]; do
   case "$1" in
     --json) JSON=1; shift ;;
     --timeout) [ $# -ge 2 ] || die "--timeout needs seconds"; TIMEOUT=$2; shift 2 ;;
-    -h|--help) sed -n '2,22p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    -h|--help) sed -n '2,30p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
     *) die "usage: sb-health [--json] [--timeout SECONDS]" ;;
   esac
 done
@@ -59,7 +76,7 @@ run_checks() {
   for u in "${UNITS[@]}"; do
     "$SYSTEMCTL" is-active --quiet "$u" 2>/dev/null || bad="$bad $u"
   done
-  if [ -z "$bad" ]; then record units ok "all four units are active"; else record units fail "not active:$bad"; fi
+  if [ -z "$bad" ]; then record units ok "all ${#UNITS[@]} units are active"; else record units fail "not active:$bad"; fi
 
   body=$(curl -fsS -m 3 "$CONTROL_URL/internal/health" 2>/dev/null || true)
   case "$body" in
@@ -76,6 +93,7 @@ run_checks() {
     *) record egress fail "$EGRESS_URL/ did not answer" ;;
   esac
 
+  [ "$PROXY" = external ] && return 0
   code=$(http_code "$CADDY_URL/")
   case "$code" in
     [1-5][0-9][0-9]) record caddy ok "$CADDY_URL/ answered $code" ;;

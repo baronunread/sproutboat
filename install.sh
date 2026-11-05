@@ -15,6 +15,24 @@
 # SB_CF_TOKEN — optional, only to use DNS-01 (inbound :80 blocked).
 # SB_SKIP_DNS_CHECK=1 — don't wait for DNS to resolve.
 #
+# Install mode (see docs/homelab.md). Flags: --homelab, --public (same as SB_MODE).
+# The choices are kept in /etc/sproutboat/install.env, so `sbctl update` keeps them;
+# an environment variable overrides the file. Defaults depend on the mode.
+#   SB_MODE=public|homelab     public (default): a VPS with Caddy as the public listener.
+#                              homelab: behind your own proxy, on a LAN or over Tailscale.
+#   SB_PROXY=caddy|external    caddy (public default) installs and manages Caddy. external
+#                              (homelab default) installs no Caddy: control serves the
+#                              dashboard and you point your own proxy at 8787 and 8080.
+#   SB_FIREWALL=ufw|off        ufw (public default) takes over ufw (deny inbound, allow
+#                              SB_SSH_PORT, 80, 443). off (homelab default) leaves it alone.
+#   SB_SSH_PORT=22             the SSH port ufw keeps open.
+#   SB_SCHEME=https|http       the scheme of the public URLs. http needs SB_PROXY=external.
+#   SB_BIND_HOST=127.0.0.1     where control and the edge listen. Anything but loopback
+#                              needs homelab mode and relaxes the edge's egress isolation
+#                              to SB_BIND_ALLOW (space-separated CIDRs; default: the private,
+#                              CGNAT, link-local and ULA ranges). See docs/homelab.md.
+#   SB_ACME_STAGING=1          Let's Encrypt staging (kept across updates; 0 turns it off).
+#
 # By default this installs the newest released version (the highest `v*` tag).
 # The Rust edge and egress binaries are fetched from the GitHub Release of that tag;
 # SB_ENGINE_DIR=<dir> installs a local build instead, SB_EDGE / SB_EGRESS (rust|bun) pick
@@ -207,6 +225,14 @@ SKIP_SERVICES=${SB_SKIP_SERVICES:-0}
 [ "$(id -u)" = 0 ] || die "run as root (sudo ./install.sh)"
 [ "$(uname -s)" = Linux ] || die "Linux only"
 
+# --homelab / --public set SB_MODE (--uninstall is handled below; --upgrade is ignored).
+for __a in "$@"; do
+  case "$__a" in
+    --homelab) SB_MODE=homelab ;;
+    --public) SB_MODE=public ;;
+  esac
+done
+
 # --- uninstall: `install.sh --uninstall [--keep-state]` -------------------
 if [ "${1:-}" = --uninstall ]; then
   KEEP_STATE=0; [ "${2:-}" = --keep-state ] && KEEP_STATE=1
@@ -223,7 +249,8 @@ if [ "${1:-}" = --uninstall ]; then
   rm -f /etc/systemd/system/sproutboat-control.service /etc/systemd/system/sproutboat-edge.service \
         /etc/systemd/system/sproutboat-egress.service \
         /etc/systemd/system/sproutboat-backup.service /etc/systemd/system/sproutboat-backup.timer
-  rm -rf /etc/systemd/system/sproutboat-edge.service.d /etc/systemd/system/sproutboat-egress.service.d /etc/systemd/system/caddy.service.d
+  rm -rf /etc/systemd/system/sproutboat-control.service.d /etc/systemd/system/sproutboat-edge.service.d \
+       /etc/systemd/system/sproutboat-egress.service.d /etc/systemd/system/caddy.service.d
   # only remove caddy.service if this installer created it (has our marker path)
   grep -q "$CADDY_BIN" /etc/systemd/system/caddy.service 2>/dev/null && rm -f /etc/systemd/system/caddy.service
   systemctl daemon-reload
@@ -232,12 +259,14 @@ if [ "${1:-}" = --uninstall ]; then
   rm -f /usr/local/lib/sproutboat/backup-stage /usr/local/lib/sproutboat/health /usr/local/lib/sproutboat/rollback
   rm -rf /opt/sproutboat-prev
   # /etc/sproutboat holds caddy.d (operator drop-ins) and goes even with --keep-state: copy it first.
-  rm -rf "$ROOT" /usr/local/lib/sproutboat /opt/sproutboat-src /etc/sproutboat /etc/caddy
+  # /etc/caddy is the operator's own on an SB_PROXY=external install: only remove ours.
+  [ "$(sed -n 's/^SB_PROXY=//p' "$ETC/install.env" 2>/dev/null | head -1)" = external ] || rm -rf /etc/caddy
+  rm -rf "$ROOT" /usr/local/lib/sproutboat /opt/sproutboat-src /etc/sproutboat
   [ "$KEEP_STATE" = 1 ] || rm -rf "$STATE"
   for u in sproutboat-control sproutboat-edge; do id "$u" >/dev/null 2>&1 && userdel "$u" || true; done
   getent group sproutboat >/dev/null && groupdel sproutboat 2>/dev/null || true
   ok "removed"
-  note "firewall rules for 22/80/443 were left in place — 'ufw delete allow 80/tcp' etc. to drop them"
+  note "firewall rules (if the installer managed ufw) were left in place: 'ufw delete allow 80/tcp' etc. to drop them"
   exit 0
 fi
 
@@ -289,19 +318,120 @@ val_env() { [ -f "$1" ] || return 0; sed -n "s/^$2=//p" "$1" | head -1; }
 SB_DOMAIN=${SB_DOMAIN:-$(val_env "$ETC/sproutboat.env" SPROUTBOAT_DEPLOYMENT_DOMAIN)}
 SB_ADMIN=${SB_ADMIN:-$(val_env "$ETC/control.env" SPROUTBOAT_BOOTSTRAP_USERNAME)}
 SB_ACME_EMAIL=${SB_ACME_EMAIL:-$(val_env "$ETC/caddy.env" ACME_EMAIL)}
+# No Caddy on an SB_PROXY=external install: the admin email lives in control.env.
+SB_ACME_EMAIL=${SB_ACME_EMAIL:-$(val_env "$ETC/control.env" SPROUTBOAT_ADMIN_EMAILS)}
+
+# --- install mode: public VPS or homelab ----------------------------------------
+# The choices live in $ETC/install.env (no secrets). Environment variables override
+# the file; a box with no file is a public install. Written below, backfilled here.
+valid_ip() { # IPv4 dotted quad, or IPv6 (hex digits and colons)
+  local ip=$1 o
+  case "$ip" in
+    *:*) [[ "$ip" =~ ^[0-9a-fA-F:]+$ ]] && [[ "$ip" == *:* ]]; return ;;
+    *.*.*.*) ;;
+    *) return 1 ;;
+  esac
+  [[ "$ip" =~ ^[0-9]+(\.[0-9]+){3}$ ]] || return 1
+  local IFS=.
+  for o in $ip; do [ "$o" -le 255 ] || return 1; done
+}
+valid_cidr() { # address/prefix
+  local addr=${1%%/*} len=${1#*/} max=32
+  [ "$addr" != "$1" ] || return 1
+  valid_ip "$addr" || return 1
+  case "$addr" in *:*) max=128 ;; esac
+  [[ "$len" =~ ^[0-9]{1,3}$ ]] && [ "$len" -le "$max" ]
+}
+# resolve_mode_defaults: validate SB_MODE, SB_PROXY, SB_FIREWALL, SB_SSH_PORT, SB_SCHEME,
+# SB_BIND_HOST, SB_BIND_ALLOW and SB_ACME_STAGING from the environment, fill in the
+# defaults for the mode, and print the result as shell assignments (for eval).
+resolve_mode_defaults() {
+  local mode=${SB_MODE:-public} proxy=${SB_PROXY:-} firewall=${SB_FIREWALL:-} scheme=${SB_SCHEME:-https}
+  local bind=${SB_BIND_HOST:-127.0.0.1} ssh=${SB_SSH_PORT:-22} staging=${SB_ACME_STAGING:-0} c
+  local allow=${SB_BIND_ALLOW:-10.0.0.0/8 172.16.0.0/12 192.168.0.0/16 100.64.0.0/10 169.254.0.0/16 fc00::/7 fe80::/10}
+  case "$mode" in public|homelab) ;; *) die "SB_MODE must be public or homelab, got '$mode'" ;; esac
+  if [ -z "$proxy" ]; then if [ "$mode" = homelab ]; then proxy=external; else proxy=caddy; fi; fi
+  if [ -z "$firewall" ]; then if [ "$mode" = homelab ]; then firewall=off; else firewall=ufw; fi; fi
+  case "$proxy" in caddy|external) ;; *) die "SB_PROXY must be caddy or external, got '$proxy'" ;; esac
+  case "$firewall" in ufw|off) ;; *) die "SB_FIREWALL must be ufw or off, got '$firewall'" ;; esac
+  case "$scheme" in https|http) ;; *) die "SB_SCHEME must be https or http, got '$scheme'" ;; esac
+  if [ "$scheme" = http ] && [ "$proxy" != external ]; then
+    die "SB_SCHEME=http needs SB_PROXY=external: the bundled Caddy always serves HTTPS"
+  fi
+  case "$staging" in 0|1) ;; *) die "SB_ACME_STAGING must be 0 or 1, got '$staging'" ;; esac
+  [[ "$ssh" =~ ^[0-9]{1,5}$ ]] && [ "$ssh" -ge 1 ] && [ "$ssh" -le 65535 ] || die "SB_SSH_PORT must be a port number, got '$ssh'"
+  valid_ip "$bind" || die "SB_BIND_HOST must be an IP address (127.0.0.1, 0.0.0.0, a LAN address), got '$bind'"
+  case "$bind" in
+    127.*|::1) ;;
+    *) [ "$mode" = homelab ] || die "SB_BIND_HOST=$bind is only accepted in homelab mode (a public install keeps control and the edge on loopback)" ;;
+  esac
+  [ -n "$allow" ] || die "SB_BIND_ALLOW must list at least one CIDR"
+  for c in $allow; do valid_cidr "$c" || die "SB_BIND_ALLOW entry '$c' is not a CIDR (for example 192.168.0.0/16)"; done
+  printf 'SB_MODE=%q\nSB_PROXY=%q\nSB_FIREWALL=%q\nSB_SSH_PORT=%q\nSB_SCHEME=%q\nSB_BIND_HOST=%q\nSB_BIND_ALLOW=%q\nSB_ACME_STAGING=%q\n' \
+    "$mode" "$proxy" "$firewall" "$ssh" "$scheme" "$bind" "$allow" "$staging"
+}
+# bind_dropins UNIT HOST ALLOW: the text of the 20-sproutboat-bind.conf drop-in for
+# control or edge. Prints nothing for a loopback bind (the unit's own default).
+bind_dropins() {
+  local unit=$1 host=$2 allow=$3 c
+  case "$host" in 127.*|::1|'') return 0 ;; esac
+  printf '%s\n' "# Generated by install.sh and rewritten on every install and update; do not edit." \
+    "# Set by SB_BIND_HOST in /etc/sproutboat/install.env (homelab mode)." \
+    "[Service]" \
+    "Environment=SPROUTBOAT_BIND_HOST=$host"
+  [ "$unit" = edge ] || return 0
+  printf '%s\n' "# WARNING: the edge unit denies all IP traffic except loopback (IPAddressDeny=any)," \
+    "# which is what keeps sprouts off the host network. These ranges are now open to" \
+    "# the edge AND to every sprout it runs, in both directions. Prefer a loopback bind" \
+    "# and let your proxy be the LAN listener (docs/homelab.md)."
+  for c in $allow; do printf 'IPAddressAllow=%s\n' "$c"; done
+}
+# url_host ADDR: the host part of a URL that reaches a service bound to ADDR from this box.
+url_host() {
+  case "$1" in
+    0.0.0.0|'') echo 127.0.0.1 ;;
+    ::) echo '[::1]' ;;
+    *:*) echo "[$1]" ;;
+    *) echo "$1" ;;
+  esac
+}
+
+SB_MODE_EXPLICIT=${SB_MODE:-}
+INSTALL_ENV=$ETC/install.env
+if [ -f "$INSTALL_ENV" ]; then
+  # Same mode as before (or none named): keep the saved choices. Naming a different
+  # mode starts from that mode's defaults instead of the old mode's leftovers.
+  if [ -z "$SB_MODE_EXPLICIT" ] || [ "$SB_MODE_EXPLICIT" = "$(val_env "$INSTALL_ENV" SB_MODE)" ]; then
+    for _k in SB_MODE SB_PROXY SB_FIREWALL SB_SSH_PORT SB_SCHEME SB_BIND_HOST SB_BIND_ALLOW SB_ACME_STAGING; do
+      [ -n "${!_k:-}" ] || printf -v "$_k" '%s' "$(val_env "$INSTALL_ENV" "$_k")"
+    done
+  fi
+elif [ -z "$SB_MODE_EXPLICIT" ] && [ "${SB_UPDATE:-0}" != 1 ] && [ -n "$PROMPT_TTY" ]; then
+  say "Install mode"
+  note "public: a VPS, Caddy serves 80/443 and manages certificates, ufw is configured"
+  note "homelab: behind your own proxy, on a LAN or over Tailscale; no Caddy, no ufw changes"
+  ask SB_MODE "Install mode (public/homelab)" public
+fi
+resolved_mode=$(resolve_mode_defaults)
+eval "$resolved_mode"
+# A Cloudflare token given on an earlier run lives in caddy.env; keep using it.
+[ "$SB_PROXY" != caddy ] || SB_CF_TOKEN=${SB_CF_TOKEN:-$(val_env "$ETC/caddy.env" CLOUDFLARE_API_TOKEN)}
 
 say "Configuration"
 ask SB_DOMAIN     "Deployment domain, e.g. fn.example.com (must be one you control)"
 [[ "$SB_DOMAIN" =~ ^([a-z0-9]([a-z0-9-]*[a-z0-9])?\.)+[a-z]{2,}$ ]] || die "not a valid domain: $SB_DOMAIN"
-ask SB_ACME_EMAIL "Email for Let's Encrypt (cert expiry notices)"
+if [ "$SB_PROXY" = caddy ]; then ask SB_ACME_EMAIL "Email for Let's Encrypt (cert expiry notices)"
+else ask SB_ACME_EMAIL "Admin email (you sign in to the dashboard with it)"; fi
 ask SB_ADMIN      "Admin username (3-32 lowercase a-z 0-9 -)" "$(echo "${SUDO_USER:-admin}" | tr -cd 'a-z0-9-' | cut -c1-32)"
 [[ "$SB_ADMIN" =~ ^[a-z0-9]([a-z0-9-]{1,30}[a-z0-9])?$ ]] || die "invalid admin username: $SB_ADMIN"
 note "domain $SB_DOMAIN · acme $SB_ACME_EMAIL · admin $SB_ADMIN"
+note "mode $SB_MODE · proxy $SB_PROXY · firewall $SB_FIREWALL · scheme $SB_SCHEME · bind $SB_BIND_HOST"
 # The dashboard ships with every install. GitHub sign-in is opt-in via env; the
 # admin always signs in with the bootstrap token.
 SB_GITHUB_CLIENT_ID=${SB_GITHUB_CLIENT_ID:-}
 SB_GITHUB_CLIENT_SECRET=${SB_GITHUB_CLIENT_SECRET:-}
-DASH_URL="https://dashboard.$SB_DOMAIN"
+DASH_URL="$SB_SCHEME://dashboard.$SB_DOMAIN"
+CONTROL_URL="$SB_SCHEME://control.$SB_DOMAIN"
 
 # Reuse secrets across re-runs so an existing CLI login / session keeps working.
 ADMIN_TOKEN=$(val_env "$ETC/control.env" SPROUTBOAT_BOOTSTRAP_TOKEN)
@@ -330,9 +460,11 @@ say "Installing host packages"
 if [ "$PKG" = apt ]; then
   export DEBIAN_FRONTEND=noninteractive
   apt-get update -qq
-  apt-get install -y -qq ca-certificates curl git patch rsync bubblewrap ufw unzip dnsutils logrotate
+  apt-get install -y -qq ca-certificates curl git patch rsync bubblewrap unzip dnsutils logrotate
+  [ "$SB_FIREWALL" != ufw ] || apt-get install -y -qq ufw
 else
-  dnf install -y -q ca-certificates curl git patch rsync bubblewrap ufw unzip bind-utils logrotate
+  dnf install -y -q ca-certificates curl git patch rsync bubblewrap unzip bind-utils logrotate
+  [ "$SB_FIREWALL" != ufw ] || dnf install -y -q ufw
 fi
 
 # --- firewall: default-deny, only SSH + Caddy -----------------------------
@@ -352,11 +484,14 @@ done
 
 if [ "$SKIP_SERVICES" = 1 ]; then
   say "Firewall — skipped (SB_SKIP_SERVICES)"
+elif [ "$SB_FIREWALL" != ufw ]; then
+  say "Firewall: not managed (SB_FIREWALL=off)"
+  note "ufw is left as it is; make sure your own rules cover the ports your proxy and clients use"
 else
-  say "Configuring firewall (deny inbound except 22/80/443)"
+  say "Configuring firewall (deny inbound except $SB_SSH_PORT/80/443)"
   ufw --force default deny incoming >/dev/null
   ufw --force default allow outgoing >/dev/null
-  for p in 22 80 443; do ufw allow "$p"/tcp >/dev/null; done
+  for p in "$SB_SSH_PORT" 80 443; do ufw allow "$p"/tcp >/dev/null; done
   ufw --force enable >/dev/null
 fi
 
@@ -537,7 +672,7 @@ install_engines() {
 engines_healthy() {
   local deadline=$((SECONDS + $1))
   while [ "$SECONDS" -lt "$deadline" ]; do
-    if curl -s -o /dev/null -m 2 -H 'Host: 127.0.0.1' http://127.0.0.1:8080/__sb/pool \
+    if curl -s -o /dev/null -m 2 -H 'Host: 127.0.0.1' "http://$(url_host "$SB_BIND_HOST"):8080/__sb/pool" \
       && curl -s -o /dev/null -m 2 http://127.0.0.1:8070/; then return 0; fi
     sleep 1
   done
@@ -567,7 +702,12 @@ note "engines: edge=$ENGINE_EDGE egress=$ENGINE_EGRESS"
 CADDY_HAVE=
 [ -x "$CADDY_BIN" ] && CADDY_HAVE=$("$CADDY_BIN" version 2>/dev/null | head -1 || true)
 CADDY_REPLACED=0
-if [ -n "${SB_CF_TOKEN:-}" ]; then
+if [ "$SB_PROXY" = external ]; then
+  say "Caddy: skipped (SB_PROXY=external)"
+  if [ -x "$CADDY_BIN" ] || [ -f /etc/caddy/Caddyfile ]; then
+    note "a Caddy from an earlier install is left alone; this installer no longer manages or restarts it"
+  fi
+elif [ -n "${SB_CF_TOKEN:-}" ]; then
   if [ ! -x "$CADDY_BIN" ] || ! "$CADDY_BIN" list-modules 2>/dev/null | grep -q dns.providers.cloudflare; then
     say "Downloading Caddy + caddy-dns/cloudflare"
     warn "This Caddy build is not checksum-verified (the caddyserver.com build API builds on demand and is not pinned to v$CADDY_VERSION)."
@@ -628,9 +768,28 @@ fi
 chown root:sproutboat "$BACKUP_KEY_FILE"; chmod 0640 "$BACKUP_KEY_FILE"
 
 # --- write env BEFORE starting services -----------------------------
-say "Writing $ETC/{sproutboat,control}.env"
+say "Writing $ETC/{install,sproutboat,control}.env"
+# install.env holds the mode choices (no secrets) so `sbctl update` keeps them.
+{
+  echo "# Written by install.sh; kept across updates. Environment variables override it on a re-run."
+  echo "# No secrets here. See docs/homelab.md."
+  echo "SB_MODE=$SB_MODE"
+  echo "SB_PROXY=$SB_PROXY"
+  echo "SB_FIREWALL=$SB_FIREWALL"
+  echo "SB_SSH_PORT=$SB_SSH_PORT"
+  echo "SB_SCHEME=$SB_SCHEME"
+  echo "SB_BIND_HOST=$SB_BIND_HOST"
+  echo "SB_BIND_ALLOW=$SB_BIND_ALLOW"
+  echo "SB_ACME_STAGING=$SB_ACME_STAGING"
+} > "$INSTALL_ENV"
+chown root:root "$INSTALL_ENV"; chmod 0644 "$INSTALL_ENV"
 umask 077
-printf 'SPROUTBOAT_DEPLOYMENT_DOMAIN=%s\nSPROUTBOAT_DASHBOARD_URL=%s\n' "$SB_DOMAIN" "$DASH_URL" > "$ETC/sproutboat.env"
+{
+  echo "SPROUTBOAT_DEPLOYMENT_DOMAIN=$SB_DOMAIN"
+  echo "SPROUTBOAT_DASHBOARD_URL=$DASH_URL"
+  # No Caddy to serve the dashboard files: control serves the built SPA itself.
+  [ "$SB_PROXY" != external ] || echo "SPROUTBOAT_DASHBOARD_DIR=$ROOT/apps/web/dist/client"
+} > "$ETC/sproutboat.env"
 chown root:sproutboat "$ETC/sproutboat.env"; chmod 0640 "$ETC/sproutboat.env"
 {
   echo "SPROUTBOAT_DATABASE_PATH=$STATE/sproutboat.sqlite"
@@ -660,20 +819,23 @@ EGRESS_ALLOW=$(val_env "$ETC/egress.env" SB_EGRESS_ALLOW)
 } > "$ETC/egress.env"
 chmod 0600 "$ETC/egress.env"
 
+if [ "$SB_PROXY" = caddy ]; then
 {
   echo "ACME_EMAIL=$SB_ACME_EMAIL"
   [ -n "${SB_CF_TOKEN:-}" ] && echo "CLOUDFLARE_API_TOKEN=$SB_CF_TOKEN"
 } > "$ETC/caddy.env"
 chmod 0640 "$ETC/caddy.env"
+fi
 umask 022
 
+if [ "$SB_PROXY" = caddy ]; then
 say "Generating /etc/caddy/Caddyfile for $SB_DOMAIN"
 install -d /etc/caddy
 acme_line=""
 [ -n "${SB_CF_TOKEN:-}" ] && acme_line=$'\n\tacme_dns cloudflare {env.CLOUDFLARE_API_TOKEN}'
 # SB_ACME_STAGING=1 -> Let's Encrypt staging (untrusted certs, no rate limit) for
-# a first shakeout. Remove it and `systemctl reload caddy` to switch to prod.
-[ "${SB_ACME_STAGING:-0}" = 1 ] && acme_line="$acme_line"$'\n\tacme_ca https://acme-staging-v02.api.letsencrypt.org/directory'
+# a first shakeout; kept in install.env. Re-run with SB_ACME_STAGING=0 to switch to prod.
+[ "$SB_ACME_STAGING" = 1 ] && acme_line="$acme_line"$'\n\tacme_ca https://acme-staging-v02.api.letsencrypt.org/directory'
 {
   cat <<EOF
 {
@@ -751,14 +913,27 @@ if ! caddy_err=$(ACME_EMAIL="$SB_ACME_EMAIL" CLOUDFLARE_API_TOKEN="${SB_CF_TOKEN
   die "Caddy config failed validation (the live /etc/caddy/Caddyfile is unchanged). A file in /etc/sproutboat/caddy.d is probably at fault; fix or remove it and re-run."
 fi
 mv /etc/caddy/Caddyfile.new /etc/caddy/Caddyfile
+fi
 
 for f in routes.json deployments.json; do
   [ -s "$STATE/$f" ] || { printf '[]\n' > "$STATE/$f"; chown sproutboat-control:sproutboat "$STATE/$f"; chmod 0640 "$STATE/$f"; }
 done
 
 # --- DNS: guide the one record, then wait for it to resolve here --------
-PUBLIC_IP=$(curl -fsS4 -m 5 https://api.ipify.org 2>/dev/null || true)
-say "Add ONE DNS record, then Caddy can issue TLS certificates"
+PUBLIC_IP=
+[ "$SB_MODE" = homelab ] || PUBLIC_IP=$(curl -fsS4 -m 5 https://api.ipify.org 2>/dev/null || true)
+if [ "$SB_MODE" = homelab ]; then
+  # Never look up a public address and never wait: the box is not necessarily public.
+  say "Add ONE DNS record"
+  rule
+  note "Name   *.$SB_DOMAIN     (a wildcard)"
+  note "Value  this box's LAN or tailnet address (or the address of your proxy)"
+  rule
+  note "Covers control.$SB_DOMAIN, dashboard.$SB_DOMAIN, and every"
+  note "<project>.$SB_ADMIN.$SB_DOMAIN deployment. Local DNS (Pi-hole, dnsmasq) or split DNS is fine."
+else
+if [ "$SB_PROXY" = caddy ]; then say "Add ONE DNS record, then Caddy can issue TLS certificates"
+else say "Add ONE DNS record"; fi
 rule
 note "Type   A"
 note "Name   *.$SB_DOMAIN     (a wildcard — the name is literally  *  )"
@@ -779,9 +954,11 @@ else
     if read -r -t 5 -n 1 -s _k < "$PROMPT_TTY"; then warn "skipped the DNS wait"; break; fi
   done
 fi
+fi
 
 # --- systemd -------------------------------------------------------
 say "Installing systemd units"
+if [ "$SB_PROXY" = caddy ]; then
 install -d -m 0755 /etc/systemd/system/caddy.service.d
 cat > /etc/systemd/system/caddy.service.d/sproutboat.conf <<EOF
 [Service]
@@ -804,6 +981,7 @@ Restart=on-failure
 [Install]
 WantedBy=multi-user.target
 EOF
+fi
 EDGE_MAX_MIB=$(edge_memory_max_mib)
 EDGE_HIGH_MIB=$(( EDGE_MAX_MIB * 85 / 100 ))
 install -d -m 0755 /etc/systemd/system/sproutboat-edge.service.d
@@ -817,6 +995,21 @@ MemoryMax=${EDGE_MAX_MIB}M
 MemoryHigh=${EDGE_HIGH_MIB}M
 EOF
 ok "edge memory cap ${EDGE_MAX_MIB}M (high ${EDGE_HIGH_MIB}M)"
+# Where control and the edge listen (homelab mode may widen it). Rewritten every time;
+# a loopback bind removes the drop-in and the unit's own 127.0.0.1 applies.
+for u in control edge; do
+  bind_d=/etc/systemd/system/sproutboat-$u.service.d
+  bind_text=$(bind_dropins "$u" "$SB_BIND_HOST" "$SB_BIND_ALLOW")
+  if [ -n "$bind_text" ]; then
+    install -d -m 0755 "$bind_d"
+    printf '%s\n' "$bind_text" > "$bind_d/20-sproutboat-bind.conf"
+  else
+    rm -f "$bind_d/20-sproutboat-bind.conf"
+  fi
+done
+if [ "$SB_BIND_HOST" != 127.0.0.1 ]; then
+  warn "control and the edge listen on $SB_BIND_HOST (SB_BIND_HOST). The edge may now reach $SB_BIND_ALLOW, and so can every sprout. See docs/homelab.md."
+fi
 for u in sproutboat-control sproutboat-edge sproutboat-egress; do
   install -m 0644 "$ROOT/infra/systemd/$u.service" "/etc/systemd/system/$u.service"
 done
@@ -876,11 +1069,15 @@ else
   # one alone. An upgrade has just replaced the source beneath active Bun
   # processes, so explicitly restart them or they keep running the old code.
   say "Starting services"
-  units=(sproutboat-control sproutboat-egress sproutboat-edge caddy sproutboat-backup.timer)
-  systemctl enable sproutboat-control sproutboat-egress sproutboat-edge caddy sproutboat-backup.timer >/dev/null 2>&1
+  units=(sproutboat-control sproutboat-egress sproutboat-edge)
+  [ "$SB_PROXY" != caddy ] || units+=(caddy)
+  units+=(sproutboat-backup.timer)
+  systemctl enable "${units[@]}" >/dev/null 2>&1
   systemctl restart sproutboat-control sproutboat-egress sproutboat-edge
   # A replaced binary needs a real restart; a reload keeps running the old one.
-  if [ "$CADDY_REPLACED" = 1 ]; then systemctl restart caddy; else systemctl reload-or-restart caddy; fi
+  if [ "$SB_PROXY" = caddy ]; then
+    if [ "$CADDY_REPLACED" = 1 ]; then systemctl restart caddy; else systemctl reload-or-restart caddy; fi
+  fi
   systemctl start sproutboat-backup.timer
   if [ "$SAFE_UPDATE" = 1 ]; then
     # The gate replaces the per-unit lines: it checks the units and the HTTP
@@ -900,7 +1097,7 @@ else
   if [ "${SB_UPDATE:-0}" != 1 ] && { [ "$ENGINE_EDGE" = rust ] || [ "$ENGINE_EGRESS" = rust ]; }; then
     say "Checking the Rust engines"
     if engines_healthy 20; then
-      ok "edge answers on 127.0.0.1:8080, egress on 127.0.0.1:8070"
+      ok "edge answers on $(url_host "$SB_BIND_HOST"):8080, egress on 127.0.0.1:8070"
     else
       warn "THE RUST ENGINES DID NOT ANSWER within 20 s: switching edge and egress to the Bun engines"
       warn "see: journalctl -u sproutboat-edge -u sproutboat-egress; retry later with 'sudo sbctl engine rust'"
@@ -935,7 +1132,7 @@ if [ "$SKIP_SERVICES" != 1 ]; then
 fi
 
 # Keep the token retrievable — the SSH scrollback is not a safe home for it.
-printf 'SPROUTBOAT_API_URL=https://control.%s\nSPROUTBOAT_TOKEN=%s\n' "$SB_DOMAIN" "$ADMIN_TOKEN" > /root/sproutboat-admin.env
+printf 'SPROUTBOAT_API_URL=%s\nSPROUTBOAT_TOKEN=%s\n' "$CONTROL_URL" "$ADMIN_TOKEN" > /root/sproutboat-admin.env
 chmod 0600 /root/sproutboat-admin.env
 UPDATE_COMMIT=${SB_UPDATE_COMMIT:-$(git -C "$SRC" rev-parse HEAD 2>/dev/null || true)}
 UPDATE_COMMIT=${UPDATE_COMMIT:-unknown}
@@ -956,9 +1153,25 @@ if [ "$TOKEN_IS_NEW" = 1 ]; then
 else
   note "admin credentials unchanged; token remains in /root/sproutboat-admin.env"
 fi
-printf '    SPROUTBOAT_API_URL  %shttps://control.%s%s\n' "$C_HEAD" "$SB_DOMAIN" "$C_0"
+printf '    SPROUTBOAT_API_URL  %s%s%s\n' "$C_HEAD" "$CONTROL_URL" "$C_0"
 [ "$TOKEN_IS_NEW" = 1 ] && printf '    SPROUTBOAT_TOKEN    %s%s%s\n' "$C_HEAD" "$ADMIN_TOKEN" "$C_0"
 rule
+
+if [ "$SB_PROXY" = external ]; then
+  up_host=$(url_host "$SB_BIND_HOST")
+  case "$SB_BIND_HOST" in 0.0.0.0|::) up_host="<this box's address>" ;; esac
+  say "Point your reverse proxy here (mode $SB_MODE, proxy external)"
+  rule
+  note "control.$SB_DOMAIN       -> http://$up_host:8787"
+  note "dashboard.$SB_DOMAIN     -> http://$up_host:8787   (control serves the dashboard too)"
+  note "*.$SB_ADMIN.$SB_DOMAIN   -> http://$up_host:8080   (the edge; add each custom domain here too)"
+  rule
+  note "The proxy must forward the Host header unchanged (the edge routes on it) and"
+  note "should set X-Forwarded-Proto. Recipes for nginx, Traefik, Caddy, LAN and Tailscale: docs/homelab.md"
+  if [ "$SB_BIND_HOST" != 127.0.0.1 ]; then
+    warn "SB_BIND_HOST=$SB_BIND_HOST: the edge and every sprout can reach $SB_BIND_ALLOW. A loopback bind plus a proxy on this box avoids that."
+  fi
+fi
 
 say "Dashboard  $DASH_URL"
 note "sign in with email $SB_ACME_EMAIL and the admin token as the password"
@@ -967,7 +1180,7 @@ if [ -n "$SB_GITHUB_CLIENT_ID" ] && [ -n "$SB_GITHUB_CLIENT_SECRET" ]; then
 fi
 
 say "Deploy from your workstation"
-note "npx sproutboat login --api-url https://control.$SB_DOMAIN --token <token>"
+note "npx sproutboat login --api-url $CONTROL_URL --token <token>"
 note "sproutboat init hello && cd hello && sproutboat deploy"
 
 if [ -n "$PRE_UPDATE_BACKUP" ]; then
@@ -980,7 +1193,8 @@ fi
 
 say "Operate  (sudo sbctl <cmd>)"
 note "sbctl status            health of every unit"
-note "sbctl logs [control|edge|caddy]   follow logs"
+if [ "$SB_PROXY" = caddy ]; then note "sbctl logs [control|edge|caddy]   follow logs"; else note "sbctl logs [control|edge]   follow logs"; fi
+note "sbctl mode              show the install mode (install.env)"
 note "sbctl down / sbctl up   pause / resume everything"
 note "sbctl engine [rust|bun] show or switch the edge and egress engines (now: edge=$ENGINE_EDGE egress=$ENGINE_EGRESS)"
 note "sbctl update [--check]  stage a fresh release, then run its installer (--check: show what would change)"
