@@ -266,6 +266,9 @@ describe("Phase A contracts", () => {
     expect(order.every((i) => i > 0)).toBe(true);
     expect(order).toEqual(order.toSorted((a, b) => a - b));
     expect(sbctl).toContain('chmod 0600 "$ETC/$rel"');
+    // Caddy drop-ins stay readable for a non-root caddy user.
+    expect(sbctl).toContain('caddy.d/*) install -d -m 0755 -o root -g root "$ETC/$(dirname "$rel")"');
+    expect(sbctl).toContain('caddy.d/*|README.caddy) chown root:root "$ETC/$rel"; chmod 0644 "$ETC/$rel"');
     expect(sbctl).toContain('"$STAGER" --print-caddy-dir');
     expect(sbctl).toContain("SPROUTBOAT_API_URL=https://control.%s");
   });

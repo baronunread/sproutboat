@@ -644,21 +644,19 @@ export type RestoreOptions = {
   skipConfig?: boolean;
 };
 
-/** Extract the named members (a `-T` list) so a huge member set can't hit the arg limit. */
-async function extractMembers(archive: string, key: Buffer | null, into: string, members: string[]): Promise<void> {
-  if (members.length === 0) return;
-  const listDir = await mkdtemp(join(tmpdir(), "sb-members-"));
-  try {
-    const list = join(listDir, "members");
-    await writeFile(list, members.join("\n") + "\n");
-    // GNU tar fails on the install's directories that another service user owns
-    // (it can't set their mode or times). Keep those as install.sh made them.
-    const flags = process.platform === "linux" ? ["--no-overwrite-dir"] : [];
-    const result = await tarRead(archive, key, ["-x", ...flags], ["-C", into, "-T", list]);
-    if (result.code !== 0) throw new Error(`tar failed: ${result.err || `exit ${result.code}`}`);
-  } finally {
-    await rm(listDir, { recursive: true, force: true });
-  }
+/**
+ * Extract whole top-level entries (`artifacts`, `routes.json`, ...) by name.
+ * A bare top-level name extracts the entry and everything under it on both GNU
+ * tar and bsdtar. Per-member names from a listing do not round-trip through
+ * `-T` on GNU tar, and `--exclude` anchoring differs between the two.
+ */
+async function extractTop(archive: string, key: Buffer | null, into: string, tops: string[]): Promise<void> {
+  if (tops.length === 0) return;
+  // GNU tar fails on the install's directories that another service user owns
+  // (it can't set their mode or times). Keep those as install.sh made them.
+  const flags = process.platform === "linux" ? ["--no-overwrite-dir"] : [];
+  const result = await tarRead(archive, key, ["-x", ...flags], ["-C", into, ...tops]);
+  if (result.code !== 0) throw new Error(`tar failed: ${result.err || `exit ${result.code}`}`);
 }
 
 /**
@@ -697,14 +695,15 @@ export async function restoreBackup(
       m.endsWith(".sqlite") ? sidecars.map((suffix) => rm(resolve(root, m + suffix), { force: true })) : [],
     ),
   );
-  await extractMembers(archive, key, root, stateMembers);
+  const topOf = (m: string) => m.replace(/^\.\//, "").split("/")[0]!;
+  await extractTop(archive, key, root, [...new Set(stateMembers.map(topOf))]);
   await shareBindingData(root, stateMembers);
   let extractedConfig: string | null = null;
   const configMembers = members.filter(isConfig);
   if (!skipConfig && configMembers.length > 0) {
     const target = configDir ? resolve(configDir) : await mkdtemp(join(tmpdir(), "sb-restore-config-"));
     await mkdir(target, { recursive: true, mode: 0o700 });
-    await extractMembers(archive, key, target, configMembers);
+    await extractTop(archive, key, target, ["config"]);
     extractedConfig = join(target, "config");
   }
   const warnings: string[] = [];

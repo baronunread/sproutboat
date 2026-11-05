@@ -66,9 +66,16 @@ apply_restored_config() {
   if [ -d "$cfg/etc/sproutboat" ]; then
     while IFS= read -r f; do
       rel=${f#"$cfg/etc/sproutboat/"}
-      install -d -m 0750 -o root -g sproutboat "$ETC/$(dirname "$rel")" || return 1
+      case "$rel" in
+        # Caddy reads its drop-ins itself, and may run as a non-root `caddy` user.
+        caddy.d/*) install -d -m 0755 -o root -g root "$ETC/$(dirname "$rel")" || return 1 ;;
+        *) install -d -m 0750 -o root -g sproutboat "$ETC/$(dirname "$rel")" || return 1 ;;
+      esac
       cp "$f" "$ETC/$rel" || return 1
-      chown root:root "$ETC/$rel"; chmod 0600 "$ETC/$rel"
+      case "$rel" in
+        caddy.d/*|README.caddy) chown root:root "$ETC/$rel"; chmod 0644 "$ETC/$rel" ;;
+        *) chown root:root "$ETC/$rel"; chmod 0600 "$ETC/$rel" ;;
+      esac
     done < <(find "$cfg/etc/sproutboat" -type f)
     for f in control.env sproutboat.env backup.key; do
       [ ! -e "$ETC/$f" ] || { chown root:sproutboat "$ETC/$f"; chmod 0640 "$ETC/$f"; }
