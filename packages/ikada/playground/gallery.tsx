@@ -1,5 +1,5 @@
 import { useId, useState } from "react";
-import type { CSSProperties, ReactNode } from "react";
+import type { CSSProperties } from "react";
 import { chartColors } from "../src/charts/theme";
 import { Sparkline } from "../src/charts/sparkline";
 import { TimeseriesChart } from "../src/charts/timeseries-chart";
@@ -48,12 +48,11 @@ import { Tabs, TabsList, TabsPanel, TabsTab } from "../src/components/tabs";
 import { toast } from "../src/components/toast";
 import { Tooltip } from "../src/components/tooltip";
 import { ToastLab } from "./toast-lab";
+import { DashboardSections } from "./dashboard";
+import { openState, Row, Section } from "./parts";
+export { openState };
 import { CheckIcon, CopyIcon } from "../src/lib/icons";
 import { clock, DEPLOY_HOUR, errors, p50, p99, requests } from "./data";
-
-const params = new URLSearchParams(location.search);
-/** ?open=menu|menu-checks|select|dialog|tooltip|popover|toast opens that state for screenshots. */
-export const openState = params.get("open");
 
 const regions = [
   { value: "iad", label: "Washington, D.C." },
@@ -68,30 +67,6 @@ const statuses: { status: Status; label: string }[] = [
   { status: "info", label: "Building" },
   { status: "neutral", label: "Stopped" },
 ];
-
-function Section({ title, hint, children }: { title: string; hint?: string; children: ReactNode }) {
-  const id = useId();
-  return (
-    <section className="flex flex-col gap-3" aria-labelledby={id}>
-      <div className="flex flex-col gap-0.5">
-        <h2 id={id} data-section={title} className="scroll-mt-16 text-md font-semibold">
-          {title}
-        </h2>
-        {hint ? <p className="text-sm text-fg-muted">{hint}</p> : null}
-      </div>
-      <div className="flex flex-col gap-5 rounded-xl bg-surface p-4 shadow-card sm:p-5">{children}</div>
-    </section>
-  );
-}
-
-function Row({ label, children }: { label: string; children: ReactNode }) {
-  return (
-    <div className="flex flex-col gap-2">
-      <span className="text-xs font-semibold text-fg-muted">{label}</span>
-      <div className="flex flex-wrap items-center gap-3">{children}</div>
-    </div>
-  );
-}
 
 const forcedFocus = "outline-solid outline-2 outline-offset-2 outline-focus";
 
@@ -584,7 +559,7 @@ function MotionSection() {
             <DropdownMenuItem>Two</DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
-        <Select options={regions} placeholder="Select" className="w-44" />
+        <Select options={regions} aria-label="Region" placeholder="Select" className="w-44" />
         <Popover>
           <PopoverTrigger render={<Button />}>Popover</PopoverTrigger>
           <PopoverContent>
@@ -636,6 +611,7 @@ export function Gallery() {
       <MiscSection />
       <ChartsSection />
       <MotionSection />
+      <DashboardSections />
     </div>
   );
 }
