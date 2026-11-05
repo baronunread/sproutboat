@@ -208,6 +208,37 @@ function copyVerified(from: string, to: string): void {
   renameSync(partial, to);
 }
 
+/**
+ * Whether an existing target already holds what the legacy entry holds. A target is made through a
+ * `.migrating` sibling, so one that exists is normally complete; this guards against anything else that
+ * put a name there (an empty directory, a stray file). An artifact is immutable, so its copy must match
+ * the legacy entry exactly; broker state and a sprout log may have been written to since, so only an
+ * empty one is known to hold nothing.
+ */
+function holdsCopy(entry: Entry, target: string): boolean {
+  const info = lstatSync(target, { throwIfNoEntry: false });
+  if (!info) return false;
+  if (entry.what === "artifact") {
+    try {
+      verifyCopy(entry.from, target);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+  return info.isDirectory() ? readdirSync(target).length > 0 : info.size > 0;
+}
+
+/** Targets still to make: missing ones, and ones that exist without holding a copy (those are discarded). */
+function missingTargets(entry: Entry, discard: boolean): string[] {
+  return entry.targets.filter((target) => {
+    if (!existsSync(target)) return true;
+    if (holdsCopy(entry, target)) return false;
+    if (discard) rmSync(target, { recursive: true, force: true });
+    return true;
+  });
+}
+
 /** Parent of a per-account artifact directory: `artifacts/<ownerDir>/`, owned like the artifacts root, 0750. */
 function ensureArtifactParent(paths: LayoutPaths, target: string): void {
   const parent = dirname(target);
@@ -285,7 +316,7 @@ export function pending(paths: LayoutPaths): Pending {
     return {
       rows: rows.filter((row) => row.sprout_path === legacySproutPath(paths, row.artifact_digest)),
       entries: planEntries(paths, rows).filter(
-        (entry) => existsSync(entry.from) && entry.targets.some((target) => !existsSync(target)),
+        (entry) => existsSync(entry.from) && missingTargets(entry, false).length > 0,
       ),
     };
   } finally {
@@ -309,9 +340,9 @@ export function migrate(paths: LayoutPaths, log: Log = console.log): Summary {
 
     // 1. Copies, each verified before it appears under its final name. The legacy entry is untouched.
     for (const entry of entries) {
-      const missing = entry.targets.filter((target) => !existsSync(target));
+      const missing = missingTargets(entry, true);
       if (missing.length === 0) {
-        log(`layout: kept legacy ${entry.what} ${entry.from}: every per-account copy already exists`);
+        log(`layout: kept legacy ${entry.what} ${entry.from}: every per-account copy already holds it`);
         continue;
       }
       for (const target of missing.slice(0, -1)) {
