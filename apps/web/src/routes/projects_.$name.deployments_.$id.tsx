@@ -1,19 +1,34 @@
-import { useCallback, useEffect, useRef, useState } from "react";
-import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import {
-  ConfirmButton,
-  Copy,
-  DataTable,
-  FILTER_BAR,
-  FORM_ACTIONS,
-  Panel,
-  PanelHeading,
-  SelectField,
-  Status,
-  StatusMessage,
-} from "../components";
+  Badge,
+  Banner,
+  Button,
+  CopyId,
+  DescriptionList,
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogTitle,
+  EmptyState,
+  Select,
+  Skeleton,
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+  buttonStyles,
+  formatBytes,
+  toast,
+} from "@sproutboat/ikada";
+import type { DescriptionItem } from "@sproutboat/ikada";
+import { createFileRoute, Link as RouterLink, useNavigate } from "@tanstack/react-router";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { mutate, relativeTime, useProject } from "../dashboard-data";
-import { buttonVariants } from "@/components/ui/button";
+import { Note, Section, fullTime } from "../project-ui";
+import { RollbackDialog } from "../rollback-dialog";
 
 export const Route = createFileRoute("/projects_/$name/deployments_/$id")({
   component: DeploymentDetail,
@@ -83,13 +98,14 @@ function DeploymentDetail() {
   const navigate = useNavigate();
   const [detail, setDetail] = useState<Detail>();
   const [state, setState] = useState<"loading" | "ready" | "missing" | "error">("loading");
+  const [rollback, setRollback] = useState(false);
+  const [removing, setRemoving] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 
   const base = `/api/projects/${encodeURIComponent(name)}/deployments/${encodeURIComponent(id)}`;
 
   const load = useCallback(async () => {
-    setState("loading");
     try {
       const response = await fetch(base, { credentials: "include" });
       if (response.status === 404) {
@@ -111,211 +127,202 @@ function DeploymentDetail() {
     void load();
   }, [load]);
 
-  const rollback = async () => {
+  const remove = async () => {
     setError("");
     setBusy(true);
     let failure: string | null;
     try {
-      failure = await mutate(`${base}/activate`, { method: "POST" });
+      failure = await mutate(base, { method: "DELETE" });
     } finally {
       setBusy(false);
     }
     if (failure) {
       setError(failure);
+      setRemoving(false);
       return;
     }
-    await Promise.all([load(), refresh()]);
-  };
-
-  const remove = async () => {
-    setError("");
-    const failure = await mutate(base, { method: "DELETE" });
-    if (failure) {
-      setError(failure);
-      return;
-    }
+    setRemoving(false);
+    toast.add({ tone: "success", title: `Deleted version ${id.slice(0, 8)}` });
     await refresh();
     void navigate({ to: "/projects/$name/deployments", params: { name } });
   };
 
+  const short = id.slice(0, 8);
+  const manifest = detail?.manifest;
+
   return (
-    <>
-      <p className="m-0 mb-2 text-[0.78rem] text-muted-foreground [&_a]:underline-offset-2 [&_a:hover]:underline [&>span]:mx-1.5">
-        <Link to="/projects/$name/deployments" params={{ name }}>
-          Deployments
-        </Link>{" "}
-        <span>/</span> {id.slice(0, 8)}
-      </p>
+    <div className="flex flex-col gap-4">
+      <RouterLink
+        to="/projects/$name/deployments"
+        params={{ name }}
+        className="w-fit rounded-xs text-base text-fg-muted underline-offset-4 hover:text-fg hover:underline"
+      >
+        Back to deployments
+      </RouterLink>
 
       {state === "loading" ? (
-        <Panel variant="bare" className="min-h-56 px-5 pt-12 text-muted-foreground" aria-live="polite">
-          Loading deployment…
-        </Panel>
+        <div className="flex min-h-56 flex-col gap-3" aria-live="polite" aria-busy="true">
+          <Skeleton className="h-40 w-full" />
+          <Skeleton className="h-24 w-full" />
+          <span className="sr-only">Loading deployment…</span>
+        </div>
       ) : state === "missing" ? (
-        <Panel variant="bare">
-          <h2>Deployment not found</h2>
-          <p>This version may have been deleted.</p>
-          <Link
-            className={buttonVariants({ variant: "default", className: "text-[0.82rem]" })}
-            to="/projects/$name/deployments"
-            params={{ name }}
-          >
-            Back to deployments
-          </Link>
-        </Panel>
+        <div className="rounded-xl bg-surface p-4 shadow-card">
+          <EmptyState
+            as="h2"
+            title="Deployment not found"
+            description="This version may have been deleted."
+            action={
+              <RouterLink
+                to="/projects/$name/deployments"
+                params={{ name }}
+                className={buttonStyles({ variant: "primary" })}
+              >
+                Back to deployments
+              </RouterLink>
+            }
+          />
+        </div>
       ) : state === "error" || !detail ? (
-        <StatusMessage tone="error">Could not load this deployment. Refresh and try again.</StatusMessage>
+        <Banner tone="danger">Could not load this deployment. Refresh and try again.</Banner>
       ) : (
         <>
-          <Panel variant="wide">
-            <PanelHeading title={`Version ${detail.id.slice(0, 8)}`} />
-            <p>
-              <Status live={detail.active}>{detail.active ? "Active" : "Inactive"}</Status>
-            </p>
-            <dl className="mt-5 grid grid-cols-[repeat(auto-fit,minmax(16rem,1fr))] gap-x-8 gap-y-4 [&_code]:text-[0.78rem] [&_dd]:mt-1 [&_dd]:text-[0.85rem] [&_dd]:[overflow-wrap:anywhere] [&_dt]:text-[0.72rem] [&_dt]:tracking-wide [&_dt]:text-muted-foreground [&_dt]:uppercase">
-              <div>
-                <dt>Deployment ID</dt>
-                <dd>
-                  <code>{detail.id}</code>
-                  <Copy value={detail.id} />
-                </dd>
-              </div>
-              <div>
-                <dt>Route</dt>
-                <dd>
-                  <code>{detail.hostname}</code>
-                </dd>
-              </div>
-              <div>
-                <dt>Artifact digest</dt>
-                <dd>
-                  <code>{detail.artifact}</code>
-                  <Copy value={detail.artifact} />
-                </dd>
-              </div>
-              <div>
-                <dt>Deployed by</dt>
-                <dd>{detail.deployedBy ?? "-"}</dd>
-              </div>
-              <div>
-                <dt>Deployed</dt>
-                <dd>
-                  {new Date(detail.deployedAt).toLocaleString()} · {relativeTime(detail.deployedAt)}
-                </dd>
-              </div>
-            </dl>
-          </Panel>
+          <Section
+            id="version"
+            title={`Version ${detail.id.slice(0, 8)}`}
+            description={
+              detail.active ? (
+                <Badge tone="success" dot live>
+                  Active
+                </Badge>
+              ) : (
+                <Badge tone="neutral">Inactive</Badge>
+              )
+            }
+            action={
+              detail.active ? undefined : (
+                <>
+                  <Button onClick={() => setRollback(true)} disabled={busy}>
+                    Roll back to this version
+                  </Button>
+                  <Button variant="danger" onClick={() => setRemoving(true)} disabled={busy}>
+                    Delete version
+                  </Button>
+                </>
+              )
+            }
+          >
+            {detail.active ? (
+              <Banner tone="info">
+                The active version can&apos;t be rolled back or deleted. Roll back another version, or replace it with a
+                new deploy.
+              </Banner>
+            ) : null}
+            {error ? <Banner tone="danger">{error}</Banner> : null}
+            <DescriptionList
+              items={[
+                {
+                  id: "id",
+                  term: "Deployment ID",
+                  details: <CopyId value={detail.id} label="Copy deployment ID" />,
+                },
+                { id: "route", term: "Route", details: detail.hostname, mono: true },
+                {
+                  id: "artifact",
+                  term: "Artifact digest",
+                  details: <CopyId value={detail.artifact} label="Copy artifact digest" />,
+                },
+                { id: "by", term: "Deployed by", details: detail.deployedBy ?? "-" },
+                {
+                  id: "at",
+                  term: "Deployed",
+                  details: `${fullTime(detail.deployedAt)} · ${relativeTime(detail.deployedAt)}`,
+                },
+              ]}
+            />
+          </Section>
 
           <BindingsSummary bindings={detail.bindings} resources={detail.resources} />
 
-          <Panel variant="wide">
-            <PanelHeading title="Artifact manifest" />
-            {detail.manifest ? (
-              <dl className="mt-5 grid grid-cols-[repeat(auto-fit,minmax(16rem,1fr))] gap-x-8 gap-y-4 [&_code]:text-[0.78rem] [&_dd]:mt-1 [&_dd]:text-[0.85rem] [&_dd]:[overflow-wrap:anywhere] [&_dt]:text-[0.72rem] [&_dt]:tracking-wide [&_dt]:text-muted-foreground [&_dt]:uppercase">
-                {COMPARED.map(([key, label]) => (
-                  <div key={key}>
-                    <dt>{label}</dt>
-                    <dd>
-                      <code>{detail.manifest?.[key] === undefined ? "Unavailable" : String(detail.manifest[key])}</code>
-                    </dd>
-                  </div>
-                ))}
-              </dl>
+          <Section id="manifest" title="Artifact manifest">
+            {manifest ? (
+              <DescriptionList
+                items={COMPARED.map(([key, label]) => ({
+                  id: key,
+                  term: label,
+                  mono: true,
+                  details: manifestValue(manifest, key),
+                }))}
+              />
             ) : (
-              <p className="mb-4 text-[0.85rem] text-muted-foreground">
-                Artifact metadata is unavailable{detail.manifestError ? `: ${detail.manifestError}` : "."}
-              </p>
+              <Note>Artifact metadata is unavailable{detail.manifestError ? `: ${detail.manifestError}` : "."}</Note>
             )}
-          </Panel>
+          </Section>
 
           <Compare name={name} current={detail} versions={deployments.filter((version) => version.id !== detail.id)} />
 
-          <Panel>
-            <PanelHeading title="Actions" />
-            {detail.active ? (
-              <StatusMessage>
-                The active version can&apos;t be rolled back or deleted. Roll back another version, or replace it with a
-                new deploy.
-              </StatusMessage>
-            ) : (
-              <div data-slot="form-actions" className={FORM_ACTIONS}>
-                <ConfirmButton
-                  label="Roll back to this version"
-                  busyLabel="Rolling back…"
-                  variant="quiet"
-                  disabled={busy}
-                  title={`Roll back to ${detail.id.slice(0, 8)}?`}
-                  description={
-                    <>
-                      This version starts serving <code>{detail.hostname}</code> immediately, and the current active
-                      version becomes inactive.
-                    </>
-                  }
-                  confirmLabel="Roll back"
-                  onConfirm={rollback}
-                />
-                <ConfirmButton
-                  label="Delete version"
-                  busyLabel="Deleting…"
-                  disabled={busy}
-                  title={`Delete version ${detail.id.slice(0, 8)}?`}
-                  description={
-                    <>Its artifact is removed if nothing else references the digest. This cannot be undone.</>
-                  }
-                  confirmLabel="Delete version"
-                  onConfirm={remove}
-                />
+          <RollbackDialog
+            name={name}
+            target={rollback ? { id: detail.id, hostname: detail.hostname } : null}
+            onClose={() => setRollback(false)}
+            onDone={() => Promise.all([load(), refresh()]).then(() => undefined)}
+          />
+
+          <Dialog open={removing} onOpenChange={setRemoving}>
+            <DialogContent>
+              <div className="flex flex-col gap-4">
+                <div>
+                  <DialogTitle>Delete version {short}?</DialogTitle>
+                  <DialogDescription>
+                    Its artifact is removed if nothing else references the digest. This cannot be undone.
+                  </DialogDescription>
+                </div>
+                <DialogFooter className="mt-0">
+                  <DialogClose render={<Button disabled={busy} />}>Cancel</DialogClose>
+                  <Button variant="danger" loading={busy} onClick={() => void remove()}>
+                    Delete permanently
+                  </Button>
+                </DialogFooter>
               </div>
-            )}
-            {error && <StatusMessage tone="error">{error}</StatusMessage>}
-          </Panel>
+            </DialogContent>
+          </Dialog>
         </>
       )}
-    </>
+    </div>
   );
 }
 
-type BindingRow = { binding: string; kind: string };
-
-const bindingRow = (binding: string, kind: string): BindingRow => ({ binding, kind });
+function manifestValue(manifest: Manifest, key: keyof Manifest): string {
+  const value = manifest[key];
+  if (value === undefined) return "Unavailable";
+  return key === "binarySize" ? `${value} (${formatBytes(Number(value))})` : String(value);
+}
 
 /** #76 - what this version was built to reach, alongside its manifest. */
 function BindingsSummary({ bindings, resources }: { bindings: Bindings | null; resources: Resource[] }) {
   if (!bindings) return null;
-  const rows: BindingRow[] = [
-    ...bindings.kv.map((binding) => bindingRow(binding, "KV namespace")),
-    ...bindings.d1.map((binding) => bindingRow(binding, "D1 database")),
-    ...bindings.r2.map((binding) => bindingRow(binding, "R2 bucket")),
-    ...bindings.queues.map((binding) => bindingRow(binding, "Queue")),
-    ...bindings.secrets.map((binding) => bindingRow(binding, "Secret")),
-    ...bindings.analytics.map((binding) => bindingRow(binding, "Analytics dataset")),
-    ...bindings.durableObjects.map((entry) => bindingRow(entry.binding, `Durable Object · ${entry.className}`)),
-    ...(bindings.assets ? [bindingRow(bindings.assets, "Static assets")] : []),
-    ...Object.keys(bindings.vars ?? {}).map((binding) => bindingRow(binding, "Variable")),
-  ];
+  const rows: DescriptionItem[] = [
+    ...bindings.kv.map((binding) => ["KV namespace", binding] as const),
+    ...bindings.d1.map((binding) => ["D1 database", binding] as const),
+    ...bindings.r2.map((binding) => ["R2 bucket", binding] as const),
+    ...bindings.queues.map((binding) => ["Queue", binding] as const),
+    ...bindings.secrets.map((binding) => ["Secret", binding] as const),
+    ...bindings.analytics.map((binding) => ["Analytics dataset", binding] as const),
+    ...bindings.durableObjects.map((entry) => [`Durable Object · ${entry.className}`, entry.binding] as const),
+    ...(bindings.assets ? [["Static assets", bindings.assets] as const] : []),
+    ...Object.keys(bindings.vars ?? {}).map((binding) => ["Variable", binding] as const),
+  ].map(([kind, binding]) => ({ id: `${kind}:${binding}`, term: kind, details: binding, mono: true }));
   if (rows.length === 0) return null;
 
   return (
-    <Panel variant="wide">
-      <PanelHeading title="Bindings in this version" description="Baked into the artifact at build time." />
-      {rows.length > 0 && (
-        <dl className="mt-5 grid grid-cols-[repeat(auto-fit,minmax(16rem,1fr))] gap-x-8 gap-y-4 [&_code]:text-[0.78rem] [&_dd]:mt-1 [&_dd]:text-[0.85rem] [&_dd]:[overflow-wrap:anywhere] [&_dt]:text-[0.72rem] [&_dt]:tracking-wide [&_dt]:text-muted-foreground [&_dt]:uppercase">
-          {rows.map((entry) => (
-            <div key={`${entry.kind}:${entry.binding}`}>
-              <dt>{entry.kind}</dt>
-              <dd>
-                <code>{entry.binding}</code>
-              </dd>
-            </div>
-          ))}
-        </dl>
-      )}
+    <Section id="bindings" title="Bindings in this version" description="Baked into the artifact at build time.">
+      <DescriptionList items={rows} />
       {resources.length > 0 && (
-        <p className="mt-3 text-[0.75rem] text-muted-foreground">
+        <p className="text-sm text-fg-muted">
           Bound account resources: {resources.map((resource) => `${resource.name} (${resource.id})`).join(", ")}
         </p>
       )}
-    </Panel>
+    </Section>
   );
 }
 
@@ -371,78 +378,69 @@ function Compare({
 
   if (versions.length === 0) return null;
 
-  // No empty-value item: Radix Select can't show one in its trigger, so the
-  // prompt is the placeholder instead.
-  const options = versions.map(
-    (version) =>
-      [
-        version.id,
-        `${version.id.slice(0, 8)} · ${relativeTime(version.deployedAt)}${version.active ? " · active" : ""}`,
-      ] as const,
-  );
+  const options = versions.map((version) => ({
+    value: version.id,
+    label: `${version.id.slice(0, 8)} · ${relativeTime(version.deployedAt)}${version.active ? " · active" : ""}`,
+  }));
   const differences =
     current.manifest && other?.manifest
       ? COMPARED.filter(([key]) => String(current.manifest?.[key]) !== String(other.manifest?.[key]))
       : [];
 
   return (
-    <Panel variant="wide">
-      <PanelHeading
-        title="Compare with another version"
-        description="Which build inputs changed between two versions of this project."
-      />
-      <div className={FILTER_BAR}>
-        {/* A version id is short - the picker is sized to its content rather
-            than stretched across the panel like a search field. */}
-        <SelectField
-          label="Compare against"
-          fieldClassName="w-[24rem] max-w-full"
-          value={otherId}
+    <Section
+      id="compare"
+      title="Compare with another version"
+      description="Which build inputs changed between two versions of this project."
+    >
+      <div className="w-full max-w-sm">
+        <Select
+          aria-label="Compare against"
+          value={otherId || null}
           options={options}
           placeholder="Choose a version…"
-          onValueChange={choose}
+          onValueChange={(value) => choose(value ?? "")}
         />
       </div>
 
       {state === "loading" ? (
-        <p className="min-h-56 px-5 pt-12 text-muted-foreground group-[.is-padded]/panel:px-0" aria-live="polite">
-          Loading that version…
-        </p>
+        <div className="min-h-24" aria-live="polite">
+          <Skeleton className="h-24 w-full" />
+          <span className="sr-only">Loading that version…</span>
+        </div>
       ) : state === "error" ? (
-        <StatusMessage tone="error">Could not load that version.</StatusMessage>
+        <Banner tone="danger">Could not load that version.</Banner>
       ) : state === "ready" && other ? (
         !current.manifest || !other.manifest ? (
-          <StatusMessage>One of these versions has no readable manifest, so there is nothing to compare.</StatusMessage>
+          <Banner tone="info">One of these versions has no readable manifest, so there is nothing to compare.</Banner>
         ) : differences.length === 0 ? (
-          <StatusMessage tone="success">
-            Identical build inputs - these versions differ only by when they were deployed.
-          </StatusMessage>
+          <Banner tone="success">Identical build inputs: these versions differ only by when they were deployed.</Banner>
         ) : (
-          <DataTable
-            caption="Manifest differences between the two versions"
-            className="[&_.compare-current]:text-sky"
-            head={
-              <tr>
-                <th scope="col">Field</th>
-                <th scope="col">{other.id.slice(0, 8)}</th>
-                <th scope="col">{current.id.slice(0, 8)} (this version)</th>
-              </tr>
-            }
+          <Table
+            label="Manifest differences between the two versions"
+            containerClassName="shadow-none ring-1 ring-hairline"
           >
-            {differences.map(([key, label]) => (
-              <tr key={key}>
-                <td>{label}</td>
-                <td>
-                  <code>{String(other.manifest?.[key])}</code>
-                </td>
-                <td>
-                  <code className="text-sky">{String(current.manifest?.[key])}</code>
-                </td>
-              </tr>
-            ))}
-          </DataTable>
+            <TableHeader>
+              <TableRow className="hover:bg-transparent">
+                <TableHead>Field</TableHead>
+                <TableHead>{other.id.slice(0, 8)}</TableHead>
+                <TableHead>{current.id.slice(0, 8)} (this version)</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {differences.map(([key, label]) => (
+                <TableRow key={key}>
+                  <TableCell>{label}</TableCell>
+                  <TableCell className="font-mono text-sm break-all">{String(other.manifest?.[key])}</TableCell>
+                  <TableCell className="font-mono text-sm break-all text-info-fg">
+                    {String(current.manifest?.[key])}
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
         )
       ) : null}
-    </Panel>
+    </Section>
   );
 }

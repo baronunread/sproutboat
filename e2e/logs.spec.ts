@@ -4,7 +4,7 @@ import { authFile, chooseOption } from "./helpers";
 // Body rows of the request log. Anchored on the table's caption and on table
 // semantics rather than class names, which are free to change with the styling.
 const history = (page: Page) => page.getByRole("region", { name: "Request logs" });
-const logRows = (page: Page) => page.getByRole("table", { name: /request log/i }).locator("tbody tr");
+const logRows = (page: Page) => page.getByRole("region", { name: /request log, newest first/i }).locator("tbody tr");
 
 test.use({ storageState: authFile("test-admin") });
 
@@ -17,7 +17,7 @@ test("traffic charts render from seeded edge logs", async ({ page }) => {
   await expect(page.getByText("p50", { exact: true }).first()).toBeVisible(); // latency percentiles
   await expect(page.getByRole("heading", { name: /Cold starts/ })).toBeVisible(); // startup metrics
 
-  await chooseOption(page, page.getByRole("combobox", { name: "Time range" }), "Last 1 hour");
+  await page.getByRole("group", { name: "Time range" }).getByRole("button", { name: "Last 1 hour" }).click();
   await expect(page.getByRole("img", { name: /requests per time bucket/i })).toBeVisible();
 });
 
@@ -30,12 +30,12 @@ test("log history filters and live tail toggles", async ({ page }) => {
 
   await chooseOption(page, history(page).getByRole("combobox", { name: "Status" }), "All statuses");
   const live = page.getByRole("region", { name: "Live tail" });
-  await live.getByRole("button", { name: /start live tail/i }).click();
+  await live.getByRole("switch", { name: /stream events/i }).click();
   await expect(live.getByText("Live", { exact: true })).toBeVisible();
   await live.getByRole("button", { name: "Pause" }).click();
   await expect(live.getByText("Paused", { exact: true })).toBeVisible();
   await live.getByRole("button", { name: "Resume" }).click();
-  await live.getByRole("button", { name: /stop live tail/i }).click();
+  await live.getByRole("switch", { name: /stream events/i }).click();
   await expect(live.getByText("Off", { exact: true })).toBeVisible();
 });
 
@@ -60,5 +60,5 @@ test("method and cold-start filters narrow the log, and clear resets them", asyn
 test("sprout output panel renders the running version's stdout", async ({ page }) => {
   await page.goto("/projects/blog/logs");
   await expect(page.getByRole("heading", { name: "Sprout output" })).toBeVisible();
-  await expect(page.getByLabel("Sprout process output")).toBeVisible();
+  await expect(page.getByRole("region", { name: "Sprout process output" })).toBeVisible();
 });

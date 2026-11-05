@@ -1,4 +1,6 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { Banner, EmptyState, MetricTile, SegmentedControl, cn, formatBytes, formatNumber } from "@sproutboat/ikada";
+import type { MetricDelta } from "@sproutboat/ikada";
+import { Sparkline, chartClassName, chartColors, statusClassColor } from "@sproutboat/ikada/charts";
 import { defineChart } from "@tanstack/charts";
 import { barY } from "@tanstack/charts/bar";
 import { focusGroupX } from "@tanstack/charts/focus";
@@ -7,22 +9,14 @@ import { scaleBand } from "@tanstack/charts/scales/band";
 import { scaleLinear } from "@tanstack/charts/scales/linear";
 import { stack } from "@tanstack/charts/stack";
 import { tooltip } from "@tanstack/charts/tooltip";
-import { Panel, PanelHeading, SelectField, StatusMessage } from "./components";
-import { cn } from "@/lib/utils";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import type { ReactNode } from "react";
+import { Section } from "./project-ui";
 
-const STATUS_BAR = "block h-full min-w-0.5 rounded-[inherit] bg-muted-foreground";
-const STATUS_BAR_TONE = {
-  "2xx": "bg-success",
-  "3xx": "bg-sky",
-  "4xx": "bg-coral",
-  "5xx": "bg-coral",
-  other: "",
-} satisfies Record<StatusClass, string>;
-
-type StatusClass = "2xx" | "3xx" | "4xx" | "5xx" | "other";
+export type StatusClass = "2xx" | "3xx" | "4xx" | "5xx" | "other";
 type Bucket = { start: string; count: number; errors: number; coldStarts: number };
 type Percentiles = { p50: number; p90: number; p99: number };
-type Metrics = {
+export type Metrics = {
   range: string;
   from: string;
   to: string;
@@ -46,180 +40,8 @@ type Metrics = {
   windowTruncated: boolean;
 };
 
-const KB = 1024;
-const bytes = (value: number) => {
-  if (value < KB) return `${value} B`;
-  if (value < KB * KB) return `${(value / KB).toFixed(1)} KB`;
-  if (value < KB * KB * KB) return `${(value / (KB * KB)).toFixed(1)} MB`;
-  return `${(value / (KB * KB * KB)).toFixed(2)} GB`;
-};
-
-const RANGES: ReadonlyArray<readonly [string, string]> = [
-  ["1h", "1 hour"],
-  ["6h", "6 hours"],
-  ["24h", "24 hours"],
-  ["7d", "7 days"],
-];
-const STATUS_ROWS: readonly StatusClass[] = ["2xx", "3xx", "4xx", "5xx", "other"];
-const CLOCK = new Intl.DateTimeFormat(undefined, { hour: "2-digit", minute: "2-digit" });
-const DAY = new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric" });
-
-const group = (value: number) => value.toLocaleString();
-
-/**
- * One distribution row: label, a track that always spans the same free space,
- * and a right-aligned tabular count. Sharing the component keeps status codes,
- * invocation status and methods on identical column edges.
- */
-function DistributionRow({
-  label,
-  value,
-  total,
-  tone,
-}: {
-  label: string;
-  value: number;
-  total: number;
-  tone?: StatusClass;
-}) {
-  const percent = total ? Math.round((value / total) * 100) : 0;
-  return (
-    <div>
-      <dt>{label}</dt>
-      <dd>
-        <div className="h-2 overflow-hidden rounded-full bg-secondary">
-          <span
-            className={tone ? cn(STATUS_BAR, STATUS_BAR_TONE[tone]) : STATUS_BAR}
-            style={{ width: `${percent}%` }}
-          />
-        </div>
-        <span className="text-end text-[0.75rem] whitespace-nowrap tabular-nums [&_small]:ms-1.5 [&_small]:text-muted-foreground">
-          {group(value)}
-          <small>{percent}%</small>
-        </span>
-      </dd>
-    </div>
-  );
-}
-
-/**
- * A change past ~3x reads as noise as a percentage ("4800.0%"), so report the
- * multiple instead and keep one decimal only where it carries information.
- */
-function formatDelta(delta: number): string {
-  const magnitude = Math.abs(delta);
-  if (magnitude >= 300) return `${(magnitude / 100 + 1).toFixed(1)}x`;
-  return `${magnitude.toFixed(magnitude < 10 ? 1 : 0)}%`;
-}
-
-/** Signed percentage change, or null when there is no prior baseline. */
-function deltaPct(current: number, previous: number): number | null {
-  if (previous === 0) return current === 0 ? 0 : null;
-  return ((current - previous) / previous) * 100;
-}
-
-function Sparkline({ values }: { values: number[] }) {
-  const max = Math.max(1, ...values);
-  const step = values.length > 1 ? 100 / (values.length - 1) : 0;
-  const points = values.map((v, i) => `${(i * step).toFixed(2)},${(20 - (v / max) * 20).toFixed(2)}`).join(" ");
-  return (
-    // Decorative: the card states the value and its delta in text, so the
-    // sparkline is hidden rather than given a role it would then have to label.
-    <svg className="mt-0.5 block h-[1.6rem] w-full" viewBox="0 0 100 20" preserveAspectRatio="none" aria-hidden="true">
-      <polyline points={points} fill="none" stroke="var(--sky)" strokeWidth="1.5" vectorEffect="non-scaling-stroke" />
-    </svg>
-  );
-}
-
-/** #37: KPI card - value, delta chip vs the previous same-length window, sparkline. */
-function MetricCard({
-  title,
-  value,
-  delta,
-  goodWhen = "up",
-  spark,
-}: {
-  title: string;
-  value: string;
-  delta: number | null;
-  goodWhen?: "up" | "down";
-  spark?: number[];
-}) {
-  const dir = delta === null || Math.abs(delta) < 0.5 ? "flat" : delta > 0 ? "up" : "down";
-  const tone = dir === "flat" ? "flat" : (dir === "up") === (goodWhen === "up") ? "up" : "down";
-  return (
-    <div className="flex flex-col gap-1.5 rounded-lg border border-border bg-card px-4 py-3.5">
-      <span className="text-[0.72rem] text-muted-foreground">{title}</span>
-      <span className="text-2xl tracking-tight tabular-nums">{value}</span>
-      <span
-        className={cn(
-          "text-[0.72rem] tabular-nums",
-          tone === "up" && "text-brand",
-          tone === "down" && "text-coral",
-          tone === "flat" && "text-muted-foreground",
-        )}
-      >
-        {delta === null ? "- no prior data" : `${delta > 0 ? "↑" : delta < 0 ? "↓" : ""} ${formatDelta(delta)} vs prev`}
-      </span>
-      {spark && spark.length > 1 && <Sparkline values={spark} />}
-    </div>
-  );
-}
-
-/** The KPI row. Its totals are derived from the buckets rather than served, so
- *  it owns that arithmetic instead of running it inside the render tree. */
-function KpiCards({ metrics }: { metrics: Metrics }) {
-  const requests = metrics.buckets.reduce((sum, bucket) => sum + bucket.count, 0);
-  const errors = metrics.buckets.reduce((sum, bucket) => sum + bucket.errors, 0);
-  const errorRate = requests ? (errors / requests) * 100 : 0;
-  const previousErrorRate = metrics.previous.requests ? (metrics.previous.errors / metrics.previous.requests) * 100 : 0;
-  const latencyDelta =
-    metrics.latencyMs && metrics.previous.latencyP50 !== null
-      ? deltaPct(metrics.latencyMs.p50, metrics.previous.latencyP50)
-      : null;
-
-  return (
-    <div className="mt-5 grid grid-cols-[repeat(auto-fit,minmax(10.5rem,1fr))] gap-3">
-      <MetricCard
-        title="Requests"
-        value={group(requests)}
-        goodWhen="up"
-        delta={deltaPct(requests, metrics.previous.requests)}
-        spark={metrics.buckets.map((bucket) => bucket.count)}
-      />
-      <MetricCard
-        title="Error rate"
-        value={`${errorRate.toFixed(1)}%`}
-        goodWhen="down"
-        delta={deltaPct(errorRate, previousErrorRate)}
-        spark={metrics.buckets.map((bucket) => bucket.errors)}
-      />
-      <MetricCard
-        title="Latency p50"
-        goodWhen="down"
-        delta={latencyDelta}
-        value={metrics.latencyMs ? `${group(metrics.latencyMs.p50)} ms` : "-"}
-      />
-      <MetricCard
-        title="Cache hit rate"
-        goodWhen="up"
-        delta={null}
-        value={metrics.cacheHitRate === null ? "-" : `${metrics.cacheHitRate.toFixed(1)}%`}
-      />
-      <MetricCard
-        title="Cold starts"
-        value={group(metrics.coldStarts)}
-        goodWhen="down"
-        delta={null}
-        spark={metrics.buckets.map((bucket) => bucket.coldStarts)}
-      />
-    </div>
-  );
-}
-
-/** #10: request/error time series, status distribution, and latency percentiles for one project. */
-export function TrafficCharts({ name }: { name: string }) {
-  const [range, setRange] = useState("24h");
+/** One GET of a project's metrics for a range; keeps the last result on screen while the next one loads. */
+export function useProjectMetrics(name: string, range: string) {
   const [metrics, setMetrics] = useState<Metrics>();
   const [state, setState] = useState<"loading" | "ready" | "error">("loading");
 
@@ -243,240 +65,406 @@ export function TrafficCharts({ name }: { name: string }) {
   useEffect(() => {
     void load();
   }, [load]);
+  return { metrics, state };
+}
 
-  const wide = range === "7d";
-  const tickLabel = (iso: string) => (wide ? DAY : CLOCK).format(new Date(iso));
+const RANGES = [
+  { value: "1h", label: "1h", ariaLabel: "Last 1 hour" },
+  { value: "6h", label: "6h", ariaLabel: "Last 6 hours" },
+  { value: "24h", label: "24h", ariaLabel: "Last 24 hours" },
+  { value: "7d", label: "7d", ariaLabel: "Last 7 days" },
+] as const;
+type Range = (typeof RANGES)[number]["value"];
+const STATUS_ROWS: readonly StatusClass[] = ["2xx", "3xx", "4xx", "5xx", "other"];
+const CLOCK = new Intl.DateTimeFormat(undefined, { hour: "2-digit", minute: "2-digit" });
+const DAY = new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric" });
+
+const group = (value: number) => formatNumber(value);
+
+/**
+ * A change past ~3x reads as noise as a percentage ("4800.0%"), so report the
+ * multiple instead and keep one decimal only where it carries information.
+ */
+function formatDelta(delta: number): string {
+  const magnitude = Math.abs(delta);
+  if (magnitude >= 300) return `${(magnitude / 100 + 1).toFixed(1)}x`;
+  return `${magnitude.toFixed(magnitude < 10 ? 1 : 0)}%`;
+}
+
+/** Signed percentage change, or null when there is no prior baseline. */
+function deltaPct(current: number, previous: number): number | null {
+  if (previous === 0) return current === 0 ? 0 : null;
+  return ((current - previous) / previous) * 100;
+}
+
+/** The tile's change chip against the previous window of the same length; flat or unknown changes show a hint instead. */
+interface DeltaTile {
+  delta?: MetricDelta;
+  hint: string;
+}
+
+function deltaProps(delta: number | null, goodWhen: "up" | "down"): DeltaTile {
+  if (delta === null) return { hint: "No prior data" };
+  if (Math.abs(delta) < 0.5) return { hint: "No change vs previous" };
+  const direction = delta > 0 ? "up" : "down";
+  return {
+    delta: {
+      value: formatDelta(delta),
+      direction,
+      sentiment: direction === goodWhen ? "good" : "bad",
+    },
+    hint: "vs previous period",
+  };
+}
+
+/** A card with one metric group, e.g. latency percentiles. Each stat is a term and its value. */
+function StatCard({
+  id,
+  title,
+  subtitle,
+  stats,
+  note,
+}: {
+  id: string;
+  title: string;
+  subtitle?: string;
+  stats: ReadonlyArray<{ label: string; value: string }>;
+  note?: ReactNode;
+}) {
+  return (
+    <Section id={id} title={title} description={subtitle}>
+      <dl className="grid grid-cols-2 gap-x-6 gap-y-4 sm:grid-cols-3">
+        {stats.map((stat) => (
+          <div key={stat.label} className="min-w-0">
+            <dt className="text-sm text-fg-muted">{stat.label}</dt>
+            <dd className="m-0 text-lg font-semibold tabular-nums">{stat.value}</dd>
+          </div>
+        ))}
+      </dl>
+      {note ? <p className="text-sm text-fg-muted [&_code]:font-mono [&_code]:text-fg">{note}</p> : null}
+    </Section>
+  );
+}
+
+const ms = (value: number) => `${group(value)} ms`;
+const percentileStats = (p: Percentiles) => [
+  { label: "p50", value: ms(p.p50) },
+  { label: "p90", value: ms(p.p90) },
+  { label: "p99", value: ms(p.p99) },
+];
+
+/**
+ * One distribution row: label, a track that always spans the same free space,
+ * and a right-aligned tabular count. Sharing the component keeps status codes,
+ * invocation status and methods on identical column edges.
+ */
+function DistributionRow({
+  label,
+  value,
+  total,
+  color,
+}: {
+  label: string;
+  value: number;
+  total: number;
+  color: string;
+}) {
+  const percent = total ? Math.round((value / total) * 100) : 0;
+  return (
+    <div className="grid grid-cols-[minmax(4.5rem,6rem)_minmax(0,1fr)_auto] items-center gap-x-3.5">
+      <dt className="text-sm tabular-nums text-fg-muted [overflow-wrap:anywhere]">{label}</dt>
+      <dd className="contents">
+        <div className="h-2 overflow-hidden rounded-full bg-well">
+          <span
+            className="block h-full min-w-0.5 rounded-[inherit]"
+            style={{ width: `${percent}%`, backgroundColor: color }}
+          />
+        </div>
+        <span className="text-end text-sm whitespace-nowrap tabular-nums">
+          {group(value)}
+          <small className="ms-1.5 text-fg-muted">{percent}%</small>
+        </span>
+      </dd>
+    </div>
+  );
+}
+
+function Distribution({
+  id,
+  title,
+  rows,
+  total,
+  note,
+}: {
+  id: string;
+  title: string;
+  rows: ReadonlyArray<{ label: string; value: number; color: string }>;
+  total: number;
+  note?: ReactNode;
+}) {
+  return (
+    <Section id={id} title={title}>
+      <dl className="m-0 grid gap-2.5">
+        {rows.map((row) => (
+          <DistributionRow key={row.label} {...row} total={total} />
+        ))}
+      </dl>
+      {note ? <p className="text-sm text-fg-muted [&_code]:font-mono [&_code]:text-fg">{note}</p> : null}
+    </Section>
+  );
+}
+
+/** The KPI row. Its totals are derived from the buckets rather than served, so it owns that arithmetic. */
+function KpiTiles({ metrics, tickLabel }: { metrics: Metrics; tickLabel: (iso: string) => string }) {
+  const requests = metrics.buckets.reduce((sum, bucket) => sum + bucket.count, 0);
+  const errors = metrics.buckets.reduce((sum, bucket) => sum + bucket.errors, 0);
+  const errorRate = requests ? (errors / requests) * 100 : 0;
+  const previousErrorRate = metrics.previous.requests ? (metrics.previous.errors / metrics.previous.requests) * 100 : 0;
+  const latencyDelta =
+    metrics.latencyMs && metrics.previous.latencyP50 !== null
+      ? deltaPct(metrics.latencyMs.p50, metrics.previous.latencyP50)
+      : null;
+  const point = (index: number) => tickLabel(metrics.buckets[index]?.start ?? "");
 
   return (
-    <Panel variant="wide">
-      <PanelHeading
-        title="Traffic"
-        description="Aggregated from edge request logs. Coarse buckets over a bounded scan - not a metrics platform."
-        action={
-          <SelectField
-            label="Time range"
-            hideLabel
-            value={range}
-            fieldClassName="min-w-44 shrink-0"
-            options={RANGES.map(([value, label]) => [value, `Last ${label}`] as const)}
-            onValueChange={(value) => setRange(value)}
-          />
+    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
+      <MetricTile
+        label="Requests"
+        value={group(requests)}
+        {...deltaProps(deltaPct(requests, metrics.previous.requests), "up")}
+        sparkline={
+          metrics.buckets.length > 1 ? (
+            <Sparkline
+              data={metrics.buckets.map((bucket) => bucket.count)}
+              ariaLabel="Requests per bucket"
+              formatPoint={point}
+            />
+          ) : undefined
         }
       />
+      <MetricTile
+        label="Error rate"
+        value={errorRate.toFixed(1)}
+        unit="%"
+        {...deltaProps(deltaPct(errorRate, previousErrorRate), "down")}
+        sparkline={
+          metrics.buckets.length > 1 && errors > 0 ? (
+            <Sparkline
+              data={metrics.buckets.map((bucket) => bucket.errors)}
+              color="errors"
+              ariaLabel="Errors per bucket"
+              formatPoint={point}
+            />
+          ) : undefined
+        }
+      />
+      <MetricTile
+        label="Latency p50"
+        value={metrics.latencyMs ? group(metrics.latencyMs.p50) : "-"}
+        unit={metrics.latencyMs ? "ms" : undefined}
+        {...deltaProps(latencyDelta, "down")}
+      />
+      <MetricTile
+        label="Cache hit rate"
+        value={metrics.cacheHitRate === null ? "-" : metrics.cacheHitRate.toFixed(1)}
+        unit={metrics.cacheHitRate === null ? undefined : "%"}
+        hint="Served from the edge cache"
+      />
+      <MetricTile
+        label="Cold starts"
+        value={group(metrics.coldStarts)}
+        hint="Spawn to listening"
+        sparkline={
+          metrics.buckets.length > 1 && metrics.coldStarts > 0 ? (
+            <Sparkline
+              data={metrics.buckets.map((bucket) => bucket.coldStarts)}
+              color="series"
+              ariaLabel="Cold starts per bucket"
+              formatPoint={point}
+            />
+          ) : undefined
+        }
+      />
+    </div>
+  );
+}
 
-      {state === "loading" ? (
-        <p className="min-h-56 px-5 pt-12 text-muted-foreground group-[.is-padded]/panel:px-0" aria-live="polite">
-          Loading traffic…
-        </p>
-      ) : state === "error" || !metrics ? (
-        <StatusMessage tone="error">Could not load traffic. Refresh and try again.</StatusMessage>
+/** #10: request/error time series, status distribution, and latency percentiles for one project. */
+export function TrafficCharts({ name }: { name: string }) {
+  const [range, setRange] = useState<Range>("24h");
+  const { metrics, state } = useProjectMetrics(name, range);
+
+  const wide = range === "7d";
+  const tickLabel = useCallback((iso: string) => (wide ? DAY : CLOCK).format(new Date(iso)), [wide]);
+  const loading = state === "loading";
+
+  return (
+    <div className="flex flex-col gap-4">
+      <div className="flex flex-wrap items-end justify-between gap-x-4 gap-y-3">
+        <div className="min-w-0 flex-1">
+          <h2 className="text-md font-semibold">Traffic</h2>
+          <p className="mt-0.5 text-base text-fg-muted">
+            Aggregated from edge request logs. Coarse buckets over a bounded scan, not a metrics platform.
+          </p>
+        </div>
+        <div className="w-full sm:w-64">
+          <SegmentedControl options={RANGES} value={range} onValueChange={setRange} aria-label="Time range" />
+        </div>
+      </div>
+
+      {state === "error" ? (
+        <Banner tone="danger">Could not load traffic. Refresh and try again.</Banner>
+      ) : !metrics ? (
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5" aria-live="polite">
+          {["Requests", "Error rate", "Latency p50", "Cache hit rate", "Cold starts"].map((label) => (
+            <MetricTile key={label} label={label} loading />
+          ))}
+        </div>
       ) : metrics.sampleCount === 0 ? (
-        <p className="px-5 py-12 text-center text-[0.84rem] leading-relaxed text-muted-foreground group-[.is-padded]/panel:px-0 group-[.is-padded]/panel:py-5 group-[.is-padded]/panel:text-start [&_code]:text-foreground">
-          No requests to this route in the selected range.
-        </p>
+        <div className="rounded-xl bg-surface p-4 shadow-card">
+          <EmptyState
+            as="h3"
+            title="No requests in this range"
+            description="No requests to this route in the selected range."
+          />
+        </div>
       ) : (
-        <>
-          {metrics.windowTruncated && (
-            <p className="mb-4 text-[0.85rem] text-muted-foreground">
-              Older activity beyond the scan window is not included in these totals.
-            </p>
+        <div
+          aria-busy={loading || undefined}
+          className={cn(
+            "flex flex-col gap-4 transition-opacity duration-(--sb-duration-hover)",
+            loading && "opacity-60",
           )}
+        >
+          {metrics.windowTruncated ? (
+            <Banner tone="info">Older activity beyond the scan window is not included in these totals.</Banner>
+          ) : null}
 
-          <KpiCards metrics={metrics} />
+          <KpiTiles metrics={metrics} tickLabel={tickLabel} />
 
           <RequestBars buckets={metrics.buckets} tickLabel={tickLabel} />
 
-          <div className="mt-9 [&>h3]:m-0 [&>h3]:mb-3 [&>h3]:flex [&>h3]:flex-wrap [&>h3]:items-baseline [&>h3]:gap-1.5 [&>h3]:text-[0.85rem] [&>h3]:font-semibold [&_h3_small]:font-normal [&_h3_small]:text-muted-foreground">
-            <h3>Status codes</h3>
-            <dl className="m-0 grid gap-2 [&>div]:grid [&>div]:grid-cols-[minmax(4.5rem,6rem)_minmax(0,1fr)_auto] [&>div]:items-center [&>div]:gap-x-3.5 [&_dd]:m-0 [&_dd]:contents [&_dt]:text-[0.75rem] [&_dt]:tabular-nums [&_dt]:text-muted-foreground [&_dt]:[overflow-wrap:anywhere]">
-              {STATUS_ROWS.map((cls) => (
-                <DistributionRow
-                  key={cls}
-                  label={cls}
-                  value={metrics.statusDistribution[cls]}
-                  total={metrics.sampleCount}
-                  tone={cls}
-                />
-              ))}
-            </dl>
-          </div>
-
-          <div className="mt-9 [&>h3]:m-0 [&>h3]:mb-3 [&>h3]:flex [&>h3]:flex-wrap [&>h3]:items-baseline [&>h3]:gap-1.5 [&>h3]:text-[0.85rem] [&>h3]:font-semibold [&_h3_small]:font-normal [&_h3_small]:text-muted-foreground">
-            <h3>Latency</h3>
+          <div className="grid gap-4 lg:grid-cols-2">
+            <Distribution
+              id="status"
+              title="Status codes"
+              total={metrics.sampleCount}
+              rows={STATUS_ROWS.map((cls) => ({
+                label: cls,
+                value: metrics.statusDistribution[cls],
+                color: statusClassColor(cls),
+              }))}
+            />
             {metrics.latencyMs ? (
-              <ul className="m-0 grid list-none grid-cols-[repeat(auto-fit,minmax(7rem,8.5rem))] justify-start gap-x-8 gap-y-4 p-0 [&_span]:mt-0.5 [&_span]:block [&_span]:text-[0.72rem] [&_span]:text-muted-foreground [&_strong]:block [&_strong]:text-[1.35rem] [&_strong]:tracking-tight [&_strong]:tabular-nums">
-                <li>
-                  <strong>{group(metrics.latencyMs.p50)} ms</strong>
-                  <span>p50</span>
-                </li>
-                <li>
-                  <strong>{group(metrics.latencyMs.p90)} ms</strong>
-                  <span>p90</span>
-                </li>
-                <li>
-                  <strong>{group(metrics.latencyMs.p99)} ms</strong>
-                  <span>p99</span>
-                </li>
-              </ul>
+              <StatCard
+                id="latency"
+                title="Latency"
+                stats={percentileStats(metrics.latencyMs)}
+                note={`Nearest-rank percentiles over ${group(metrics.sampleCount)} request${metrics.sampleCount === 1 ? "" : "s"}. The final bucket is still filling.`}
+              />
             ) : (
-              <p className="px-5 py-12 text-center text-[0.84rem] leading-relaxed text-muted-foreground group-[.is-padded]/panel:px-0 group-[.is-padded]/panel:py-5 group-[.is-padded]/panel:text-start [&_code]:text-foreground">
-                Not enough requests to compute latency percentiles.
-              </p>
+              <StatCard
+                id="latency"
+                title="Latency"
+                stats={[]}
+                note="Not enough requests to compute latency percentiles."
+              />
             )}
-            <p className="mt-3 text-[0.75rem] text-muted-foreground">
-              Nearest-rank percentiles over {group(metrics.sampleCount)} request{metrics.sampleCount === 1 ? "" : "s"}.
-              The final bucket is still filling.
-            </p>
+            {metrics.ttfbMs ? (
+              <StatCard
+                id="ttfb"
+                title="Time to first byte"
+                subtitle="Edge to sprout response"
+                stats={percentileStats(metrics.ttfbMs)}
+              />
+            ) : null}
+            {metrics.cpuMs ? (
+              <StatCard
+                id="cpu"
+                title="CPU time"
+                subtitle="Per invocation"
+                stats={percentileStats(metrics.cpuMs)}
+                note={
+                  <>
+                    CPU consumed by the handler, self-reported per request (sync and <code>async</code>). Responses with
+                    a streamed body or a <code>Set-Cookie</code> header are excluded, so this covers a subset of
+                    requests.
+                  </>
+                }
+              />
+            ) : null}
+            <StatCard
+              id="cold"
+              title="Cold starts"
+              subtitle="Spawn to listening"
+              stats={[
+                { label: "Cold starts", value: group(metrics.coldStarts) },
+                {
+                  label: "Of requests",
+                  value: metrics.sampleCount ? `${Math.round((metrics.coldStarts / metrics.sampleCount) * 100)}%` : "-",
+                },
+                { label: "Startup p50", value: metrics.startupMs ? ms(metrics.startupMs.p50) : "-" },
+                { label: "Startup p90", value: metrics.startupMs ? ms(metrics.startupMs.p90) : "-" },
+                { label: "Boot p50", value: metrics.bootMs ? ms(metrics.bootMs.p50) : "-" },
+                {
+                  label: "Eval p50",
+                  value:
+                    metrics.startupMs && metrics.bootMs
+                      ? ms(Math.max(0, metrics.startupMs.p50 - metrics.bootMs.p50))
+                      : "-",
+                },
+              ]}
+              note={
+                <>
+                  A cold start is a request that had to launch the sprout process (first hit after a deploy, crash, or
+                  idle eviction). <strong>Boot</strong> is process creation and runtime init; <strong>eval</strong> is
+                  JS module evaluation and binding the listen socket.
+                </>
+              }
+            />
+            <StatCard
+              id="transfer"
+              title="Transfer"
+              stats={[
+                { label: "Request body in", value: formatBytes(metrics.bytesIn) },
+                { label: "Response body out", value: formatBytes(metrics.bytesOut) },
+              ]}
+              note="Body bytes only, from Content-Length; streamed responses without a length are not counted."
+            />
+            {Object.keys(metrics.invocationStatus).some((key) => key !== "ok") ? (
+              <Distribution
+                id="invocation"
+                title="Invocation status"
+                total={metrics.sampleCount}
+                rows={Object.entries(metrics.invocationStatus)
+                  .toSorted((a, b) => b[1] - a[1])
+                  .map(([status, value]) => ({
+                    label: status,
+                    value,
+                    color: statusClassColor(status === "ok" ? "2xx" : "5xx"),
+                  }))}
+                note={
+                  <>
+                    <code>timed-out</code> and <code>response-too-large</code> are platform caps;{" "}
+                    <code>sprout-unavailable</code> and <code>proxy</code> mean the edge could not reach the sprout.
+                  </>
+                }
+              />
+            ) : null}
+            {Object.keys(metrics.methodDistribution).length > 0 ? (
+              <Distribution
+                id="methods"
+                title="Methods"
+                total={metrics.sampleCount}
+                rows={Object.entries(metrics.methodDistribution)
+                  .toSorted((a, b) => b[1] - a[1])
+                  .map(([method, value]) => ({ label: method, value, color: chartColors.series }))}
+              />
+            ) : null}
           </div>
-
-          {metrics.ttfbMs && (
-            <div className="mt-9 [&>h3]:m-0 [&>h3]:mb-3 [&>h3]:flex [&>h3]:flex-wrap [&>h3]:items-baseline [&>h3]:gap-1.5 [&>h3]:text-[0.85rem] [&>h3]:font-semibold [&_h3_small]:font-normal [&_h3_small]:text-muted-foreground">
-              <h3>
-                Time to first byte <small>· edge → sprout response</small>
-              </h3>
-              <ul className="m-0 grid list-none grid-cols-[repeat(auto-fit,minmax(7rem,8.5rem))] justify-start gap-x-8 gap-y-4 p-0 [&_span]:mt-0.5 [&_span]:block [&_span]:text-[0.72rem] [&_span]:text-muted-foreground [&_strong]:block [&_strong]:text-[1.35rem] [&_strong]:tracking-tight [&_strong]:tabular-nums">
-                <li>
-                  <strong>{group(metrics.ttfbMs.p50)} ms</strong>
-                  <span>p50</span>
-                </li>
-                <li>
-                  <strong>{group(metrics.ttfbMs.p90)} ms</strong>
-                  <span>p90</span>
-                </li>
-                <li>
-                  <strong>{group(metrics.ttfbMs.p99)} ms</strong>
-                  <span>p99</span>
-                </li>
-              </ul>
-            </div>
-          )}
-
-          {metrics.cpuMs && (
-            <div className="mt-9 [&>h3]:m-0 [&>h3]:mb-3 [&>h3]:flex [&>h3]:flex-wrap [&>h3]:items-baseline [&>h3]:gap-1.5 [&>h3]:text-[0.85rem] [&>h3]:font-semibold [&_h3_small]:font-normal [&_h3_small]:text-muted-foreground">
-              <h3>
-                CPU time <small>· per invocation</small>
-              </h3>
-              <ul className="m-0 grid list-none grid-cols-[repeat(auto-fit,minmax(7rem,8.5rem))] justify-start gap-x-8 gap-y-4 p-0 [&_span]:mt-0.5 [&_span]:block [&_span]:text-[0.72rem] [&_span]:text-muted-foreground [&_strong]:block [&_strong]:text-[1.35rem] [&_strong]:tracking-tight [&_strong]:tabular-nums">
-                <li>
-                  <strong>{group(metrics.cpuMs.p50)} ms</strong>
-                  <span>p50</span>
-                </li>
-                <li>
-                  <strong>{group(metrics.cpuMs.p90)} ms</strong>
-                  <span>p90</span>
-                </li>
-                <li>
-                  <strong>{group(metrics.cpuMs.p99)} ms</strong>
-                  <span>p99</span>
-                </li>
-              </ul>
-              <p className="mt-3 text-[0.75rem] text-muted-foreground">
-                Worker CPU consumed by the handler, self-reported per request (sync and <code>async</code>). Responses
-                with a streamed body or a <code>Set-Cookie</code> header are excluded, so this covers a subset of
-                requests.
-              </p>
-            </div>
-          )}
-
-          <div className="mt-9 [&>h3]:m-0 [&>h3]:mb-3 [&>h3]:flex [&>h3]:flex-wrap [&>h3]:items-baseline [&>h3]:gap-1.5 [&>h3]:text-[0.85rem] [&>h3]:font-semibold [&_h3_small]:font-normal [&_h3_small]:text-muted-foreground">
-            <h3>
-              Cold starts <small>· spawn → listening</small>
-            </h3>
-            <ul className="m-0 grid list-none grid-cols-[repeat(auto-fit,minmax(7rem,8.5rem))] justify-start gap-x-8 gap-y-4 p-0 [&_span]:mt-0.5 [&_span]:block [&_span]:text-[0.72rem] [&_span]:text-muted-foreground [&_strong]:block [&_strong]:text-[1.35rem] [&_strong]:tracking-tight [&_strong]:tabular-nums">
-              <li>
-                <strong>{group(metrics.coldStarts)}</strong>
-                <span>cold starts</span>
-              </li>
-              <li>
-                <strong>
-                  {metrics.sampleCount ? `${Math.round((metrics.coldStarts / metrics.sampleCount) * 100)}%` : "-"}
-                </strong>
-                <span>of requests</span>
-              </li>
-              <li>
-                <strong>{metrics.startupMs ? `${group(metrics.startupMs.p50)} ms` : "-"}</strong>
-                <span>startup p50</span>
-              </li>
-              <li>
-                <strong>{metrics.startupMs ? `${group(metrics.startupMs.p90)} ms` : "-"}</strong>
-                <span>startup p90</span>
-              </li>
-              <li>
-                <strong>{metrics.bootMs ? `${group(metrics.bootMs.p50)} ms` : "-"}</strong>
-                <span>boot p50</span>
-              </li>
-              <li>
-                <strong>
-                  {metrics.startupMs && metrics.bootMs
-                    ? `${group(Math.max(0, metrics.startupMs.p50 - metrics.bootMs.p50))} ms`
-                    : "-"}
-                </strong>
-                <span>eval p50</span>
-              </li>
-            </ul>
-            <p className="mt-3 text-[0.75rem] text-muted-foreground">
-              A cold start is a request that had to launch the sprout process (first hit after a deploy, crash, or idle
-              eviction). <strong>boot</strong> is process create + <code>ld.so</code> + runtime init (static linking
-              cuts this); <strong>eval</strong> is JS module evaluation + binding the listen socket (an inherited fd
-              would cut this).
-            </p>
-          </div>
-
-          <div className="mt-9 [&>h3]:m-0 [&>h3]:mb-3 [&>h3]:flex [&>h3]:flex-wrap [&>h3]:items-baseline [&>h3]:gap-1.5 [&>h3]:text-[0.85rem] [&>h3]:font-semibold [&_h3_small]:font-normal [&_h3_small]:text-muted-foreground">
-            <h3>Transfer</h3>
-            <ul className="m-0 grid list-none grid-cols-[repeat(auto-fit,minmax(7rem,8.5rem))] justify-start gap-x-8 gap-y-4 p-0 [&_span]:mt-0.5 [&_span]:block [&_span]:text-[0.72rem] [&_span]:text-muted-foreground [&_strong]:block [&_strong]:text-[1.35rem] [&_strong]:tracking-tight [&_strong]:tabular-nums">
-              <li>
-                <strong>{bytes(metrics.bytesIn)}</strong>
-                <span>request body in</span>
-              </li>
-              <li>
-                <strong>{bytes(metrics.bytesOut)}</strong>
-                <span>response body out</span>
-              </li>
-            </ul>
-            <p className="mt-3 text-[0.75rem] text-muted-foreground">
-              Body bytes only, from Content-Length; streamed responses without a length are not counted.
-            </p>
-          </div>
-
-          {Object.keys(metrics.invocationStatus).some((key) => key !== "ok") && (
-            <div className="mt-9 [&>h3]:m-0 [&>h3]:mb-3 [&>h3]:flex [&>h3]:flex-wrap [&>h3]:items-baseline [&>h3]:gap-1.5 [&>h3]:text-[0.85rem] [&>h3]:font-semibold [&_h3_small]:font-normal [&_h3_small]:text-muted-foreground">
-              <h3>Invocation status</h3>
-              <dl className="m-0 grid gap-2 [&>div]:grid [&>div]:grid-cols-[minmax(4.5rem,6rem)_minmax(0,1fr)_auto] [&>div]:items-center [&>div]:gap-x-3.5 [&_dd]:m-0 [&_dd]:contents [&_dt]:text-[0.75rem] [&_dt]:tabular-nums [&_dt]:text-muted-foreground [&_dt]:[overflow-wrap:anywhere]">
-                {Object.entries(metrics.invocationStatus)
-                  .sort((a, b) => b[1] - a[1])
-                  .map(([status, value]) => (
-                    <DistributionRow
-                      key={status}
-                      label={status}
-                      value={value}
-                      total={metrics.sampleCount}
-                      tone={status === "ok" ? "2xx" : "5xx"}
-                    />
-                  ))}
-              </dl>
-              <p className="mt-3 text-[0.75rem] text-muted-foreground">
-                `timed-out` and `response-too-large` are platform caps (#27); `sprout-unavailable` / `proxy` are runtime
-                failures.
-              </p>
-            </div>
-          )}
-
-          {Object.keys(metrics.methodDistribution).length > 0 && (
-            <div className="mt-9 [&>h3]:m-0 [&>h3]:mb-3 [&>h3]:flex [&>h3]:flex-wrap [&>h3]:items-baseline [&>h3]:gap-1.5 [&>h3]:text-[0.85rem] [&>h3]:font-semibold [&_h3_small]:font-normal [&_h3_small]:text-muted-foreground">
-              <h3>Methods</h3>
-              <dl className="m-0 grid gap-2 [&>div]:grid [&>div]:grid-cols-[minmax(4.5rem,6rem)_minmax(0,1fr)_auto] [&>div]:items-center [&>div]:gap-x-3.5 [&_dd]:m-0 [&_dd]:contents [&_dt]:text-[0.75rem] [&_dt]:tabular-nums [&_dt]:text-muted-foreground [&_dt]:[overflow-wrap:anywhere]">
-                {Object.entries(metrics.methodDistribution)
-                  .sort((a, b) => b[1] - a[1])
-                  .map(([method, value]) => (
-                    <DistributionRow key={method} label={method} value={value} total={metrics.sampleCount} />
-                  ))}
-              </dl>
-            </div>
-          )}
-        </>
+        </div>
       )}
-    </Panel>
+    </div>
   );
 }
 
@@ -485,9 +473,8 @@ export function TrafficCharts({ name }: { name: string }) {
  *
  *  `focusGroupX` gives the whole bucket to one hover, so the tooltip reports
  *  requests and errors together instead of whichever rect the pointer landed
- *  on, and the host portals the tooltip out of the overflow-x-auto scroller
- *  that would otherwise clip it. Keyboard users get the same points: arrows
- *  walk the buckets, Enter pins, Escape dismisses. */
+ *  on. Keyboard users get the same points: arrows walk the buckets, Enter
+ *  pins, Escape dismisses. */
 type BarRow = { start: string; series: "errors" | "requests"; value: number };
 
 function RequestBars({ buckets, tickLabel }: { buckets: Bucket[]; tickLabel: (iso: string) => string }) {
@@ -525,9 +512,7 @@ function RequestBars({ buckets, tickLabel }: { buckets: Bucket[]; tickLabel: (is
               x: "start",
               y: "value",
               z: "series",
-              // The palette stays in the dashboard's tokens rather than moving
-              // into --ts-chart-*, so the theme flip keeps owning it.
-              fill: (row: BarRow) => (row.series === "errors" ? "var(--coral)" : "var(--muted)"),
+              fill: (row: BarRow) => (row.series === "errors" ? chartColors.errors : chartColors.requests),
               layout: stack(),
             }),
           ],
@@ -535,8 +520,7 @@ function RequestBars({ buckets, tickLabel }: { buckets: Bucket[]; tickLabel: (is
             x: {
               scale: scaleBand,
               // Without a format the band scale labels every bucket with its raw
-              // ISO start. `thin` then drops whatever would still collide, so
-              // this reads across the axis instead of only at the two ends.
+              // ISO start. `thin` then drops whatever would still collide.
               axis: { ticks: { values: tickValues, format: tickLabel }, tickLabels: { thin: true } },
             },
             y: { scale: scaleLinear, nice: true },
@@ -548,37 +532,46 @@ function RequestBars({ buckets, tickLabel }: { buckets: Bucket[]; tickLabel: (is
   );
 
   return (
-    <div className="mt-9 [&>h3]:m-0 [&>h3]:mb-3 [&>h3]:flex [&>h3]:flex-wrap [&>h3]:items-baseline [&>h3]:gap-1.5 [&>h3]:text-[0.85rem] [&>h3]:font-semibold [&_h3_small]:font-normal [&_h3_small]:text-muted-foreground">
-      <h3>
-        Requests <small>· peak {group(max)}/bucket</small>
-      </h3>
+    <Section
+      id="requests"
+      title="Requests"
+      description={`Peak ${group(max)} per bucket`}
+      action={
+        <p className="flex items-center gap-3 text-sm text-fg-muted">
+          <span className="inline-flex items-center gap-1.5">
+            <span className="inline-block size-2.5 rounded-xs" style={{ backgroundColor: chartColors.requests }} />
+            Requests
+          </span>
+          <span className="inline-flex items-center gap-1.5">
+            <span className="inline-block size-2.5 rounded-xs" style={{ backgroundColor: chartColors.errors }} />
+            5xx errors
+          </span>
+        </p>
+      }
+    >
       <Chart
         definition={definition}
         ariaLabel={`Requests per time bucket, peak ${max}`}
-        height={96}
-        className="block w-full"
+        height={180}
+        className={cn(chartClassName, "block w-full text-fg-muted")}
         renderTooltipBody={({ points }) => {
           const first = points[0]?.datum;
           if (!first) return null;
           const bucket = buckets.find((candidate) => candidate.start === first.start);
           if (!bucket) return null;
           return (
-            <div className="grid gap-0.5 text-[0.75rem] tabular-nums">
-              <span className="text-muted-foreground">{tickLabel(bucket.start)}</span>
+            <div className="grid gap-0.5 text-xs tabular-nums">
+              <span className="text-fg-muted">{tickLabel(bucket.start)}</span>
               <span>
                 {group(bucket.count)} request{bucket.count === 1 ? "" : "s"}
               </span>
-              <span className={bucket.errors > 0 ? "text-coral" : "text-muted-foreground"}>
+              <span className={bucket.errors > 0 ? "text-danger-fg" : "text-fg-muted"}>
                 {group(bucket.errors)} error{bucket.errors === 1 ? "" : "s"}
               </span>
             </div>
           );
         }}
       />
-      <p className="mt-2 flex items-center gap-1.5 text-[0.72rem] text-muted-foreground">
-        <span className="inline-block size-[0.7rem] bg-muted-foreground" /> requests{" "}
-        <span className="inline-block size-[0.7rem] bg-coral" /> 5xx errors
-      </p>
-    </div>
+    </Section>
   );
 }

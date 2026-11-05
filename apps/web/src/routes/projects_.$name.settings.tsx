@@ -1,20 +1,35 @@
-import { useState } from "react";
-import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import {
+  Badge,
+  Banner,
   Button,
-  ConfirmButton,
-  Copy,
-  DeleteProject,
-  FORM,
-  FORM_ACTIONS,
-  Panel,
-  PanelHeading,
-  RecordList,
-  RecordRow,
-  StatusMessage,
-  TextField,
-} from "../components";
+  CopyId,
+  DescriptionList,
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogTitle,
+  EmptyState,
+  Field,
+  Input,
+  SensitiveInput,
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+  formatBytes,
+  toast,
+} from "@sproutboat/ikada";
+import type { DescriptionItem } from "@sproutboat/ikada";
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { useState } from "react";
+import type { FormEvent } from "react";
 import { mutate, useJson, useProject } from "../dashboard-data";
+import { DeleteProjectDialog } from "../delete-project-dialog";
+import { LoadingLine, Note, Section } from "../project-ui";
 
 export const Route = createFileRoute("/projects_/$name/settings")({ component: ProjectSettings });
 
@@ -33,17 +48,7 @@ type Manifest = {
 };
 type Detail = { id: string; artifact: string; manifest: Manifest | null; manifestError: string | null };
 
-function Value({ label, value, copy }: { label: string; value: string; copy?: boolean }) {
-  return (
-    <div>
-      <dt>{label}</dt>
-      <dd>
-        <code>{value}</code>
-        {copy && <Copy value={value} />}
-      </dd>
-    </div>
-  );
-}
+const copyable = (value: string, label: string): DescriptionItem["details"] => <CopyId value={value} label={label} />;
 
 /**
  * #2/#76 - project secrets. The API never returns a value, only the name, so
@@ -57,19 +62,157 @@ const MAX_SECRET_BYTES = 8 * 1024;
 function Secrets({ name, hasVersions }: { name: string; hasVersions: boolean }) {
   const base = `/api/projects/${encodeURIComponent(name)}/secrets`;
   const { data, state, refresh } = useJson<{ names: string[] }>(base);
+  // `null` is closed; an empty string opens a blank form; a name opens it for that secret.
+  const [editing, setEditing] = useState<string | null>(null);
+  const [removing, setRemoving] = useState<string | null>(null);
+  const [removeBusy, setRemoveBusy] = useState(false);
+
+  const names = data?.names ?? [];
+
+  const remove = async (secret: string) => {
+    setRemoveBusy(true);
+    let failure: string | null;
+    try {
+      failure = await mutate(`${base}/${encodeURIComponent(secret)}`, { method: "DELETE" });
+    } finally {
+      setRemoveBusy(false);
+    }
+    setRemoving(null);
+    if (failure) toast.add({ tone: "danger", title: `Could not delete ${secret}`, description: failure });
+    else
+      toast.add({
+        tone: "success",
+        title: `Deleted ${secret}`,
+        description: "It applies on the next deploy or sprout restart.",
+      });
+    await refresh();
+  };
+
+  return (
+    <Section
+      id="secrets"
+      title="Secrets"
+      description="Encrypted at rest and handed to the deployment's binding broker. Values are never shown again after you save them."
+      action={
+        <Button variant="primary" disabled={!hasVersions} onClick={() => setEditing("")}>
+          Add secret
+        </Button>
+      }
+    >
+      {/* The reason the button is dead belongs above the list, not buried where it reads as guidance. */}
+      {!hasVersions && (
+        <Banner tone="info">
+          Deploy this project once before setting secrets: a secret is handed to a running version.
+        </Banner>
+      )}
+
+      {state === "loading" ? (
+        <LoadingLine label="Loading secrets…" />
+      ) : state === "error" ? (
+        <Banner tone="danger">Could not load secrets. Refresh and try again.</Banner>
+      ) : names.length === 0 ? (
+        <EmptyState
+          as="h3"
+          title="No secrets set"
+          description={
+            <>
+              Your handler reads them from <code>env</code> once one is bound.
+            </>
+          }
+        />
+      ) : (
+        <Table label="Secrets" containerClassName="shadow-none ring-1 ring-hairline">
+          <TableHeader>
+            <TableRow className="hover:bg-transparent">
+              <TableHead>Name</TableHead>
+              <TableHead hideBelow="sm">Value</TableHead>
+              <TableHead className="text-end">
+                <span className="sr-only">Actions</span>
+              </TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {names.map((secret) => (
+              <TableRow key={secret}>
+                <TableCell className="font-mono text-sm break-all">{secret}</TableCell>
+                <TableCell hideBelow="sm">
+                  <Badge tone="neutral">Hidden</Badge>
+                </TableCell>
+                <TableCell className="text-end">
+                  <span className="inline-flex flex-wrap justify-end gap-2">
+                    <Button size="sm" aria-label={`Replace ${secret}`} onClick={() => setEditing(secret)}>
+                      Replace
+                    </Button>
+                    <Button size="sm" aria-label={`Delete ${secret}`} onClick={() => setRemoving(secret)}>
+                      Delete
+                    </Button>
+                  </span>
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      )}
+
+      <SecretDialog base={base} existing={names} editing={editing} onClose={() => setEditing(null)} onSaved={refresh} />
+
+      <Dialog open={removing !== null} onOpenChange={(open) => (open || removeBusy ? undefined : setRemoving(null))}>
+        <DialogContent>
+          <div className="flex flex-col gap-4">
+            <div>
+              <DialogTitle>Delete {removing}?</DialogTitle>
+              <DialogDescription>
+                The running version keeps its current value until the next deploy or sprout restart. This cannot be
+                undone.
+              </DialogDescription>
+            </div>
+            <DialogFooter className="mt-0">
+              <DialogClose render={<Button disabled={removeBusy} />}>Cancel</DialogClose>
+              <Button variant="danger" loading={removeBusy} onClick={() => removing && void remove(removing)}>
+                Delete secret
+              </Button>
+            </DialogFooter>
+          </div>
+        </DialogContent>
+      </Dialog>
+    </Section>
+  );
+}
+
+/** Add a secret, or replace the value of an existing one: setting a name that exists overwrites it. */
+function SecretDialog({
+  base,
+  existing,
+  editing,
+  onClose,
+  onSaved,
+}: {
+  base: string;
+  existing: string[];
+  editing: string | null;
+  onClose: () => void;
+  onSaved: () => Promise<void>;
+}) {
   const [secretName, setSecretName] = useState("");
   const [value, setValue] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [note, setNote] = useState<{ text: string; tone: "success" | "error" } | null>(null);
+  // The name field is seeded when the dialog opens for a given secret, not on every render.
+  const [seeded, setSeeded] = useState<string | null>(null);
+  if (editing !== seeded) {
+    setSeeded(editing);
+    setSecretName(editing ?? "");
+    setValue("");
+    setError(null);
+  }
 
-  const names = data?.names ?? [];
+  const locked = editing !== null && editing !== "";
   const trimmedName = secretName.trim().toUpperCase();
   const invalidName = secretName.trim() !== "" && !SECRET_NAME_RULE.test(trimmedName);
   const tooLong = new TextEncoder().encode(value).length > MAX_SECRET_BYTES;
-  const replacing = names.includes(trimmedName);
+  const replacing = existing.includes(trimmedName);
 
-  const submit = async (event: React.FormEvent) => {
+  const submit = async (event: FormEvent) => {
     event.preventDefault();
     if (!SECRET_NAME_RULE.test(trimmedName)) {
       setError("Use UPPER_SNAKE_CASE: letters, digits and underscores, starting with a letter.");
@@ -81,134 +224,91 @@ function Secrets({ name, hasVersions }: { name: string; hasVersions: boolean }) 
     }
     setBusy(true);
     setError(null);
-    setNote(null);
-    const failure = await mutate(`${base}/${encodeURIComponent(trimmedName)}`, {
-      method: "PUT",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ value }),
-    });
-    setBusy(false);
+    let failure: string | null;
+    try {
+      failure = await mutate(`${base}/${encodeURIComponent(trimmedName)}`, {
+        method: "PUT",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ value }),
+      });
+    } finally {
+      setBusy(false);
+    }
     if (failure) {
       setError(failure);
       return;
     }
-    setSecretName("");
-    setValue("");
-    setNote({ text: `${trimmedName} saved. It applies on the next deploy or sprout restart.`, tone: "success" });
-    await refresh();
-  };
-
-  const remove = async (secret: string) => {
-    const failure = await mutate(`${base}/${encodeURIComponent(secret)}`, { method: "DELETE" });
-    setNote({
-      text: failure ?? `Deleted ${secret}. It applies on the next deploy or sprout restart.`,
-      tone: failure ? "error" : "success",
+    toast.add({
+      tone: "success",
+      title: `Saved ${trimmedName}`,
+      description: "It applies on the next deploy or sprout restart.",
     });
-    await refresh();
+    onClose();
+    await onSaved();
   };
 
   return (
-    <Panel>
-      <PanelHeading
-        title="Secrets"
-        description="Encrypted at rest and handed to the deployment's binding broker. Values are never shown again after you save them."
-      />
-
-      {note && <StatusMessage tone={note.tone}>{note.text}</StatusMessage>}
-
-      {state === "loading" ? (
-        <p className="min-h-56 px-5 pt-12 text-muted-foreground group-[.is-padded]/panel:px-0" aria-live="polite">
-          Loading secrets…
-        </p>
-      ) : state === "error" ? (
-        <StatusMessage tone="error">Could not load secrets. Refresh and try again.</StatusMessage>
-      ) : names.length === 0 ? (
-        <p className="px-5 py-12 text-center text-[0.84rem] leading-relaxed text-muted-foreground group-[.is-padded]/panel:px-0 group-[.is-padded]/panel:py-5 group-[.is-padded]/panel:text-start [&_code]:text-foreground">
-          No secrets set. Your handler reads them from <code>env</code> once one is bound.
-        </p>
-      ) : (
-        <RecordList aria-label="Secrets">
-          {names.map((secret) => (
-            <RecordRow key={secret}>
-              <div>
-                <strong>
-                  <code>{secret}</code>
-                </strong>
-                <small>Value hidden</small>
-              </div>
-              <ConfirmButton
-                label="Delete"
-                busyLabel="Deleting…"
-                triggerVariant="quiet"
-                title={`Delete ${secret}?`}
-                description={
-                  <>
-                    The running version keeps its current value until the next deploy or sprout restart. This cannot be
-                    undone.
-                  </>
-                }
-                confirmLabel="Delete secret"
-                onConfirm={() => remove(secret)}
-              />
-            </RecordRow>
-          ))}
-        </RecordList>
-      )}
-
-      {/* The reason the fields below are dead belongs above them, not buried in
-          one field's hint where it reads as guidance rather than a blocker. */}
-      {!hasVersions && (
-        <StatusMessage>
-          Deploy this project once before setting secrets - a secret is handed to a running version.
-        </StatusMessage>
-      )}
-
-      {/* A rule the full width of the list above it: "these are the secrets
-          you have" ends here, "add one" starts below. */}
-      <hr className="mt-6" />
-      <form className={FORM} onSubmit={(event) => void submit(event)}>
-        <TextField
-          label="Name"
-          value={secretName}
-          onChange={(event) => {
-            setSecretName(event.target.value);
-            setError(null);
-          }}
-          placeholder="API_KEY"
-          autoComplete="off"
-          spellCheck={false}
-          disabled={!hasVersions}
-          hint="UPPER_SNAKE_CASE. Setting an existing name replaces its value."
-          error={invalidName ? "Use UPPER_SNAKE_CASE, starting with a letter." : null}
-          footer={replacing ? `${trimmedName} already exists - saving replaces its value.` : undefined}
-        />
-        <TextField
-          label="Value"
-          type="password"
-          value={value}
-          onChange={(event) => {
-            setValue(event.target.value);
-            setError(null);
-          }}
-          autoComplete="new-password"
-          spellCheck={false}
-          disabled={!hasVersions}
-          hint="Stored encrypted; up to 8 KB."
-          error={tooLong ? "Value exceeds the 8 KB limit." : error}
-        />
-        <div data-slot="form-actions" className={FORM_ACTIONS}>
-          <Button
-            type="submit"
-            variant="primary"
-            busy={busy}
-            busyLabel="Saving…"
-            disabled={!hasVersions || !secretName.trim() || !value || invalidName || tooLong}
+    <Dialog open={editing !== null} onOpenChange={(open) => (open || busy ? undefined : onClose())}>
+      <DialogContent>
+        <form onSubmit={(event) => void submit(event)} className="flex flex-col gap-4">
+          <div>
+            <DialogTitle>{locked ? `Replace ${editing}` : "Add a secret"}</DialogTitle>
+            <DialogDescription>
+              {locked
+                ? "The new value replaces the old one. The old value cannot be read back."
+                : "Setting an existing name replaces its value."}
+            </DialogDescription>
+          </div>
+          <Field
+            label="Name"
+            description="UPPER_SNAKE_CASE, starting with a letter."
+            error={invalidName ? "Use UPPER_SNAKE_CASE, starting with a letter." : null}
           >
-            {replacing ? "Replace secret" : "Add secret"}
-          </Button>
-        </div>
-      </form>
-    </Panel>
+            <Input
+              mono
+              value={secretName}
+              readOnly={locked}
+              placeholder="API_KEY"
+              autoComplete="off"
+              spellCheck={false}
+              onChange={(event) => {
+                setSecretName(event.target.value);
+                setError(null);
+              }}
+            />
+          </Field>
+          {replacing && !locked ? (
+            <p className="-mt-2 text-sm text-warn-fg">{trimmedName} already exists. Saving replaces its value.</p>
+          ) : null}
+          <Field
+            label="Value"
+            description="Stored encrypted; up to 8 KB."
+            error={tooLong ? "Value exceeds the 8 KB limit." : error}
+          >
+            <SensitiveInput
+              value={value}
+              onChange={(event) => {
+                setValue(event.target.value);
+                setError(null);
+              }}
+              autoComplete="new-password"
+              spellCheck={false}
+            />
+          </Field>
+          <DialogFooter className="mt-0">
+            <DialogClose render={<Button disabled={busy} />}>Cancel</DialogClose>
+            <Button
+              type="submit"
+              variant="primary"
+              loading={busy}
+              disabled={!secretName.trim() || !value || invalidName || tooLong}
+            >
+              Save secret
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -222,65 +322,75 @@ function ProjectSettings() {
   );
   const manifest = detail?.manifest;
 
+  const items: DescriptionItem[] = manifest
+    ? [
+        { id: "id", term: "Deployment ID", details: copyable(detail?.id ?? "", "Copy deployment ID") },
+        { id: "target", term: "Target ABI", details: manifest.target, mono: true },
+        { id: "runtime", term: "Runtime", details: manifest.runtime, mono: true },
+        { id: "profile", term: "Compatibility profile", details: manifest.capabilityProfile, mono: true },
+        { id: "schema", term: "Manifest schema", details: String(manifest.schemaVersion), mono: true },
+        { id: "porffor", term: "Porffor toolchain", details: manifest.porfforVersion, mono: true },
+        { id: "esbuild", term: "esbuild", details: manifest.esbuildVersion, mono: true },
+        { id: "image", term: "Build image", details: copyable(manifest.buildImage, "Copy build image") },
+        { id: "source", term: "Source hash", details: copyable(manifest.sourceHash, "Copy source hash") },
+        { id: "binary", term: "Binary hash", details: copyable(manifest.binaryHash, "Copy binary hash") },
+        {
+          id: "size",
+          term: "Binary size",
+          details: `${manifest.binarySize.toLocaleString()} bytes (${formatBytes(manifest.binarySize)}, 16 MiB limit)`,
+          mono: true,
+        },
+        { id: "built", term: "Built", details: manifest.builtAt, mono: true },
+      ]
+    : [];
+
   return (
-    <>
-      <Panel variant="wide">
-        <PanelHeading
-          title="Active artifact"
-          description={
-            <>
-              Immutable. These are baked into the deployed artifact - change your local config and run{" "}
-              <code>sproutboat deploy</code> to produce a new version.
-            </>
-          }
-        />
+    <div className="flex flex-col gap-4">
+      <Section
+        id="artifact"
+        title="Active artifact"
+        description={
+          <>
+            Immutable. These are baked into the deployed artifact: change your local config and run{" "}
+            <code>sproutboat deploy</code> to produce a new version.
+          </>
+        }
+      >
         {!active ? (
-          <p className="px-5 py-12 text-center text-[0.84rem] leading-relaxed text-muted-foreground group-[.is-padded]/panel:px-0 group-[.is-padded]/panel:py-5 group-[.is-padded]/panel:text-start [&_code]:text-foreground">
+          <Note>
             No active deployment. Run <code>sproutboat deploy {name}</code> from the project directory to publish one.
-          </p>
+          </Note>
         ) : state === "loading" ? (
-          <p className="min-h-56 px-5 pt-12 text-muted-foreground group-[.is-padded]/panel:px-0" aria-live="polite">
-            Loading artifact details…
-          </p>
+          <LoadingLine label="Loading artifact details…" />
         ) : state === "error" ? (
-          <StatusMessage tone="error">Could not load the active artifact. Refresh and try again.</StatusMessage>
+          <Banner tone="danger">Could not load the active artifact. Refresh and try again.</Banner>
         ) : manifest ? (
-          <dl className="mt-5 grid grid-cols-[repeat(auto-fit,minmax(16rem,1fr))] gap-x-8 gap-y-4 [&_code]:text-[0.78rem] [&_dd]:mt-1 [&_dd]:text-[0.85rem] [&_dd]:[overflow-wrap:anywhere] [&_dt]:text-[0.72rem] [&_dt]:tracking-wide [&_dt]:text-muted-foreground [&_dt]:uppercase">
-            <Value label="Deployment ID" value={detail?.id ?? "-"} copy />
-            <Value label="Target ABI" value={manifest.target} />
-            <Value label="Runtime" value={manifest.runtime} />
-            <Value label="Compatibility profile" value={manifest.capabilityProfile} />
-            <Value label="Manifest schema" value={String(manifest.schemaVersion)} />
-            <Value label="Porffor toolchain" value={manifest.porfforVersion} />
-            <Value label="esbuild" value={manifest.esbuildVersion} />
-            <Value label="Build image" value={manifest.buildImage} copy />
-            <Value label="Source hash" value={manifest.sourceHash} copy />
-            <Value label="Binary hash" value={manifest.binaryHash} copy />
-            <div>
-              <dt>Binary size</dt>
-              <dd>
-                {manifest.binarySize.toLocaleString()} bytes{" "}
-                <span className="mt-3 text-[0.75rem] text-muted-foreground">(16 MiB limit)</span>
-              </dd>
-            </div>
-            <Value label="Built" value={manifest.builtAt} />
-          </dl>
+          <DescriptionList items={items} />
         ) : (
-          <p className="mb-4 text-[0.85rem] text-muted-foreground">
-            Artifact metadata is unavailable{detail?.manifestError ? `: ${detail.manifestError}` : "."}
-          </p>
+          <Note>Artifact metadata is unavailable{detail?.manifestError ? `: ${detail.manifestError}` : "."}</Note>
         )}
-      </Panel>
+      </Section>
 
       <Secrets name={name} hasVersions={deployments.length > 0} />
 
-      <Panel className="[&_h2]:text-destructive">
-        <PanelHeading
-          title="Danger zone"
-          description="Delete this project, every deployed version, and its route. This cannot be undone."
-        />
-        <DeleteProject name={name} onDeleted={() => void navigate({ to: "/projects" })} />
-      </Panel>
-    </>
+      <Section
+        id="danger"
+        title="Danger zone"
+        description="Delete this project, every deployed version, and its route. This cannot be undone."
+        action={
+          <DeleteProjectDialog
+            name={name}
+            onDeleted={() => {
+              toast.add({
+                tone: "success",
+                title: `Deleted ${name}`,
+                description: "The project and every deployed version are gone.",
+              });
+              void navigate({ to: "/projects" });
+            }}
+          />
+        }
+      />
+    </div>
   );
 }

@@ -1,20 +1,25 @@
-import { useCallback, useEffect, useRef, useState } from "react";
-import { createFileRoute } from "@tanstack/react-router";
 import {
+  Banner,
   Button,
-  DataTable,
-  FILTER_BAR,
-  FILTER_FIELD,
-  FILTER_SEARCH,
-  Panel,
-  PanelHeading,
-  SelectField,
-  StatusMessage,
-  TextField,
-} from "../components";
+  CodeBlock,
+  EmptyState,
+  Field,
+  Input,
+  Badge,
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+  cn,
+} from "@sproutboat/ikada";
+import { createFileRoute } from "@tanstack/react-router";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { relativeTime, useProject } from "../dashboard-data";
 import { LiveTail } from "../live-tail";
-import { cn } from "@/lib/utils";
+import { statusTone } from "../log-row";
+import { FilterSelect, LoadingLine, Section } from "../project-ui";
 
 export const Route = createFileRoute("/projects_/$name/logs")({ component: ProjectLogs });
 
@@ -32,43 +37,43 @@ type LogRecord = {
 type LogPage = { events: LogRecord[]; nextBefore: string | null; windowTruncated: boolean };
 type Row = { key: number; record: LogRecord; title: string };
 
-const LOG_STATUS = {
-  "2xx": "text-success",
-  "3xx": "text-sky",
-  "4xx": "text-coral",
-  "5xx": "text-coral",
-  other: "",
-} satisfies Record<StatusClass, string>;
+const STATUS_TEXT = {
+  ok: "text-brand-fg",
+  info: "text-info-fg",
+  danger: "text-danger-fg",
+  warn: "text-warn-fg",
+  default: "text-fg",
+} as const;
 
 const FULL_TIME = new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "medium" });
 
 const STATUS_OPTIONS = [
-  ["all", "All statuses"],
-  ["2xx", "2xx"],
-  ["3xx", "3xx"],
-  ["4xx", "4xx"],
-  ["5xx", "5xx"],
-  ["other", "Other"],
-] as const;
+  { value: "all", label: "All statuses" },
+  { value: "2xx", label: "2xx" },
+  { value: "3xx", label: "3xx" },
+  { value: "4xx", label: "4xx" },
+  { value: "5xx", label: "5xx" },
+  { value: "other", label: "Other" },
+];
 const METHOD_OPTIONS = [
-  ["all", "All methods"],
-  ["GET", "GET"],
-  ["POST", "POST"],
-  ["PUT", "PUT"],
-  ["PATCH", "PATCH"],
-  ["DELETE", "DELETE"],
-  ["HEAD", "HEAD"],
-] as const;
+  { value: "all", label: "All methods" },
+  { value: "GET", label: "GET" },
+  { value: "POST", label: "POST" },
+  { value: "PUT", label: "PUT" },
+  { value: "PATCH", label: "PATCH" },
+  { value: "DELETE", label: "DELETE" },
+  { value: "HEAD", label: "HEAD" },
+];
 const DURATION_OPTIONS = [
-  ["0", "Any duration"],
-  ["100", "Slower than 100 ms"],
-  ["500", "Slower than 500 ms"],
-  ["1000", "Slower than 1 s"],
-] as const;
+  { value: "0", label: "Any duration" },
+  { value: "100", label: "Slower than 100 ms" },
+  { value: "500", label: "Slower than 500 ms" },
+  { value: "1000", label: "Slower than 1 s" },
+];
 const COLD_OPTIONS = [
-  ["all", "All requests"],
-  ["true", "Cold starts only"],
-] as const;
+  { value: "all", label: "All requests" },
+  { value: "true", label: "Cold starts only" },
+];
 
 type Filters = { statusClass: string; method: string; minDuration: string; coldStart: string; query: string };
 const EMPTY: Filters = { statusClass: "all", method: "all", minDuration: "0", coldStart: "all", query: "" };
@@ -152,120 +157,124 @@ function ProjectLogs() {
   }, [loadFirst]);
 
   return (
-    <>
+    <div className="flex flex-col gap-4">
       <LiveTail name={name} active={Boolean(active)} />
 
-      <Panel variant="wide" aria-label="Request logs">
-        <PanelHeading
-          title="Request logs"
-          description="Edge events for this project's route, newest first. Use the live tail above to watch new ones."
-        />
-
+      <Section
+        id="request-logs"
+        title="Request logs"
+        description="Edge events for this project's route, newest first. Use the live tail above to watch new ones."
+      >
         {!active && (
-          <StatusMessage>This project has no active route right now - only past traffic is shown.</StatusMessage>
+          <Banner tone="info">This project has no active route right now. Only past traffic is shown.</Banner>
         )}
 
-        <search className={FILTER_BAR}>
-          <SelectField
+        <search className="flex flex-wrap items-end gap-3">
+          <FilterSelect
             label="Status"
-            fieldClassName={FILTER_FIELD}
             value={filters.statusClass}
             options={STATUS_OPTIONS}
             onValueChange={(value) => set("statusClass", value)}
           />
-          <SelectField
+          <FilterSelect
             label="Method"
-            fieldClassName={FILTER_FIELD}
             value={filters.method}
             options={METHOD_OPTIONS}
             onValueChange={(value) => set("method", value)}
           />
-          <SelectField
+          <FilterSelect
             label="Duration"
-            fieldClassName={FILTER_FIELD}
             value={filters.minDuration}
             options={DURATION_OPTIONS}
             onValueChange={(value) => set("minDuration", value)}
           />
-          <SelectField
+          <FilterSelect
             label="Cold start"
-            fieldClassName={FILTER_FIELD}
             value={filters.coldStart}
             options={COLD_OPTIONS}
             onValueChange={(value) => set("coldStart", value)}
           />
-          <TextField
-            label="Search"
-            type="search"
-            fieldClassName={FILTER_SEARCH}
-            placeholder="Match status, method, or failure text"
-            value={filters.query}
-            onChange={(event) => set("query", event.target.value)}
-          />
-          <Button variant="quiet" disabled={!filtered} onClick={() => setFilters(EMPTY)}>
+          <Field label="Search" className="sm:max-w-md sm:flex-1">
+            <Input
+              type="search"
+              placeholder="Match status, method, or failure text"
+              value={filters.query}
+              onChange={(event) => set("query", event.target.value)}
+            />
+          </Field>
+          <Button disabled={!filtered} onClick={() => setFilters(EMPTY)}>
             Clear
           </Button>
         </search>
 
         {truncated && (
-          <StatusMessage>Showing the most recent window of activity; older history is not retained here.</StatusMessage>
+          <Banner tone="info">Showing the most recent window of activity; older history is not retained here.</Banner>
         )}
 
         {state === "loading" ? (
-          <p className="min-h-56 px-5 pt-12 text-muted-foreground group-[.is-padded]/panel:px-0" aria-live="polite">
-            Loading events…
-          </p>
+          <LoadingLine label="Loading events…" />
         ) : state === "error" ? (
-          <StatusMessage tone="error">Could not load logs. Refresh and try again.</StatusMessage>
+          <Banner tone="danger">Could not load logs. Refresh and try again.</Banner>
         ) : rows.length === 0 ? (
-          <p className="px-5 py-12 text-center text-[0.84rem] leading-relaxed text-muted-foreground group-[.is-padded]/panel:px-0 group-[.is-padded]/panel:py-5 group-[.is-padded]/panel:text-start [&_code]:text-foreground">
-            {filtered ? "No requests match these filters." : "No requests recorded for this route yet."}
-          </p>
+          <EmptyState
+            as="h3"
+            title={filtered ? "No requests match" : "No requests yet"}
+            description={filtered ? "No requests match these filters." : "No requests recorded for this route yet."}
+          />
         ) : (
           <>
-            <DataTable
-              caption="Request log, newest first"
-              head={
-                <tr>
-                  <th scope="col">Time</th>
-                  <th scope="col">Method</th>
-                  <th scope="col" className="text-end tabular-nums">
-                    Status
-                  </th>
-                  <th scope="col" className="text-end tabular-nums">
-                    Duration
-                  </th>
-                  <th scope="col">Start</th>
-                  <th scope="col">Failure</th>
-                </tr>
-              }
-            >
-              {rows.map(({ key, record, title }) => (
-                <tr key={key}>
-                  <td title={title}>{relativeTime(record.at)}</td>
-                  <td>{record.method ?? "-"}</td>
-                  <td className={cn("text-end font-semibold tabular-nums", LOG_STATUS[record.statusClass])}>
-                    {record.status}
-                  </td>
-                  <td className="text-end tabular-nums">{record.durationMs} ms</td>
-                  <td>{record.coldStart ? <span className="badge">Cold</span> : "Warm"}</td>
-                  <td>{record.failure ?? "-"}</td>
-                </tr>
-              ))}
-            </DataTable>
+            <Table label="Request log, newest first" containerClassName="shadow-none ring-1 ring-hairline">
+              <TableHeader>
+                <TableRow className="hover:bg-transparent">
+                  <TableHead>Time</TableHead>
+                  <TableHead>Method</TableHead>
+                  <TableHead className="text-end">Status</TableHead>
+                  <TableHead className="text-end">Duration</TableHead>
+                  <TableHead hideBelow="md">Start</TableHead>
+                  <TableHead hideBelow="lg">Failure</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {rows.map(({ key, record, title }) => (
+                  <TableRow key={key}>
+                    <TableCell className="whitespace-nowrap text-fg-muted tabular-nums" title={title}>
+                      {relativeTime(record.at)}
+                    </TableCell>
+                    <TableCell className="font-mono text-sm">{record.method ?? "-"}</TableCell>
+                    <TableCell
+                      className={cn(
+                        "text-end font-mono text-sm font-semibold tabular-nums",
+                        STATUS_TEXT[statusTone(record.status)],
+                      )}
+                    >
+                      {record.status}
+                    </TableCell>
+                    <TableCell className="text-end font-mono text-sm tabular-nums">{record.durationMs} ms</TableCell>
+                    <TableCell hideBelow="md">
+                      {record.coldStart ? (
+                        <Badge tone="warning">Cold</Badge>
+                      ) : (
+                        <span className="text-fg-muted">Warm</span>
+                      )}
+                    </TableCell>
+                    <TableCell hideBelow="lg" className="text-danger-fg">
+                      {record.failure ?? <span className="text-fg-muted">-</span>}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
             {nextBefore && (
-              <div className="mt-4">
-                <Button variant="quiet" onClick={() => void loadOlder()}>
-                  Load older
-                </Button>
+              <div>
+                <Button onClick={() => void loadOlder()}>Load older</Button>
               </div>
             )}
           </>
         )}
-      </Panel>
+      </Section>
 
       <SproutOutput name={name} />
-    </>
+    </div>
   );
 }
 
@@ -301,35 +310,34 @@ function SproutOutput({ name }: { name: string }) {
   }, [load]);
 
   return (
-    <Panel variant="wide">
-      <PanelHeading
-        title="Sprout output"
-        description="stdout and stderr from the active version's process and its binding broker."
-        action={
-          <Button variant="quiet" busy={state === "loading"} busyLabel="Refreshing…" onClick={() => void load()}>
-            Refresh
-          </Button>
-        }
-      />
+    <Section
+      id="sprout-output"
+      title="Sprout output"
+      description="stdout and stderr from the active version's process and its binding broker."
+      action={
+        <Button loading={state === "loading"} onClick={() => void load()}>
+          Refresh
+        </Button>
+      }
+    >
       {state === "missing" ? (
-        <p className="px-5 py-12 text-center text-[0.84rem] leading-relaxed text-muted-foreground group-[.is-padded]/panel:px-0 group-[.is-padded]/panel:py-5 group-[.is-padded]/panel:text-start [&_code]:text-foreground">
-          No active deployment, so nothing is running to produce output.
-        </p>
+        <EmptyState
+          as="h3"
+          title="Nothing running"
+          description="No active deployment, so nothing is running to produce output."
+        />
       ) : state === "error" ? (
-        <StatusMessage tone="error">Could not read the sprout log. Refresh and try again.</StatusMessage>
-      ) : state === "ready" ? (
-        <pre
-          className="mt-5 max-h-[26rem] overflow-auto rounded-md border border-border bg-background p-4 font-mono text-[0.76rem] leading-relaxed break-words whitespace-pre-wrap focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none"
-          tabIndex={0}
-          aria-label="Sprout process output"
-        >
-          {text}
-        </pre>
+        <Banner tone="danger">Could not read the sprout log. Refresh and try again.</Banner>
+      ) : state === "idle" || (state === "loading" && text === "") ? (
+        <LoadingLine label="Loading output…" />
       ) : (
-        <p className="min-h-56 px-5 pt-12 text-muted-foreground group-[.is-padded]/panel:px-0" aria-live="polite">
-          Loading output…
-        </p>
+        <CodeBlock
+          label="Sprout process output"
+          code={text === "" ? "(no output yet)" : text}
+          wrap
+          className="[&>pre]:max-h-[26rem]"
+        />
       )}
-    </Panel>
+    </Section>
   );
 }
