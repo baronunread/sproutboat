@@ -367,3 +367,83 @@ describe("Phase A contracts", () => {
     }
   });
 });
+
+describe("memory caps", () => {
+  const bash = (script: string, env: Record<string, string> = {}) =>
+    Bun.spawnSync(["bash", "-c", script], { env: { PATH: process.env.PATH ?? "", ...env } });
+  const fn = (name: string) => `eval "$(sed -n '/^${name}()/,/^}/p' install.sh)"`;
+
+  test("units carry the budgeted caps and keep retrying", async () => {
+    const read = (u: string) => Bun.file(`infra/systemd/${u}.service`).text();
+    const [control, edge, egress, backup] = await Promise.all(
+      ["control", "edge", "egress", "backup"].map((u) => read(`sproutboat-${u}`)),
+    );
+    expect(control).toContain("MemoryMax=384M\nMemoryHigh=320M");
+    expect(egress).toContain("MemoryMax=512M\nMemoryHigh=448M");
+    expect(edge).toContain("MemoryMax=1536M\nMemoryHigh=1280M");
+    expect(edge).toContain("MemorySwapMax=0");
+    expect(edge).toContain("CPUQuota=200%");
+    expect(edge).toContain("TasksMax=2048");
+    expect(backup).toContain("MemoryMax=512M");
+    expect(backup).toContain("Nice=10");
+    expect(backup).toContain("IOSchedulingClass=idle");
+    for (const unit of [control, edge, egress]) {
+      expect(unit).toMatch(/^\[Unit\][^[]*^StartLimitIntervalSec=0$/m);
+      expect(unit).toContain("Restart=always\nRestartSec=2");
+    }
+  });
+
+  test("the installer writes the edge and caddy caps and runs the heavy steps capped", async () => {
+    const install = await Bun.file("install.sh").text();
+    expect(install).toContain("/etc/systemd/system/sproutboat-edge.service.d/10-sproutboat-memory.conf");
+    expect(install).toContain("MemoryMax=${EDGE_MAX_MIB}M");
+    expect(install).toContain("MemoryHigh=${EDGE_HIGH_MIB}M");
+    expect(install).toContain("MemoryMax=256M\nMemoryHigh=224M\nEOF");
+    expect(install.indexOf("10-sproutboat-memory.conf")).toBeLessThan(
+      install.indexOf("systemctl daemon-reload\n\n  # --- start"),
+    );
+    expect(install).toContain('capped "$BUN" install --frozen-lockfile --silent');
+    expect(install).toContain('capped "$BUN" run --silent web:build');
+    expect(install).toContain('capped "$BUN" x --bun auth@1.7.1 migrate');
+    expect(install).toContain("systemd-run --quiet --scope --collect -p MemoryMax=");
+    expect(install).toContain("SB_BUILD_MEMORY_MAX");
+    expect(install).toContain("SB_SKIP_MEMCHECK");
+    expect(install.indexOf("\ncheck_build_memory\n")).toBeLessThan(install.indexOf("rsync -a --delete"));
+    const sbctl = await Bun.file("infra/sbctl").text();
+    expect(sbctl).toContain("memory) memory_report ;;");
+    expect(sbctl).toContain("sbctl memory");
+  });
+
+  test("edge_budget_mib is half of RAM, in 64 MiB steps, at least 512", () => {
+    for (const [kb, mib] of [
+      [3983360, "1920"],
+      [1048576, "512"],
+      [16777216, "8192"],
+    ] as const) {
+      const r = bash(`${fn("edge_budget_mib")}; edge_budget_mib ${kb}`);
+      expect(r.stdout.toString().trim()).toBe(mib);
+    }
+  });
+
+  test("SB_EDGE_MEMORY_MAX overrides the computed cap and is validated", () => {
+    const script = `die() { echo "$*" >&2; exit 1; }; ${fn("edge_budget_mib")}; ${fn("edge_memory_max_mib")}; edge_memory_max_mib`;
+    expect(bash(script, { SB_EDGE_MEMORY_MAX: "3000" }).stdout.toString().trim()).toBe("3000");
+    expect(bash(script, { SB_EDGE_MEMORY_MAX: "lots" }).exitCode).toBe(1);
+  });
+
+  test("capped runs plainly without systemd; check_build_memory refuses when short", () => {
+    const plain = bash(`${fn("capped")}; capped echo hi`, { SB_SKIP_SERVICES: "1" });
+    expect(plain.stdout.toString().trim()).toBe("hi");
+    const check = (avail: number, env: Record<string, string>) =>
+      bash(
+        `die() { echo "$*" >&2; exit 1; }; mem_available_mib() { echo ${avail}; }; BUILD_MEMORY_MAX=1200M; ${fn("check_build_memory")}; check_build_memory`,
+        env,
+      );
+    const low = check(900, { SB_UPDATE: "1" });
+    expect(low.exitCode).toBe(1);
+    expect(low.stderr.toString()).toContain("900 MiB");
+    expect(check(900, { SB_UPDATE: "1", SB_SKIP_MEMCHECK: "1" }).exitCode).toBe(0);
+    expect(check(900, {}).exitCode).toBe(0);
+    expect(check(2000, { SB_UPDATE: "1" }).exitCode).toBe(0);
+  });
+});

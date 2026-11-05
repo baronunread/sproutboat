@@ -444,6 +444,50 @@ unset, and when the archive predates binding-data backups (no `resources/`).
 After restoring config the domain and tokens are the old box's: if the new box
 has a different IP, update DNS before expecting certificates to renew.
 
+## Memory budget
+
+Every unit has a memory cap, and the caps must fit in RAM. Rule: **the sum of the
+`MemoryMax` values plus about 400 MiB for the OS must stay under MemTotal.**
+
+| Unit                                                               | MemoryMax                                                                       | MemoryHigh       | Where set                                                                                                                                                                                                         |
+| ------------------------------------------------------------------ | ------------------------------------------------------------------------------- | ---------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `sproutboat-edge` (edge, every sprout, broker, bwrap, Bun sidecar) | 50% of MemTotal, rounded down to 64 MiB, minimum 512M (1920M on a 3890 MiB box) | 85% of MemoryMax | installer drop-in `/etc/systemd/system/sproutboat-edge.service.d/10-sproutboat-memory.conf`; the unit file keeps a static `MemoryMax=1536M` / `MemoryHigh=1280M` fallback for installs made without the installer |
+| `sproutboat-control`                                               | 384M                                                                            | 320M             | unit file                                                                                                                                                                                                         |
+| `sproutboat-egress`                                                | 512M                                                                            | 448M             | unit file (Bun engine)                                                                                                                                                                                            |
+| `caddy`                                                            | 256M                                                                            | 224M             | installer drop-in `/etc/systemd/system/caddy.service.d/sproutboat.conf`                                                                                                                                           |
+| `sproutboat-backup`                                                | 512M                                                                            | none             | unit file (also `Nice=10`, `IOSchedulingClass=idle`)                                                                                                                                                              |
+| update build (`bun install`, dashboard build, auth migration)      | 1200M (`SB_BUILD_MEMORY_MAX`)                                                   | none             | transient `systemd-run --scope` in `install.sh`                                                                                                                                                                   |
+| OS and sshd reserve                                                | about 400M                                                                      |                  | documented only                                                                                                                                                                                                   |
+
+On a 3890 MiB box the steady state is 1920 + 384 + 512 + 256 = 3072 MiB of caps,
+plus the 400 MiB reserve (and a 128M monitoring agent if you run one) = 3600
+MiB, under MemTotal. The backup (nightly) and the update build (manual) are
+transient.
+
+`sbctl memory` prints MemTotal, MemAvailable, and each unit's `MemoryMax`,
+`MemoryHigh` and `MemoryCurrent`, then the sum of the maxes and whether it fits
+under MemTotal minus 400M.
+
+**Overriding the edge cap.** The installer rewrites `10-sproutboat-memory.conf`
+on every install and update, so do not edit it. Either add a drop-in that sorts
+later, for example `/etc/systemd/system/sproutboat-edge.service.d/50-local.conf`
+with `[Service]`, `MemoryMax=3000M` and `MemoryHigh=2600M`, then
+`systemctl daemon-reload && systemctl restart sproutboat-edge`; or run the
+update with `SB_EDGE_MEMORY_MAX=<MiB> sbctl update` (it must be set on each
+update). Keep the rule above in mind when raising it.
+
+**The update build is capped.** `bun install`, the dashboard build and the auth
+migration run in a transient scope with `MemoryMax=1200M` (override with
+`SB_BUILD_MEMORY_MAX`) and no swap. Before building, an update checks
+`MemAvailable` and refuses to start, before changing anything on disk, if it is
+below the cap: stop the backup timer (`systemctl stop sproutboat-backup.timer`)
+or wait for the backup to finish, then retry. `SB_SKIP_MEMCHECK=1` bypasses the
+check.
+
+The control, edge and egress units also set `StartLimitIntervalSec=0`, so a
+crash-looping unit keeps retrying every 2 s instead of stopping in
+`start-limit-hit`.
+
 ## Limits and abuse controls (#25)
 
 All configurable in `/etc/sproutboat/control.env`; sane defaults apply if unset.

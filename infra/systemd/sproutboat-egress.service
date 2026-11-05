@@ -8,6 +8,7 @@ Description=Sproutboat egress for sprout fetch()
 After=network-online.target
 Wants=network-online.target
 Before=sproutboat-edge.service
+StartLimitIntervalSec=0
 
 [Service]
 Type=simple
@@ -35,6 +36,7 @@ RestrictNamespaces=true
 LockPersonality=true
 CapabilityBoundingSet=
 MemoryMax=512M
+MemoryHigh=448M
 TasksMax=256
 
 [Install]
