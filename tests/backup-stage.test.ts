@@ -66,6 +66,17 @@ test("--print-caddy-dir: XDG_DATA_HOME from the unit wins, then the unit user's 
   );
 });
 
+test("--print-caddy-dir: a candidate holding only instance.uuid is found, ordering is kept", async () => {
+  const fresh = join(dir, "fresh", "caddy");
+  const later = join(dir, "later", "caddy");
+  await mkdir(fresh, { recursive: true });
+  await mkdir(join(later, "certificates"), { recursive: true });
+  await writeFile(join(fresh, "instance.uuid"), "u");
+  const sc = await fakeSystemctl({ Environment: "", User: "" });
+  expect((await stage(["--print-caddy-dir"], sc, { SB_CADDY_CANDIDATES: `${fresh}:${later}` })).out).toBe(fresh);
+  expect((await stage(["--print-caddy-dir"], sc, { SB_CADDY_CANDIDATES: `${later}:${fresh}` })).out).toBe(later);
+});
+
 test("--print-caddy-dir: with no certificates anywhere it prints the unit's own default", async () => {
   const xdg = join(dir, "xdg");
   const sc = await fakeSystemctl({ Environment: `XDG_DATA_HOME=${xdg}`, User: "" });
