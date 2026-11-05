@@ -9,14 +9,18 @@ Changes to the self-hosted Sproutboat platform are recorded here. Read the
 
 - **Your settings now live in `*.local.env` files, and `sbctl update` no longer wipes them.** The installer rewrites `control.env`, `egress.env`, `sproutboat.env` and `caddy.env` on every run, so any key you added to them (S3 backup settings, `SPROUTBOAT_BACKUP_ENCRYPT=off`, the limit knobs, `SB_EGRESS_ALLOW`) was lost at the next update. The matching `control.local.env`, `egress.local.env`, `sproutboat.local.env` and `caddy.local.env` are read right after them by the units, win over them, and are never rewritten. See "Where settings live" in `infra/README.md`.
 - **The first update moves your existing settings for you.** Any key it finds in a generated file that the installer does not write goes to the matching local file, and the old file is kept as `<name>.env.bak-<UTC time>` (mode 0600; it holds the token, so delete it once you have checked). It prints key names only. A second update changes nothing. Settings an earlier update already dropped are gone: set them again in the local file. Where to set things, from now on: S3 backup and `SPROUTBOAT_BACKUP_ENCRYPT` and the limits in `control.local.env`, `SB_EGRESS_ALLOW` in `egress.local.env`.
-- Rolling back the update that did the move (`sbctl rollback`) restores the generated files from before it, with your old keys still in them, so it works with the release that does not know the local files. Updating again moves them again; a key already in the local file with the same value is dropped, not repeated.
+- Rolling back the update that did the move (`sbctl rollback`) restores the generated files from before it, with your old keys still in them, so it works with the release that does not know the local files. Updating again moves them again; the installer drops a key that the local file already holds with the same value instead of repeating it.
 
 ### Fixed
 
 - **`sbctl update` kept losing operator settings in `control.env`** (found by the 1.0.0-rc.1 end-to-end test). Same for `egress.env` (anything but `SB_EGRESS_ALLOW`), `sproutboat.env` and `caddy.env`, where a changed `XDG_DATA_HOME` would have sent Caddy's certificates to a new directory.
 - **GitHub sign-in turned itself off at an update** that was not given `SB_GITHUB_CLIENT_ID` and `SB_GITHUB_CLIENT_SECRET` again. The installer now reads them back like the other secrets.
 - **A box that updates from a fork or mirror went back to the default repository** after one update, because `update.env` was rewritten with the default. The recorded repository is kept.
-- **`sbctl` ran `control.env` as shell** (`backup`, `restore`) instead of reading it as data, so an S3 secret containing `&` or `$` would break or be executed. It parses the files now, the way systemd reads them, and loads `control.local.env` too.
+- **`sbctl` ran `control.env` as shell** (`backup`, `restore`) instead of reading it as data, so an S3 secret containing `&` or `$` would break the command or run as shell. It parses the files now, the way systemd reads them, and loads `control.local.env` too.
+
+### Changed
+
+- **Documentation for 1.0.** The README now says what Community is and is not (one machine, the supervisor runtime, homelab first, Activity and webhooks), links Sproutboat Cloud for production and scale, and covers install, upgrade, backups (including copying `/etc/sproutboat/backup.key` off the box) and limits. New `SECURITY.md` (supported versions, private reporting, the sandbox model and its scope). `docs/versioning.md` is rewritten for 1.x: SemVer, what counts as breaking, pre-releases and how `sbctl update` treats them, and the maintenance-mode policy.
 
 ## [1.0.0-rc.1] - 2026-11-05
 
@@ -24,7 +28,7 @@ The first release candidate of Sproutboat Community 1.0: the single-machine, sel
 
 ### Breaking and operator actions
 
-- **A release candidate is not picked up by `sbctl update`.** The updater follows the newest `vX.Y.Z` tag, and `1.0.0-rc.1` is a pre-release, so an existing box stays on 0.14.0 until you ask for it: `SB_REF=v1.0.0-rc.1 sudo sbctl update`. `sbctl update --check` with the same `SB_REF` shows this entry first. Rolling back is `sudo sbctl rollback`; the database changes below are additive and 0.14.0 ignores them.
+- **A release candidate is not picked up by `sbctl update`.** The updater follows the newest `vX.Y.Z` tag, and `1.0.0-rc.1` is a pre-release, so an existing box stays on 0.14.0 until you ask for it: `sudo SB_REF=v1.0.0-rc.1 sbctl update` (give the variable to `sudo`, not to the shell: sudo resets the environment by default). `sbctl update --check` with the same `SB_REF` shows this entry first. Rolling back is `sudo sbctl rollback`; the database changes below are additive and 0.14.0 ignores them.
 - **Database: three new tables** (`events`, `webhooks`, `webhook_deliveries`), created at the first start. Nothing existing is altered. Backups include them; a 0.14.0 restore of a 1.0.0-rc.1 archive is refused by the version gate as before (`--allow-newer` overrides).
 - **The control unit now reads `/etc/sproutboat/egress.env`** (`EnvironmentFile`) and starts after the egress service, so webhook deliveries can leave through the egress service. `sbctl update` writes the unit; no action needed.
 - **`/etc/sproutboat/install.env` is new** and records the install mode (`SB_MODE`, `SB_PROXY`, `SB_FIREWALL`, `SB_SSH_PORT`, `SB_SCHEME`, `SB_BIND_HOST`, `SB_BIND_ALLOW`, `SB_ACME_STAGING`). An existing box becomes `public` with Caddy and ufw managed as before; a box that was installed with `SB_ACME_STAGING=1` keeps staging (the installer reads the old Caddyfile once). `sbctl mode` prints the file.
