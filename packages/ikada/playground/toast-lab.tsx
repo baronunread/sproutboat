@@ -101,6 +101,7 @@ export function ToastLab() {
       <Group label="Merging and Undo">
         <Button onClick={() => void spam()}>Spam ×5</Button>
         <Button onClick={rollBack}>Roll back with Undo</Button>
+        <span className="text-sm text-fg-muted">Icon-only Undo. ⌘Z or Ctrl Z undoes the newest.</span>
         <Button onClick={mixed}>Mixed</Button>
         <Button variant="ghost" onClick={() => toast.close()}>
           Clear toasts

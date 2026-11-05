@@ -56,6 +56,14 @@ export const ArrowUpRightIcon = (props: IconProps) => (
   </Icon>
 );
 
+/** The ↩ hook arrow: a straight shaft pointing left, the tail curling up at the right. */
+export const UndoIcon = (props: IconProps) => (
+  <Icon {...props}>
+    <path d="M2.5 10.5h7.25a3.25 3.25 0 0 0 0-6.5H8.5" />
+    <path d="M5.5 7.5l-3 3 3 3" />
+  </Icon>
+);
+
 /** The whole icon turns, and only under motion-safe; otherwise it is a static ring segment. */
 export const SpinnerIcon = ({ className, ...props }: IconProps) => (
   <Icon className={cn("motion-safe:animate-spin", className)} {...props}>

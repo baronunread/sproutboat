@@ -3,13 +3,14 @@ import { useEffect, useRef, useState } from "react";
 import type { PointerEvent as ReactPointerEvent, ReactNode } from "react";
 import { cn, focusRing } from "../lib/cn";
 import { Crossfade } from "../lib/crossfade";
-import { CloseIcon } from "../lib/icons";
+import { CloseIcon, UndoIcon } from "../lib/icons";
 import { releaseSpring } from "../lib/spring";
 import { buttonStyles } from "./button";
 import { dotColor } from "./status";
 import { StatusGlyph } from "./status-glyph";
+import { Tooltip } from "./tooltip";
 import { toast } from "./toast-api";
-import type { ToastData, ToastEvent, ToastTone } from "./toast-api";
+import type { ToastAction, ToastData, ToastEvent, ToastTone } from "./toast-api";
 
 export { deployToast, toast } from "./toast-api";
 export type {
@@ -131,6 +132,43 @@ function CountBadge({ count }: { count: number }) {
       <span aria-hidden="true">×{count}</span>
       <span className="sr-only">, {count} times</span>
     </span>
+  );
+}
+
+/** ⌘Z on Apple platforms, Ctrl Z elsewhere. */
+function undoShortcut(): { text: string; keys: string } {
+  const mac = /Mac|iPhone|iPad/.test(globalThis.navigator?.userAgent ?? "");
+  return mac ? { text: "⌘Z", keys: "Meta+Z" } : { text: "Ctrl Z", keys: "Control+Z" };
+}
+
+function UndoButton({ undo, id }: { undo: ToastAction; id: string }) {
+  const shortcut = undoShortcut();
+  return (
+    <Tooltip
+      content={
+        <span className="inline-flex items-center gap-2">
+          {undo.label}
+          <kbd aria-hidden="true">{shortcut.text}</kbd>
+        </span>
+      }
+    >
+      <button
+        type="button"
+        aria-label={undo.label}
+        aria-keyshortcuts={shortcut.keys}
+        data-sb-undo=""
+        onClick={() => toast.runUndo(id)}
+        className={cn(
+          "relative -mt-0.5 inline-grid size-7 shrink-0 place-items-center self-start rounded-full text-fg-muted transition-[background-color,color,scale] duration-(--sb-duration-hover) ease-hover hover:bg-hover hover:text-fg active:scale-(--sb-scale-press)",
+          // 28px visual, 40px hit area.
+          "after:absolute after:-inset-1.5 after:rounded-full after:content-['']",
+          focusRing,
+        )}
+      >
+        {/* Optical centring: the hook's bounding box sits 0.75px low of centre, so nudge it up. */}
+        <UndoIcon className="translate-x-[0.25px] -translate-y-[0.5px]" />
+      </button>
+    </Tooltip>
   );
 }
 
@@ -292,9 +330,17 @@ function ToastItem({ item }: { item: BaseToast }) {
           )
         }
       >
-        <div className="grid grid-cols-[1.5rem_minmax(0,1fr)_1.5rem] gap-2.5 py-3 ps-3 pe-2.5 opacity-(--c-op) transition-opacity duration-(--sb-duration-toast-in) ease-out">
+        <div
+          className={cn(
+            "grid gap-2.5 py-3 ps-3 pe-2.5 opacity-(--c-op) transition-opacity duration-(--sb-duration-toast-in) ease-out",
+            data.undo
+              ? "grid-cols-[1.5rem_minmax(0,1fr)_1.75rem_1.5rem] gap-x-2"
+              : "grid-cols-[1.5rem_minmax(0,1fr)_1.5rem]",
+          )}
+        >
           <Glyph tone={data.tone} busy={data.busy} />
           <Crossfade layerKey={faceKey} value={face} render={(f, live) => <Face face={f} id={item.id} live={live} />} />
+          {data.undo ? <UndoButton undo={data.undo} id={item.id} /> : null}
           <Toast.Close
             aria-label="Dismiss notification"
             className={cn(
@@ -356,9 +402,24 @@ export function ToastProvider({ children, onToast, limit = 5, label = "Notificat
       front.focus({ preventScroll: true });
     };
     window.addEventListener("keydown", onKey);
+    // ⌘Z / Ctrl Z undoes the newest undoable toast, but never steals the browser undo from a text field.
+    const onUndoKey = (event: KeyboardEvent) => {
+      if (event.defaultPrevented || event.repeat) return;
+      if (!(event.metaKey || event.ctrlKey) || event.shiftKey || event.altKey || event.key.toLowerCase() !== "z")
+        return;
+      const target = event.target;
+      if (
+        target instanceof Element &&
+        target.closest("input, textarea, select, [contenteditable]:not([contenteditable=false])")
+      )
+        return;
+      if (toast.undoNewest()) event.preventDefault();
+    };
+    window.addEventListener("keydown", onUndoKey);
     return () => {
       document.removeEventListener("visibilitychange", hidden);
       window.removeEventListener("keydown", onKey);
+      window.removeEventListener("keydown", onUndoKey);
     };
   }, [viewport]);
 

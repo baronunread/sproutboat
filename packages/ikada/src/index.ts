@@ -71,4 +71,4 @@ export type {
 export { Tooltip, TooltipProvider } from "./components/tooltip";
 export { cn } from "./lib/cn";
 export { PortalContainer } from "./lib/portal";
-export { CheckIcon, ChevronDownIcon, CloseIcon, CopyIcon, SpinnerIcon } from "./lib/icons";
+export { CheckIcon, ChevronDownIcon, CloseIcon, CopyIcon, SpinnerIcon, UndoIcon } from "./lib/icons";

@@ -141,17 +141,60 @@ describe("merging", () => {
 });
 
 describe("Undo", () => {
-  test("Undo is a plain text action that swaps the toast in place to a confirmation, with no countdown", async () => {
+  const press = (init: KeyboardEventInit, target: Element | Window = window) =>
+    act(() => {
+      target.dispatchEvent(new KeyboardEvent("keydown", { key: "z", bubbles: true, cancelable: true, ...init }));
+    });
+
+  test("Undo is an icon-only button named Undo that swaps the toast in place to a confirmation, with no countdown", async () => {
     let undone = 0;
     toast.undo({ title: "Rolled back to v47", onUndo: () => (undone += 1), confirmTitle: "Undone. v48 is live again" });
     const button = await screen.findByRole("button", { name: "Undo" });
-    expect(button.className).toContain("underline");
+    expect(button.textContent).toBe("");
+    expect(button.querySelector("svg path")).toBeTruthy();
+    expect(button.getAttribute("aria-keyshortcuts")).toMatch(/^(Meta|Control)\+Z$/);
     expect(document.querySelector("[role=progressbar], [data-progress], [data-countdown]")).toBeNull();
     await userEvent.click(button);
     expect(undone).toBe(1);
     await waitFor(() => expect(screen.getAllByText("Undone. v48 is live again").length).toBeGreaterThan(0));
     expect(items().length).toBe(1);
     await waitFor(() => expect(screen.queryByRole("button", { name: "Undo" })).toBeNull(), { timeout: 1500 });
+  });
+
+  test("Ctrl Z or Meta Z undoes the newest undoable toast only", async () => {
+    const undone: string[] = [];
+    toast.undo({ title: "First", onUndo: () => undone.push("first"), duration: 0 });
+    toast.undo({ title: "Second", onUndo: () => undone.push("second"), duration: 0 });
+    await screen.findByText("Second");
+    press({ ctrlKey: true });
+    expect(undone).toEqual(["second"]);
+    press({ metaKey: true });
+    expect(undone).toEqual(["second", "first"]);
+    press({ metaKey: true });
+    expect(undone).toEqual(["second", "first"]);
+  });
+
+  test("the shortcut is ignored while focus is in an input", async () => {
+    let undone = 0;
+    toast.undo({ title: "Rolled back", onUndo: () => (undone += 1), duration: 0 });
+    await screen.findByRole("button", { name: "Undo" });
+    const input = document.createElement("input");
+    document.body.append(input);
+    input.focus();
+    press({ ctrlKey: true }, input);
+    press({ metaKey: true }, input);
+    expect(undone).toBe(0);
+    input.remove();
+  });
+
+  test("auto-repeat does not undo", async () => {
+    let undone = 0;
+    toast.undo({ title: "Rolled back", onUndo: () => (undone += 1), duration: 0 });
+    await screen.findByRole("button", { name: "Undo" });
+    press({ ctrlKey: true, repeat: true });
+    expect(undone).toBe(0);
+    press({ ctrlKey: true });
+    expect(undone).toBe(1);
   });
 });
 

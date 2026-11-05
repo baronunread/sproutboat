@@ -14,7 +14,7 @@ export interface ToastActionContext {
 export interface ToastAction {
   label: string;
   onClick: (ctx: ToastActionContext) => void;
-  /** `ghost` is plain underlined text (Undo, View build log); `danger` is a red button (Retry). Default ghost. */
+  /** `ghost` is plain underlined text (View build log); `danger` is a red button (Retry). Default ghost. */
   variant?: "ghost" | "danger";
 }
 
@@ -30,6 +30,11 @@ export interface ToastOptions {
   /** 0 to 1. The progress line shows only while this is a number. */
   progress?: number | null;
   actions?: ToastAction[];
+  /**
+   * An icon-only Undo button (the ↩ hook arrow) before the dismiss ×, also bound to ⌘Z / Ctrl Z for the newest
+   * toast that has one. `label` is its accessible name. Pass `null` in an update to remove it.
+   */
+  undo?: ToastAction | null;
   /** Milliseconds before it leaves; 0 keeps it until dismissed. Default by tone: 5s, warning 7s, danger 9s. */
   duration?: number;
   /** Identical toasts merge into one with a ×N counter. Default true; ignored when `id` is set. */
@@ -77,6 +82,7 @@ export interface ToastData {
   busy: boolean;
   progress?: number;
   actions: ToastAction[];
+  undo?: ToastAction;
   count: number;
 }
 
@@ -84,6 +90,7 @@ interface Entry extends ToastRecord {
   key: string;
   merge: boolean;
   actions: ToastAction[];
+  undo?: ToastAction;
   duration: number;
   remaining: number;
   startedAt: number | null;
@@ -133,6 +140,7 @@ const dataOf = (e: Entry): ToastData => ({
   busy: e.busy,
   progress: e.progress,
   actions: e.actions,
+  undo: e.undo,
   count: e.count,
 });
 
@@ -216,6 +224,7 @@ function add(o: ToastOptions): string {
     busy: o.busy ?? false,
     progress: o.progress ?? undefined,
     actions: o.actions ?? [],
+    undo: o.undo ?? undefined,
     count: 1,
     silent: o.silent ?? false,
     meta: o.meta,
@@ -257,6 +266,7 @@ function update(id: string, patch: ToastPatch): void {
   if (patch.busy !== undefined) e.busy = patch.busy;
   if ("progress" in patch) e.progress = patch.progress ?? undefined;
   if (patch.actions !== undefined) e.actions = patch.actions;
+  if ("undo" in patch) e.undo = patch.undo ?? undefined;
   if (patch.silent !== undefined) e.silent = patch.silent;
   if (patch.meta !== undefined) e.meta = patch.meta;
   if (e.merge) e.key = keyOf(e.tone, e.title, e.description);
@@ -271,40 +281,57 @@ function close(id?: string): void {
   manager.close(id);
 }
 
-export interface UndoOptions extends Omit<ToastOptions, "actions" | "tone" | "merge"> {
+export interface UndoOptions extends Omit<ToastOptions, "actions" | "undo" | "tone" | "merge"> {
   onUndo: () => void;
-  /** Default "Undo". */
+  /** The accessible name of the icon button. Default "Undo". */
   label?: string;
   /** What the toast becomes after Undo. Default "Undone". */
   confirmTitle?: string;
   confirmDescription?: string;
 }
 
-/** A success toast with a plain text Undo. Clicking it runs `onUndo` and swaps the toast in place to a confirmation. */
+/**
+ * A success toast with an icon-only Undo button. Clicking it, or pressing ⌘Z / Ctrl Z while this is the newest
+ * undoable toast, runs `onUndo` and swaps the toast in place to a confirmation.
+ */
 function undo({ onUndo, label = "Undo", confirmTitle = "Undone", confirmDescription, ...rest }: UndoOptions): string {
   return add({
     duration: 8000,
     ...rest,
     tone: "success",
     merge: false,
-    actions: [
-      {
-        label,
-        variant: "ghost",
-        onClick: (ctx) => {
-          onUndo();
-          ctx.update({
-            title: confirmTitle,
-            description: confirmDescription,
-            tone: "success",
-            actions: [],
-            duration: 3500,
-            meta: { ...rest.meta, undone: true },
-          });
-        },
+    undo: {
+      label,
+      onClick: (ctx) => {
+        onUndo();
+        ctx.update({
+          title: confirmTitle,
+          description: confirmDescription,
+          tone: "success",
+          undo: null,
+          duration: 3500,
+          meta: { ...rest.meta, undone: true },
+        });
       },
-    ],
+    },
   });
+}
+
+/** Run the Undo of one toast, as its button does. Returns false when it has none. */
+function runUndo(id: string): boolean {
+  const e = entries.get(id);
+  if (!e?.undo) return false;
+  e.undo.onClick({ id, update: (patch) => update(id, patch), close: () => close(id) });
+  return true;
+}
+
+/** ⌘Z / Ctrl Z: undo the newest toast still on screen that has an Undo. */
+function undoNewest(): boolean {
+  for (let i = order.length - 1; i >= 0; i--) {
+    const id = order[i];
+    if (id !== undefined && entries.get(id)?.undo) return runUndo(id);
+  }
+  return false;
 }
 
 function subscribe(listener: ToastListener): () => void {
@@ -323,6 +350,10 @@ export const toast = {
   update,
   close,
   undo,
+  /** @internal Used by the toast's Undo button and the provider's ⌘Z handler. */
+  runUndo,
+  /** @internal */
+  undoNewest,
   subscribe,
   /** Whether a toast with this id is still on screen. */
   has: (id: string): boolean => entries.has(id),
