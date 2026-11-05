@@ -159,7 +159,7 @@ describe("sb-snapshot and sb-rollback", () => {
     await put(join(dir, "opt/sproutboat/apps/control/main.ts"), "old main\n");
     await put(join(dir, "opt/sproutboat/bun/bin/bun"), "old bun\n", 0o755);
     await put(join(dir, "opt/sproutboat/node_modules/dep/index.js"), "dep\n");
-    await put(join(dir, "etc/sproutboat/control.env"), "TOKEN=old\n", 0o640);
+    await put(join(dir, "etc/sproutboat/control.env"), "TOKEN=old\n", 0o600);
     await put(
       join(dir, "etc/sproutboat/update.env"),
       "SPROUTBOAT_UPDATE_REPO=r\nSPROUTBOAT_UPDATE_REF=\nSPROUTBOAT_UPDATE_COMMIT=abc123\n",
@@ -253,7 +253,7 @@ describe("sb-snapshot and sb-rollback", () => {
     expect(await read("opt/sproutboat/node_modules/dep/index.js")).toBe("dep\n");
     expect(await read("opt/sproutboat/bun/bin/bun")).toBe("old bun\n");
     expect(await read("etc/sproutboat/control.env")).toBe("TOKEN=old\n");
-    expect((await stat(join(dir, "etc/sproutboat/control.env"))).mode & 0o777).toBe(0o640);
+    expect((await stat(join(dir, "etc/sproutboat/control.env"))).mode & 0o777).toBe(0o600);
     expect((await stat(join(dir, "etc/sproutboat/update.env"))).mode & 0o777).toBe(0o600);
     expect(await read("etc/caddy/Caddyfile")).toBe("old caddyfile\n");
     expect(await read("etc/systemd/system/sproutboat-edge.service")).toBe("old unit\n");

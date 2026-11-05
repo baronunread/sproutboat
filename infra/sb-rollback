@@ -76,9 +76,11 @@ done
 echo "  restored config, units, sbctl, helper scripts and engines"
 
 # 3. Owners and modes, as install.sh sets them.
-for f in control.env control.local.env sproutboat.env sproutboat.local.env backup.key; do
+for f in control.local.env sproutboat.env sproutboat.local.env; do
   [ ! -e "$ETC/$f" ] || { own root:sproutboat "$ETC/$f"; chmod 0640 "$ETC/$f"; }
 done
+[ ! -e "$ETC/control.env" ] || { own root:root "$ETC/control.env"; chmod 0600 "$ETC/control.env"; }
+[ ! -e "$ETC/backup.key" ] || { own sproutboat-control:root "$ETC/backup.key"; chmod 0400 "$ETC/backup.key"; }
 for f in caddy.env caddy.local.env; do
   [ ! -e "$ETC/$f" ] || { own root:root "$ETC/$f"; chmod 0640 "$ETC/$f"; }
 done

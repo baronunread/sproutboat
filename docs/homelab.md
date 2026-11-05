@@ -41,6 +41,7 @@ Rules for the proxy:
 - Set `X-Forwarded-Proto` (and `X-Forwarded-For`).
 - Pass WebSocket upgrades through.
 - Do not buffer or time out streaming responses early.
+- If your proxy has an admin or management endpoint, keep it off ports other local users can reach (bind it to a unix socket with restricted permissions, or to an address only the proxy's own user can use).
 
 DNS: point `*.<domain>` at the box's LAN or tailnet address, or at your proxy.
 One wildcard record covers control, the dashboard and every deployment.
