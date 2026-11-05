@@ -38,6 +38,7 @@ import {
   recordDeployment,
   resourceById,
   syncRoutes,
+  holdArtifact,
   withArtifactLock,
 } from "./store";
 
@@ -532,25 +533,30 @@ export async function deployArtifact(request: Request, project: string): Promise
     const destination = artifactDir(actor.id, digest);
     const sproutPath = resolve(destination, "sprout");
 
-    // Placement, staging and the database row happen under the artifact lock, so a collection of the same
-    // digest (another project's version going away) cannot remove the directory in between.
-    const outcome = await withArtifactLock(async (): Promise<{ response: Response } | { id: string }> => {
-      let placed = false;
+    // Placement and the database row each happen under the artifact lock, so a
+    // collection of the same digest (another of this account's versions going away)
+    // cannot remove the directory in between; the candidate start, which can take
+    // seconds, runs outside the lock with the artifact marked in flight instead.
+    const release = holdArtifact({ ownerId: actor.id, digest });
+    let placed = false;
+    const outcome = await (async (): Promise<{ response: Response } | { id: string }> => {
       try {
-        await mkdir(dirname(destination), { recursive: true, mode: 0o750 });
-        try {
-          await rename(temporary, destination);
-          placed = true;
-        } catch (error) {
-          if (
-            !(error instanceof Error) ||
-            !("code" in error) ||
-            (error.code !== "EEXIST" && error.code !== "ENOTEMPTY")
-          )
-            throw error;
-          // This account already holds this digest on disk (another of its projects, or a
-          // race). Its contents match the digest by construction, so reuse it.
-        }
+        await withArtifactLock(async () => {
+          await mkdir(dirname(destination), { recursive: true, mode: 0o750 });
+          try {
+            await rename(temporary, destination);
+            placed = true;
+          } catch (error) {
+            if (
+              !(error instanceof Error) ||
+              !("code" in error) ||
+              (error.code !== "EEXIST" && error.code !== "ENOTEMPTY")
+            )
+              throw error;
+            // This account already holds this digest on disk (another of its projects, or a
+            // race). Its contents match the digest by construction, so reuse it.
+          }
+        });
         // #141: start it on the edge first. Nothing is recorded or routed unless it
         // listens, so the previous version keeps serving and there is no
         // half-activated row to recover after a crash.
@@ -565,25 +571,29 @@ export async function deployArtifact(request: Request, project: string): Promise
             ),
           };
         }
-        const recorded = recordDeployment({
-          id: randomUUID(),
-          project,
-          ownerId: actor.id,
-          username: actor.username,
-          hostname,
-          artifact: digest,
-          sproutPath,
-          deployedAt: new Date().toISOString(),
-          binarySize: validation.value.manifest.binarySize,
-          compileMs: validation.value.manifest.compileMs ?? null,
-          resourceIds: resolvedResources,
-        });
+        const recorded = await withArtifactLock(async () =>
+          recordDeployment({
+            id: randomUUID(),
+            project,
+            ownerId: actor.id,
+            username: actor.username,
+            hostname,
+            artifact: digest,
+            sproutPath,
+            deployedAt: new Date().toISOString(),
+            binarySize: validation.value.manifest.binarySize,
+            compileMs: validation.value.manifest.compileMs ?? null,
+            resourceIds: resolvedResources,
+          }),
+        );
         return { id: recorded.id };
       } catch (error) {
         if (placed) await rm(destination, { recursive: true, force: true }).catch(() => {});
         throw error;
+      } finally {
+        release();
       }
-    });
+    })();
     if ("response" in outcome) return outcome.response;
     const deployment = outcome;
     await syncRoutes();

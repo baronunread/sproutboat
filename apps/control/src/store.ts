@@ -49,6 +49,20 @@ export function withArtifactLock<T>(fn: () => Promise<T>): Promise<T> {
   return next;
 }
 
+/**
+ * Artifacts a deploy has placed but not yet recorded. The lock above is held only
+ * for the quick steps (rename, row insert); a candidate start can take seconds and
+ * must not hold every other account's deploy behind it. GC skips these instead.
+ */
+const inFlight = new Set<string>();
+const inFlightKey = (ref: ArtifactRef): string => `${ref.ownerId}\0${ref.digest}`;
+export function holdArtifact(ref: ArtifactRef): () => void {
+  const key = inFlightKey(ref);
+  inFlight.add(key);
+  return () => inFlight.delete(key);
+}
+export const artifactInFlight = (ref: ArtifactRef): boolean => inFlight.has(inFlightKey(ref));
+
 const legacyDeploymentsPath = () =>
   resolve(process.env.SPROUTBOAT_DEPLOYMENTS_PATH || "/var/lib/sproutboat/deployments.json");
 
@@ -1276,6 +1290,8 @@ export function collectArtifacts(refs: ArtifactRef[]): Promise<{ removed: string
       const key = `${ownerId}\0${digest}`;
       if (seen.has(key)) continue;
       seen.add(key);
+      // Placed by a deploy that is still starting its candidate: leave it for a later collection.
+      if (artifactInFlight({ ownerId, digest })) continue;
       if (!/^[a-f0-9]{64}$/.test(digest)) {
         // junk input is not our problem; a real digest we still hold is
         if (q1("SELECT 1 FROM artifacts WHERE owner_id = ? AND digest = ?", ownerId, digest)) failed.push(digest);
