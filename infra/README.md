@@ -458,6 +458,34 @@ All configurable in `/etc/sproutboat/control.env`; sane defaults apply if unset.
 | `SPROUTBOAT_MAX_SECRETS_PER_PROJECT`       | 64      | secrets one project may hold                                                |
 | `SPROUTBOAT_AUTH_RATE_MAX` / `_WINDOW_SEC` | 30 / 60 | Better Auth throttle on `/api/auth/*` (login, token)                        |
 
+## Logs
+
+Nothing under `/var/lib/sproutboat/logs` grows without bound. `install.sh` installs
+`/etc/logrotate.d/sproutboat` (and `logrotate` itself) and enables `logrotate.timer`.
+
+| What                                                             | Rotated at | Kept                    |
+| ---------------------------------------------------------------- | ---------- | ----------------------- |
+| `logs/requests.ndjson` (edge request log), `logs/control.ndjson` | 64 MiB     | 5, compressed after one |
+| `logs/sprouts/*.log` (per-deployment stdout and stderr)          | 16 MiB     | 1, uncompressed         |
+
+Rotation uses `copytruncate`: the services keep their file open in append mode, so no
+restart or reopen is needed. Rotation is by size, not daily, so the dashboard Logs page
+(which reads the last 1 MiB of the live file) is rarely emptied. After a rotation the Logs
+page and `sproutboat tail` show only lines written since then; rotated files are not read.
+Sprout logs are also truncated on each fresh spawn of the sprout.
+
+The journal (Caddy, control, edge and egress output; Caddy has no access log) is capped
+globally by `/etc/systemd/journald.conf.d/sproutboat.conf`: `SystemMaxUse=256M`,
+`SystemMaxFileSize=32M`, `MaxRetentionSec=1month`. journald has no per-unit cap. The
+installer restarts `systemd-journald` once, only when that file changed.
+
+Changing the limits: the installer overwrites `/etc/logrotate.d/sproutboat` on every
+update, so do not edit it. For the journal, add a file that sorts later, for example
+`/etc/systemd/journald.conf.d/zz-local.conf`, and restart `systemd-journald`. For logrotate,
+a separate `/etc/logrotate.d/sproutboat-local` only works if it names different paths
+(logrotate rejects the same log in two stanzas), so to change these sizes edit the shipped
+file and reapply the edit after each update.
+
 ## Secrets (#2)
 
 Set per project with `sproutboat secrets set NAME` (or the dashboard); the sprout

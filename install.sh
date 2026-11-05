@@ -97,7 +97,7 @@ SKIP_SERVICES=${SB_SKIP_SERVICES:-0}
 if [ "${1:-}" = --uninstall ]; then
   KEEP_STATE=0; [ "${2:-}" = --keep-state ] && KEEP_STATE=1
   say "Uninstall Sproutboat"
-  note "removes services, Caddy config, /opt/sproutboat, users, and the sysctl drop-in"
+  note "removes services, Caddy config, log rotation, /opt/sproutboat, users, and the sysctl drop-in"
   [ "$KEEP_STATE" = 1 ] && note "keeps $STATE (database, artifacts, backups)" \
                         || note "ALSO deletes $STATE — database, artifacts, backups"
   if [ "${SB_UNINSTALL_YES:-0}" != 1 ]; then
@@ -113,7 +113,8 @@ if [ "${1:-}" = --uninstall ]; then
   # only remove caddy.service if this installer created it (has our marker path)
   grep -q "$CADDY_BIN" /etc/systemd/system/caddy.service 2>/dev/null && rm -f /etc/systemd/system/caddy.service
   systemctl daemon-reload
-  rm -f "$CADDY_BIN" /usr/local/bin/sbctl /etc/sysctl.d/80-sproutboat-userns.conf /root/sproutboat-admin.env
+  rm -f "$CADDY_BIN" /usr/local/bin/sbctl /etc/sysctl.d/80-sproutboat-userns.conf /root/sproutboat-admin.env \
+        /etc/logrotate.d/sproutboat /etc/systemd/journald.conf.d/sproutboat.conf
   rm -f /usr/local/lib/sproutboat/backup-stage
   # /etc/sproutboat holds caddy.d (operator drop-ins) and goes even with --keep-state: copy it first.
   rm -rf "$ROOT" /opt/sproutboat-src /etc/sproutboat /etc/caddy
@@ -214,9 +215,9 @@ say "Installing host packages"
 if [ "$PKG" = apt ]; then
   export DEBIAN_FRONTEND=noninteractive
   apt-get update -qq
-  apt-get install -y -qq ca-certificates curl git patch rsync bubblewrap ufw unzip dnsutils
+  apt-get install -y -qq ca-certificates curl git patch rsync bubblewrap ufw unzip dnsutils logrotate
 else
-  dnf install -y -q ca-certificates curl git patch rsync bubblewrap ufw unzip bind-utils
+  dnf install -y -q ca-certificates curl git patch rsync bubblewrap ufw unzip bind-utils logrotate
 fi
 
 # --- firewall: default-deny, only SSH + Caddy -----------------------------
@@ -546,6 +547,14 @@ done
 install -m 0644 "$ROOT/infra/systemd/sproutboat-backup.service" /etc/systemd/system/sproutboat-backup.service
 install -m 0644 "$ROOT/infra/systemd/sproutboat-backup.timer"   /etc/systemd/system/sproutboat-backup.timer
 install -m 0755 "$ROOT/infra/sbctl" /usr/local/bin/sbctl
+
+# --- log rotation + journald cap (idempotent) -----------------------------
+install -d -m 0755 /etc/logrotate.d
+install -m 0644 "$ROOT/infra/logrotate/sproutboat" /etc/logrotate.d/sproutboat
+install -d -m 0755 /etc/systemd/journald.conf.d
+JOURNALD_CHANGED=0
+cmp -s "$ROOT/infra/journald/sproutboat.conf" /etc/systemd/journald.conf.d/sproutboat.conf || JOURNALD_CHANGED=1
+install -m 0644 "$ROOT/infra/journald/sproutboat.conf" /etc/systemd/journald.conf.d/sproutboat.conf
 install -d -m 0755 -o root -g root /usr/local/lib/sproutboat
 install -m 0755 "$ROOT/infra/sb-update" /usr/local/lib/sproutboat/update
 install -m 0755 "$ROOT/infra/sb-backup-stage" /usr/local/lib/sproutboat/backup-stage
@@ -575,6 +584,11 @@ if [ "$SKIP_SERVICES" = 1 ]; then
   say "Services — skipped (SB_SKIP_SERVICES)"
 else
   systemctl daemon-reload
+  # logrotate.timer ships on Debian, Ubuntu and Fedora; hosts with the cron job
+  # already rotate daily.
+  systemctl enable --now logrotate.timer 2>/dev/null || true
+  # journald only re-reads its drop-ins on restart; do it once, when ours changed.
+  [ "$JOURNALD_CHANGED" = 1 ] && { systemctl restart systemd-journald || warn "could not restart systemd-journald"; }
 
   # --- start (control first — its env now exists) ----------------
   # `enable --now` starts an inactive unit but deliberately leaves an active

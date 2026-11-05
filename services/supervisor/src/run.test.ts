@@ -1,10 +1,10 @@
 import { afterEach, expect, test } from "bun:test";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { closeSync, mkdtempSync, readFileSync, rmSync, truncateSync, writeFileSync, writeSync } from "node:fs";
 import { once } from "node:events";
 import { connect } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { SproutPool, brokerArgs, verifyBindingCall, spawnSprout, startupFilePath } from "./run";
+import { SproutPool, brokerArgs, openLogFd, verifyBindingCall, spawnSprout, startupFilePath } from "./run";
 import { sproutCommand } from "./sandbox";
 import type { SproutChild, SproutFactory } from "./run";
 
@@ -534,4 +534,25 @@ test("verifyBindingCall accepts nothing a client could send", () => {
   expect(verifyBindingCall(null, "a.test")).toBe(false);
   expect(verifyBindingCall("", "a.test")).toBe(false);
   expect(verifyBindingCall("0".repeat(64), "a.test")).toBe(false);
+});
+
+test("sprout log fd is O_APPEND: an external truncate leaves no NUL holes", () => {
+  const dir = mkdtempSync(join(tmpdir(), "sb-log-"));
+  try {
+    const path = join(dir, "d.log");
+    writeFileSync(path, "stale from the previous instance");
+    const fd = openLogFd(path, "w");
+    expect(readFileSync(path, "utf8")).toBe("");
+    writeSync(fd, "aaaa");
+    truncateSync(path, 0); // what logrotate copytruncate does
+    writeSync(fd, "bb");
+    closeSync(fd);
+    expect(readFileSync(path, "utf8")).toBe("bb");
+    const kept = openLogFd(path, "a");
+    writeSync(kept, "cc");
+    closeSync(kept);
+    expect(readFileSync(path, "utf8")).toBe("bbcc");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });

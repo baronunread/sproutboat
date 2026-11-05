@@ -1,0 +1,38 @@
+# Installed by install.sh to /etc/logrotate.d/sproutboat (overwritten on every
+# `sbctl update`; put local changes in a separate file, see infra/README.md).
+#
+# Why copytruncate: the edges (Bun and Rust) and the control plane open their
+# logs in append mode (O_APPEND) and never reopen them, so after a copy and
+# truncate their next write lands at the new end of the file. The supervisor
+# opens sprout logs in append mode for the same reason.
+#
+# Why size-based and not daily: the dashboard Logs page reads the last 1 MiB of
+# the live file. A rotation empties that file, so rotating only when it is big
+# keeps the window from being emptied often.
+#
+# Why `su sproutboat-edge sproutboat`: the logs directory is 0770
+# sproutboat-edge:sproutboat, which is group-writable, and logrotate (root)
+# refuses to rotate in such a directory without `su`. control.ndjson is written
+# by sproutboat-control (group sproutboat, group write on the directory), so the
+# same identity can rotate it.
+
+/var/lib/sproutboat/logs/requests.ndjson /var/lib/sproutboat/logs/control.ndjson {
+    su sproutboat-edge sproutboat
+    size 64M
+    rotate 5
+    compress
+    delaycompress
+    copytruncate
+    missingok
+    notifempty
+}
+
+# One plain-text file per deployment, truncated on every fresh spawn.
+/var/lib/sproutboat/logs/sprouts/*.log {
+    su sproutboat-edge sproutboat
+    size 16M
+    rotate 1
+    copytruncate
+    missingok
+    notifempty
+}
