@@ -408,7 +408,7 @@ describe("memory caps", () => {
     expect(install).toContain("systemd-run --quiet --scope --collect -p MemoryMax=");
     expect(install).toContain("SB_BUILD_MEMORY_MAX");
     expect(install).toContain("SB_SKIP_MEMCHECK");
-    expect(install.indexOf("check_build_memory\nsay")).toBeLessThan(install.indexOf('capped "$BUN" install'));
+    expect(install.indexOf("\ncheck_build_memory\n")).toBeLessThan(install.indexOf("rsync -a --delete"));
     const sbctl = await Bun.file("infra/sbctl").text();
     expect(sbctl).toContain("memory) memory_report ;;");
     expect(sbctl).toContain("sbctl memory");

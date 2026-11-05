@@ -310,6 +310,9 @@ for _d in brokers resources; do
 done
 install -d -m 0750 -o root -g sproutboat "$ETC"
 
+# Refuse a starved build before the source tree is replaced.
+check_build_memory
+
 # --- sync the tree ------------------------------------------------------
 # --delete keeps $ROOT a clean mirror of the checkout, but must NOT touch the
 # things provisioned INTO $ROOT afterwards (Bun, deps, the built dashboard).
@@ -380,7 +383,6 @@ else
   esac
 fi
 
-check_build_memory
 say "Installing application dependencies"
 # The runtime CLI is a moving git ref (sproutboat-cli#main); a frozen lockfile
 # would keep an explicit recovery pull pinned to whatever commit bun.lock last
