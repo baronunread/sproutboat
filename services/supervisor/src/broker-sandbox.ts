@@ -1,4 +1,4 @@
-import { mkdirSync, readFileSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { RESOURCE_ID, adoptOwnerR2Files, ownerStorageDir, sqliteFileSet, touchFiles } from "./resource-layout";
 
@@ -12,7 +12,8 @@ import { RESOURCE_ID, adoptOwnerR2Files, ownerStorageDir, sqliteFileSet, touchFi
  * a bubblewrap sandbox that contains only what this deployment's broker uses.
  *
  * What the broker needs, and nothing more (see `planBrokerSandbox`):
- *   - the bun binary, the repo's node_modules and its own entry file, read only
+ *   - the bun binary, the repo's node_modules, its own entry file and the local
+ *     modules the entry imports (BROKER_ENTRY_MODULES), read only
  *   - the deployment's bindings.json, secrets file and assets, read only
  *   - the deployment's own state directory, read write
  *   - the resource files the app is bound to (and its Durable Object store),
@@ -23,6 +24,13 @@ import { RESOURCE_ID, adoptOwnerR2Files, ownerStorageDir, sqliteFileSet, touchFi
  *     on loopback, and the edge unit's IPAddressDeny keeps both off the network.
  *   - a handful of environment variables and a per-app edge credential
  */
+
+/**
+ * Files beside the broker entry that it imports by relative path. The sandbox binds only named files, so
+ * each one must be listed here or the broker cannot load it under bwrap. A test checks the list against
+ * the entry's imports.
+ */
+export const BROKER_ENTRY_MODULES = ["sqlite-guard.ts"] as const;
 
 export type BrokerSandboxMode = "bwrap" | "none";
 
@@ -109,6 +117,7 @@ export function planBrokerSandbox(input: BrokerPlanInput): Mount[] {
   ro(resolve(input.bun));
   if (input.nodeModules) ro(resolve(input.nodeModules));
   ro(resolve(input.entry));
+  for (const file of BROKER_ENTRY_MODULES) ro(join(dirname(resolve(input.entry)), file));
   ro(resolve(input.bindingsPath));
   if (input.secretsPath) ro(resolve(input.secretsPath));
   if (input.assetsDir) {
@@ -161,7 +170,7 @@ const BROKER_ENV_KEYS = [
 ] as const;
 
 export type BrokerEnv = Partial<
-  Record<"PATH" | "HOME" | "TMPDIR" | "SB_EDGE_SECRET" | (typeof BROKER_ENV_KEYS)[number], string>
+  Record<"PATH" | "HOME" | "TMPDIR" | "SB_EDGE_SECRET" | "SB_BROKER_TOKEN" | (typeof BROKER_ENV_KEYS)[number], string>
 >;
 
 /**
@@ -219,4 +228,40 @@ export function brokerBwrapArgs(mounts: Mount[], env: BrokerEnv): string[] {
   for (const mount of mounts) args.push(mount.mode === "ro" ? "--ro-bind" : "--bind", mount.source, mount.dest);
   args.push("--");
   return args;
+}
+
+/**
+ * `args` without its `--token <value>` pair. The broker reads the token from `SB_BROKER_TOKEN` instead,
+ * so it is not in the process's command line, which other local users can read.
+ */
+export function withoutToken(args: string[]): string[] {
+  const at = args.indexOf("--token");
+  return at < 0 ? args : [...args.slice(0, at), ...args.slice(at + 2)];
+}
+
+/** The options of a `brokerBwrapArgs` result (no leading `bwrap`, no trailing `--`), NUL separated: bwrap's `--args` format. */
+export function bwrapArgsFileContent(bwrapArgv: string[]): string {
+  return bwrapArgv.slice(1, -1).join("\0") + "\0";
+}
+
+/**
+ * The command that starts the broker with bubblewrap's options read from `argsFile` instead of the command line,
+ * so the `--setenv` values (the egress token, the edge credential, the broker token) never appear in
+ * `/proc/<pid>/cmdline`. bash opens the file, deletes it, and execs bwrap with the descriptor.
+ * `payload` is what runs inside the sandbox (bun, the entry, its flags).
+ */
+export function brokerLaunchCommand(argsFile: string, payload: string[], bwrapPath = "bwrap"): string[] {
+  return [
+    "/bin/bash",
+    "-c",
+    'exec {fd}<"$0"; rm -f -- "$0"; bwrap=$1; shift; exec "$bwrap" --args "$fd" -- "$@"',
+    argsFile,
+    bwrapPath,
+    ...payload,
+  ];
+}
+
+/** Write the bwrap options file, readable by this user only. */
+export function writeBwrapArgsFile(path: string, bwrapArgv: string[]): void {
+  writeFileSync(path, bwrapArgsFileContent(bwrapArgv), { mode: 0o600 });
 }

@@ -275,9 +275,28 @@ async function isEncrypted(path: string): Promise<boolean> {
   }
 }
 
-/** The key an archive needs: null for a plain `.tar.gz`. */
-async function keyFor(archive: string, keyFile?: string): Promise<Buffer | null> {
-  return (await isEncrypted(archive)) ? readKey(keyFilePath(keyFile)) : null;
+async function keyFileReadable(path: string): Promise<boolean> {
+  try {
+    await Bun.file(path).text();
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * The key an archive needs: null for a plain `.tar.gz`. On an install that has
+ * a backup key, a plain archive is refused unless `allowPlain`: an encrypted
+ * backup swapped for a plain one would otherwise be restored without a word.
+ */
+async function keyFor(archive: string, keyFile?: string, allowPlain = false): Promise<Buffer | null> {
+  if (await isEncrypted(archive)) return readKey(keyFilePath(keyFile));
+  const path = keyFilePath(keyFile);
+  if (!allowPlain && (await keyFileReadable(path)))
+    throw new Error(
+      `${archive} is not encrypted but this install has a backup key (${path}); refusing it. Pass --allow-plain if it is a backup you made with encryption off`,
+    );
+  return null;
 }
 
 class BackupKeyError extends Error {}
@@ -315,6 +334,9 @@ async function* decrypted(path: string, key: Buffer): AsyncGenerator<Uint8Array>
     await handle.close();
   }
 }
+
+/** Extract as the invoking user with the umask applied, whatever the archive says. */
+const SAFE_EXTRACT = ["--no-same-owner", "--no-same-permissions"];
 
 type TarResult = { code: number; out: string; err: string };
 
@@ -375,7 +397,10 @@ async function sha256(path: string): Promise<string> {
 async function tarEncrypt(args: string[], out: string, key: Buffer): Promise<void> {
   const nonce = randomBytes(NONCE_BYTES);
   const cipher = createCipheriv("aes-256-gcm", key, nonce, { authTagLength: TAG_BYTES });
-  const child = Bun.spawn(["tar", "-czf", "-", ...args], { stdout: "pipe", stderr: "pipe" });
+  const child = Bun.spawn(
+    ["tar", "-czf", "-", ...(process.platform === "linux" ? ["--hard-dereference"] : []), ...args],
+    { stdout: "pipe", stderr: "pipe" },
+  );
   const stderr = new Response(child.stderr).text();
   const handle = await open(out, "w", 0o600);
   try {
@@ -405,8 +430,15 @@ export type BackupInspection = {
  * GCM tag proves integrity, gzip and tar prove their own structure. Throws a
  * one-line reason on any failure. A v1 archive has no manifest: `manifest` is null.
  */
-export async function inspectBackup(archive: string, keyFile?: string): Promise<BackupInspection> {
-  const key = await keyFor(archive, keyFile);
+export async function inspectBackup(archive: string, keyFile?: string, allowPlain = false): Promise<BackupInspection> {
+  const key = await keyFor(archive, keyFile, allowPlain);
+  // Only regular files and directories belong in a backup: a link or device
+  // entry could redirect a later member outside the extraction directory.
+  const detailed = await tarRead(archive, key, ["-tv"]);
+  if (detailed.code !== 0)
+    throw new Error(`${archive} is unreadable or incomplete: ${detailed.err || `tar exit ${detailed.code}`}`);
+  const odd = detailed.out.split("\n").find((line) => line !== "" && !/^[-d]/.test(line));
+  if (odd !== undefined) throw new Error(`${archive} has a member that is not a regular file or directory: ${odd}`);
   const listing = await tarRead(archive, key, ["-t"]);
   if (listing.code !== 0)
     throw new Error(`${archive} is unreadable or incomplete: ${listing.err || `tar exit ${listing.code}`}`);
@@ -443,9 +475,14 @@ export type VerifySummary = {
  */
 export async function verifyBackup(
   archive: string,
-  { full = false, keyFile, scratch }: { full?: boolean; keyFile?: string; scratch?: string } = {},
+  {
+    full = false,
+    keyFile,
+    scratch,
+    allowPlain = false,
+  }: { full?: boolean; keyFile?: string; scratch?: string; allowPlain?: boolean } = {},
 ): Promise<VerifySummary> {
-  const { members, manifest, encrypted, key } = await inspectBackup(archive, keyFile);
+  const { members, manifest, encrypted, key } = await inspectBackup(archive, keyFile, allowPlain);
   const summary: VerifySummary = {
     format: manifest?.format ?? null,
     platformVersion: manifest?.platformVersion ?? null,
@@ -459,7 +496,7 @@ export async function verifyBackup(
   const work = resolve(scratch ?? backupsDir(), `.verify-${crypto.randomUUID()}`);
   await mkdir(work, { recursive: true });
   try {
-    const extract = await tarRead(archive, key, ["-x"], ["-C", work]);
+    const extract = await tarRead(archive, key, ["-x", ...SAFE_EXTRACT], ["-C", work]);
     if (extract.code !== 0)
       throw new Error(`${archive} failed to extract: ${extract.err || `tar exit ${extract.code}`}`);
     // One file at a time: an artifact tree can hold thousands of files.
@@ -532,7 +569,8 @@ export async function createBackup(options: { actor?: string } = {}): Promise<Ba
 
 async function writeBackup(): Promise<BackupEntry> {
   const dir = backupsDir();
-  await mkdir(dir, { recursive: true });
+  await mkdir(dir, { recursive: true, mode: 0o700 });
+  await chmod(dir, 0o700).catch(() => {});
   const encrypt = encryptionOn();
   // Fail before doing any work: a silent plaintext fallback would be worse than no backup.
   const key = encrypt ? await readKey(keyFilePath()) : null;
@@ -580,7 +618,7 @@ async function writeBackup(): Promise<BackupEntry> {
     // A backup nobody can read is worse than none: check it before it counts
     // toward retention or goes off-box. A failure fails the unit.
     try {
-      await verifyBackup(outPath);
+      await verifyBackup(outPath, { allowPlain: true });
     } catch (error) {
       await rm(outPath, { force: true });
       throw new Error(`backup verification failed: ${error instanceof Error ? error.message : String(error)}`);
@@ -671,6 +709,8 @@ export type RestoreOptions = {
   configDir?: string;
   /** Leave `config/` in the archive alone. */
   skipConfig?: boolean;
+  /** Accept a plain archive although this install has a backup key (`--allow-plain`). */
+  allowPlain?: boolean;
 };
 
 /**
@@ -684,7 +724,7 @@ async function extractTop(archive: string, key: Buffer | null, into: string, top
   // GNU tar fails on the install's directories that another service user owns
   // (it can't set their mode or times). Keep those as install.sh made them.
   const flags = process.platform === "linux" ? ["--no-overwrite-dir"] : [];
-  const result = await tarRead(archive, key, ["-x", ...flags], ["-C", into, ...tops]);
+  const result = await tarRead(archive, key, ["-x", ...SAFE_EXTRACT, ...flags], ["-C", into, ...tops]);
   if (result.code !== 0) throw new Error(`tar failed: ${result.err || `exit ${result.code}`}`);
 }
 
@@ -697,11 +737,18 @@ async function extractTop(archive: string, key: Buffer | null, into: string, top
  */
 export async function restoreBackup(
   archive: string,
-  { force = false, keyFile, allowNewer = false, configDir, skipConfig = false }: RestoreOptions = {},
+  {
+    force = false,
+    keyFile,
+    allowNewer = false,
+    configDir,
+    skipConfig = false,
+    allowPlain = false,
+  }: RestoreOptions = {},
 ): Promise<{ warnings: string[]; configDir: string | null }> {
   // Reading the whole stream catches a truncated download, and for an encrypted
   // archive authenticates every byte before anything is extracted.
-  const { members, manifest, key } = await inspectBackup(archive, keyFile);
+  const { members, manifest, key } = await inspectBackup(archive, keyFile, allowPlain);
   if (!members.includes("sproutboat.sqlite")) throw new Error(`${archive} has no sproutboat.sqlite; not a backup`);
   if (manifest && !allowNewer && compareVersions(manifest.platformVersion, CONTROL_VERSION) > 0)
     throw new Error(
@@ -769,23 +816,28 @@ if (import.meta.main) {
     const { flags, values, archive } = parseArgs(rest);
     if (command === "restore") {
       if (!archive)
-        throw new Error("usage: backups.ts restore <archive> [--force] [--no-config] [--key FILE] [--allow-newer]");
+        throw new Error(
+          "usage: backups.ts restore <archive> [--force] [--no-config] [--key FILE] [--allow-newer] [--allow-plain]",
+        );
       const result = await restoreBackup(resolve(archive), {
         force: flags.has("--force"),
         allowNewer: flags.has("--allow-newer"),
         skipConfig: flags.has("--no-config"),
         keyFile: values.get("--key"),
         configDir: values.get("--config-dir"),
+        allowPlain: flags.has("--allow-plain"),
       });
       for (const warning of result.warnings) console.error(`warning: ${warning}`);
       console.log(`restored ${archive} into ${stateDir()}`);
       if (result.configDir) console.log(`config extracted to ${result.configDir}`);
     } else if (command === "verify") {
-      if (!archive) throw new Error("usage: backups.ts verify <archive> [--full] [--scratch DIR] [--key FILE]");
+      if (!archive)
+        throw new Error("usage: backups.ts verify <archive> [--full] [--scratch DIR] [--key FILE] [--allow-plain]");
       const s = await verifyBackup(resolve(archive), {
         full: flags.has("--full"),
         keyFile: values.get("--key"),
         scratch: values.get("--scratch"),
+        allowPlain: flags.has("--allow-plain"),
       });
       console.log(
         `ok ${s.full ? "(full)" : "(quick)"}: format ${s.format ?? "1 (no manifest)"}, version ${s.platformVersion ?? "unknown"}, created ${s.createdAt ?? "unknown"}, config ${s.includesConfig === null ? "unknown" : s.includesConfig ? "included" : "not included"}, ${s.encrypted ? "encrypted" : "plain"}, ${s.members} members`,

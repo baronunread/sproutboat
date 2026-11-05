@@ -17,7 +17,7 @@ import { actorFor, type Actor } from "./identity";
 import { LIMITS } from "./limits";
 import { deploymentDomain } from "./deployments";
 import {
-  addCustomDomain,
+  claimCustomDomain,
   customDomainByHostname,
   deleteCustomDomain,
   markCustomDomainVerified,
@@ -149,8 +149,10 @@ export async function addDomain(request: Request, project: string): Promise<Resp
       { status: 400 },
     );
   }
+  // A verified holder keeps the hostname. Another account's unverified claim does not block this one:
+  // whichever account proves the TXT record first wins, and claims lapse after 24 hours.
   const existing = customDomainByHostname(hostname);
-  if (existing) {
+  if (existing && (existing.ownerId === actor.id || existing.verifiedAt !== null)) {
     const mine = existing.ownerId === actor.id && existing.project === project;
     return Response.json(
       { error: mine ? "this project already has that domain" : "that hostname is already claimed" },
@@ -165,7 +167,7 @@ export async function addDomain(request: Request, project: string): Promise<Resp
   }
 
   const token = randomUUID().replace(/-/g, "");
-  const created = addCustomDomain({ hostname, ownerId: actor.id, project, token });
+  const created = claimCustomDomain({ hostname, ownerId: actor.id, project, token }).claimed;
   if (!created) return Response.json({ error: "that hostname is already claimed" }, { status: 409 });
   recordEvent({
     ownerId: actor.id,
@@ -211,7 +213,8 @@ export async function verifyDomain(
     );
   }
 
-  markCustomDomainVerified(actor.id, project, domain.hostname);
+  if (!markCustomDomainVerified(actor.id, project, domain.hostname))
+    return Response.json({ error: "that hostname was verified by another account first" }, { status: 409 });
   await syncRoutes();
   recordEvent({
     ownerId: actor.id,

@@ -365,7 +365,12 @@ describe("Phase A contracts", () => {
     expect(install).toContain('install -m 0755 "$ROOT/infra/sb-backup-stage" /usr/local/lib/sproutboat/backup-stage');
     expect(install).toContain("BACKUP_KEY_FILE=$ETC/backup.key");
     expect(install).toContain('randhex > "$BACKUP_KEY_FILE"');
-    expect(install).toContain('chown root:sproutboat "$BACKUP_KEY_FILE"; chmod 0640 "$BACKUP_KEY_FILE"');
+    expect(install).toContain('chown sproutboat-control:root "$BACKUP_KEY_FILE"; chmod 0400 "$BACKUP_KEY_FILE"');
+    expect(install).toContain('chown root:root "$ETC/control.env"; chmod 0600 "$ETC/control.env"');
+    expect(install).toContain('chmod 0600 "$STATE"/sproutboat.sqlite*');
+    expect(install).toContain('install -d -m 0700 -o sproutboat-control -g sproutboat "$STATE/backups"');
+    expect(sbctl).toContain('chown root:root "$ETC/control.env"; chmod 0600 "$ETC/control.env"');
+    expect(sbctl).toContain("--allow-plain");
     expect(install).toContain('echo "SPROUTBOAT_BACKUP_KEY_FILE=$BACKUP_KEY_FILE"');
     expect(install).toContain("/usr/local/lib/sproutboat/backup-stage ||");
     expect(install).toContain("rm -f /usr/local/lib/sproutboat/backup-stage");
@@ -390,6 +395,15 @@ describe("Phase A contracts", () => {
     expect(sbctl).toContain('caddy.d/*|README.caddy) chown root:root "$ETC/$rel"; chmod 0644 "$ETC/$rel"');
     expect(sbctl).toContain('"$STAGER" --print-caddy-dir');
     expect(sbctl).toContain("SPROUTBOAT_API_URL=%s://control.%s");
+  });
+
+  test("units raise the open-file limits", async () => {
+    for (const [unit, limit] of [
+      ["edge", 65536],
+      ["egress", 65536],
+      ["control", 16384],
+    ] as const)
+      expect(await Bun.file(`infra/systemd/sproutboat-${unit}.service`).text()).toContain(`LimitNOFILE=${limit}`);
   });
 
   test("updates stage a new installer outside the active release", async () => {
@@ -456,6 +470,67 @@ describe("Phase A contracts", () => {
     expect(res.exitCode).toBe(0);
   });
 
+  const caddyfileFn = () =>
+    Bun.spawnSync([
+      "bash",
+      "-c",
+      "sed -n '/^write_caddyfile()/,/^# end write_caddyfile/p' install.sh",
+    ]).stdout.toString();
+  const render = (fn: string, out: string) =>
+    Bun.spawnSync(
+      [
+        "bash",
+        "-c",
+        `${fn}\nSB_DOMAIN=sb.example.com ROOT=/opt/sproutboat acme_line=''\nwrite_caddyfile "$1"`,
+        "_",
+        out,
+      ],
+      { env: { PATH: process.env.PATH ?? "" } },
+    );
+
+  test("generated Caddyfile: root-only admin socket, no tls-allow route, bounded bodies", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "sb-caddyfile-"));
+    const fn = caddyfileFn();
+    expect(fn).toContain("write_caddyfile()");
+    // Public mode and homelab with SB_PROXY=caddy share the one generator.
+    for (const mode of ["public", "homelab"]) {
+      const out = join(dir, `Caddyfile.${mode}`);
+      expect(render(`SB_MODE=${mode}\n${fn}`, out).exitCode).toBe(0);
+      const text = readFileSync(out, "utf8");
+      expect(text.startsWith('{\n\tadmin "unix//run/caddy-admin.sock|0600"\n\temail ')).toBe(true);
+      expect(text).toContain("control.sb.example.com {");
+      expect(text).toContain("dashboard.sb.example.com {");
+      expect(text).toContain("import /etc/sproutboat/caddy.d/*.caddy");
+      // /internal/tls/* answers 404 on both vhosts, ahead of the proxy; /internal/health is untouched.
+      expect(text.match(/handle \/internal\/tls\/\* \{\n\t\trespond 404\n\t\}/g)?.length).toBe(2);
+      expect(text).not.toContain("/internal/health");
+      expect(text.indexOf("respond 404")).toBeLessThan(text.indexOf("reverse_proxy 127.0.0.1:8787"));
+      // Bodies are capped on the control vhost and the dashboard's /api.
+      expect(text.match(/max_size 100MB/g)?.length).toBe(2);
+    }
+    const install = await Bun.file("install.sh").text();
+    expect(install).toContain("ExecReload=$CADDY_BIN reload --config /etc/caddy/Caddyfile --force");
+    expect(install).toContain("write_caddyfile /etc/caddy/Caddyfile.new");
+    const ref = await Bun.file("infra/caddy/Caddyfile").text();
+    expect(ref).toContain('admin "unix//run/caddy-admin.sock|0600"');
+    expect(ref.match(/respond 404/g)?.length).toBe(2);
+    expect(ref.match(/max_size 100MB/g)?.length).toBe(2);
+  });
+
+  test("generated Caddyfile adapts with a real caddy (admin listens on the root-only socket)", async () => {
+    const caddy = process.env.CADDY_BIN || Bun.which("caddy");
+    if (!caddy) return; // skipped where no caddy binary is available
+    const dir = await mkdtemp(join(tmpdir(), "sb-caddyfile-live-"));
+    const file = join(dir, "Caddyfile");
+    expect(render(caddyfileFn(), file).exitCode).toBe(0);
+    const adapted = await Bun.$`${caddy} adapt --config ${file} --adapter caddyfile`
+      .env({ ...process.env, ACME_EMAIL: "ops@example.com" })
+      .quiet()
+      .nothrow();
+    expect(adapted.exitCode).toBe(0);
+    expect(JSON.parse(adapted.stdout.toString()).admin.listen).toBe("unix//run/caddy-admin.sock|0600");
+  });
+
   test("Bun and Caddy are pinned, verified and upgraded in place", async () => {
     const install = await Bun.file("install.sh").text();
     expect(install).toMatch(/^BUN_VERSION="\d+\.\d+\.\d+"$/m);
@@ -467,9 +542,13 @@ describe("Phase A contracts", () => {
     expect(install).toContain("curl -fsSL --retry 3");
     expect(install).toContain('[ "$BUN_HAVE" != "$BUN_VERSION" ]');
     expect(install).toContain('"v$CADDY_VERSION"*) ;;');
+    // The first update after the admin endpoint moves to the socket must restart, not reload.
+    expect(install).toContain('[ "$CADDY_REPLACED" = 1 ] || ! [ -S /run/caddy-admin.sock ]');
     expect(install).toContain("grep -qw avx2 /proc/cpuinfo");
     expect(install).toContain("sha512");
-    expect(install).toContain('if [ "$CADDY_REPLACED" = 1 ]; then systemctl restart caddy;');
+    expect(install).toContain(
+      'if [ "$CADDY_REPLACED" = 1 ] || ! [ -S /run/caddy-admin.sock ]; then systemctl restart caddy;',
+    );
     expect(install).toContain("systemctl restart sproutboat-control sproutboat-egress sproutboat-edge");
     expect(install).toContain("not checksum-verified");
     expect(
@@ -736,5 +815,32 @@ describe("install mode", () => {
     const main = await Bun.file("apps/control/src/main.ts").text();
     expect(main).toContain("SPROUTBOAT_DASHBOARD_DIR");
     expect(main).toContain("serveDashboard(request, dashboardDir)");
+  });
+});
+
+describe("control and supervisor agree on the per-deployment runtime name", () => {
+  const supervisorModule = join(import.meta.dir, "..", "services", "supervisor", "src", "runtime-name.ts");
+  const ownerDir = "0123456789abcdef0123456789abcdef";
+  const digest = "f".repeat(64);
+  const sproutPath = `/var/lib/sproutboat/artifacts/${ownerDir}/${digest}/sprout`;
+
+  test("control derives <ownerDir>-<digest> from the sprout path", async () => {
+    const { runtimeName } = await import("../apps/control/src/logs");
+    expect(runtimeName(sproutPath)).toBe(`${ownerDir}-${digest}`);
+  });
+
+  test("control's artifact owner directory matches the supervisor's resource layout", async () => {
+    const { artifactOwnerDir } = await import("../apps/control/src/store");
+    const { ownerDirName } = await import("../services/supervisor/src/resource-layout");
+    expect(artifactOwnerDir("bootstrap:alice")).toBe(ownerDirName("bootstrap:alice"));
+  });
+
+  test.skipIf(!existsSync(supervisorModule))("the supervisor's runtimeName gives the same name", async () => {
+    const control = await import("../apps/control/src/logs");
+    // SAFETY: the module under test exports `runtimeName(sproutPath: string): string`.
+    const supervisor = (await import(supervisorModule)) as { runtimeName: (path: string) => string };
+    for (const path of [sproutPath, "/tmp/x/artifacts/ab/cd/sprout", "/a/b/sprout"]) {
+      expect(supervisor.runtimeName(path)).toBe(control.runtimeName(path));
+    }
   });
 });

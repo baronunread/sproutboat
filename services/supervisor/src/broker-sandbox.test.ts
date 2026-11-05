@@ -1,15 +1,27 @@
 import { afterAll, afterEach, describe, expect, test } from "bun:test";
 import { Database } from "bun:sqlite";
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  readdirSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, dirname, join } from "node:path";
 import {
   boundResourceIds,
   brokerBwrapArgs,
   brokerEnv,
+  brokerLaunchCommand,
   nodeModulesOf,
   planBrokerSandbox,
   prepareBrokerHostFiles,
+  withoutToken,
+  writeBwrapArgsFile,
   type BrokerPlanInput,
 } from "./broker-sandbox";
 import { ownerDirName, ownerStorageDir, r2BlobName } from "./resource-layout";
@@ -184,6 +196,34 @@ describe("what a broker is given", () => {
       [input.bun, input.entry, input.bindingsPath, input.nodeModules].includes(m.source),
     ))
       expect(m.mode).toBe("ro");
+  });
+
+  test("every local module the broker entry loads is bound read only", () => {
+    const { input } = layout();
+    const ro = new Set(
+      planBrokerSandbox(input)
+        .filter((m) => m.mode === "ro")
+        .map((m) => m.dest),
+    );
+    const transpiler = new Bun.Transpiler({ loader: "ts" });
+    const queue = [input.entry];
+    const seen = new Set<string>();
+    while (queue.length) {
+      const file = queue.pop()!;
+      if (seen.has(file)) continue;
+      seen.add(file);
+      expect(ro.has(file)).toBe(true);
+      for (const { path } of transpiler.scanImports(readFileSync(file, "utf8"))) {
+        if (!path.startsWith(".")) continue;
+        const base = join(dirname(file), path);
+        const found = [base, `${base}.ts`, `${base}.js`, join(base, "index.ts")].find(
+          (p) => existsSync(p) && statSync(p).isFile(),
+        );
+        expect(found).toBeDefined();
+        queue.push(found!);
+      }
+    }
+    expect(seen.size).toBeGreaterThan(1);
   });
 
   test("the sandbox is a fresh namespace set with no network unshare and no edge environment", () => {
@@ -555,4 +595,61 @@ Bun.serve({
       }, 60_000);
     });
   }
+});
+
+describe("broker secrets stay out of the process command line", () => {
+  const TOKEN = "tok-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+  const EDGE = "edge-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
+  const EGRESS = "egress-cccccccccccccccccccccccccccccccccccccccccccccc";
+  const runtime = { PATH: "/usr/bin:/bin", HOME: "/tmp", TMPDIR: "/tmp" };
+  const payload = [process.execPath, "--smol", "/x/broker-main.ts", "--token", TOKEN, "--port", "9"];
+
+  test("withoutToken drops the flag and its value only", () => {
+    expect(withoutToken(payload).slice(-3)).toEqual(["/x/broker-main.ts", "--port", "9"]);
+    expect(withoutToken(["a", "b"])).toEqual(["a", "b"]);
+  });
+
+  test("the launch command holds none of the secrets; the options file holds them", () => {
+    const dir = scratch();
+    const file = join(dir, "bwrap.args");
+    const env = { ...brokerEnv({ SB_EGRESS_TOKEN: EGRESS }, EDGE, runtime), SB_BROKER_TOKEN: TOKEN };
+    const bwrapArgv = brokerBwrapArgs([], env);
+    writeBwrapArgsFile(file, bwrapArgv);
+    const command = brokerLaunchCommand(file, withoutToken(payload), "/usr/bin/bwrap");
+    for (const secret of [TOKEN, EDGE, EGRESS]) {
+      expect(command.join(" ")).not.toContain(secret);
+      expect(readFileSync(file, "utf8")).toContain(secret);
+    }
+    expect(statSync(file).mode & 0o777).toBe(0o600);
+    expect(readFileSync(file, "utf8").endsWith("\0")).toBe(true);
+    expect(readFileSync(file, "utf8")).not.toContain("--\0");
+  });
+
+  test.skipIf(process.platform !== "linux")(
+    "bash hands the options to bwrap on a descriptor and deletes the file",
+    async () => {
+      const dir = scratch();
+      const fake = join(dir, "bwrap");
+      writeFileSync(fake, '#!/bin/bash\nprintf "ARGV:%s\\n" "$*"\ntr "\\0" "\\n" < "/dev/fd/$2"\n', { mode: 0o755 });
+      const file = join(dir, "bwrap.args");
+      const env = { ...brokerEnv({ SB_EGRESS_TOKEN: EGRESS }, EDGE, runtime), SB_BROKER_TOKEN: TOKEN };
+      writeBwrapArgsFile(file, brokerBwrapArgs([], env));
+      const run = Bun.spawn(brokerLaunchCommand(file, ["/bin/true", "--port", "9"], fake), {
+        stdout: "pipe",
+        stderr: "pipe",
+        env: { PATH: "/usr/bin:/bin" },
+      });
+      const [out, err] = await Promise.all([new Response(run.stdout).text(), new Response(run.stderr).text()]);
+      expect(await run.exited, err).toBe(0);
+      const [argvLine, ...fromFd] = out.split("\n");
+      expect(argvLine).toMatch(/^ARGV:--args \d+ -- \/bin\/true --port 9$/);
+      for (const secret of [TOKEN, EDGE, EGRESS]) {
+        expect(argvLine).not.toContain(secret);
+      }
+      expect(fromFd).toContain("--unshare-user");
+      expect(fromFd).toContain("SB_BROKER_TOKEN");
+      expect(fromFd).toContain(TOKEN);
+      expect(existsSync(file)).toBe(false);
+    },
+  );
 });

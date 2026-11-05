@@ -5,6 +5,7 @@ Wants=network-online.target sproutboat-egress.service
 StartLimitIntervalSec=0
 
 [Service]
+LimitNOFILE=65536
 Type=simple
 User=sproutboat-edge
 Group=sproutboat

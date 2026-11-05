@@ -12,7 +12,7 @@
  * directory for the bytes.
  */
 import { Database } from "bun:sqlite";
-import { existsSync, mkdirSync, readFileSync, statSync } from "node:fs";
+import { existsSync, readFileSync, statSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { ownerStorageDir, r2BlobName } from "../../../services/supervisor/src/resource-layout";
 import { actorFor } from "./identity";
@@ -54,14 +54,11 @@ function audit(owned: OwnedR2, operation: string, status: "ok" | "rejected", cou
   console.info(JSON.stringify({ event: "r2", actor: owned.actorId, resourceId: owned.id, operation, status, count }));
 }
 
-function openR2(path: string): Database {
-  mkdirSync(dirname(path), { recursive: true });
-  const db = new Database(path, { create: true });
-  db.exec("PRAGMA journal_mode = WAL");
-  db.exec("PRAGMA synchronous = NORMAL");
-  db.exec("PRAGMA busy_timeout = 5000");
-  // Mirrors transport-embedded.js / broker.ts exactly (#56): metadata only,
-  // object bytes live in r2-blobs/, never a column here.
+/**
+ * Mirrors transport-embedded.js / broker.ts exactly (#56): metadata only,
+ * object bytes live in r2-blobs/, never a column here.
+ */
+function createR2Tables(db: Database): void {
   db.exec(
     "CREATE TABLE IF NOT EXISTS r2 (bucket TEXT NOT NULL, key TEXT NOT NULL, size INTEGER NOT NULL, " +
       "etag TEXT NOT NULL, uploaded TEXT NOT NULL, http_json TEXT NOT NULL DEFAULT '{}', custom_json TEXT NOT NULL DEFAULT '{}', " +
@@ -72,6 +69,17 @@ function openR2(path: string): Database {
       "part_number INTEGER NOT NULL, size INTEGER NOT NULL, etag TEXT NOT NULL, " +
       "PRIMARY KEY (bucket, key, upload_id, part_number))",
   );
+}
+
+/** Control only ever reads a bucket's index (browse, download, usage), so it opens the file read-only. */
+function openR2(path: string): Database {
+  if (!existsSync(path)) {
+    const empty = new Database(":memory:");
+    createR2Tables(empty);
+    return empty;
+  }
+  const db = new Database(path, { readonly: true });
+  db.exec("PRAGMA busy_timeout = 5000");
   return db;
 }
 

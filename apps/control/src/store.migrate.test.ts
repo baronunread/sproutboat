@@ -94,3 +94,75 @@ test("a database that holds a sproutd project keeps its columns and warns", asyn
   expect(warn).toHaveBeenCalledTimes(1);
   warn.mockRestore();
 });
+
+// An install from before artifacts were namespaced by owner: one digest directory, one broker-state
+// directory and one log, shared by two accounts that uploaded identical bytes.
+test("shared legacy artifact dirs are split per owner, once", async () => {
+  const { chmod, mkdir, readdir, readFile, stat, writeFile } = await import("node:fs/promises");
+  const log = spyOn(console, "log").mockImplementation(() => {});
+  dir = await mkdtemp(join(tmpdir(), "sb-layout-"));
+  const path = join(dir, "control.sqlite");
+  seed(path, false);
+  const digest = "a".repeat(64);
+  const legacy = join(dir, "artifacts", digest);
+  await mkdir(join(legacy, "assets"), { recursive: true });
+  await writeFile(join(legacy, "sprout"), "binary");
+  await chmod(join(legacy, "sprout"), 0o555);
+  await writeFile(join(legacy, "assets", "a.txt"), "asset");
+  await mkdir(join(dir, "brokers", digest, "d1"), { recursive: true });
+  await writeFile(join(dir, "brokers", digest, "d1", "x.sqlite"), "state");
+  await mkdir(join(dir, "logs", "sprouts"), { recursive: true });
+  await writeFile(join(dir, "logs", "sprouts", `${digest}.log`), "shared log\n");
+  const database = new Database(path);
+  database.run("INSERT INTO projects (owner_id, name, username, created_at) VALUES ('u2', 'app', 'bob', 'x')");
+  database.run(
+    "INSERT INTO deployments (id, owner_id, project, username, hostname, artifact_digest, sprout_path, deployed_at, active) VALUES ('d2', 'u2', 'app', 'bob', 'app.bob.test', ?, ?, 'x', 1)",
+    [digest, join(legacy, "sprout")],
+  );
+  database.run("UPDATE deployments SET sprout_path = ? WHERE id = 'd1'", [join(legacy, "sprout")]);
+  database.close();
+  process.env.SPROUTBOAT_DATABASE_PATH = path;
+  process.env.SPROUTBOAT_ROUTE_SNAPSHOT = join(dir, "routes.json");
+  process.env.SPROUTBOAT_ARTIFACTS_DIR = join(dir, "artifacts");
+  process.env.SPROUTBOAT_DEPLOYMENTS_PATH = join(dir, "deployments.json");
+  process.env.SPROUTBOAT_BROKER_STATE_DIR = join(dir, "brokers");
+  process.env.SPROUTBOAT_LOG_PATH = join(dir, "logs", "requests.ndjson");
+  store = await import("./store");
+  store.projectDeployments("u1", "app"); // opens the store, which migrates
+  await store.syncRoutes(); // queued behind the sync the migration scheduled
+
+  const dirs = { u1: store.artifactOwnerDir("u1"), u2: store.artifactOwnerDir("u2") };
+  expect(dirs.u1).not.toBe(dirs.u2);
+  for (const owner of ["u1", "u2"] as const) {
+    const root = join(dir, "artifacts", dirs[owner], digest);
+    expect(await readFile(join(root, "sprout"), "utf8")).toBe("binary");
+    expect(await readFile(join(root, "assets", "a.txt"), "utf8")).toBe("asset");
+    expect((await stat(join(root, "sprout"))).mode & 0o777).toBe(0o555);
+    expect(await readFile(join(dir, "brokers", `${dirs[owner]}-${digest}`, "d1", "x.sqlite"), "utf8")).toBe("state");
+    expect(await readFile(join(dir, "logs", "sprouts", `${dirs[owner]}-${digest}.log`), "utf8")).toBe("shared log\n");
+    expect(store.projectDeployments(owner, "app")[0]?.sproutPath).toBe(join(root, "sprout"));
+  }
+  // The legacy ones are gone.
+  expect((await readdir(join(dir, "artifacts"))).sort()).toEqual([dirs.u1, dirs.u2].sort());
+  expect((await readdir(join(dir, "brokers"))).sort()).toEqual([`${dirs.u1}-${digest}`, `${dirs.u2}-${digest}`].sort());
+  expect((await readdir(join(dir, "logs", "sprouts"))).sort()).toEqual(
+    [`${dirs.u1}-${digest}.log`, `${dirs.u2}-${digest}.log`].sort(),
+  );
+  // routes.json carries the new paths.
+  // SAFETY: routes.json is the Route[] snapshot written by syncRoutes.
+  const routes = JSON.parse(await readFile(join(dir, "routes.json"), "utf8")) as Array<{ sproutPath: string }>;
+  expect(routes.map((route) => route.sproutPath).sort()).toEqual(
+    [join(dir, "artifacts", dirs.u1, digest, "sprout"), join(dir, "artifacts", dirs.u2, digest, "sprout")].sort(),
+  );
+  // The artifacts table is keyed by owner now, and re-running changes nothing.
+  expect(store.migrateArtifactLayout()).toBe(false);
+  const messages = log.mock.calls.length;
+  store.closeStore();
+  store = await import("./store");
+  store.projectDeployments("u1", "app");
+  expect(log.mock.calls.length).toBe(messages);
+  expect(columns(path, "artifacts")).toEqual(["owner_id", "digest", "created_at"]);
+  log.mockRestore();
+  delete process.env.SPROUTBOAT_BROKER_STATE_DIR;
+  delete process.env.SPROUTBOAT_LOG_PATH;
+});

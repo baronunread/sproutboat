@@ -51,8 +51,8 @@ sbctl — Sproutboat single-VPS control
   sbctl health [--json]    run the health gate (units and HTTP checks); exits non-zero when unhealthy
   sbctl rollback [--yes]   return to the release kept in /opt/sproutboat-prev (asks first)
   sbctl backup now|list    take a backup now (prints its name) / list backups
-  sbctl backup verify <archive> [--full] [--key FILE]   check an archive (--full: hashes + sqlite integrity)
-  sbctl restore <archive> [--force] [--no-config] [--key FILE] [--allow-newer]
+  sbctl backup verify <archive> [--full] [--key FILE] [--allow-plain]   check an archive (--full: hashes + sqlite integrity)
+  sbctl restore <archive> [--force] [--no-config] [--key FILE] [--allow-newer] [--allow-plain]
                            stop control + edge, restore a backup (state, then /etc/sproutboat and
                            Caddy data), reseed the admin password, fix owners, start
   sbctl uninstall [args]   hand off to install.sh --uninstall
@@ -113,9 +113,11 @@ apply_restored_config() {
         *) chown root:root "$ETC/$rel"; chmod 0600 "$ETC/$rel" ;;
       esac
     done < <(find "$cfg/etc/sproutboat" -type f)
-    for f in control.env control.local.env sproutboat.env sproutboat.local.env backup.key; do
+    for f in control.local.env sproutboat.env sproutboat.local.env; do
       [ ! -e "$ETC/$f" ] || { chown root:sproutboat "$ETC/$f"; chmod 0640 "$ETC/$f"; }
     done
+    [ ! -e "$ETC/control.env" ] || { chown root:root "$ETC/control.env"; chmod 0600 "$ETC/control.env"; }
+    [ ! -e "$ETC/backup.key" ] || { chown sproutboat-control:root "$ETC/backup.key"; chmod 0400 "$ETC/backup.key"; }
     for f in caddy.env caddy.local.env; do
       [ ! -e "$ETC/$f" ] || { chown root:root "$ETC/$f"; chmod 0640 "$ETC/$f"; }
     done
@@ -309,19 +311,20 @@ case "$cmd" in
         archive=; vargs=()
         while [ $# -gt 0 ]; do case "$1" in
           --full) vargs+=(--full); shift ;;
+          --allow-plain) vargs+=(--allow-plain); shift ;;
           --key) [ $# -ge 2 ] || die "--key needs a file"; vargs+=(--key "$2"); shift 2 ;;
-          -*) die "usage: sbctl backup verify <archive> [--full] [--key FILE]" ;;
+          -*) die "usage: sbctl backup verify <archive> [--full] [--key FILE] [--allow-plain]" ;;
           *) archive=$1; shift ;;
         esac; done
-        [ -f "$archive" ] || die "usage: sbctl backup verify <archive> [--full] [--key FILE]"
+        [ -f "$archive" ] || die "usage: sbctl backup verify <archive> [--full] [--key FILE] [--allow-plain]"
         backups_cli verify "$(realpath "$archive")" "${vargs[@]}" ;;
-      *) die "usage: sbctl backup now|list|verify <archive> [--full] [--key FILE]" ;;
+      *) die "usage: sbctl backup now|list|verify <archive> [--full] [--key FILE] [--allow-plain]" ;;
     esac ;;
   restore)
-    usage_restore="usage: sbctl restore <archive> [--force] [--no-config] [--key FILE] [--allow-newer]"
+    usage_restore="usage: sbctl restore <archive> [--force] [--no-config] [--key FILE] [--allow-newer] [--allow-plain]"
     archive=; rargs=(); noconfig=0
     while [ $# -gt 0 ]; do case "$1" in
-      --force|--allow-newer) rargs+=("$1"); shift ;;
+      --force|--allow-newer|--allow-plain) rargs+=("$1"); shift ;;
       --no-config) noconfig=1; shift ;;
       --key) [ $# -ge 2 ] || die "--key needs a file"; rargs+=(--key "$(realpath "$2")"); shift 2 ;;
       -*) die "$usage_restore" ;;
@@ -341,6 +344,7 @@ case "$cmd" in
     for f in sproutboat.sqlite routes.json deployments.json secrets.key artifacts; do
       [ -e "$STATE/$f" ] && chown -R sproutboat-control:sproutboat "$STATE/$f"
     done
+    chmod 0600 "$STATE"/sproutboat.sqlite* 2>/dev/null || true
     for d in brokers resources; do
       [ -d "$STATE/$d" ] || continue
       chown -R sproutboat-edge:sproutboat "$STATE/$d"
@@ -359,7 +363,7 @@ case "$cmd" in
         cd "$ROOT" && "$ROOT/bun/bin/bun" apps/control/src/auth-admin.ts reset-password ) || rc=$?
     fi
     # No Caddy to reload on an SB_PROXY=external install.
-    [ "$config_applied" = 0 ] || [ "$(env_value "$ETC/install.env" SB_PROXY)" = external ] || systemctl reload-or-restart caddy || true
+    [ "$config_applied" = 0 ] || [ "$(env_value "$ETC/install.env" SB_PROXY)" = external ] || { [ -S /run/caddy-admin.sock ] && systemctl reload-or-restart caddy || systemctl restart caddy; } || true
     [ "$config_applied" = 0 ] || systemctl restart sproutboat-egress || true
     systemctl start sproutboat-control sproutboat-edge sproutboat-backup.timer
     [ "$rc" = 0 ] || die "restore failed (exit $rc); the services were restarted on the state as it was"
