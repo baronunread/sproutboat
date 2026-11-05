@@ -1,239 +1,247 @@
-import { useMemo } from "react";
-import { createFileRoute, Link } from "@tanstack/react-router";
-import { defineChart } from "@tanstack/charts";
-import { barY } from "@tanstack/charts/bar";
-import { focusGroupX } from "@tanstack/charts/focus";
-import { Chart } from "@tanstack/charts/react/tooltip";
-import { scaleBand } from "@tanstack/charts/scales/band";
-import { scaleLinear } from "@tanstack/charts/scales/linear";
-import { stack } from "@tanstack/charts/stack";
-import { tooltip } from "@tanstack/charts/tooltip";
 import {
+  Badge,
+  Banner,
   EmptyState,
-  Metric,
-  Panel,
-  PanelHeading,
-  RECORD_TITLE,
-  RecordList,
-  RecordRow,
-  Status,
-  StatusMessage,
-} from "../components";
+  Link,
+  MetricTile,
+  PageHeader,
+  StatusDot,
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+  buttonStyles,
+  formatNumber,
+} from "@sproutboat/ikada";
+import { Sparkline, TimeseriesChart } from "@sproutboat/ikada/charts";
+import type { TimeseriesSeries } from "@sproutboat/ikada/charts";
+import { createFileRoute, Link as RouterLink } from "@tanstack/react-router";
+import { useMemo } from "react";
 import { relativeTime, useOverview } from "../dashboard-data";
-import { buttonVariants } from "@/components/ui/button";
+import type { Overview } from "../dashboard-data";
+import { EmptySprouts } from "../empty-sprouts";
 
 /** Built once: an Intl formatter is expensive and this one never varies. */
 const HOUR = new Intl.DateTimeFormat(undefined, { hour: "2-digit", minute: "2-digit" });
-
-/** Module scope: it closes over nothing, so rebuilding it every render only
- *  churned the chart definition's dependencies. */
-const hourLabel = (iso: string) => HOUR.format(new Date(iso));
+const hourLabel = (time: number) => HOUR.format(new Date(time));
 
 // __root.tsx's AuthGate redirects anon visitors to /login once the session
 // check resolves; useOverview also has its own sign-in state as a fallback.
 export const Route = createFileRoute("/")({
-  component: Overview,
+  component: OverviewPage,
   head: () => ({ meta: [{ title: "Sproutboat" }] }),
 });
 
-function Overview() {
+function OverviewPage() {
   const { data, state } = useOverview();
   const metrics = data?.metrics;
-  return (
-    <>
-      <section className="mb-8 flex items-center justify-between gap-8 border-b border-border pb-7 max-[800px]:mb-10 max-[800px]:flex-col max-[800px]:items-start [&_h1]:m-0 [&_h1]:text-[1.85rem] [&_h1]:font-bold [&_h1]:tracking-[-0.035em] [&_h1]:max-[480px]:text-[1.6rem] [&_p]:mt-1.5 [&_p]:max-w-[38rem] [&_p]:text-[0.875rem] [&_p]:leading-normal [&_p]:text-muted-foreground">
-        <div>
-          <h1>Your deployments, at a glance.</h1>
-          <p>Live information from your active routes and deployment history.</p>
-        </div>
-        <Link className={buttonVariants({ variant: "default", className: "text-[0.82rem]" })} to="/projects">
-          View sprouts
-        </Link>
-      </section>
+  const trend = useMemo(() => metrics?.trend ?? [], [metrics]);
+  const loading = state === "loading";
+  const requestsSpark = useMemo(() => trend.map((bucket) => bucket.count), [trend]);
+  const errorsSpark = useMemo(() => trend.map((bucket) => bucket.errors), [trend]);
 
-      {state === "loading" ? (
-        <Panel variant="bare" className="min-h-56 px-5 pt-12 text-muted-foreground" aria-live="polite">
-          Loading workspace data…
-        </Panel>
-      ) : state === "sign-in" ? (
-        <Panel>
-          <PanelHeading
-            title="Sign in to view your workspace"
-            description="Sign in to deploy and inspect your services."
-          />
-          <Link className={buttonVariants({ variant: "default", className: "mt-5 text-[0.82rem]" })} to="/login">
-            Sign in
-          </Link>
-        </Panel>
-      ) : state === "setup" ? (
-        <Panel>
-          <PanelHeading
-            title="Claim your deployment namespace"
-            description="Set up the namespace that will be used in your project routes."
-          />
-          <Link className={buttonVariants({ variant: "default", className: "mt-5 text-[0.82rem]" })} to="/profile">
-            Set up profile
-          </Link>
-        </Panel>
+  return (
+    <div className="flex flex-col gap-8">
+      <PageHeader
+        title="Overview"
+        description="Live information from your active routes and deployment history."
+        actions={
+          <RouterLink to="/projects" className={buttonStyles({ variant: "primary" })}>
+            View sprouts
+          </RouterLink>
+        }
+      />
+
+      {state === "sign-in" ? (
+        <EmptyState
+          title="Sign in to view your workspace"
+          description="Sign in to deploy and inspect your services."
+          action={
+            <RouterLink to="/login" className={buttonStyles({ variant: "primary" })}>
+              Sign in
+            </RouterLink>
+          }
+        />
       ) : state === "error" ? (
-        <StatusMessage tone="error">Could not load workspace data. Refresh and try again.</StatusMessage>
+        <Banner tone="danger">Could not load workspace data. Refresh and try again.</Banner>
       ) : (
         <>
-          <AccountTrend trend={metrics?.trend ?? []} requests={metrics?.requestsLast24Hours ?? 0} />
-
-          <section
-            className="mb-6 grid grid-cols-[repeat(auto-fit,minmax(12rem,1fr))] gap-3 max-[480px]:grid-cols-1 max-[480px]:gap-2.5"
-            aria-label="Deployment statistics"
-          >
-            <Metric
+          <section aria-label="Deployment statistics" className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            <MetricTile
               label="Active projects"
+              loading={loading}
               value={metrics ? String(metrics.activeProjects) : "-"}
-              detail="Routes currently serving"
+              hint="Routes currently serving"
             />
-            <Metric
+            <MetricTile
               label="Deployments"
+              loading={loading}
               value={metrics ? String(metrics.deployments) : "-"}
-              detail="Immutable versions"
+              hint="Immutable versions"
             />
-            <Metric
+            <MetricTile
               label="Requests"
-              value={metrics ? String(metrics.requestsLast24Hours) : "-"}
-              detail="Last 24 hours"
+              loading={loading}
+              value={metrics ? formatNumber(metrics.requestsLast24Hours) : "-"}
+              hint="Last 24 hours"
+              sparkline={
+                requestsSpark.length > 1 ? (
+                  <Sparkline
+                    data={requestsSpark}
+                    ariaLabel="Requests per hour, last 24 hours"
+                    formatPoint={(index) => hourLabel(Date.parse(trend[index]?.start ?? ""))}
+                  />
+                ) : undefined
+              }
             />
-            <Metric
+            <MetricTile
               label="Success rate"
-              value={metrics ? (metrics.successRate === null ? "-" : `${metrics.successRate}%`) : "-"}
-              detail={metrics?.successRate === null ? "No requests yet" : "Last 24 hours"}
+              loading={loading}
+              value={metrics?.successRate === null || metrics === undefined ? "-" : String(metrics.successRate)}
+              unit={metrics?.successRate === null || metrics === undefined ? undefined : "%"}
+              hint={metrics?.successRate === null ? "No requests yet" : "Last 24 hours"}
+              sparkline={
+                errorsSpark.some((count) => count > 0) ? (
+                  <Sparkline
+                    data={errorsSpark}
+                    color="errors"
+                    ariaLabel="Errors per hour, last 24 hours"
+                    formatPoint={(index) => hourLabel(Date.parse(trend[index]?.start ?? ""))}
+                  />
+                ) : undefined
+              }
             />
           </section>
 
-          <Panel variant="bare">
-            <PanelHeading title="Recent deployments" description="The ten most recent versions across every sprout." />
-            {data?.deployments.length ? (
-              <RecordList>
-                {data.deployments.slice(0, 10).map((deployment) => (
-                  <RecordRow key={deployment.id}>
-                    <div>
-                      <Link
-                        className={RECORD_TITLE}
-                        to="/projects/$name/deployments/$id"
-                        params={{ name: deployment.project, id: deployment.id }}
-                      >
-                        {deployment.project}
-                      </Link>
-                      <small>
-                        Version {deployment.id.slice(0, 8)} · {deployment.hostname}
-                      </small>
-                    </div>
-                    <code title={`Artifact ${deployment.artifact}`}>Artifact {deployment.artifact.slice(0, 12)}</code>
-                    <span>{relativeTime(deployment.deployedAt)}</span>
-                    <Status live={deployment.active}>{deployment.active ? "Active" : "Inactive"}</Status>
-                  </RecordRow>
-                ))}
-              </RecordList>
+          <AccountTrend trend={trend} requests={metrics?.requestsLast24Hours ?? 0} />
+
+          <section aria-labelledby="recent-title" className="flex flex-col gap-3">
+            <div>
+              <h2 id="recent-title" className="text-md font-semibold">
+                Recent deployments
+              </h2>
+              <p className="text-base text-fg-muted">The ten most recent versions across every sprout.</p>
+            </div>
+            {loading ? (
+              <Table label="Recent deployments" aria-busy="true">
+                <RecentHead />
+                <TableBody>
+                  <TableRow className="hover:bg-transparent">
+                    <TableCell colSpan={5} className="text-center text-fg-muted">
+                      Loading deployments…
+                    </TableCell>
+                  </TableRow>
+                </TableBody>
+              </Table>
+            ) : data?.deployments.length ? (
+              <RecentDeployments deployments={data.deployments.slice(0, 10)} />
             ) : (
-              <EmptyDeployment />
+              <div className="rounded-xl bg-surface p-4 shadow-card">
+                <EmptySprouts />
+              </div>
             )}
-          </Panel>
+          </section>
         </>
       )}
-    </>
+    </div>
+  );
+}
+
+function RecentHead() {
+  return (
+    <TableHeader>
+      <TableRow className="hover:bg-transparent">
+        <TableHead>Sprout</TableHead>
+        <TableHead hideBelow="sm">Version</TableHead>
+        <TableHead hideBelow="lg">Artifact</TableHead>
+        <TableHead hideBelow="md">Deployed</TableHead>
+        <TableHead>Status</TableHead>
+      </TableRow>
+    </TableHeader>
+  );
+}
+
+function RecentDeployments({ deployments }: { deployments: Overview["deployments"] }) {
+  return (
+    <Table label="Recent deployments">
+      <RecentHead />
+      <TableBody>
+        {deployments.map((deployment) => (
+          <TableRow key={deployment.id}>
+            <TableCell className="min-w-0">
+              <Link
+                render={
+                  <RouterLink
+                    to="/projects/$name/deployments/$id"
+                    params={{ name: deployment.project, id: deployment.id }}
+                  />
+                }
+                className="max-w-full truncate"
+              >
+                {deployment.project}
+              </Link>
+              <span className="block truncate text-sm text-fg-muted">{deployment.hostname}</span>
+            </TableCell>
+            <TableCell hideBelow="sm" className="font-mono text-sm whitespace-nowrap">
+              {deployment.id.slice(0, 8)}
+            </TableCell>
+            <TableCell hideBelow="lg" className="font-mono text-sm whitespace-nowrap text-fg-muted">
+              <span title={`Artifact ${deployment.artifact}`}>{deployment.artifact.slice(0, 12)}</span>
+            </TableCell>
+            <TableCell hideBelow="md" className="whitespace-nowrap text-fg-muted tabular-nums">
+              {relativeTime(deployment.deployedAt)}
+            </TableCell>
+            <TableCell className="whitespace-nowrap">
+              {deployment.active ? (
+                <StatusDot status="success" live label="Active" />
+              ) : (
+                <StatusDot status="neutral" label="Inactive" />
+              )}
+            </TableCell>
+          </TableRow>
+        ))}
+      </TableBody>
+    </Table>
   );
 }
 
 /**
- * #76 - the account-wide traffic trend Cloudflare puts on its Workers home:
- * 24 hourly buckets across every route this account owns, from the same scan
- * that produces the request/success metrics.
+ * The account-wide traffic trend: 24 hourly buckets across every route this account
+ * owns, from the same scan that produces the request and success metrics.
  */
-function AccountTrend({
-  trend,
-  requests,
-}: {
-  trend: Array<{ start: string; count: number; errors: number }>;
-  requests: number;
-}) {
+function AccountTrend({ trend, requests }: { trend: NonNullable<Overview["metrics"]["trend"]>; requests: number }) {
+  const series = useMemo<TimeseriesSeries[]>(() => {
+    const point = (value: (bucket: (typeof trend)[number]) => number) =>
+      trend.map((bucket) => ({ time: Date.parse(bucket.start), value: value(bucket) }));
+    return [
+      { id: "requests", label: "Requests", data: point((bucket) => bucket.count), area: true },
+      { id: "errors", label: "Errors", data: point((bucket) => bucket.errors), color: "errors" },
+    ];
+  }, [trend]);
   if (trend.length === 0 || requests === 0) return null;
-  return <AccountTrendChart trend={trend} />;
-}
-
-type TrendRow = { start: string; series: "errors" | "requests"; value: number };
-
-/** Same shape as the project metrics chart: stacked buckets, errors at the
- *  base, one grouped tooltip per hour, keyboard-navigable. Kept as its own
- *  component so the hooks below sit above no early return. */
-function AccountTrendChart({ trend }: { trend: Array<{ start: string; count: number; errors: number }> }) {
-  const max = Math.max(1, ...trend.map((bucket) => bucket.count));
-
-  const rows = useMemo<TrendRow[]>(
-    () =>
-      trend.flatMap((bucket) => [
-        { start: bucket.start, series: "errors" as const, value: bucket.errors },
-        { start: bucket.start, series: "requests" as const, value: Math.max(0, bucket.count - bucket.errors) },
-      ]),
-    [trend],
-  );
-
-  const definition = useMemo(
-    () =>
-      defineChart(
-        {
-          marks: [
-            barY(rows, {
-              x: "start",
-              y: "value",
-              z: "series",
-              fill: (row: TrendRow) => (row.series === "errors" ? "var(--coral)" : "var(--muted)"),
-              layout: stack(),
-            }),
-          ],
-          scales: {
-            x: { scale: scaleBand, axis: { ticks: { format: hourLabel }, tickLabels: { thin: true } } },
-            y: { scale: scaleLinear, nice: true },
-          },
-        },
-        { focus: focusGroupX, tooltip },
-      ),
-    [rows],
-  );
-
+  const peak = Math.max(1, ...trend.map((bucket) => bucket.count));
   return (
-    <Panel variant="wide" className="mb-6">
-      <PanelHeading title="Traffic" description="Requests across every route on this account, last 24 hours." />
-      <Chart
-        definition={definition}
-        ariaLabel={`Requests per hour across all routes, peak ${max} in one bucket`}
-        height={96}
-        className="mt-4 block w-full"
-        renderTooltipBody={({ points }) => {
-          const first = points[0]?.datum;
-          if (!first) return null;
-          const bucket = trend.find((candidate) => candidate.start === first.start);
-          if (!bucket) return null;
-          return (
-            <div className="grid gap-0.5 text-[0.75rem] tabular-nums">
-              <span className="text-muted-foreground">{hourLabel(bucket.start)}</span>
-              <span>
-                {bucket.count} request{bucket.count === 1 ? "" : "s"}
-              </span>
-              <span className={bucket.errors > 0 ? "text-coral" : "text-muted-foreground"}>
-                {bucket.errors} error{bucket.errors === 1 ? "" : "s"}
-              </span>
-            </div>
-          );
-        }}
+    <section
+      aria-labelledby="traffic-title"
+      className="flex flex-col gap-3 rounded-xl bg-surface p-4 shadow-card sm:p-5"
+    >
+      <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+        <div>
+          <h2 id="traffic-title" className="text-md font-semibold">
+            Traffic
+          </h2>
+          <p className="text-base text-fg-muted">Requests across every route on this account, last 24 hours.</p>
+        </div>
+        <Badge tone="neutral">Peak {formatNumber(peak)} per hour</Badge>
+      </div>
+      <TimeseriesChart
+        series={series}
+        height={180}
+        ariaLabel={`Requests and errors per hour across all routes, peak ${peak} in one bucket`}
+        formatTime={hourLabel}
       />
-    </Panel>
-  );
-}
-
-export function EmptyDeployment() {
-  return (
-    <EmptyState title="Deploy your first sprout">
-      <p>Deploy from a project directory and its route, version history and traffic appear here.</p>
-      <code className="mt-3 inline-block rounded-[5px] border border-border bg-background p-2.5 text-[0.76rem]">
-        sproutboat deploy hello
-      </code>
-    </EmptyState>
+    </section>
   );
 }

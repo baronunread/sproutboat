@@ -127,7 +127,7 @@ export async function mutate(url: string, init: RequestInit = {}): Promise<strin
 }
 
 /**
- * The namespace rule, shared by the profile claim form and admin user creation
+ * The namespace rule, used by admin user creation
  * so the two cannot drift. The middle run is what sets the length: a first and
  * last character plus {1,30} between them is 3-32, which is what both forms say.
  * Making that run optional (as it once was) silently also admitted a single
@@ -170,7 +170,7 @@ const DATE_FORMATTER = new Intl.DateTimeFormat(undefined, { dateStyle: "medium" 
 
 export function useOverview() {
   const [data, setData] = useState<Overview>();
-  const [state, setState] = useState<"loading" | "ready" | "sign-in" | "setup" | "error">("loading");
+  const [state, setState] = useState<"loading" | "ready" | "sign-in" | "error">("loading");
   const refresh = useCallback(async () => {
     await fetch("/api/overview", { credentials: "include" })
       .then(async (response) => {
@@ -179,9 +179,7 @@ export function useOverview() {
           setData((await response.json()) as Overview);
           return setState("ready");
         }
-        if (response.status !== 401) return setState("error");
-        const account = await fetch("/api/account", { credentials: "include" });
-        setState(account.ok ? "setup" : "sign-in");
+        setState(response.status === 401 ? "sign-in" : "error");
       })
       .catch(() => setState("error"));
   }, []);

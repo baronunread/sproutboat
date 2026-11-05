@@ -8,6 +8,33 @@ const state = resolve(process.env.SPROUTBOAT_LOCAL_STATE || ".local/sproutboat")
 const localDomain = "sproutboat.localhost";
 const processes: Bun.Subprocess[] = [];
 
+/**
+ * SPROUTBOAT_E2E_PLAIN=1 serves control, edge and the Vite dashboard on plain http ports instead of
+ * behind Portless. Portless needs to bind :443 (or :1355) and a locally trusted certificate, which a
+ * GitHub runner has neither of; this mode needs nothing but free ports. It is what the CI e2e job and
+ * parallel agent worktrees use. The public URLs all derive from the ports below, and the same values
+ * must reach the seeder and Playwright:
+ *
+ *   SPROUTBOAT_E2E_PLAIN=1 bun run dev:local
+ *   SPROUTBOAT_E2E_PLAIN=1 bun run seed --reset --e2e   # then bun run e2e, same env
+ *
+ * Ports: E2E_CONTROL_PORT (4810), E2E_EDGE_PORT (4811), E2E_DASHBOARD_PORT (4812), E2E_EMULATOR_PORT (4000).
+ */
+const plain = Bun.env.SPROUTBOAT_E2E_PLAIN === "1";
+const port = (name: string, fallback: number) => Number(Bun.env[name] || fallback);
+const plainPorts = {
+  control: port("E2E_CONTROL_PORT", 4810),
+  edge: port("E2E_EDGE_PORT", 4811),
+  dashboard: port("E2E_DASHBOARD_PORT", 4812),
+  emulator: port("E2E_EMULATOR_PORT", 4000),
+};
+const plainUrls = {
+  dashboard: `http://localhost:${plainPorts.dashboard}`,
+  // Bun does not resolve *.localhost subdomains, so the control plane is reached by address.
+  control: `http://127.0.0.1:${plainPorts.control}`,
+  emulator: `http://localhost:${plainPorts.emulator}`,
+};
+
 type PortlessRoute = { hostname: string; port: number; pid: number };
 
 /**
@@ -55,10 +82,10 @@ function environment(extra: Record<string, string> = {}) {
   return {
     ...Bun.env,
     BETTER_AUTH_SECRET: "sproutboat-local-development-secret-at-least-32-characters",
-    BETTER_AUTH_URL: `https://dashboard.${localDomain}`,
+    BETTER_AUTH_URL: plain ? plainUrls.dashboard : `https://dashboard.${localDomain}`,
     GITHUB_CLIENT_ID: "sproutboat-local",
     GITHUB_CLIENT_SECRET: "sproutboat-local-secret",
-    GITHUB_EMULATOR_URL: "http://localhost:4000",
+    GITHUB_EMULATOR_URL: plain ? plainUrls.emulator : "http://localhost:4000",
     // The __Secure- cookie prefix is rejected over the local dev cert, which
     // breaks the OAuth state cookie. Only the dev harness sets this.
     SPROUTBOAT_INSECURE_COOKIES: "1",
@@ -67,7 +94,7 @@ function environment(extra: Record<string, string> = {}) {
     SPROUTBOAT_DATABASE_PATH: `${state}/sproutboat.sqlite`,
     SPROUTBOAT_DEPLOYMENT_DOMAIN: localDomain,
     SPROUTBOAT_DEPLOYMENTS_PATH: `${state}/deployments.json`,
-    SPROUTBOAT_DASHBOARD_URL: "https://dashboard.sproutboat.localhost",
+    SPROUTBOAT_DASHBOARD_URL: plain ? plainUrls.dashboard : "https://dashboard.sproutboat.localhost",
     SPROUTBOAT_LOG_PATH: `${state}/edge.log`,
     SPROUTBOAT_RESOURCE_DIR: `${state}/resources`,
     SPROUTBOAT_ROUTE_SNAPSHOT: `${state}/routes.json`,
@@ -119,7 +146,67 @@ async function startProxy() {
   }
 }
 
+/** The emulator only redirects back to URLs its seed lists, so the plain dashboard's callback is added to a copy. */
+function plainEmulatorSeed(): string {
+  const seed = readFileSync(resolve(root, "tests/emulate.github.yaml"), "utf8");
+  const callback = `        - ${plainUrls.dashboard}/api/auth/callback/github\n`;
+  const marker = "        # portless falls back";
+  const path = resolve(state, "emulate.github.plain.yaml");
+  writeFileSync(
+    path,
+    seed.includes(marker) ? seed.replace(marker, `${callback.trimEnd()}\n${marker}`) : seed + callback,
+  );
+  return path;
+}
+
+async function mainPlain() {
+  requireCommand("npx");
+  await mkdir(state, { recursive: true });
+  await checked("migrating local Control state", [
+    "bunx",
+    "--bun",
+    "auth@1.7.1",
+    "migrate",
+    "--config",
+    "apps/control/src/auth.migrate.ts",
+    "--yes",
+  ]);
+  if (
+    await fetch(plainUrls.emulator)
+      .then(() => true)
+      .catch(() => false)
+  )
+    console.log(`→ reusing GitHub emulator at ${plainUrls.emulator}`);
+  else
+    start("GitHub emulator", [
+      "npx",
+      "emulate",
+      "start",
+      "--service",
+      "github",
+      "--port",
+      String(plainPorts.emulator),
+      "--seed",
+      plainEmulatorSeed(),
+    ]);
+  start(
+    `Control at ${plainUrls.control}`,
+    ["bun", "run", "control"],
+    environment({ PORT: String(plainPorts.control) }),
+  );
+  start(`Edge on port ${plainPorts.edge}`, ["bun", "run", "edge"], environment({ PORT: String(plainPorts.edge) }));
+  start(
+    `dashboard at ${plainUrls.dashboard}`,
+    ["bun", "run", "--cwd", "apps/web", "dev", "--host", "0.0.0.0", "--strictPort"],
+    environment({ PORT: String(plainPorts.dashboard), SPROUTBOAT_CONTROL_URL: plainUrls.control }),
+  );
+  console.log(
+    `\nReady (plain http):\n  Dashboard ${plainUrls.dashboard}\n  Control   ${plainUrls.control}\n\nFor the seeder and Playwright, export:\n  SPROUTBOAT_E2E_PLAIN=1\n  E2E_BASE_URL=${plainUrls.dashboard}\n  E2E_CONTROL_URL=${plainUrls.control}\n  E2E_EMULATOR_URL=${plainUrls.emulator}\n  SPROUTBOAT_CONTROL_URL=${plainUrls.control}\n  SPROUTBOAT_DASHBOARD_URL=${plainUrls.dashboard}\n  GITHUB_EMULATOR_URL=${plainUrls.emulator}\n`,
+  );
+}
+
 async function main() {
+  if (plain) return mainPlain();
   requireCommand("portless");
   requireCommand("npx");
   await mkdir(state, { recursive: true });

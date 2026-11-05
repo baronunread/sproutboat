@@ -388,11 +388,13 @@ async function main(): Promise<void> {
         return {
           name: pair.slice(0, eq),
           value: pair.slice(eq + 1),
-          domain: `dashboard.${domain}`,
+          // Whatever host the dashboard is served on: dashboard.<domain> behind Portless,
+          // localhost on the plain-http stack (SPROUTBOAT_E2E_PLAIN), where Secure cookies would not be sent.
+          domain: new URL(dashboardUrl).hostname,
           path: "/",
           expires: -1,
           httpOnly: true,
-          secure: true,
+          secure: new URL(dashboardUrl).protocol === "https:",
           sameSite: "Lax" as const,
         };
       });

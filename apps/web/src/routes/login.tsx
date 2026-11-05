@@ -1,7 +1,8 @@
+import { Button, Field, Input, SensitiveInput } from "@sproutboat/ikada";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
-import { Button, FORM, FORM_ACTIONS, SproutboatMark, TextField } from "../components";
 import { useJson } from "../dashboard-data";
+import { SproutboatMark } from "../shell";
 
 export const Route = createFileRoute("/login")({
   component: Login,
@@ -69,74 +70,75 @@ function Login() {
     // id="content" is the skip link's target: __root always renders the link,
     // and /login is the one route that supplies its own <main> instead of the
     // Shell's, so without this the link had nothing to jump to here.
-    <main id="content" className="grid min-h-screen place-items-center p-8">
+    <main id="content" className="flex min-h-dvh flex-col items-center justify-center gap-6 p-5 sm:p-8">
       <Link
-        className="absolute top-6 left-6 inline-flex items-center gap-2.5 text-2xl font-[650] tracking-tight no-underline"
         to="/"
+        className="inline-flex items-center gap-2.5 rounded-md text-xl font-bold outline-hidden focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
       >
         <SproutboatMark />
-        <span className="-translate-y-0.5">Sproutboat</span>
+        <span>Sproutboat</span>
       </Link>
-      <section className="w-full max-w-[27rem] rounded-xl border border-border bg-card p-8 [&>h1]:m-0 [&>h1]:max-w-[12ch] [&>h1]:text-[2rem] [&>h1]:leading-none [&>h1]:font-bold [&>h1]:tracking-[-0.035em] [&>p]:mt-3 [&>p]:mb-6 [&>p]:text-[0.875rem] [&>p]:leading-relaxed [&>p]:text-muted-foreground">
-        <h1>Sign in to your workspace.</h1>
-        <p>Accounts are created by the admin - there is no self-service sign-up.</p>
+      <section className="w-full max-w-sm rounded-xl bg-surface p-6 shadow-card sm:p-8">
+        <h1 className="text-xl font-bold">Sign in to your workspace</h1>
+        <p className="mt-2 mb-6 text-base text-fg-muted">
+          Accounts are created by the admin. There is no self-service sign-up.
+        </p>
         {config?.githubSignIn && (
           <>
             <Button variant="primary" className="w-full" onClick={() => void signInWithGithub()}>
               Continue with GitHub
             </Button>
-            <p className="my-5 flex items-center gap-3 text-[0.75rem] text-muted-foreground before:h-px before:flex-1 before:bg-border before:content-[''] after:h-px after:flex-1 after:bg-border after:content-['']">
+            <p className="my-5 flex items-center gap-3 text-sm text-fg-muted before:h-px before:flex-1 before:bg-hairline before:content-[''] after:h-px after:flex-1 after:bg-hairline after:content-['']">
               <span>or</span>
             </p>
           </>
         )}
-        <form className={FORM} onSubmit={signInWithPassword}>
-          <TextField
-            label="Email"
-            id="signin-email"
-            name="email"
-            type="email"
-            autoComplete="username"
-            required
-            value={email}
-            onChange={(event) => {
-              setEmail(event.target.value);
-              setError(undefined);
-            }}
-          />
-          <TextField
+        <form className="flex flex-col gap-4" onSubmit={signInWithPassword}>
+          <Field label="Email" required>
+            <Input
+              name="email"
+              type="email"
+              autoComplete="username"
+              required
+              value={email}
+              onChange={(event) => {
+                setEmail(event.target.value);
+                setError(undefined);
+              }}
+            />
+          </Field>
+          <Field
             label="Password"
-            id="signin-password"
-            name="password"
-            type="password"
-            autoComplete="current-password"
             required
-            value={password}
-            onChange={(event) => {
-              setPassword(event.target.value);
-              setError(undefined);
-            }}
-            hint={
+            error={error}
+            description={
               adminHint ? (
                 <>
                   Admin: your password is the token from <code>/root/sproutboat-admin.env</code>.
                 </>
               ) : undefined
             }
-            error={error ?? null}
-          />
-          <div data-slot="form-actions" className={FORM_ACTIONS}>
-            <Button
-              type="submit"
-              className="w-full"
-              variant={config?.githubSignIn ? "quiet" : "primary"}
-              busy={busy}
-              busyLabel="Signing in…"
-              disabled={!email || !password}
-            >
-              Sign in
-            </Button>
-          </div>
+          >
+            <SensitiveInput
+              name="password"
+              autoComplete="current-password"
+              required
+              value={password}
+              onChange={(event) => {
+                setPassword(event.target.value);
+                setError(undefined);
+              }}
+            />
+          </Field>
+          <Button
+            type="submit"
+            className="mt-2 w-full"
+            variant={config?.githubSignIn ? "secondary" : "primary"}
+            loading={busy}
+            disabled={!email || !password}
+          >
+            Sign in
+          </Button>
         </form>
       </section>
     </main>

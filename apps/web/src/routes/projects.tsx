@@ -1,147 +1,208 @@
-import { useState } from "react";
-import { createFileRoute, Link } from "@tanstack/react-router";
-import { DeleteProject, Panel, StatusMessage, TextField } from "../components";
+import {
+  Badge,
+  Banner,
+  Field,
+  Input,
+  Link,
+  PageHeader,
+  Table,
+  TableBody,
+  TableCell,
+  TableEmpty,
+  TableHead,
+  TableHeader,
+  TableRow,
+  nextSort,
+  toast,
+} from "@sproutboat/ikada";
+import type { SortDirection } from "@sproutboat/ikada";
+import { createFileRoute, Link as RouterLink } from "@tanstack/react-router";
+import { useMemo, useState } from "react";
 import { relativeTime, useOverview } from "../dashboard-data";
-import { EmptyDeployment } from "./index";
+import type { Overview } from "../dashboard-data";
+import { DeleteProjectDialog } from "../delete-project-dialog";
+import { EmptySprouts } from "../empty-sprouts";
 
 /**
- * #78 - the Sprouts list, the way Cloudflare's Workers & Pages lists
- * applications: one row per sprout carrying its route, its traffic and a way
- * into its own deployments. The account-wide deployments page is gone; a
- * version list only makes sense inside the sprout it belongs to.
+ * The Sprouts list: one row per sprout carrying its route, its traffic and a way into its
+ * own deployments. A version list only makes sense inside the sprout it belongs to.
  */
 export const Route = createFileRoute("/projects")({
   component: Projects,
   head: () => ({ meta: [{ title: "Sprouts · Sproutboat" }] }),
 });
 
+type Project = Overview["projects"][number];
+type SortKey = "name" | "deployed" | "requests";
+
+const sortValue = {
+  name: (project: Project) => project.name,
+  deployed: (project: Project) => Date.parse(project.deployedAt),
+  requests: (project: Project) => project.requests24h ?? 0,
+} satisfies Record<SortKey, (project: Project) => number | string>;
+
+function sortProjects(projects: Project[], key: SortKey | undefined, direction: SortDirection | undefined) {
+  if (!key || !direction) return projects;
+  const sign = direction === "asc" ? 1 : -1;
+  const value = sortValue[key];
+  return projects.toSorted((a, b) => {
+    const x = value(a);
+    const y = value(b);
+    return sign * (x < y ? -1 : x > y ? 1 : 0);
+  });
+}
+
 function Projects() {
-  const { data, error, refresh } = useOverview();
-  const [removed, setRemoved] = useState("");
+  const { data, state, error, refresh } = useOverview();
   const [query, setQuery] = useState("");
+  const [sort, setSort] = useState<{ key: SortKey; direction: SortDirection }>();
 
   const needle = query.trim().toLowerCase();
-  const projects = (data?.projects ?? []).filter(
-    (project) => !needle || `${project.name} ${project.hostname}`.toLowerCase().includes(needle),
-  );
+  const rows = useMemo(() => {
+    const matching = (data?.projects ?? []).filter(
+      (project) => !needle || `${project.name} ${project.hostname}`.toLowerCase().includes(needle),
+    );
+    return sortProjects(matching, sort?.key, sort?.direction);
+  }, [data, needle, sort]);
+
+  const onSort = (key: SortKey) =>
+    setSort((current) => {
+      const direction = nextSort(current?.key === key ? current.direction : undefined);
+      return direction ? { key, direction } : undefined;
+    });
+  const sortOf = (key: SortKey) => (sort?.key === key ? sort.direction : undefined);
 
   return (
-    <>
-      <section className="mb-8 flex flex-wrap items-start justify-between gap-x-8 gap-y-4 border-b border-border pb-7 [&_h1]:m-0 [&_h1]:flex [&_h1]:items-center [&_h1]:gap-2.5 [&_h1]:text-[1.85rem] [&_h1]:font-bold [&_h1]:tracking-[-0.035em] [&>div>p]:mt-1.5 [&>div>p]:max-w-[44rem] [&>div>p]:text-[0.875rem] [&>div>p]:leading-normal [&>div>p]:text-muted-foreground">
-        <div>
-          <h1>Sprouts</h1>
-          <p>
+    <div className="flex flex-col gap-6">
+      <PageHeader
+        title="Sprouts"
+        description={
+          <>
             Every project serving a route from this box. Deploy one with <code>sproutboat deploy</code>.
-          </p>
-        </div>
-      </section>
-
-      {removed && <StatusMessage tone="success">Deleted {removed} and every deployed version.</StatusMessage>}
+          </>
+        }
+      />
 
       {error ? (
-        <StatusMessage tone="error">Could not load sprouts. Refresh and try again.</StatusMessage>
-      ) : data?.projects.length ? (
-        <section>
-          <div className="mb-4 max-w-[30rem]">
-            <TextField
-              label="Search sprouts"
-              hideLabel
-              type="search"
-              fieldClassName="min-w-0 flex-[1_1_16rem]"
-              placeholder="Search sprouts…"
-              value={query}
-              onChange={(event) => setQuery(event.target.value)}
-            />
-          </div>
-
-          {projects.length === 0 ? (
-            <p className="px-5 py-12 text-center text-[0.84rem] leading-relaxed text-muted-foreground group-[.is-padded]/panel:px-0 group-[.is-padded]/panel:py-5 group-[.is-padded]/panel:text-start [&_code]:text-foreground">
-              Nothing matches “{query.trim()}”.
-            </p>
-          ) : (
-            <ul className="m-0 grid list-none gap-3 p-0" aria-label="Sprouts">
-              {projects.map((project) => (
-                <li
-                  key={project.name}
-                  className="group relative rounded-lg border border-border bg-card transition-[border-color,background] duration-150 hover:border-line-strong hover:bg-accent focus-within:border-sky"
-                >
-                  {/* The name's ::after covers the card, so the whole surface
-                      opens the sprout while the a11y tree keeps one link. Every
-                      other control sits above it on its own stacking context. */}
-                  <div className="grid grid-cols-[minmax(0,1fr)_auto_auto] items-start gap-x-4 px-5 py-[1.1rem] max-[640px]:grid-cols-[minmax(0,1fr)_auto]">
-                    <div className="[&>small]:mt-1.5 [&>small]:block [&>small]:text-[0.75rem] [&>small]:text-muted-foreground">
-                      <Link
-                        className="text-[0.95rem] font-semibold tracking-tight after:absolute after:inset-0 after:content-[''] focus-visible:outline-none"
-                        to="/projects/$name"
-                        params={{ name: project.name }}
-                      >
-                        {project.name}
-                      </Link>
-                      <small>
-                        <a
-                          className="relative z-1 hover:underline hover:underline-offset-2"
-                          href={`https://${project.hostname}`}
-                        >
-                          {project.hostname}
-                        </a>
-                        {(project.domains ?? 0) > 0 &&
-                          ` + ${project.domains} custom domain${project.domains === 1 ? "" : "s"}`}
-                      </small>
-                    </div>
-                    <span className="text-[0.75rem] whitespace-nowrap text-muted-foreground tabular-nums max-[640px]:col-start-1">
-                      {relativeTime(project.deployedAt)}
-                    </span>
-                    <div className="relative z-1">
-                      <DeleteProject
-                        name={project.name}
-                        triggerLabel="Delete"
-                        triggerVariant="quiet"
-                        onDeleted={() => {
-                          setRemoved(project.name);
-                          void refresh();
-                        }}
-                      />
-                    </div>
-                  </div>
-
-                  <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-2 border-t border-border px-5 py-3">
-                    <Link
-                      className="relative z-1 text-[0.78rem] text-sky underline-offset-2 hover:underline"
-                      to="/projects/$name/deployments"
-                      params={{ name: project.name }}
-                    >
-                      View deployments →
-                    </Link>
-                    <div className="flex flex-wrap items-center gap-x-5 gap-y-1 text-[0.75rem] text-muted-foreground tabular-nums">
-                      <span>
-                        {project.versions ?? 0} version{project.versions === 1 ? "" : "s"}
-                      </span>
-                      <span>{(project.requests24h ?? 0).toLocaleString()} requests</span>
-                      <span>{project.latencyP50 ? `${project.latencyP50} ms` : "-"} p50</span>
-                      {(project.errors24h ?? 0) > 0 && <span className="text-coral">{project.errors24h} errors</span>}
-                    </div>
-                  </div>
-                </li>
-              ))}
-            </ul>
-          )}
-        </section>
+        <Banner tone="danger">Could not load sprouts. Refresh and try again.</Banner>
+      ) : data && data.projects.length === 0 ? (
+        <div className="rounded-xl bg-surface p-4 shadow-card">
+          <EmptySprouts />
+        </div>
       ) : (
-        <Panel variant="bare">
-          <EmptyDeployment />
-          <ol className="m-0 list-none px-5 pb-5 [&_code]:text-[0.8rem] [&_code]:text-muted-foreground [&_li]:flex [&_li]:items-center [&_li]:gap-4 [&_li]:border-t [&_li]:border-border [&_li]:py-2.5">
-            <li>
-              <code>sproutboat init hello</code>
-            </li>
-            <li>
-              <code>sproutboat login</code>
-            </li>
-            <li>
-              <code>sproutboat deploy hello</code>
-            </li>
-          </ol>
-        </Panel>
+        <section aria-label="Sprouts list" className="flex flex-col gap-4">
+          <div className="max-w-md">
+            <Field label="Search sprouts" className="[&>label]:sr-only">
+              <Input
+                type="search"
+                placeholder="Search sprouts…"
+                value={query}
+                onChange={(event) => setQuery(event.target.value)}
+              />
+            </Field>
+          </div>
+          <Table label="Sprouts" aria-busy={state === "loading" || undefined}>
+            <TableHeader>
+              <TableRow className="hover:bg-transparent">
+                <TableHead sortable sort={sortOf("name")} onSort={() => onSort("name")}>
+                  Name
+                </TableHead>
+                <TableHead hideBelow="lg">Route</TableHead>
+                <TableHead hideBelow="xl" className="text-end">
+                  Versions
+                </TableHead>
+                <TableHead
+                  hideBelow="lg"
+                  className="text-end"
+                  sortable
+                  sort={sortOf("requests")}
+                  onSort={() => onSort("requests")}
+                >
+                  Requests
+                </TableHead>
+                <TableHead hideBelow="2xl" className="text-end">
+                  p50
+                </TableHead>
+                <TableHead hideBelow="md" sortable sort={sortOf("deployed")} onSort={() => onSort("deployed")}>
+                  Deployed
+                </TableHead>
+                <TableHead className="text-end">
+                  <span className="sr-only">Actions</span>
+                </TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {rows.length === 0 ? (
+                <TableEmpty colSpan={7}>
+                  {state === "loading" ? (
+                    <span className="text-fg-muted">Loading sprouts…</span>
+                  ) : (
+                    <span className="text-fg-muted">Nothing matches “{query.trim()}”.</span>
+                  )}
+                </TableEmpty>
+              ) : (
+                rows.map((project) => (
+                  <ProjectRow
+                    key={project.name}
+                    project={project}
+                    onDeleted={() => {
+                      toast.add({
+                        tone: "success",
+                        title: `Deleted ${project.name}`,
+                        description: "The project and every deployed version are gone.",
+                      });
+                      void refresh();
+                    }}
+                  />
+                ))
+              )}
+            </TableBody>
+          </Table>
+        </section>
       )}
-    </>
+    </div>
+  );
+}
+
+function ProjectRow({ project, onDeleted }: { project: Project; onDeleted: () => void }) {
+  const domains = project.domains ?? 0;
+  const errors = project.errors24h ?? 0;
+  return (
+    <TableRow>
+      <TableCell className="min-w-0">
+        <Link render={<RouterLink to="/projects/$name" params={{ name: project.name }} />} className="font-semibold">
+          {project.name}
+        </Link>
+        <span className="mt-0.5 flex flex-wrap items-center gap-x-2 text-sm text-fg-muted lg:hidden">
+          <span className="break-all">{project.hostname}</span>
+        </span>
+      </TableCell>
+      <TableCell hideBelow="lg" className="text-fg-muted">
+        <Link href={`https://${project.hostname}`} className="break-all font-normal text-fg-muted" external>
+          {project.hostname}
+        </Link>
+        {domains > 0 ? (
+          <Badge tone="neutral" className="ms-2">
+            +{domains} domain{domains === 1 ? "" : "s"}
+          </Badge>
+        ) : null}
+      </TableCell>
+      <TableCell hideBelow="xl" className="text-end tabular-nums">
+        {project.versions ?? 0}
+      </TableCell>
+      <TableCell hideBelow="lg" className="text-end tabular-nums">
+        {(project.requests24h ?? 0).toLocaleString()}
+        {errors > 0 ? <span className="ms-2 text-danger-fg">{errors} errors</span> : null}
+      </TableCell>
+      <TableCell hideBelow="2xl" className="text-end tabular-nums text-fg-muted">
+        {project.latencyP50 ? `${project.latencyP50} ms` : "-"}
+      </TableCell>
+      <TableCell hideBelow="md" className="whitespace-nowrap text-fg-muted tabular-nums">
+        {relativeTime(project.deployedAt)}
+      </TableCell>
+      <TableCell className="text-end">
+        <DeleteProjectDialog name={project.name} onDeleted={onDeleted} />
+      </TableCell>
+    </TableRow>
   );
 }

@@ -54,8 +54,11 @@ test("#77 — each kind is its own page and only lists its own resources", async
 test("a malformed name is rejected before submitting", async ({ page }) => {
   await page.goto("/d1/new");
   await page.getByLabel(/database name/i).fill("Not A Slug");
-  await expect(page.getByText(/lowercase letters, digits and hyphens only/i)).toBeVisible();
-  await expect(page.getByRole("button", { name: /create database/i })).toBeDisabled();
+  await expect(page.getByText(/lowercase letters, numbers, and hyphens only/i)).toBeVisible();
+  // The form keeps its submit button enabled so it can explain itself: submitting a bad name stays on the page.
+  await page.getByRole("button", { name: /create database/i }).click();
+  await expect(page).toHaveURL(/\/d1\/new$/);
+  await expect(page.getByText(/lowercase letters, numbers, and hyphens only/i)).toBeVisible();
 });
 
 test("secrets: add and delete a project secret", async ({ page }) => {

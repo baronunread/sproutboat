@@ -25,6 +25,48 @@ jobs:
       - run: bun run test:ikada
       - run: bun run --cwd packages/ikada tokens:check
 
+  # Playwright against the real local stack: control, edge, the Vite dashboard and the GitHub
+  # emulator, all on plain http ports (SPROUTBOAT_E2E_PLAIN, see tools/dev-local.ts) because a
+  # runner cannot give Portless :443 or a trusted certificate.
+  e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      SPROUTBOAT_E2E_PLAIN: "1"
+      E2E_BASE_URL: http://localhost:4812
+      E2E_CONTROL_URL: http://127.0.0.1:4810
+      E2E_EMULATOR_URL: http://localhost:4000
+      SPROUTBOAT_CONTROL_URL: http://127.0.0.1:4810
+      SPROUTBOAT_DASHBOARD_URL: http://localhost:4812
+      GITHUB_EMULATOR_URL: http://localhost:4000
+    steps:
+      - uses: actions/checkout@v7
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.4.4"
+      - run: bun install --frozen-lockfile
+      - run: bunx playwright install --with-deps chromium
+      - name: Start the local stack
+        run: |
+          nohup bun run dev:local > dev-local.log 2>&1 &
+          for i in $(seq 1 90); do
+            curl -fsS "$E2E_CONTROL_URL/internal/health" >/dev/null 2>&1 && curl -fsS "$E2E_BASE_URL/login" >/dev/null 2>&1 && exit 0
+            sleep 2
+          done
+          cat dev-local.log
+          exit 1
+      # global-setup reseeds with --reset --e2e before the first test.
+      - run: bun run seed --reset --e2e
+      - run: bun run e2e
+      - if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-report
+          path: |
+            test-results
+            dev-local.log
+          if-no-files-found: ignore
+
   # The Rust egress service (services/egress-rs). Same shape as edge-rs; the
   # differential job runs the Bun egress from node_modules against the Rust one.
   egress-rs:
