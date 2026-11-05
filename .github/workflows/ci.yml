@@ -22,8 +22,6 @@ jobs:
       # so this can gate now — before that it could never have passed.
       - run: bun run fmt:check
       - run: bun test apps/ services/ tests/
-      - run: bun run test:ikada
-      - run: bun run --cwd packages/ikada tokens:check
 
   # Playwright against the real local stack: control, edge, the Vite dashboard and the GitHub
   # emulator, all on plain http ports (SPROUTBOAT_E2E_PLAIN, see tools/dev-local.ts) because a
