@@ -12,7 +12,7 @@ sudo ./install.sh
 
 The script is the whole runbook: it enables unprivileged user namespaces,
 installs Caddy + bubblewrap, sets a default-deny firewall, builds the dashboard,
-generates one admin identity, writes `/etc/sproutboat/{sproutboat,control}.env`
+generates one admin identity, writes `/etc/sproutboat/{sproutboat,control,egress}.env`
 **before** starting anything, brings up `control` + `edge` + `dashboard` + Caddy,
 runs `runtime:preflight`, and prints the admin token, the DNS record to create,
 and the CLI commands to deploy your first function.
@@ -102,6 +102,56 @@ the same `/internal/tls/allow` gate and per-hour ceiling as generated
 hostnames. The visitor's DNS must point the hostname at this box (A/AAAA or
 CNAME to the deployment domain). `SPROUTBOAT_MAX_DOMAINS_PER_PROJECT` (default 5) caps how many a project may hold; deleting the project or the domain drops
 it from the snapshot on the next sync.
+
+## Where settings live
+
+`install.sh` rewrites its env files in `/etc/sproutboat` on every install and update. A key you add to one of
+them is gone after the next `sbctl update`. Your settings go in the matching `<name>.local.env` instead. The
+units read it right after `<name>.env`, so a key set there wins, and nothing ever rewrites it.
+
+| Generated file (do not edit)   | Holds                                                                                  | Read by               | Your settings          |
+| ------------------------------ | -------------------------------------------------------------------------------------- | --------------------- | ---------------------- |
+| `control.env`                  | storage paths, admin name, token and email, auth secret, backup key path, GitHub OAuth | control, backup       | `control.local.env`    |
+| `egress.env`                   | the token brokers present to the egress service                                        | egress, control, edge | `egress.local.env`     |
+| `sproutboat.env`               | deployment domain, dashboard URL (and directory in homelab mode)                       | control, edge         | `sproutboat.local.env` |
+| `caddy.env` (public mode only) | ACME email, Cloudflare DNS token                                                       | Caddy                 | `caddy.local.env`      |
+| `install.env`, `engine.env`    | the install mode; the engine choice                                                    | installer, `sbctl`    | none: see below        |
+| `update.env`                   | update repository, pinned ref, installed commit                                        | `sbctl update`        | none: see below        |
+| `backup.key`                   | the backup encryption key, created once                                                | backup                | not a settings file    |
+
+Put these in the local files (one `KEY=value` per line, no quotes needed; restart the service to apply):
+
+- **`control.local.env`:** the [limits](#limits-and-abuse-controls-25), `SPROUTBOAT_BACKUP_KEEP`,
+  `SPROUTBOAT_BACKUP_ENCRYPT=off`, `SPROUTBOAT_BACKUP_S3_*` ([off-box copy](#off-box-copy-s3-compatible)),
+  `SPROUTBOAT_EVENTS_*`, a different `SPROUTBOAT_BACKUP_KEY_FILE`, GitHub OAuth. Then
+  `sudo systemctl restart sproutboat-control`; the nightly backup reads the file on its next run.
+- **`egress.local.env`:** `SB_EGRESS_ALLOW` ([Outbound fetch](#outbound-fetch)), then
+  `sudo systemctl restart sproutboat-egress sproutboat-control sproutboat-edge`.
+- **`caddy.local.env`:** environment variables for the Caddy process, such as `XDG_DATA_HOME` to keep its
+  certificates elsewhere.
+
+The installer creates each local file, empty and commented, the first time. A key you set in a local file that the
+installer also writes (say `BETTER_AUTH_URL`) wins for the services, while the installer keeps writing its own
+value to the generated file. The local files are part of every backup, as is the rest of `/etc/sproutboat`.
+
+**What `install.env`, `engine.env` and `update.env` are.** They hold only the keys listed in their sections, and the
+installer reads each one back before it rewrites the file, so those keys survive updates. Change them the supported
+way: environment variables on an install or update (`SB_MODE`, `SB_PROXY`, `SB_ACME_STAGING`, ...; see
+[docs/homelab.md](../docs/homelab.md)), `sbctl engine`, and `SB_REF` or the pin in `update.env`
+([Updating and rolling back](#updating-and-rolling-back)). Other keys are not read by anything, so they are not kept.
+
+**Moving from older installs.** Before the local files existed, this page told you to put these settings in
+`control.env` and `egress.env`, and an update dropped them. The first update after this change moves every key it finds
+in a generated file that the installer does not write into the matching local file, and keeps the old file as
+`<name>.env.bak-<UTC time>` (mode `0600`; it holds the token, so delete it once you have checked the result). It
+prints the key names, never the values. Run again, it finds nothing and changes nothing. If a key is set in both
+files, the one in the local file stays, because that is the one the service reads. Settings lost to an update that ran
+before this change are gone: set them again in the local file. A rollback (`sbctl rollback`) restores the generated
+files as they were before the update, with your old keys in them, so a release that does not know the local files
+still finds them.
+
+**Unit and process settings** (memory caps, bind addresses, edge tunables such as `SPROUTBOAT_EDGE_CACHE`) are
+systemd drop-ins, not env files: see [Customising Caddy](#customising-caddy) and the memory budget below.
 
 ## Customising Caddy
 
@@ -241,8 +291,9 @@ instead (#252). That's a separate unit outside the edge's cgroup, listening on
   multicast, and their IPv6 forms), and connects only to the address it vetted.
 - **Allowing private addresses:** to let sprouts reach one, such as a database
   on this host, add `SB_EGRESS_ALLOW=10.0.0.5` (comma-separated exact
-  addresses, or `*`) to `/etc/sproutboat/egress.env` and run
-  `systemctl restart sproutboat-egress`. Re-running the installer keeps it.
+  addresses, or `*`) to `/etc/sproutboat/egress.local.env` and run
+  `systemctl restart sproutboat-egress`. The installer never rewrites that file. (`egress.env` itself is
+  regenerated on every update; an entry you made there is moved to `egress.local.env` by the next one.)
 - **Engines:** the egress runs as the Rust binary by default; see [Engines](#engines).
 
 ```sh
@@ -339,7 +390,9 @@ link GitHub to the same email afterwards. `POST /api/auth/sign-up` returns 403.
 GitHub sign-in is optional. Set `SB_GITHUB_CLIENT_ID` / `SB_GITHUB_CLIENT_SECRET`
 before install and register `https://dashboard.<domain>/api/auth/callback/github`
 as the OAuth callback. With `disableSignUp` it only logs in an account that
-already exists — a stranger's GitHub account can't get in. `install.sh` runs the
+already exists, so a stranger's GitHub account can't get in. The installer keeps the
+OAuth app across updates; you can also set `GITHUB_CLIENT_ID` and `GITHUB_CLIENT_SECRET` in
+`control.local.env`. `install.sh` runs the
 Better Auth migration
 (`bunx --bun auth@1.7.1 migrate --config apps/control/src/auth.migrate.ts --yes`)
 for you.
@@ -453,7 +506,7 @@ Archives are encrypted at rest by default and are named
 `sproutboat-<date>.tar.gz.enc`. The key is `/etc/sproutboat/backup.key`: 64 hex
 characters (32 random bytes), created by `install.sh` on first run and kept across
 updates, mode `0640 root:sproutboat` so the backup user can read it.
-`SPROUTBOAT_BACKUP_KEY_FILE` (written to `control.env`) overrides the path.
+`SPROUTBOAT_BACKUP_KEY_FILE` (written to `control.env`; set it in `control.local.env` to point elsewhere) overrides the path.
 
 **Copy `/etc/sproutboat/backup.key` off the box** (password manager, secret
 store). Without it every encrypted archive is unreadable, including the ones in
@@ -466,7 +519,7 @@ stream, then the 16-byte GCM tag. The key is the 32 bytes decoded from the hex
 file, used directly (no KDF). Nothing unencrypted is written to disk on the way:
 `tar` is piped through the cipher into the output file.
 
-`SPROUTBOAT_BACKUP_ENCRYPT=off` in `control.env` writes plain `.tar.gz` instead.
+`SPROUTBOAT_BACKUP_ENCRYPT=off` in `control.local.env` writes plain `.tar.gz` instead.
 Older plain archives keep working everywhere. With encryption off and an S3
 target configured, the backup logs a warning: the archive, with `secrets.key` and
 your env files, would leave the box in clear.
@@ -509,7 +562,7 @@ directory counts once it holds `certificates` or `instance.uuid`.
 
 ### Off-box copy (S3-compatible)
 
-Set these in `/etc/sproutboat/control.env` and every new archive is uploaded and
+Set these in `/etc/sproutboat/control.local.env` and every new archive is uploaded and
 the remote copies are pruned to the same retention. An upload failure never
 fails the backup: the local archive still exists, and the dashboard shows the
 per-archive **Off-box** state. Archives are encrypted before upload; keep it that
@@ -618,7 +671,7 @@ crash-looping unit keeps retrying every 2 s instead of stopping in
 
 ## Limits and abuse controls (#25)
 
-All configurable in `/etc/sproutboat/control.env`; sane defaults apply if unset.
+All configurable in `/etc/sproutboat/control.local.env` (see [Where settings live](#where-settings-live)); sane defaults apply if unset.
 
 | Env var                                    | Default | Effect                                                                      |
 | ------------------------------------------ | ------- | --------------------------------------------------------------------------- |
@@ -662,7 +715,7 @@ Control records what changes on the box in an `events` table and serves it at
   and reserved addresses are refused just as they are for a sprout's `fetch()`.
   The delivery log shows `refused` and the reason, and a refusal is not retried.
   To deliver to a host on a private address, add it to `SB_EGRESS_ALLOW` in
-  `egress.env` (see [Outbound fetch](#outbound-fetch)) and restart
+  `egress.local.env` (see [Outbound fetch](#outbound-fetch)) and restart
   `sproutboat-egress`. Without egress configured a delivery fails with
   `egress not configured`.
 - **Discord:** create a webhook in the channel's Integrations settings, paste its

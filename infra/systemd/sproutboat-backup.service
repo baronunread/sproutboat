@@ -7,8 +7,10 @@ Type=oneshot
 User=sproutboat-control
 Group=sproutboat
 WorkingDirectory=/opt/sproutboat
-# Storage paths + SPROUTBOAT_BACKUP_KEEP, written by install.sh.
+# Storage paths, written by install.sh, then the operator-owned settings the backup
+# reads (SPROUTBOAT_BACKUP_KEEP, SPROUTBOAT_BACKUP_S3_*, SPROUTBOAT_BACKUP_ENCRYPT).
 EnvironmentFile=-/etc/sproutboat/control.env
+EnvironmentFile=-/etc/sproutboat/control.local.env
 # Root step outside the sandbox (the `+` prefix, see systemd.service(5)): copies
 # /etc/sproutboat and Caddy's data dir, which this user cannot read, into
 # /var/lib/sproutboat/config-snapshot for the archive.
