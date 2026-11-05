@@ -37,7 +37,8 @@ test.describe("signed in", () => {
     await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
     expect(await page.evaluate(() => localStorage.getItem("sproutboat-theme"))).toBe("light");
 
-    await page.reload();
+    // A reload would hand back prerendered markup whose menu has no handlers yet.
+    await gotoHydrated(page, "/profile");
     await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
     await page.getByLabel("Open account menu").click();
     await expect(page.getByRole("menuitemradio", { name: "Light" })).toBeChecked();
@@ -48,7 +49,7 @@ test.describe("signed in", () => {
     await gotoHydrated(page, "/");
     await page.getByRole("button", { name: "Collapse sidebar" }).click();
     expect(await page.evaluate(() => localStorage.getItem("sproutboat-nav"))).toBe("collapsed");
-    await page.reload();
+    await gotoHydrated(page, "/");
     await expect(page.locator("html")).toHaveAttribute("data-nav", "collapsed");
     await expect(page.getByRole("button", { name: "Expand sidebar" })).toBeVisible();
     // Links stay reachable by name in the rail.
@@ -68,7 +69,8 @@ test.describe("signed in", () => {
     await expect(page).toHaveURL(/\/projects$/);
     await expect(drawer).toHaveCount(0);
     const overflow = await page.evaluate(() => document.documentElement.scrollWidth - innerWidth);
-    expect(overflow).toBe(0);
+    // Negative when a classic scrollbar takes the gutter; only a positive value is a horizontal overflow.
+    expect(overflow).toBeLessThanOrEqual(0);
   });
 
   test("the sprouts list searches and sorts", async ({ page }) => {
