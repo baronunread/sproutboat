@@ -1,5 +1,15 @@
 import { Database } from "bun:sqlite";
-import { cpSync, existsSync, mkdirSync, readFileSync, renameSync, rmSync } from "node:fs";
+import {
+  cpSync,
+  existsSync,
+  lchownSync,
+  lstatSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  renameSync,
+  rmSync,
+} from "node:fs";
 import { mkdir, readdir, rename, rm, stat, writeFile } from "node:fs/promises";
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { dirname, resolve } from "node:path";
@@ -402,6 +412,17 @@ export function migrateArtifactLayout(database: Database = connection()): boolea
   }
   const logs = resolve(dirname(logPath()), "sprouts");
 
+  // A copy made by root (sbctl restore opens the store too) must still belong to the
+  // service user that writes it, or the edge cannot append to its broker state and log.
+  const keepOwner = (from: string, copy: string) => {
+    if (process.getuid?.() !== 0) return;
+    const { uid, gid } = lstatSync(from);
+    const walk = (path: string) => {
+      lchownSync(path, uid, gid);
+      if (lstatSync(path).isDirectory()) for (const entry of readdirSync(path)) walk(resolve(path, entry));
+    };
+    walk(copy);
+  };
   // Copy a legacy path to each target that does not exist yet (via a `.migrating` sibling, so a crash never
   // leaves a half-copied target), then remove the legacy path.
   const spread = (from: string, targets: string[], what: string, directory: boolean) => {
@@ -412,6 +433,7 @@ export function migrateArtifactLayout(database: Database = connection()): boolea
       mkdirSync(dirname(to), { recursive: true, mode: 0o750 });
       rmSync(partial, { recursive: true, force: true });
       cpSync(from, partial, { recursive: directory, preserveTimestamps: true });
+      keepOwner(from, partial);
       renameSync(partial, to);
       console.log(`store: copied ${what} ${from} -> ${to}`);
     }
