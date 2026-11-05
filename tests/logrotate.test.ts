@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -50,10 +50,24 @@ describe("log rotation config", () => {
   test.skipIf(!logrotate)("logrotate -d accepts the config", () => {
     const dir = mkdtempSync(join(tmpdir(), "sb-lr-"));
     try {
+      const logs = join(dir, "logs");
+      mkdirSync(join(logs, "sprouts"), { recursive: true });
+      for (const f of ["requests.ndjson", "control.ndjson", "sprouts/a.log"]) writeFileSync(join(logs, f), "x\n");
+      // Real identities and temp paths, so the dry run checks syntax and directives.
+      const user = Bun.spawnSync(["id", "-un"]).stdout.toString().trim();
+      const group = Bun.spawnSync(["id", "-gn"]).stdout.toString().trim();
       const conf = join(dir, "sproutboat");
-      writeFileSync(conf, rotate);
+      writeFileSync(
+        conf,
+        rotate
+          .replaceAll("su sproutboat-edge sproutboat", `su ${user} ${group}`)
+          .replaceAll("/var/lib/sproutboat/logs", logs),
+      );
+      chmodSync(conf, 0o644);
       const r = Bun.spawnSync([logrotate!, "-d", "-s", join(dir, "state"), conf]);
-      expect(r.stderr.toString()).not.toMatch(/error:/);
+      const out = r.stdout.toString() + r.stderr.toString();
+      expect(out).not.toMatch(/error:/);
+      expect(r.exitCode).toBe(0);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
