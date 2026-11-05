@@ -66,7 +66,7 @@ mirror() { # mirror <relative dir> [rsync args]: dest matches the snapshot, or i
     install -d -m 0755 "$PFX/$rel"
     rsync -a --checksum --delete "$@" "$PREV/$rel/" "$PFX/$rel/"
   else
-    rm -rf "${PFX:?}/$rel"
+    rm -rf "$PFX/${rel:?}"
   fi
 }
 mirror usr/local/lib/sproutboat --exclude /rollback --exclude /health

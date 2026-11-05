@@ -308,6 +308,37 @@ describe("sb-snapshot and sb-rollback", () => {
   });
 });
 
+describe("sb-rollback mirror() with the real host prefix (empty SB_ROLLBACK_ROOT)", () => {
+  test("a drop-in dir missing from the snapshot is removed without aborting", async () => {
+    // Regression: `rm -rf "${PFX:?}/$rel"` aborted the whole rollback on a real host, where
+    // PFX is empty, right after restoring the tree (units, daemon-reload and restart never ran).
+    const prev = join(dir, "prev");
+    await mkdir(prev, { recursive: true });
+    const rel = join(dir, "etc/systemd/system/sproutboat-control.service.d").replace(/^\//, "");
+    await put(join("/", rel, "10-engine.conf"), "[Service]\n");
+    const script = [
+      "set -euo pipefail",
+      'PFX=""',
+      `PREV=${JSON.stringify(prev)}`,
+      await Bun.$`sed -n '/^mirror() {/,/^}/p' infra/sb-rollback`.text(),
+      `mirror ${JSON.stringify(rel)}`,
+      "echo mirror-ok",
+    ].join("\n");
+    const r = await run(["bash", "-c", script]);
+    expect(r.err).toBe("");
+    expect(r.out.trim()).toBe("mirror-ok");
+    expect(
+      await stat(join("/", rel)).then(
+        () => true,
+        () => false,
+      ),
+    ).toBe(false);
+    const text = await readFile("infra/sb-rollback", "utf8");
+    expect(text).not.toContain("${PFX:?}");
+    expect(await readFile("infra/sb-snapshot", "utf8")).not.toContain("${PFX:?}");
+  });
+});
+
 describe("sbctl changelog_range", () => {
   const changelog = [
     "# Changelog",
