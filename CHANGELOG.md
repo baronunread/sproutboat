@@ -26,6 +26,10 @@ Changes to the self-hosted Sproutboat platform are recorded here. Read the
   `brokers/<deployment>/d1-backups/` instead of the platform `backups/` directory. Keep `bwrap` installed, as for
   sprouts. **Rollback** to the previous release is safe for data: older brokers look for bodies in `resources/r2-blobs/`,
   so move `resources/owners/*/r2-blobs/*` back first (`mv`, same filesystem) or those objects read as missing.
+- **Optional: Caddy drop-ins.** `sbctl update` now creates `/etc/sproutboat/caddy.d` and imports its `*.caddy` files
+  into the generated Caddyfile. The new Caddyfile is validated before it replaces the live one, so a broken drop-in
+  stops the update instead of Caddy. Nothing to do unless you want a `www` redirect: see "Customising Caddy" in
+  `infra/README.md`.
 
 ### Fixed
 
@@ -38,6 +42,8 @@ Changes to the self-hosted Sproutboat platform are recorded here. Read the
 
 ### Added
 
+- `/etc/sproutboat/caddy.d/*.caddy`: operator Caddy site blocks that survive updates, with a www-to-apex redirect
+  example (`infra/caddy/caddy.d/www-redirect.caddy.example`).
 - Documentation for `connect()` from `cloudflare:sockets` (compatibility date 2026-11-17), with the Postgres and Redis
   driver results (`docs/compat/tcp-sockets.md`, `docs/compat/db-clients.md`). Docs only: the platform's pinned runtime
   (0.41.0) does not have it yet, so it reaches deployed apps with the release that adopts `@sproutboat/runtime` 0.42.0.

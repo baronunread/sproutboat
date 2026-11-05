@@ -37,3 +37,8 @@ https:// {
 	}
 	reverse_proxy 127.0.0.1:8080
 }
+
+# Operator additions (kept across updates). See /etc/sproutboat/caddy.d/README.caddy
+# Drop complete site blocks in *.caddy files there (example:
+# caddy.d/www-redirect.caddy.example). Not global options.
+import /etc/sproutboat/caddy.d/*.caddy

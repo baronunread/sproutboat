@@ -67,6 +67,42 @@ hostnames. The visitor's DNS must point the hostname at this box (A/AAAA or
 CNAME to the deployment domain). `SPROUTBOAT_MAX_DOMAINS_PER_PROJECT` (default 5) caps how many a project may hold; deleting the project or the domain drops
 it from the snapshot on the next sync.
 
+## Customising Caddy
+
+`install.sh` regenerates `/etc/caddy/Caddyfile` and the unit files under `/etc/systemd/system` on every
+`sbctl update`, so hand edits to either are overwritten. The supported extension points survive updates:
+
+- **Caddy drop-ins:** `/etc/sproutboat/caddy.d/*.caddy` are imported at the end of the generated Caddyfile. Each file
+  must hold complete site blocks, not global options. `README.caddy` in that directory explains this and is never
+  overwritten once present. Dot-files are ignored by the glob.
+- **systemd drop-ins:** `/etc/systemd/system/<unit>.service.d/*.conf` also survive (the installer only writes its own
+  `sproutboat.conf` for caddy). Run `systemctl daemon-reload` after changing one.
+
+Validation: the installer builds the new Caddyfile as `/etc/caddy/Caddyfile.new` and runs `caddy validate` on it before
+replacing the live file. If a drop-in is broken the update stops with the Caddy error and the running config is left
+untouched; fix or remove the file and re-run `sbctl update`. To check by hand:
+
+```sh
+caddy-sproutboat validate --config /etc/caddy/Caddyfile --adapter caddyfile
+sudo systemctl reload caddy
+```
+
+### Recipe: redirect www to the apex
+
+Without this, `http://www.example.com` gets Caddy's automatic redirect to `https://www...`, which fails: on-demand TLS
+asks control, control only allows hostnames in `routes.json`, and `www` is not a route, so no certificate is issued.
+A drop-in site block makes Caddy obtain the `www` certificate itself (HTTP-01):
+
+```sh
+sudo cp infra/caddy/caddy.d/www-redirect.caddy.example /etc/sproutboat/caddy.d/www.caddy
+sudo sed -i 's/example\.com/yourdomain.tld/g' /etc/sproutboat/caddy.d/www.caddy
+caddy-sproutboat validate --config /etc/caddy/Caddyfile --adapter caddyfile
+sudo systemctl reload caddy
+```
+
+The apex must already be served (a verified custom domain of a project), and the DNS A record for `www` must point at
+this box. `install.sh --uninstall` removes `/etc/sproutboat`, drop-ins included, even with `--keep-state`.
+
 ## Hosts and binding
 
 `control` (`:8787`) and `edge` (`:8080`) bind `127.0.0.1` only. Caddy is the

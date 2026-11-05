@@ -89,6 +89,7 @@ if [ "${1:-}" = --uninstall ]; then
   grep -q "$CADDY_BIN" /etc/systemd/system/caddy.service 2>/dev/null && rm -f /etc/systemd/system/caddy.service
   systemctl daemon-reload
   rm -f "$CADDY_BIN" /usr/local/bin/sbctl /etc/sysctl.d/80-sproutboat-userns.conf /root/sproutboat-admin.env
+  # /etc/sproutboat holds caddy.d (operator drop-ins) and goes even with --keep-state: copy it first.
   rm -rf "$ROOT" /opt/sproutboat-src /etc/sproutboat /etc/caddy
   [ "$KEEP_STATE" = 1 ] || rm -rf "$STATE"
   for u in sproutboat-control sproutboat-edge; do id "$u" >/dev/null 2>&1 && userdel "$u" || true; done
@@ -372,7 +373,45 @@ https:// {
 	reverse_proxy 127.0.0.1:8080
 }
 EOF
-} > /etc/caddy/Caddyfile
+  cat <<'EOF'
+
+# Operator additions (kept across updates). See /etc/sproutboat/caddy.d/README.caddy
+import /etc/sproutboat/caddy.d/*.caddy
+EOF
+} > /etc/caddy/Caddyfile.new
+
+# Operator drop-ins: complete site blocks that survive `sbctl update`. The
+# README.caddy below always matches the import glob. (Caddy only logs a warning
+# for an import glob with no matches, it does not fail; the file is kept anyway.)
+install -d -m 0755 /etc/sproutboat/caddy.d
+[ -f /etc/sproutboat/caddy.d/README.caddy ] || cat > /etc/sproutboat/caddy.d/README.caddy <<'EOF'
+# Operator Caddy drop-ins.
+#
+# Files matching *.caddy in this directory are imported at the end of the
+# generated /etc/caddy/Caddyfile. They survive "sbctl update", which rewrites
+# the Caddyfile itself.
+#
+# Each file must hold complete site blocks (for example "www.example.com { ... }"),
+# not global options: the global block lives in the generated Caddyfile.
+#
+# Before a reload, the installer runs "caddy validate" on the whole config, so a
+# broken file here stops the update (the live Caddyfile is left untouched).
+# Check a change by hand with:
+#   caddy-sproutboat validate --config /etc/caddy/Caddyfile --adapter caddyfile
+# then "sudo systemctl reload caddy".
+#
+# Example: infra/caddy/caddy.d/www-redirect.caddy.example in the repository.
+EOF
+
+# Validate the candidate before it replaces the live file, so a bad drop-in
+# cannot leave a broken Caddyfile for the next Caddy restart. The env mirrors
+# caddy.env, which the Caddyfile placeholders read.
+if ! caddy_err=$(ACME_EMAIL="$SB_ACME_EMAIL" CLOUDFLARE_API_TOKEN="${SB_CF_TOKEN:-}" "$CADDY_BIN" validate --config /etc/caddy/Caddyfile.new --adapter caddyfile 2>&1 >/dev/null); then
+  rm -f /etc/caddy/Caddyfile.new
+  printf '%s\n' "$caddy_err" >&2
+  die "Caddy config failed validation (the live /etc/caddy/Caddyfile is unchanged). A file in /etc/sproutboat/caddy.d is probably at fault; fix or remove it and re-run."
+fi
+mv /etc/caddy/Caddyfile.new /etc/caddy/Caddyfile
 
 for f in routes.json deployments.json; do
   [ -s "$STATE/$f" ] || { printf '[]\n' > "$STATE/$f"; chown sproutboat-control:sproutboat "$STATE/$f"; chmod 0640 "$STATE/$f"; }
