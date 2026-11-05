@@ -198,6 +198,34 @@ describe("what a broker is given", () => {
       expect(m.mode).toBe("ro");
   });
 
+  test("every local module the broker entry loads is bound read only", () => {
+    const { input } = layout();
+    const ro = new Set(
+      planBrokerSandbox(input)
+        .filter((m) => m.mode === "ro")
+        .map((m) => m.dest),
+    );
+    const transpiler = new Bun.Transpiler({ loader: "ts" });
+    const queue = [input.entry];
+    const seen = new Set<string>();
+    while (queue.length) {
+      const file = queue.pop()!;
+      if (seen.has(file)) continue;
+      seen.add(file);
+      expect(ro.has(file)).toBe(true);
+      for (const { path } of transpiler.scanImports(readFileSync(file, "utf8"))) {
+        if (!path.startsWith(".")) continue;
+        const base = join(dirname(file), path);
+        const found = [base, `${base}.ts`, `${base}.js`, join(base, "index.ts")].find(
+          (p) => existsSync(p) && statSync(p).isFile(),
+        );
+        expect(found).toBeDefined();
+        queue.push(found!);
+      }
+    }
+    expect(seen.size).toBeGreaterThan(1);
+  });
+
   test("the sandbox is a fresh namespace set with no network unshare and no edge environment", () => {
     const { input } = layout();
     const args = brokerBwrapArgs(planBrokerSandbox(input), { PATH: "/usr/bin:/bin", HOME: "/tmp", TMPDIR: "/tmp" });
