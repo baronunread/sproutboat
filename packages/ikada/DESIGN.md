@@ -100,104 +100,118 @@ Every pair below is asserted by `test/tokens.test.ts`. Text needs 4.5:1, large t
 
 <!-- tokens:contrast:start -->
 
-| Foreground       | Background     | Needs        | Dark         | Light        | Used for                                  |
-| ---------------- | -------------- | ------------ | ------------ | ------------ | ----------------------------------------- |
-| `fg`             | `canvas`       | 4.5:1 (text) | 16.26:1 pass | 15.64:1 pass | Body text                                 |
-| `fg`             | `surface`      | 4.5:1 (text) | 14.60:1 pass | 17.07:1 pass | Body text                                 |
-| `fg`             | `well`         | 4.5:1 (text) | 15.65:1 pass | 15.50:1 pass | Body text                                 |
-| `fg`             | `hover`        | 4.5:1 (text) | 11.99:1 pass | 13.87:1 pass | Body text                                 |
-| `fg`             | `raised`       | 4.5:1 (text) | 10.16:1 pass | 17.31:1 pass | Body text                                 |
-| `fg-muted`       | `canvas`       | 4.5:1 (text) | 8.77:1 pass  | 7.02:1 pass  | Secondary text, placeholders              |
-| `fg-muted`       | `surface`      | 4.5:1 (text) | 7.87:1 pass  | 7.66:1 pass  | Secondary text, placeholders              |
-| `fg-muted`       | `well`         | 4.5:1 (text) | 8.44:1 pass  | 6.96:1 pass  | Secondary text, placeholders              |
-| `fg-muted`       | `hover`        | 4.5:1 (text) | 6.46:1 pass  | 6.22:1 pass  | Secondary text, placeholders              |
-| `fg-muted`       | `raised`       | 4.5:1 (text) | 5.48:1 pass  | 7.77:1 pass  | Secondary text, placeholders              |
-| `fg`             | `code-bg`      | 4.5:1 (text) | 16.90:1 pass | 15.19:1 pass | Code and log text                         |
-| `fg-muted`       | `code-bg`      | 4.5:1 (text) | 9.11:1 pass  | 6.81:1 pass  | Log timestamps                            |
-| `fg`             | `diff-add`     | 4.5:1 (text) | 12.80:1 pass | 14.77:1 pass | Added line                                |
-| `fg`             | `diff-del`     | 4.5:1 (text) | 13.31:1 pass | 14.45:1 pass | Removed line                              |
-| `on-brand`       | `brand`        | 4.5:1 (text) | 7.61:1 pass  | 6.27:1 pass  | Primary button label                      |
-| `on-brand`       | `brand-hover`  | 4.5:1 (text) | 9.09:1 pass  | 7.84:1 pass  | Primary button label, hover               |
-| `on-danger`      | `danger`       | 4.5:1 (text) | 6.18:1 pass  | 7.19:1 pass  | Destructive button label                  |
-| `on-danger`      | `danger-hover` | 4.5:1 (text) | 7.50:1 pass  | 8.75:1 pass  | Destructive button label, hover           |
-| `brand-fg`       | `surface`      | 4.5:1 (text) | 10.16:1 pass | 7.92:1 pass  | brand text on surface                     |
-| `brand-fg`       | `canvas`       | 4.5:1 (text) | 11.31:1 pass | 7.26:1 pass  | brand text on canvas                      |
-| `brand-fg`       | `raised`       | 4.5:1 (text) | 7.07:1 pass  | 8.03:1 pass  | brand text on a floating layer            |
-| `brand-fg`       | `brand-soft`   | 4.5:1 (text) | 7.77:1 pass  | 6.85:1 pass  | brand badge                               |
-| `warn-fg`        | `surface`      | 4.5:1 (text) | 11.72:1 pass | 8.15:1 pass  | warn text on surface                      |
-| `warn-fg`        | `canvas`       | 4.5:1 (text) | 13.05:1 pass | 7.47:1 pass  | warn text on canvas                       |
-| `warn-fg`        | `raised`       | 4.5:1 (text) | 8.15:1 pass  | 8.27:1 pass  | warn text on a floating layer             |
-| `warn-fg`        | `warn-soft`    | 4.5:1 (text) | 7.90:1 pass  | 7.11:1 pass  | warn badge                                |
-| `danger-fg`      | `surface`      | 4.5:1 (text) | 9.98:1 pass  | 7.73:1 pass  | danger text on surface                    |
-| `danger-fg`      | `canvas`       | 4.5:1 (text) | 11.11:1 pass | 7.08:1 pass  | danger text on canvas                     |
-| `danger-fg`      | `raised`       | 4.5:1 (text) | 6.94:1 pass  | 7.84:1 pass  | danger text on a floating layer           |
-| `danger-fg`      | `danger-soft`  | 4.5:1 (text) | 7.20:1 pass  | 6.60:1 pass  | danger badge                              |
-| `info-fg`        | `surface`      | 4.5:1 (text) | 10.23:1 pass | 8.44:1 pass  | info text on surface                      |
-| `info-fg`        | `canvas`       | 4.5:1 (text) | 11.39:1 pass | 7.74:1 pass  | info text on canvas                       |
-| `info-fg`        | `raised`       | 4.5:1 (text) | 7.11:1 pass  | 8.56:1 pass  | info text on a floating layer             |
-| `info-fg`        | `info-soft`    | 4.5:1 (text) | 7.41:1 pass  | 7.16:1 pass  | info badge                                |
-| `neutral-fg`     | `surface`      | 4.5:1 (text) | 10.69:1 pass | 8.34:1 pass  | neutral text on surface                   |
-| `neutral-fg`     | `canvas`       | 4.5:1 (text) | 11.90:1 pass | 7.64:1 pass  | neutral text on canvas                    |
-| `neutral-fg`     | `raised`       | 4.5:1 (text) | 7.43:1 pass  | 8.46:1 pass  | neutral text on a floating layer          |
-| `neutral-fg`     | `neutral-soft` | 4.5:1 (text) | 7.73:1 pass  | 6.89:1 pass  | neutral badge                             |
-| `danger-fg`      | `surface`      | 3:1 (large)  | 9.98:1 pass  | 7.73:1 pass  | Danger zone heading                       |
-| `control-edge`   | `surface`      | 3:1 (ui)     | 3.63:1 pass  | 3.89:1 pass  | Input, select, checkbox edge              |
-| `brand`          | `surface`      | 3:1 (ui)     | 7.15:1 pass  | 6.35:1 pass  | Switch on, checkbox checked, primary fill |
-| `brand-dot`      | `surface`      | 3:1 (ui)     | 7.77:1 pass  | 3.35:1 pass  | Success dot                               |
-| `warn-dot`       | `surface`      | 3:1 (ui)     | 8.91:1 pass  | 3.54:1 pass  | Fallback and warning dot                  |
-| `danger-dot`     | `surface`      | 3:1 (ui)     | 6.81:1 pass  | 4.67:1 pass  | Error dot                                 |
-| `info-dot`       | `surface`      | 3:1 (ui)     | 7.83:1 pass  | 4.25:1 pass  | Info dot                                  |
-| `neutral-dot`    | `surface`      | 3:1 (ui)     | 6.81:1 pass  | 4.78:1 pass  | Idle and unknown dot                      |
-| `control-edge`   | `canvas`       | 3:1 (ui)     | 4.05:1 pass  | 3.57:1 pass  | Input, select, checkbox edge              |
-| `brand`          | `canvas`       | 3:1 (ui)     | 7.96:1 pass  | 5.82:1 pass  | Switch on, checkbox checked, primary fill |
-| `brand-dot`      | `canvas`       | 3:1 (ui)     | 8.66:1 pass  | 3.07:1 pass  | Success dot                               |
-| `warn-dot`       | `canvas`       | 3:1 (ui)     | 9.93:1 pass  | 3.24:1 pass  | Fallback and warning dot                  |
-| `danger-dot`     | `canvas`       | 3:1 (ui)     | 7.59:1 pass  | 4.28:1 pass  | Error dot                                 |
-| `info-dot`       | `canvas`       | 3:1 (ui)     | 8.72:1 pass  | 3.90:1 pass  | Info dot                                  |
-| `neutral-dot`    | `canvas`       | 3:1 (ui)     | 7.58:1 pass  | 4.38:1 pass  | Idle and unknown dot                      |
-| `control-edge`   | `well`         | 3:1 (ui)     | 3.89:1 pass  | 3.53:1 pass  | Input, select, checkbox edge              |
-| `brand`          | `well`         | 3:1 (ui)     | 7.67:1 pass  | 5.77:1 pass  | Switch on, checkbox checked, primary fill |
-| `brand-dot`      | `well`         | 3:1 (ui)     | 8.33:1 pass  | 3.04:1 pass  | Success dot                               |
-| `warn-dot`       | `well`         | 3:1 (ui)     | 9.56:1 pass  | 3.22:1 pass  | Fallback and warning dot                  |
-| `danger-dot`     | `well`         | 3:1 (ui)     | 7.30:1 pass  | 4.24:1 pass  | Error dot                                 |
-| `info-dot`       | `well`         | 3:1 (ui)     | 8.39:1 pass  | 3.86:1 pass  | Info dot                                  |
-| `neutral-dot`    | `well`         | 3:1 (ui)     | 7.30:1 pass  | 4.35:1 pass  | Idle and unknown dot                      |
-| `focus`          | `canvas`       | 3:1 (ui)     | 16.26:1 pass | 15.64:1 pass | Focus ring                                |
-| `focus`          | `surface`      | 3:1 (ui)     | 14.60:1 pass | 17.07:1 pass | Focus ring                                |
-| `focus`          | `well`         | 3:1 (ui)     | 15.65:1 pass | 15.50:1 pass | Focus ring                                |
-| `focus`          | `hover`        | 3:1 (ui)     | 11.99:1 pass | 13.87:1 pass | Focus ring                                |
-| `focus`          | `raised`       | 3:1 (ui)     | 10.16:1 pass | 17.31:1 pass | Focus ring                                |
-| `focus`          | `code-bg`      | 3:1 (ui)     | 16.90:1 pass | 15.19:1 pass | Focus ring                                |
-| `focus`          | `diff-add`     | 3:1 (ui)     | 12.80:1 pass | 14.77:1 pass | Focus ring                                |
-| `focus`          | `diff-del`     | 3:1 (ui)     | 13.31:1 pass | 14.45:1 pass | Focus ring                                |
-| `danger`         | `surface`      | 3:1 (ui)     | 5.50:1 pass  | 7.09:1 pass  | Destructive button fill                   |
-| `chart-requests` | `surface`      | 3:1 (ui)     | 7.83:1 pass  | 4.82:1 pass  | Chart mark                                |
-| `chart-errors`   | `surface`      | 3:1 (ui)     | 6.81:1 pass  | 4.67:1 pass  | Chart mark                                |
-| `chart-deploy`   | `surface`      | 3:1 (ui)     | 10.01:1 pass | 9.08:1 pass  | Chart mark                                |
-| `chart-2xx`      | `surface`      | 3:1 (ui)     | 8.37:1 pass  | 3.63:1 pass  | Chart mark                                |
-| `chart-3xx`      | `surface`      | 3:1 (ui)     | 8.58:1 pass  | 3.81:1 pass  | Chart mark                                |
-| `chart-4xx`      | `surface`      | 3:1 (ui)     | 8.93:1 pass  | 3.67:1 pass  | Chart mark                                |
-| `chart-5xx`      | `surface`      | 3:1 (ui)     | 6.81:1 pass  | 4.67:1 pass  | Chart mark                                |
-| `chart-other`    | `surface`      | 3:1 (ui)     | 6.81:1 pass  | 4.78:1 pass  | Chart mark                                |
-| `chart-series`   | `surface`      | 3:1 (ui)     | 7.62:1 pass  | 5.02:1 pass  | Chart mark                                |
-| `chart-requests` | `canvas`       | 3:1 (ui)     | 8.72:1 pass  | 4.42:1 pass  | Chart mark                                |
-| `chart-errors`   | `canvas`       | 3:1 (ui)     | 7.59:1 pass  | 4.28:1 pass  | Chart mark                                |
-| `chart-deploy`   | `canvas`       | 3:1 (ui)     | 11.14:1 pass | 8.32:1 pass  | Chart mark                                |
-| `chart-2xx`      | `canvas`       | 3:1 (ui)     | 9.32:1 pass  | 3.33:1 pass  | Chart mark                                |
-| `chart-3xx`      | `canvas`       | 3:1 (ui)     | 9.56:1 pass  | 3.49:1 pass  | Chart mark                                |
-| `chart-4xx`      | `canvas`       | 3:1 (ui)     | 9.94:1 pass  | 3.36:1 pass  | Chart mark                                |
-| `chart-5xx`      | `canvas`       | 3:1 (ui)     | 7.59:1 pass  | 4.28:1 pass  | Chart mark                                |
-| `chart-other`    | `canvas`       | 3:1 (ui)     | 7.58:1 pass  | 4.38:1 pass  | Chart mark                                |
-| `chart-series`   | `canvas`       | 3:1 (ui)     | 8.49:1 pass  | 4.60:1 pass  | Chart mark                                |
-| `chart-requests` | `well`         | 3:1 (ui)     | 8.39:1 pass  | 4.38:1 pass  | Chart mark                                |
-| `chart-errors`   | `well`         | 3:1 (ui)     | 7.30:1 pass  | 4.24:1 pass  | Chart mark                                |
-| `chart-deploy`   | `well`         | 3:1 (ui)     | 10.73:1 pass | 8.25:1 pass  | Chart mark                                |
-| `chart-2xx`      | `well`         | 3:1 (ui)     | 8.98:1 pass  | 3.30:1 pass  | Chart mark                                |
-| `chart-3xx`      | `well`         | 3:1 (ui)     | 9.20:1 pass  | 3.46:1 pass  | Chart mark                                |
-| `chart-4xx`      | `well`         | 3:1 (ui)     | 9.57:1 pass  | 3.33:1 pass  | Chart mark                                |
-| `chart-5xx`      | `well`         | 3:1 (ui)     | 7.30:1 pass  | 4.24:1 pass  | Chart mark                                |
-| `chart-other`    | `well`         | 3:1 (ui)     | 7.30:1 pass  | 4.35:1 pass  | Chart mark                                |
-| `chart-series`   | `well`         | 3:1 (ui)     | 8.17:1 pass  | 4.56:1 pass  | Chart mark                                |
+| Foreground       | Background     | Needs        | Dark         | Light        | Used for                                    |
+| ---------------- | -------------- | ------------ | ------------ | ------------ | ------------------------------------------- |
+| `fg`             | `canvas`       | 4.5:1 (text) | 16.26:1 pass | 15.64:1 pass | Body text                                   |
+| `fg`             | `surface`      | 4.5:1 (text) | 14.60:1 pass | 17.07:1 pass | Body text                                   |
+| `fg`             | `well`         | 4.5:1 (text) | 15.65:1 pass | 15.50:1 pass | Body text                                   |
+| `fg`             | `hover`        | 4.5:1 (text) | 11.99:1 pass | 13.87:1 pass | Body text                                   |
+| `fg`             | `raised`       | 4.5:1 (text) | 10.16:1 pass | 17.31:1 pass | Body text                                   |
+| `fg-muted`       | `canvas`       | 4.5:1 (text) | 8.77:1 pass  | 7.02:1 pass  | Secondary text, placeholders                |
+| `fg-muted`       | `surface`      | 4.5:1 (text) | 7.87:1 pass  | 7.66:1 pass  | Secondary text, placeholders                |
+| `fg-muted`       | `well`         | 4.5:1 (text) | 8.44:1 pass  | 6.96:1 pass  | Secondary text, placeholders                |
+| `fg-muted`       | `hover`        | 4.5:1 (text) | 6.46:1 pass  | 6.22:1 pass  | Secondary text, placeholders                |
+| `fg-muted`       | `raised`       | 4.5:1 (text) | 5.48:1 pass  | 7.77:1 pass  | Secondary text, placeholders                |
+| `fg`             | `code-bg`      | 4.5:1 (text) | 16.90:1 pass | 15.19:1 pass | Code and log text                           |
+| `fg-muted`       | `code-bg`      | 4.5:1 (text) | 9.11:1 pass  | 6.81:1 pass  | Log timestamps                              |
+| `fg`             | `diff-add`     | 4.5:1 (text) | 12.80:1 pass | 14.77:1 pass | Added line                                  |
+| `fg`             | `diff-del`     | 4.5:1 (text) | 13.31:1 pass | 14.45:1 pass | Removed line                                |
+| `on-brand`       | `brand`        | 4.5:1 (text) | 7.61:1 pass  | 6.27:1 pass  | Primary button label                        |
+| `on-brand`       | `brand-hover`  | 4.5:1 (text) | 9.09:1 pass  | 7.84:1 pass  | Primary button label, hover                 |
+| `on-danger`      | `danger`       | 4.5:1 (text) | 6.18:1 pass  | 7.19:1 pass  | Destructive button label                    |
+| `on-danger`      | `danger-hover` | 4.5:1 (text) | 7.50:1 pass  | 8.75:1 pass  | Destructive button label, hover             |
+| `brand-fg`       | `surface`      | 4.5:1 (text) | 10.16:1 pass | 7.92:1 pass  | brand text on surface                       |
+| `brand-fg`       | `canvas`       | 4.5:1 (text) | 11.31:1 pass | 7.26:1 pass  | brand text on canvas                        |
+| `brand-fg`       | `raised`       | 4.5:1 (text) | 7.07:1 pass  | 8.03:1 pass  | brand text on a floating layer              |
+| `brand-fg`       | `brand-soft`   | 4.5:1 (text) | 7.77:1 pass  | 6.85:1 pass  | brand badge                                 |
+| `warn-fg`        | `surface`      | 4.5:1 (text) | 11.72:1 pass | 8.15:1 pass  | warn text on surface                        |
+| `warn-fg`        | `canvas`       | 4.5:1 (text) | 13.05:1 pass | 7.47:1 pass  | warn text on canvas                         |
+| `warn-fg`        | `raised`       | 4.5:1 (text) | 8.15:1 pass  | 8.27:1 pass  | warn text on a floating layer               |
+| `warn-fg`        | `warn-soft`    | 4.5:1 (text) | 7.90:1 pass  | 7.11:1 pass  | warn badge                                  |
+| `danger-fg`      | `surface`      | 4.5:1 (text) | 9.98:1 pass  | 7.73:1 pass  | danger text on surface                      |
+| `danger-fg`      | `canvas`       | 4.5:1 (text) | 11.11:1 pass | 7.08:1 pass  | danger text on canvas                       |
+| `danger-fg`      | `raised`       | 4.5:1 (text) | 6.94:1 pass  | 7.84:1 pass  | danger text on a floating layer             |
+| `danger-fg`      | `danger-soft`  | 4.5:1 (text) | 7.20:1 pass  | 6.60:1 pass  | danger badge                                |
+| `info-fg`        | `surface`      | 4.5:1 (text) | 10.23:1 pass | 8.44:1 pass  | info text on surface                        |
+| `info-fg`        | `canvas`       | 4.5:1 (text) | 11.39:1 pass | 7.74:1 pass  | info text on canvas                         |
+| `info-fg`        | `raised`       | 4.5:1 (text) | 7.11:1 pass  | 8.56:1 pass  | info text on a floating layer               |
+| `info-fg`        | `info-soft`    | 4.5:1 (text) | 7.41:1 pass  | 7.16:1 pass  | info badge                                  |
+| `neutral-fg`     | `surface`      | 4.5:1 (text) | 10.69:1 pass | 8.34:1 pass  | neutral text on surface                     |
+| `neutral-fg`     | `canvas`       | 4.5:1 (text) | 11.90:1 pass | 7.64:1 pass  | neutral text on canvas                      |
+| `neutral-fg`     | `raised`       | 4.5:1 (text) | 7.43:1 pass  | 8.46:1 pass  | neutral text on a floating layer            |
+| `neutral-fg`     | `neutral-soft` | 4.5:1 (text) | 7.73:1 pass  | 6.89:1 pass  | neutral badge                               |
+| `danger-fg`      | `surface`      | 3:1 (large)  | 9.98:1 pass  | 7.73:1 pass  | Danger zone heading                         |
+| `control-edge`   | `surface`      | 3:1 (ui)     | 3.63:1 pass  | 3.89:1 pass  | Input, select, checkbox edge                |
+| `brand`          | `surface`      | 3:1 (ui)     | 7.15:1 pass  | 6.35:1 pass  | Switch on, checkbox checked, primary fill   |
+| `brand-dot`      | `surface`      | 3:1 (ui)     | 7.77:1 pass  | 3.35:1 pass  | Success dot                                 |
+| `warn-dot`       | `surface`      | 3:1 (ui)     | 8.91:1 pass  | 3.54:1 pass  | Fallback and warning dot                    |
+| `danger-dot`     | `surface`      | 3:1 (ui)     | 6.81:1 pass  | 4.67:1 pass  | Error dot                                   |
+| `info-dot`       | `surface`      | 3:1 (ui)     | 7.83:1 pass  | 4.25:1 pass  | Info dot                                    |
+| `neutral-dot`    | `surface`      | 3:1 (ui)     | 6.81:1 pass  | 4.78:1 pass  | Idle and unknown dot                        |
+| `control-edge`   | `canvas`       | 3:1 (ui)     | 4.05:1 pass  | 3.57:1 pass  | Input, select, checkbox edge                |
+| `brand`          | `canvas`       | 3:1 (ui)     | 7.96:1 pass  | 5.82:1 pass  | Switch on, checkbox checked, primary fill   |
+| `brand-dot`      | `canvas`       | 3:1 (ui)     | 8.66:1 pass  | 3.07:1 pass  | Success dot                                 |
+| `warn-dot`       | `canvas`       | 3:1 (ui)     | 9.93:1 pass  | 3.24:1 pass  | Fallback and warning dot                    |
+| `danger-dot`     | `canvas`       | 3:1 (ui)     | 7.59:1 pass  | 4.28:1 pass  | Error dot                                   |
+| `info-dot`       | `canvas`       | 3:1 (ui)     | 8.72:1 pass  | 3.90:1 pass  | Info dot                                    |
+| `neutral-dot`    | `canvas`       | 3:1 (ui)     | 7.58:1 pass  | 4.38:1 pass  | Idle and unknown dot                        |
+| `control-edge`   | `well`         | 3:1 (ui)     | 3.89:1 pass  | 3.53:1 pass  | Input, select, checkbox edge                |
+| `brand`          | `well`         | 3:1 (ui)     | 7.67:1 pass  | 5.77:1 pass  | Switch on, checkbox checked, primary fill   |
+| `brand-dot`      | `well`         | 3:1 (ui)     | 8.33:1 pass  | 3.04:1 pass  | Success dot                                 |
+| `warn-dot`       | `well`         | 3:1 (ui)     | 9.56:1 pass  | 3.22:1 pass  | Fallback and warning dot                    |
+| `danger-dot`     | `well`         | 3:1 (ui)     | 7.30:1 pass  | 4.24:1 pass  | Error dot                                   |
+| `info-dot`       | `well`         | 3:1 (ui)     | 8.39:1 pass  | 3.86:1 pass  | Info dot                                    |
+| `neutral-dot`    | `well`         | 3:1 (ui)     | 7.30:1 pass  | 4.35:1 pass  | Idle and unknown dot                        |
+| `focus`          | `canvas`       | 3:1 (ui)     | 16.26:1 pass | 15.64:1 pass | Focus ring                                  |
+| `focus`          | `surface`      | 3:1 (ui)     | 14.60:1 pass | 17.07:1 pass | Focus ring                                  |
+| `focus`          | `well`         | 3:1 (ui)     | 15.65:1 pass | 15.50:1 pass | Focus ring                                  |
+| `focus`          | `hover`        | 3:1 (ui)     | 11.99:1 pass | 13.87:1 pass | Focus ring                                  |
+| `focus`          | `raised`       | 3:1 (ui)     | 10.16:1 pass | 17.31:1 pass | Focus ring                                  |
+| `focus`          | `code-bg`      | 3:1 (ui)     | 16.90:1 pass | 15.19:1 pass | Focus ring                                  |
+| `focus`          | `diff-add`     | 3:1 (ui)     | 12.80:1 pass | 14.77:1 pass | Focus ring                                  |
+| `focus`          | `diff-del`     | 3:1 (ui)     | 13.31:1 pass | 14.45:1 pass | Focus ring                                  |
+| `danger`         | `surface`      | 3:1 (ui)     | 5.50:1 pass  | 7.09:1 pass  | Destructive button fill                     |
+| `chart-requests` | `surface`      | 3:1 (ui)     | 7.83:1 pass  | 4.82:1 pass  | Chart mark                                  |
+| `chart-errors`   | `surface`      | 3:1 (ui)     | 6.81:1 pass  | 4.67:1 pass  | Chart mark                                  |
+| `chart-deploy`   | `surface`      | 3:1 (ui)     | 10.01:1 pass | 9.08:1 pass  | Chart mark                                  |
+| `chart-2xx`      | `surface`      | 3:1 (ui)     | 8.37:1 pass  | 3.63:1 pass  | Chart mark                                  |
+| `chart-3xx`      | `surface`      | 3:1 (ui)     | 8.58:1 pass  | 3.81:1 pass  | Chart mark                                  |
+| `chart-4xx`      | `surface`      | 3:1 (ui)     | 8.93:1 pass  | 3.67:1 pass  | Chart mark                                  |
+| `chart-5xx`      | `surface`      | 3:1 (ui)     | 6.81:1 pass  | 4.67:1 pass  | Chart mark                                  |
+| `chart-other`    | `surface`      | 3:1 (ui)     | 6.81:1 pass  | 4.78:1 pass  | Chart mark                                  |
+| `chart-series`   | `surface`      | 3:1 (ui)     | 7.62:1 pass  | 5.02:1 pass  | Chart mark                                  |
+| `chart-requests` | `canvas`       | 3:1 (ui)     | 8.72:1 pass  | 4.42:1 pass  | Chart mark                                  |
+| `chart-errors`   | `canvas`       | 3:1 (ui)     | 7.59:1 pass  | 4.28:1 pass  | Chart mark                                  |
+| `chart-deploy`   | `canvas`       | 3:1 (ui)     | 11.14:1 pass | 8.32:1 pass  | Chart mark                                  |
+| `chart-2xx`      | `canvas`       | 3:1 (ui)     | 9.32:1 pass  | 3.33:1 pass  | Chart mark                                  |
+| `chart-3xx`      | `canvas`       | 3:1 (ui)     | 9.56:1 pass  | 3.49:1 pass  | Chart mark                                  |
+| `chart-4xx`      | `canvas`       | 3:1 (ui)     | 9.94:1 pass  | 3.36:1 pass  | Chart mark                                  |
+| `chart-5xx`      | `canvas`       | 3:1 (ui)     | 7.59:1 pass  | 4.28:1 pass  | Chart mark                                  |
+| `chart-other`    | `canvas`       | 3:1 (ui)     | 7.58:1 pass  | 4.38:1 pass  | Chart mark                                  |
+| `chart-series`   | `canvas`       | 3:1 (ui)     | 8.49:1 pass  | 4.60:1 pass  | Chart mark                                  |
+| `chart-requests` | `well`         | 3:1 (ui)     | 8.39:1 pass  | 4.38:1 pass  | Chart mark                                  |
+| `chart-errors`   | `well`         | 3:1 (ui)     | 7.30:1 pass  | 4.24:1 pass  | Chart mark                                  |
+| `chart-deploy`   | `well`         | 3:1 (ui)     | 10.73:1 pass | 8.25:1 pass  | Chart mark                                  |
+| `chart-2xx`      | `well`         | 3:1 (ui)     | 8.98:1 pass  | 3.30:1 pass  | Chart mark                                  |
+| `chart-3xx`      | `well`         | 3:1 (ui)     | 9.20:1 pass  | 3.46:1 pass  | Chart mark                                  |
+| `chart-4xx`      | `well`         | 3:1 (ui)     | 9.57:1 pass  | 3.33:1 pass  | Chart mark                                  |
+| `chart-5xx`      | `well`         | 3:1 (ui)     | 7.30:1 pass  | 4.24:1 pass  | Chart mark                                  |
+| `chart-other`    | `well`         | 3:1 (ui)     | 7.30:1 pass  | 4.35:1 pass  | Chart mark                                  |
+| `chart-series`   | `well`         | 3:1 (ui)     | 8.17:1 pass  | 4.56:1 pass  | Chart mark                                  |
+| `fg`             | `hover`        | 3:1 (ui)     | 11.99:1 pass | 13.87:1 pass | Traffic split segment on its track          |
+| `chart-requests` | `hover`        | 3:1 (ui)     | 6.43:1 pass  | 3.92:1 pass  | Traffic split segment on its track          |
+| `chart-series`   | `hover`        | 3:1 (ui)     | 6.26:1 pass  | 4.08:1 pass  | Traffic split segment on its track          |
+| `chart-3xx`      | `hover`        | 3:1 (ui)     | 7.05:1 pass  | 3.10:1 pass  | Traffic split segment on its track          |
+| `chart-other`    | `hover`        | 3:1 (ui)     | 5.59:1 pass  | 3.89:1 pass  | Traffic split segment on its track          |
+| `fg`             | `surface`      | 3:1 (ui)     | 14.60:1 pass | 17.07:1 pass | Traffic split segment and legend swatch     |
+| `chart-requests` | `surface`      | 3:1 (ui)     | 7.83:1 pass  | 4.82:1 pass  | Traffic split segment and legend swatch     |
+| `chart-series`   | `surface`      | 3:1 (ui)     | 7.62:1 pass  | 5.02:1 pass  | Traffic split segment and legend swatch     |
+| `chart-3xx`      | `surface`      | 3:1 (ui)     | 8.58:1 pass  | 3.81:1 pass  | Traffic split segment and legend swatch     |
+| `chart-other`    | `surface`      | 3:1 (ui)     | 6.81:1 pass  | 4.78:1 pass  | Traffic split segment and legend swatch     |
+| `fg-muted`       | `hover`        | 4.5:1 (text) | 6.46:1 pass  | 6.22:1 pass  | Table sort icon and header text on hover    |
+| `fg`             | `hover`        | 4.5:1 (text) | 11.99:1 pass | 13.87:1 pass | Selected table row and current sidebar item |
+| `fg-muted`       | `well`         | 4.5:1 (text) | 8.44:1 pass  | 6.96:1 pass  | Empty state icon                            |
+| `neutral-fg`     | `neutral-soft` | 4.5:1 (text) | 7.73:1 pass  | 6.89:1 pass  | Palette prefix chip                         |
 
 <!-- tokens:contrast:end -->
 

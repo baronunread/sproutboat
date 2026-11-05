@@ -71,4 +71,52 @@ export type {
 export { Tooltip, TooltipProvider } from "./components/tooltip";
 export { cn } from "./lib/cn";
 export { PortalContainer } from "./lib/portal";
-export { CheckIcon, ChevronDownIcon, CloseIcon, CopyIcon, SpinnerIcon, UndoIcon } from "./lib/icons";
+export * from "./lib/icons";
+export { Banner } from "./components/banner";
+export type { BannerProps } from "./components/banner";
+export { Breadcrumbs } from "./components/breadcrumbs";
+export type { BreadcrumbItem, BreadcrumbsProps } from "./components/breadcrumbs";
+export { CommandPalette, parsePrefix, shortcutLabel, useCommandPaletteShortcut } from "./components/command-palette";
+export type { CommandPaletteProps, PaletteGroup, PaletteItem, PalettePrefix } from "./components/command-palette";
+export { EmptyState } from "./components/empty-state";
+export type { EmptyStateProps } from "./components/empty-state";
+export { FallbackPill } from "./components/fallback-pill";
+export type { FallbackPillProps } from "./components/fallback-pill";
+export { Kbd } from "./components/kbd";
+export { Meter, UsageMeter, usageState } from "./components/meter";
+export type { MeterProps, MeterTone, UsageMeterProps } from "./components/meter";
+export { MetricTile } from "./components/metric-tile";
+export type { MetricDelta, MetricTileProps } from "./components/metric-tile";
+export { PageHeader, PageTab, PageTabs } from "./components/page-header";
+export type { PageHeaderProps, PageTabProps } from "./components/page-header";
+export { RuntimeChip } from "./components/runtime-chip";
+export type { Runtime, RuntimeChipProps } from "./components/runtime-chip";
+export {
+  Sidebar,
+  SidebarFooter,
+  SidebarHeader,
+  SidebarItem,
+  SidebarNav,
+  SidebarToggle,
+  SidebarTrigger,
+  useIsDesktop,
+  useSidebarState,
+} from "./components/sidebar";
+export type { SidebarItemProps, SidebarProps } from "./components/sidebar";
+export { Spinner } from "./components/spinner";
+export type { SpinnerProps } from "./components/spinner";
+export {
+  Table,
+  TableBody,
+  TableCell,
+  TableEmpty,
+  TableError,
+  TableHead,
+  TableHeader,
+  TableLoading,
+  TableRow,
+  nextSort,
+} from "./components/table";
+export type { SortDirection, TableHeadProps, TableProps, TableRowProps } from "./components/table";
+export { TrafficSplitBar, trafficFill } from "./components/traffic-split-bar";
+export type { TrafficSplitBarProps, TrafficVersion } from "./components/traffic-split-bar";
