@@ -5,6 +5,7 @@ import { decorative } from "@tanstack/charts/mark/decorative";
 import { tooltip } from "@tanstack/charts/tooltip";
 import { useMemo } from "react";
 import { cn } from "../lib/cn";
+import { formatCompact, formatNumber } from "../lib/format";
 import { chartClassName, chartColors } from "./theme";
 import type { ChartColorName } from "./theme";
 
@@ -60,10 +61,9 @@ interface Row {
   label: string;
 }
 
-const compactFormat = new Intl.NumberFormat("en", { notation: "compact", maximumFractionDigits: 1 });
-const compact = (value: number): string => compactFormat.format(value);
+const compact = (value: number): string => formatCompact(value, { maximumFractionDigits: 1 });
 
-const defaultValue = (value: number): string => value.toLocaleString();
+const defaultValue = (value: number): string => formatNumber(value);
 
 const markers = (deploy: TimeseriesChartProps["deploy"]): readonly DeployMarker[] =>
   deploy === undefined ? [] : "time" in deploy ? [deploy] : deploy;

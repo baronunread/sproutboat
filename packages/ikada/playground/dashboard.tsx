@@ -286,6 +286,7 @@ interface Deployment {
   status: "success" | "info" | "neutral" | "danger";
   statusLabel: string;
   runtime: "sproutd" | "supervisor";
+  author: string;
   fellBack?: boolean;
   age: number;
   ageLabel: string;
@@ -300,6 +301,7 @@ const deployments: Deployment[] = [
     status: "info",
     statusLabel: "Canary 10%",
     runtime: "sproutd",
+    author: "maya",
     age: 14,
     ageLabel: "14m",
   },
@@ -311,6 +313,7 @@ const deployments: Deployment[] = [
     status: "success",
     statusLabel: "Live 90%",
     runtime: "sproutd",
+    author: "joel",
     age: 120,
     ageLabel: "2h",
   },
@@ -322,6 +325,7 @@ const deployments: Deployment[] = [
     status: "neutral",
     statusLabel: "Superseded",
     runtime: "supervisor",
+    author: "maya",
     fellBack: true,
     age: 420,
     ageLabel: "7h",
@@ -334,6 +338,7 @@ const deployments: Deployment[] = [
     status: "danger",
     statusLabel: "Rolled back",
     runtime: "sproutd",
+    author: "priya",
     age: 1440,
     ageLabel: "1d",
   },
@@ -345,6 +350,7 @@ const deployments: Deployment[] = [
     status: "neutral",
     statusLabel: "Superseded",
     runtime: "sproutd",
+    author: "joel",
     age: 2880,
     ageLabel: "2d",
   },
@@ -373,7 +379,7 @@ function DeploymentsTable({
   label: string;
 }) {
   return (
-    <Table label={label} stickyHeader={stickyHeader} maxHeight={maxHeight} className="min-w-[44rem]">
+    <Table label={label} stickyHeader={stickyHeader} maxHeight={maxHeight}>
       <TableHeader>
         <TableRow className="hover:bg-transparent">
           {selection ? (
@@ -388,10 +394,12 @@ function DeploymentsTable({
           >
             Version
           </TableHead>
-          <TableHead>Message</TableHead>
+          <TableHead hideBelow="sm">Message</TableHead>
           <TableHead>Status</TableHead>
-          <TableHead>Runtime</TableHead>
+          <TableHead hideBelow="lg">Runtime</TableHead>
+          <TableHead hideBelow="3xl">Author</TableHead>
           <TableHead
+            hideBelow="md"
             sortable={!!onSort}
             sort={sort?.key === "age" ? sort.dir : undefined}
             onSort={() => onSort?.("age")}
@@ -415,8 +423,12 @@ function DeploymentsTable({
             <TableCell className="whitespace-nowrap">
               <span className="font-semibold">v{d.version}</span>{" "}
               <span className="font-mono text-sm text-fg-muted">{d.sha}</span>
+              {/* Below sm the Message column is dropped; its text moves under the version. */}
+              <span className="hidden max-w-36 whitespace-normal py-1 text-sm text-fg-muted @max-sm:block">
+                {d.message}
+              </span>
             </TableCell>
-            <TableCell>
+            <TableCell hideBelow="sm">
               <div className="flex flex-col items-start gap-1 py-1.5">
                 <span>{d.message}</span>
                 {d.fellBack ? <FallbackPill reason={FALLBACK_REASON} /> : null}
@@ -425,10 +437,15 @@ function DeploymentsTable({
             <TableCell className="whitespace-nowrap">
               <StatusDot status={d.status} label={d.statusLabel} />
             </TableCell>
-            <TableCell>
+            <TableCell hideBelow="lg">
               <RuntimeChip runtime={d.runtime} />
             </TableCell>
-            <TableCell className="whitespace-nowrap tabular-nums text-fg-muted">{d.ageLabel}</TableCell>
+            <TableCell hideBelow="3xl" className="whitespace-nowrap text-fg-muted">
+              {d.author}
+            </TableCell>
+            <TableCell hideBelow="md" className="whitespace-nowrap tabular-nums text-fg-muted">
+              {d.ageLabel}
+            </TableCell>
           </TableRow>
         ))}
       </TableBody>
@@ -471,6 +488,16 @@ function TableSection() {
               })
             }
           />
+        </div>
+      </Row>
+      <Row label="Responsive columns: Runtime hides below 32rem, Age below 28rem, Author below 48rem, measured on the table's own width">
+        <div className="flex w-full flex-wrap items-start gap-4">
+          <div className="w-[22rem] max-w-full">
+            <DeploymentsTable label="Deployments, narrow container" rows={deployments.slice(0, 3)} />
+          </div>
+          <div className="w-[40rem] max-w-full">
+            <DeploymentsTable label="Deployments, medium container" rows={deployments.slice(0, 3)} />
+          </div>
         </div>
       </Row>
       <Row label="Sticky header in a 16rem scroll area">
@@ -619,8 +646,7 @@ function SproutboatSection() {
         <div className="grid w-full gap-3 sm:grid-cols-2 xl:grid-cols-3">
           <MetricTile
             label="Requests"
-            value="1.28"
-            unit="M"
+            amount={1_280_000}
             delta={{ value: "12%", direction: "up" }}
             hint="14.8 req/s average"
             sparkline={<Sparkline data={reqSpark} ariaLabel="Requests, last 24 hours" />}
@@ -804,8 +830,7 @@ export function DashboardPreview() {
               <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
                 <MetricTile
                   label="Requests"
-                  value="1.28"
-                  unit="M"
+                  amount={1_280_000}
                   delta={{ value: "12%", direction: "up" }}
                   hint="14.8 req/s average"
                   sparkline={<Sparkline data={reqSpark} ariaLabel="Requests, last 24 hours" />}

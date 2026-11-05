@@ -1,6 +1,8 @@
 import { Meter as BaseMeter } from "@base-ui/react/meter";
 import type { ComponentProps, ReactNode } from "react";
 import { cn } from "../lib/cn";
+import { formatCompact } from "../lib/format";
+import { useLocale } from "../lib/locale";
 import { StatusGlyph } from "./status-glyph";
 import type { Status } from "./status";
 
@@ -12,8 +14,10 @@ const fill = {
   danger: "bg-danger-dot",
 } satisfies Record<MeterTone, string>;
 
-export interface MeterProps extends Omit<ComponentProps<typeof BaseMeter.Root>, "className" | "children"> {
+export interface MeterProps extends Omit<ComponentProps<typeof BaseMeter.Root>, "className" | "children" | "locale"> {
   className?: string;
+  /** Number-formatting locale; defaults to the `LocaleProvider` value, else `en`. */
+  locale?: string;
   /** Visible label above the bar. Without one, pass `aria-label`. */
   label?: ReactNode;
   tone?: MeterTone;
@@ -22,9 +26,10 @@ export interface MeterProps extends Omit<ComponentProps<typeof BaseMeter.Root>, 
 }
 
 /** A bar for a bounded measurement. The fill grows over 250ms ease-out (a width change, so it also stays under reduced motion). */
-export function Meter({ label, tone = "normal", valueLabel, className, ...props }: MeterProps) {
+export function Meter({ label, tone = "normal", valueLabel, className, locale, ...props }: MeterProps) {
+  const resolved = useLocale(locale);
   return (
-    <BaseMeter.Root className={cn("flex flex-col gap-1.5", className)} {...props}>
+    <BaseMeter.Root className={cn("flex flex-col gap-1.5", className)} locale={resolved} {...props}>
       {label || valueLabel !== null ? (
         <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5 text-base">
           {label ? <BaseMeter.Label className="font-medium">{label}</BaseMeter.Label> : <span />}
@@ -57,6 +62,7 @@ export interface UsageMeterProps extends Omit<MeterProps, "value" | "max" | "min
    * is the meter red. Reaching the limit without being blocked stays amber.
    */
   blocked?: boolean;
+  /** Defaults to compact units in the resolved locale: 860K, 1M, 4.4. */
   formatValue?: (n: number) => string;
 }
 
@@ -92,11 +98,14 @@ export function UsageMeter({
   unit,
   warnAt = 0.8,
   blocked = false,
-  formatValue = (n) => n.toLocaleString(),
+  formatValue: formatValueProp,
+  locale,
   label,
   className,
   ...props
 }: UsageMeterProps) {
+  const resolved = useLocale(locale);
+  const formatValue = formatValueProp ?? ((n: number) => formatCompact(n, { locale: resolved }));
   const state = usageState(used, limit, warnAt, blocked);
   const suffix = unit ? ` ${unit}` : "";
   const text =
@@ -118,6 +127,7 @@ export function UsageMeter({
   return (
     <Meter
       label={label}
+      locale={resolved}
       value={Math.min(used, limit)}
       max={limit}
       tone={state === "blocked" ? "danger" : status ? "warning" : "normal"}

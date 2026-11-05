@@ -1,5 +1,7 @@
 import type { ComponentProps, ReactNode } from "react";
 import { cn } from "../lib/cn";
+import { formatNumber } from "../lib/format";
+import { useLocale } from "../lib/locale";
 
 export interface TrafficVersion {
   id: string;
@@ -15,20 +17,31 @@ export interface TrafficSplitBarProps extends Omit<ComponentProps<"div">, "child
   versions: readonly TrafficVersion[];
   /** Names the group for screen readers. */
   label?: string;
+  /** Number-formatting locale; defaults to the `LocaleProvider` value, else `en`. */
+  locale?: string;
 }
 
 /** Segment fills in order. The lead version is ink, so a single version reads as "all of it". */
 const fills = ["bg-fg", "bg-chart-requests", "bg-chart-series", "bg-chart-3xx", "bg-chart-other"] as const;
 export const trafficFill = (index: number): string => fills[index % fills.length] ?? fills[0];
 
-const pct = (n: number): string => `${Number.isInteger(n) ? n : n.toFixed(1)}%`;
+const pctIn = (n: number, locale: string): string => `${formatNumber(n, { locale, maximumFractionDigits: 1 })}%`;
 
 /**
  * How production traffic splits across versions. Each non-empty segment is a keyboard
  * stop with `role="meter"` ("v47, 90%"); the legend repeats the numbers as text. With no
  * traffic the bar is an empty track and says so.
  */
-export function TrafficSplitBar({ versions, label = "Traffic split", className, ref, ...props }: TrafficSplitBarProps) {
+export function TrafficSplitBar({
+  versions,
+  label = "Traffic split",
+  locale,
+  className,
+  ref,
+  ...props
+}: TrafficSplitBarProps) {
+  const resolved = useLocale(locale);
+  const pct = (n: number): string => pctIn(n, resolved);
   const total = versions.reduce((sum, v) => sum + Math.max(0, v.percent), 0);
   const visible = versions.flatMap((v, i) => (v.percent > 0 ? [{ v, i }] : []));
 

@@ -1,5 +1,7 @@
 import type { ComponentProps, ReactNode } from "react";
 import { cn } from "../lib/cn";
+import { formatCompact } from "../lib/format";
+import { useLocale } from "../lib/locale";
 import { ArrowDownIcon, ArrowUpIcon } from "../lib/icons";
 import { Skeleton } from "./skeleton";
 
@@ -13,8 +15,12 @@ export interface MetricDelta {
 
 export interface MetricTileProps extends Omit<ComponentProps<"div">, "children"> {
   label: string;
-  /** Already formatted: "1.28". */
+  /** Already formatted: "0.21". For a plain count prefer `amount`. */
   value?: string;
+  /** A count, formatted compactly in `locale` ("1.28M", "860K"). Wins over `value`. */
+  amount?: number;
+  /** Number-formatting locale; defaults to the `LocaleProvider` value, else `en`. */
+  locale?: string;
   /** "M", "%", "ms p50". */
   unit?: string;
   delta?: MetricDelta;
@@ -38,6 +44,7 @@ const sentimentClass = {
 export function MetricTile({
   label,
   value,
+  amount,
   unit,
   delta,
   hint,
@@ -45,10 +52,13 @@ export function MetricTile({
   loading = false,
   noData = false,
   emptyText = "No data for this range",
+  locale,
   className,
   ref,
   ...props
 }: MetricTileProps) {
+  const resolved = useLocale(locale);
+  const shown = amount === undefined ? value : formatCompact(amount, { locale: resolved });
   const Arrow = delta?.direction === "up" ? ArrowUpIcon : ArrowDownIcon;
   return (
     <div
@@ -70,7 +80,7 @@ export function MetricTile({
         ) : (
           <>
             <div className="flex flex-wrap items-baseline gap-x-1.5">
-              <span className={cn("text-metric tabular-nums", noData && "text-fg-muted")}>{noData ? "—" : value}</span>
+              <span className={cn("text-metric tabular-nums", noData && "text-fg-muted")}>{noData ? "—" : shown}</span>
               {unit && !noData ? <span className="text-base font-medium text-fg-muted">{unit}</span> : null}
               {delta && !noData ? (
                 <span

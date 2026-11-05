@@ -10,6 +10,32 @@ export function nextSort(current: SortDirection | undefined): SortDirection | un
   return current === undefined ? "asc" : current === "asc" ? "desc" : undefined;
 }
 
+/**
+ * Container-query breakpoints for `hideBelow`. They measure the table's own scroll
+ * container, not the viewport: sm 24rem, md 28rem, lg 32rem, xl 36rem, 2xl 42rem, 3xl 48rem, 4xl 56rem.
+ * Full class names so Tailwind can see them.
+ */
+export type TableBreakpoint = "sm" | "md" | "lg" | "xl" | "2xl" | "3xl" | "4xl";
+
+const hideBelowClass = {
+  sm: "@max-sm:hidden",
+  md: "@max-md:hidden",
+  lg: "@max-lg:hidden",
+  xl: "@max-xl:hidden",
+  "2xl": "@max-2xl:hidden",
+  "3xl": "@max-3xl:hidden",
+  "4xl": "@max-4xl:hidden",
+} satisfies Record<TableBreakpoint, string>;
+
+export interface HideBelowProps {
+  /**
+   * Drops this column (set it on its `TableHead` and every `TableCell`) when the table's
+   * container is narrower than the breakpoint. Use it for low-priority columns; the
+   * container still scrolls sideways as the last resort.
+   */
+  hideBelow?: TableBreakpoint;
+}
+
 export interface TableProps extends ComponentProps<"table"> {
   /** Names the scrolling region for screen readers. Required: say what the table lists. */
   label: string;
@@ -45,7 +71,7 @@ export function Table({
       data-sticky={stickyHeader || undefined}
       style={maxHeight ? { maxHeight } : undefined}
       className={cn(
-        "min-w-0 max-w-full overflow-auto overscroll-x-contain rounded-xl bg-surface shadow-card",
+        "@container min-w-0 max-w-full overflow-auto overscroll-x-contain rounded-xl bg-surface shadow-card",
         focusRingInset,
         containerClassName,
       )}
@@ -99,7 +125,7 @@ export function TableRow({ selected = false, className, ...props }: TableRowProp
 
 const cellBase = "px-4 text-start align-middle";
 
-export interface TableHeadProps extends Omit<ComponentProps<"th">, "onClick" | "aria-sort"> {
+export interface TableHeadProps extends Omit<ComponentProps<"th">, "onClick" | "aria-sort">, HideBelowProps {
   /** Makes the header a button. `undefined` means sortable but not sorted. */
   sortable?: boolean;
   sort?: SortDirection;
@@ -107,7 +133,15 @@ export interface TableHeadProps extends Omit<ComponentProps<"th">, "onClick" | "
 }
 
 /** A column header. Sortable ones hold a button (Enter or Space) and set `aria-sort`. */
-export function TableHead({ sortable = false, sort, onSort, className, children, ...props }: TableHeadProps) {
+export function TableHead({
+  sortable = false,
+  sort,
+  onSort,
+  hideBelow,
+  className,
+  children,
+  ...props
+}: TableHeadProps) {
   const ariaSort = sortable ? (sort === "asc" ? "ascending" : sort === "desc" ? "descending" : "none") : undefined;
   return (
     <th
@@ -116,6 +150,7 @@ export function TableHead({ sortable = false, sort, onSort, className, children,
       className={cn(
         cellBase,
         "h-10 whitespace-nowrap bg-surface text-sm font-semibold text-fg-muted shadow-[inset_0_-1px_0_var(--sb-hairline)]",
+        hideBelow && hideBelowClass[hideBelow],
         className,
       )}
       {...props}
@@ -146,12 +181,13 @@ export function TableHead({ sortable = false, sort, onSort, className, children,
   );
 }
 
-export function TableCell({ className, ...props }: ComponentProps<"td">) {
+export function TableCell({ hideBelow, className, ...props }: ComponentProps<"td"> & HideBelowProps) {
   return (
     <td
       className={cn(
         cellBase,
         "h-(--sb-row-h) shadow-[inset_0_-1px_0_var(--sb-hairline)] group-last/row:shadow-none",
+        hideBelow && hideBelowClass[hideBelow],
         className,
       )}
       {...props}

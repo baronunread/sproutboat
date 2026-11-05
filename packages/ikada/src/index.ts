@@ -71,6 +71,9 @@ export type {
 export { Tooltip, TooltipProvider } from "./components/tooltip";
 export { cn } from "./lib/cn";
 export { PortalContainer } from "./lib/portal";
+export { LocaleProvider, useLocale } from "./lib/locale";
+export { formatBytes, formatCompact, formatNumber } from "./lib/format";
+export type { FormatOptions } from "./lib/format";
 export * from "./lib/icons";
 export { Banner } from "./components/banner";
 export type { BannerProps } from "./components/banner";
@@ -117,6 +120,13 @@ export {
   TableRow,
   nextSort,
 } from "./components/table";
-export type { SortDirection, TableHeadProps, TableProps, TableRowProps } from "./components/table";
+export type {
+  HideBelowProps,
+  SortDirection,
+  TableBreakpoint,
+  TableHeadProps,
+  TableProps,
+  TableRowProps,
+} from "./components/table";
 export { TrafficSplitBar, trafficFill } from "./components/traffic-split-bar";
 export type { TrafficSplitBarProps, TrafficVersion } from "./components/traffic-split-bar";

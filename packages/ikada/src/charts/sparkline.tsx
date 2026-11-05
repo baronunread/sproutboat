@@ -4,6 +4,7 @@ import { scaleLinear } from "@tanstack/charts/scales/linear";
 import { tooltip } from "@tanstack/charts/tooltip";
 import { useMemo } from "react";
 import { cn } from "../lib/cn";
+import { formatNumber } from "../lib/format";
 import { chartClassName, chartColors } from "./theme";
 import type { ChartColorName } from "./theme";
 
@@ -25,7 +26,7 @@ export interface SparklineProps {
   className?: string;
 }
 
-const defaultValue = (value: number): string => value.toLocaleString();
+const defaultValue = (value: number): string => formatNumber(value);
 const defaultPoint = (index: number): string => `#${index + 1}`;
 
 interface Row {
