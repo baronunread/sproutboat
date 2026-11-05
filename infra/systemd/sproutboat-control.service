@@ -5,6 +5,7 @@ Wants=network-online.target
 StartLimitIntervalSec=0
 
 [Service]
+LimitNOFILE=16384
 Type=simple
 User=sproutboat-control
 Group=sproutboat

@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, expect, test } from "bun:test";
 import { Database } from "bun:sqlite";
-import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, stat, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import * as mod from "./backups";
@@ -422,4 +422,60 @@ test("createBackup: warns when off-box upload is configured without encryption",
   const entry = await mod.createBackup();
   expect(entry.warning).toContain("encryption is off");
   expect(entry.offsite).toBe(false);
+});
+
+test("a plain archive is refused when the install has a backup key, unless allowPlain", async () => {
+  const entry = await mod.createBackup(); // encryption off: plain archive
+  const archive = join(dir, "backups", entry.name);
+  await useKey(KEY_A);
+  await expect(mod.verifyBackup(archive)).rejects.toThrow("not encrypted but this install has a backup key");
+  await expect(mod.inspectBackup(archive)).rejects.toThrow("--allow-plain");
+  const fresh = await freshInstall();
+  try {
+    await expect(mod.restoreBackup(archive)).rejects.toThrow("--allow-plain");
+    expect(await Bun.file(join(fresh, "sproutboat.sqlite")).exists()).toBe(false);
+    expect((await mod.verifyBackup(archive, { allowPlain: true })).encrypted).toBe(false);
+    await mod.restoreBackup(archive, { allowPlain: true });
+    expect(await Bun.file(join(fresh, "sproutboat.sqlite")).exists()).toBe(true);
+  } finally {
+    await rm(fresh, { recursive: true, force: true });
+  }
+});
+
+test("an encrypted archive still verifies and restores with a key and no allowPlain", async () => {
+  process.env.SPROUTBOAT_BACKUP_ENCRYPT = "on";
+  await useKey(KEY_A);
+  const entry = await mod.createBackup();
+  const archive = join(dir, "backups", entry.name);
+  expect((await mod.verifyBackup(archive)).encrypted).toBe(true);
+  const fresh = await freshInstall();
+  try {
+    await mod.restoreBackup(archive);
+    expect(await Bun.file(join(fresh, "sproutboat.sqlite")).exists()).toBe(true);
+  } finally {
+    await rm(fresh, { recursive: true, force: true });
+  }
+});
+
+test("the backups directory is private, and an archive with a link member is refused", async () => {
+  const entry = await mod.createBackup();
+  expect((await stat(join(dir, "backups"))).mode & 0o777).toBe(0o700);
+  const src = await mkdtemp(join(tmpdir(), "sb-link-"));
+  try {
+    await writeFile(join(src, "sproutboat.sqlite"), "x");
+    await symlink("/etc/passwd", join(src, "evil"));
+    const bad = join(dir, "backups", "sproutboat-20260101-000000.tar.gz");
+    expect(Bun.spawnSync(["tar", "-czf", bad, "-C", src, "sproutboat.sqlite", "evil"]).exitCode).toBe(0);
+    await expect(mod.inspectBackup(bad)).rejects.toThrow("not a regular file or directory");
+    const fresh = await freshInstall();
+    try {
+      await expect(mod.restoreBackup(bad)).rejects.toThrow("not a regular file or directory");
+      expect(await Bun.file(join(fresh, "evil")).exists()).toBe(false);
+    } finally {
+      await rm(fresh, { recursive: true, force: true });
+    }
+    expect(entry.name).toBeTruthy();
+  } finally {
+    await rm(src, { recursive: true, force: true });
+  }
 });
