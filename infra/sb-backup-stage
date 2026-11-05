@@ -55,15 +55,19 @@ caddy_candidates() {
   if [ -n "${SB_CADDY_CANDIDATES:-}" ]; then
     printf '%s\n' "$SB_CADDY_CANDIDATES" | tr ':' '\n'
   else
-    printf '%s\n' /var/lib/caddy/.local/share/caddy /root/.local/share/caddy
+    # /caddy: a unit with no User= and no HOME in its environment (the one
+    # install.sh writes) makes Caddy fall back to ./caddy relative to its
+    # working directory /, so its data lives in /caddy.
+    printf '%s\n' /caddy /var/lib/caddy/.local/share/caddy /root/.local/share/caddy
   fi
 }
 
-# First candidate that already holds certificates; fails when there is none.
+# First candidate that already holds certificates, or instance.uuid (a fresh
+# install that has not issued a certificate yet); fails when there is none.
 find_caddy_dir() {
   local d
   while read -r d; do
-    [ -d "$d/certificates" ] && { printf '%s\n' "$d"; return 0; }
+    { [ -d "$d/certificates" ] || [ -f "$d/instance.uuid" ]; } && { printf '%s\n' "$d"; return 0; }
   done < <(caddy_candidates)
   return 1
 }

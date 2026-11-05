@@ -376,8 +376,11 @@ dashboard uses the snapshot as of the last nightly run or update**, so a
 certificate renewed since then is not in it. Run `sudo sbctl backup now` when
 you need a backup with config as of this minute. Caddy's data directory is
 found from the caddy unit (`XDG_DATA_HOME`, else the home of its `User=`, root
-when unset), then `/var/lib/caddy/.local/share/caddy` and
+when unset), then `/caddy`, `/var/lib/caddy/.local/share/caddy` and
 `/root/.local/share/caddy`; `backup-stage --print-caddy-dir` shows the result.
+`/caddy` is there because the unit install.sh writes has no `User=` and no
+`HOME`, so Caddy falls back to `./caddy` under its working directory `/`. A
+directory counts once it holds `certificates` or `instance.uuid`.
 
 ### Off-box copy (S3-compatible)
 
