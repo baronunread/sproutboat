@@ -1,0 +1,114 @@
+#!/usr/bin/env bash
+#
+# sb-health: the health gate of a Sproutboat host. Installed to
+# /usr/local/lib/sproutboat/health by install.sh; `sbctl health` runs it, and
+# install.sh runs the staged copy after every update restart.
+#
+#   sb-health [--json] [--timeout SECONDS]
+#
+# Polls until every check passes or the timeout (SB_HEALTH_TIMEOUT, default 45 s)
+# runs out, then prints one ok/fail line per check from the last attempt and exits
+# 0 (healthy) or 1. Checks:
+#   units    systemctl is-active for control, egress, edge and caddy
+#   control  GET :8787/internal/health is 200 with "ok":true
+#   edge     GET :8080/__sb/pool (Host: 127.0.0.1) is 200
+#   egress   GET :8070/ answers with any HTTP status (401 is the normal one)
+#   caddy    GET :80/ answers with any HTTP status (a redirect is the normal one)
+#
+# Test and debug overrides: SB_SYSTEMCTL (default systemctl; `true` stubs it),
+# SB_HEALTH_CONTROL_URL, SB_HEALTH_EDGE_URL, SB_HEALTH_EGRESS_URL,
+# SB_HEALTH_CADDY_URL, SB_HEALTH_INTERVAL (seconds between attempts, default 1).
+set -euo pipefail
+
+SYSTEMCTL=${SB_SYSTEMCTL:-systemctl}
+CONTROL_URL=${SB_HEALTH_CONTROL_URL:-http://127.0.0.1:8787}
+EDGE_URL=${SB_HEALTH_EDGE_URL:-http://127.0.0.1:8080}
+EGRESS_URL=${SB_HEALTH_EGRESS_URL:-http://127.0.0.1:8070}
+CADDY_URL=${SB_HEALTH_CADDY_URL:-http://127.0.0.1:80}
+TIMEOUT=${SB_HEALTH_TIMEOUT:-45}
+INTERVAL=${SB_HEALTH_INTERVAL:-1}
+UNITS=(sproutboat-control sproutboat-egress sproutboat-edge caddy)
+JSON=0
+
+die() { printf 'sb-health: %s\n' "$*" >&2; exit 2; }
+
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --json) JSON=1; shift ;;
+    --timeout) [ $# -ge 2 ] || die "--timeout needs seconds"; TIMEOUT=$2; shift 2 ;;
+    -h|--help) sed -n '2,22p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    *) die "usage: sb-health [--json] [--timeout SECONDS]" ;;
+  esac
+done
+case "$TIMEOUT" in ''|*[!0-9]*) die "timeout must be a whole number of seconds" ;; esac
+
+if [ -t 1 ]; then OK=$'\033[1;32m'; NO=$'\033[1;31m'; Z=$'\033[0m'; else OK=; NO=; Z=; fi
+
+NAMES=(); STATES=(); DETAILS=()
+record() { NAMES+=("$1"); STATES+=("$2"); DETAILS+=("$3"); }
+
+# http_code URL [curl args...]: the status code, or 000 when nothing answered.
+http_code() {
+  local url=$1; shift
+  curl -s -o /dev/null -m 3 -w '%{http_code}' "$@" "$url" 2>/dev/null || true
+}
+
+run_checks() {
+  NAMES=(); STATES=(); DETAILS=()
+  local u bad="" body code
+  for u in "${UNITS[@]}"; do
+    "$SYSTEMCTL" is-active --quiet "$u" 2>/dev/null || bad="$bad $u"
+  done
+  if [ -z "$bad" ]; then record units ok "all four units are active"; else record units fail "not active:$bad"; fi
+
+  body=$(curl -fsS -m 3 "$CONTROL_URL/internal/health" 2>/dev/null || true)
+  case "$body" in
+    *'"ok":true'*|*'"ok": true'*) record control ok "$CONTROL_URL/internal/health" ;;
+    *) record control fail "$CONTROL_URL/internal/health did not return ok:true" ;;
+  esac
+
+  code=$(http_code "$EDGE_URL/__sb/pool" -H 'Host: 127.0.0.1')
+  if [ "$code" = 200 ]; then record edge ok "$EDGE_URL/__sb/pool is 200"; else record edge fail "$EDGE_URL/__sb/pool answered $code, want 200"; fi
+
+  code=$(http_code "$EGRESS_URL/")
+  case "$code" in
+    [1-5][0-9][0-9]) record egress ok "$EGRESS_URL/ answered $code" ;;
+    *) record egress fail "$EGRESS_URL/ did not answer" ;;
+  esac
+
+  code=$(http_code "$CADDY_URL/")
+  case "$code" in
+    [1-5][0-9][0-9]) record caddy ok "$CADDY_URL/ answered $code" ;;
+    *) record caddy fail "$CADDY_URL/ did not answer" ;;
+  esac
+}
+
+all_ok() { local s; for s in "${STATES[@]}"; do [ "$s" = ok ] || return 1; done; }
+
+report() {
+  local i
+  if [ "$JSON" = 1 ]; then
+    printf '{"ok":%s,"checks":[' "$1"
+    for i in "${!NAMES[@]}"; do
+      [ "$i" = 0 ] || printf ','
+      printf '{"name":"%s","ok":%s,"detail":"%s"}' "${NAMES[$i]}" "$([ "${STATES[$i]}" = ok ] && echo true || echo false)" "${DETAILS[$i]//\"/\'}"
+    done
+    printf ']}\n'
+    return
+  fi
+  for i in "${!NAMES[@]}"; do
+    if [ "${STATES[$i]}" = ok ]; then printf '  %s✓%s %-8s %s\n' "$OK" "$Z" "${NAMES[$i]}" "${DETAILS[$i]}"
+    else printf '  %s✗%s %-8s %s\n' "$NO" "$Z" "${NAMES[$i]}" "${DETAILS[$i]}"; fi
+  done
+}
+
+deadline=$((SECONDS + TIMEOUT))
+while :; do
+  run_checks
+  if all_ok; then report true; exit 0; fi
+  [ "$SECONDS" -lt "$deadline" ] || break
+  sleep "$INTERVAL"
+done
+report false
+[ "$JSON" = 1 ] || printf '  %s✗%s unhealthy after %s s\n' "$NO" "$Z" "$TIMEOUT" >&2
+exit 1

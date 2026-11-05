@@ -562,3 +562,95 @@ describe("memory caps", () => {
     expect(check(2000, { SB_UPDATE: "1" }).exitCode).toBe(0);
   });
 });
+
+describe("safe update", () => {
+  const at = (text: string, needle: string) => {
+    const i = text.indexOf(needle);
+    expect(i, `missing: ${needle}`).toBeGreaterThanOrEqual(0);
+    return i;
+  };
+
+  test("the installer installs the health and rollback scripts and removes them on uninstall", async () => {
+    const install = await Bun.file("install.sh").text();
+    expect(install).toContain('install -m 0755 "$ROOT/infra/sb-health" /usr/local/lib/sproutboat/health');
+    expect(install).toContain('install -m 0755 "$ROOT/infra/sb-rollback" /usr/local/lib/sproutboat/rollback');
+    expect(install).toContain("/usr/local/lib/sproutboat/health /usr/local/lib/sproutboat/rollback");
+    expect(install).toContain("rm -rf /opt/sproutboat-prev");
+  });
+
+  test("order: memory check, disk check, backup, snapshot, trap, then the tree is synced", async () => {
+    const install = await Bun.file("install.sh").text();
+    const memory = at(install, "\ncheck_build_memory\n");
+    const disk = at(install, 'bash "$SRC/infra/sb-snapshot" --check');
+    const backup = at(install, "\n  pre_update_backup\n");
+    const snapshot = at(install, 'bash "$SRC/infra/sb-snapshot" || die');
+    const trap = at(install, "trap 'rollback_armed $?' EXIT");
+    const sync = at(install, "rsync -a --delete --chmod=");
+    expect(memory).toBeLessThan(disk);
+    expect(disk).toBeLessThan(backup);
+    expect(backup).toBeLessThan(snapshot);
+    expect(snapshot).toBeLessThan(trap);
+    expect(trap).toBeLessThan(sync);
+  });
+
+  test("the backup is verified with the staged tree, and can be skipped", async () => {
+    const install = await Bun.file("install.sh").text();
+    expect(install).toContain("systemctl start sproutboat-backup.service");
+    expect(install).toContain('"$SRC/apps/control/src/backups.ts" verify "$archive"');
+    expect(install).toContain("SB_SKIP_BACKUP");
+    expect(install).toContain("fallback for data");
+  });
+
+  test("a failure after the snapshot rolls back with the staged scripts; SB_NO_ROLLBACK disables it", async () => {
+    const install = await Bun.file("install.sh").text();
+    expect(install).toContain('SB_HEALTH_BIN="$SRC/infra/sb-health" bash "$SRC/infra/sb-rollback"');
+    expect(install).toContain("SB_NO_ROLLBACK");
+    // Any non-zero exit (set -e, die, a signal) lands in the trap, which exits non-zero itself.
+    expect(install).toContain('exit "$rc"');
+    expect(install).toContain("trap 'exit 143' TERM");
+    // The rollback is disarmed only after update.env is written, right before the summary.
+    const disarm = at(install, "trap - EXIT HUP INT TERM");
+    expect(disarm).toBeGreaterThan(at(install, 'chown root:root "$ETC/update.env"'));
+    expect(disarm).toBeLessThan(at(install, "printf '\\n%s▸ Sproutboat is up%s\\n'"));
+  });
+
+  test("the health gate runs after the restart and fails the update; fresh installs fail on a dead unit", async () => {
+    const install = await Bun.file("install.sh").text();
+    expect(install).toContain("systemctl restart sproutboat-control sproutboat-egress sproutboat-edge");
+    expect(install).toContain('bash "$SRC/infra/sb-health"');
+    expect(install).toContain("SB_HEALTH_TIMEOUT:-45");
+    expect(at(install, "health_gate || die")).toBeGreaterThan(
+      at(install, "systemctl restart sproutboat-control sproutboat-egress sproutboat-edge"),
+    );
+    expect(install).toContain('die "$u is not active after the install');
+  });
+
+  test("sbctl gains update --check, health and rollback", async () => {
+    const sbctl = await Bun.file("infra/sbctl").text();
+    expect(sbctl).toContain('if [ "${1:-}" = --check ]; then update_check; exit 0; fi');
+    expect(sbctl).toContain("raw.githubusercontent.com");
+    expect(sbctl).toContain("  health)");
+    expect(sbctl).toContain("  rollback)");
+    expect(sbctl).toContain("sbctl rollback [--yes]");
+    expect(sbctl).toContain("sbctl health [--json]");
+  });
+
+  test("the snapshot covers the helper scripts, engine binaries and engine drop-ins", async () => {
+    const snap = await Bun.file("infra/sb-snapshot").text();
+    expect(snap).toContain("  usr/local/lib/sproutboat\n"); // update, engine, backup-stage, bin/
+    expect(snap).toContain("  etc/systemd/system/sproutboat-edge.service.d");
+    expect(snap).toContain("  etc/systemd/system/sproutboat-egress.service.d");
+    expect(snap).toContain("  etc/sproutboat\n"); // engine.env
+    expect(snap).toContain("  etc/logrotate.d/sproutboat");
+    expect(snap).toContain("  etc/systemd/journald.conf.d/sproutboat.conf");
+    // The update never runs the engine probe: the gate is the only post-restart check.
+    const install = await Bun.file("install.sh").text();
+    expect(install).toContain('if [ "${SB_UPDATE:-0}" != 1 ] && { [ "$ENGINE_EDGE" = rust ]');
+  });
+
+  test("the scripts pass bash -n", () => {
+    for (const f of ["install.sh", "infra/sbctl", "infra/sb-health", "infra/sb-rollback", "infra/sb-snapshot"]) {
+      expect(Bun.spawnSync(["bash", "-n", f]).exitCode, f).toBe(0);
+    }
+  });
+});
