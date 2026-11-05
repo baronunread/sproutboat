@@ -18,14 +18,20 @@ Environment=SPROUTBOAT_RESOURCE_DIR=/var/lib/sproutboat/resources
 Environment=SPROUTBOAT_ACTIVATION_DIR=/var/lib/sproutboat/activation
 # Deployment domain + dashboard URL, written by install.sh.
 EnvironmentFile=-/etc/sproutboat/sproutboat.env
+# Your settings for the same file. Read after it, never rewritten by the installer.
+EnvironmentFile=-/etc/sproutboat/sproutboat.local.env
 # Admin identity, auth secrets, storage paths — written by install.sh before
 # this unit is first started.
 EnvironmentFile=-/etc/sproutboat/control.env
+# Your settings (limits, backup S3 and encryption, ...). Read after control.env, so
+# a key set here wins; install.sh never rewrites it.
+EnvironmentFile=-/etc/sproutboat/control.local.env
 # Webhook deliveries leave through the egress service, which refuses private
 # addresses. Its token is in a root-only file; systemd reads it before dropping
 # privileges, as it does for the edge unit.
 Environment=SB_EGRESS_URL=http://127.0.0.1:8070
 EnvironmentFile=-/etc/sproutboat/egress.env
+EnvironmentFile=-/etc/sproutboat/egress.local.env
 ExecStart=/opt/sproutboat/bun/bin/bun apps/control/src/main.ts
 Restart=always
 RestartSec=2

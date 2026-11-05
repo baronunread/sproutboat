@@ -59,15 +59,34 @@ sbctl — Sproutboat single-VPS control
 EOF
 }
 
-# Run the backups CLI the way the units do: the installer-written env files are
-# plain KEY=value lines, safe to source.
+# load_env FILE...: export the KEY=VALUE lines of each file the way systemd reads an
+# EnvironmentFile (later files and later lines win; one pair of surrounding quotes is
+# stripped). The files are parsed, never sourced: an operator value such as a secret
+# key that contains & or $ must not be run as shell.
+load_env() {
+  local f line k v
+  for f in "$@"; do
+    [ -f "$f" ] || continue
+    while IFS= read -r line || [ -n "$line" ]; do
+      [[ "$line" =~ ^[A-Za-z_][A-Za-z0-9_]*= ]] || continue
+      k=${line%%=*}; v=${line#*=}
+      case "$v" in
+        \"*\") v=${v#\"}; v=${v%\"} ;;
+        \'*\') v=${v#\'}; v=${v%\'} ;;
+      esac
+      export "$k=$v"
+    done < "$f"
+  done
+}
+# The control service environment, in the order its unit reads it. The .local.env files
+# are the operator-owned ones (see "Where settings live" in infra/README.md).
+load_control_env() {
+  load_env "$ETC/sproutboat.env" "$ETC/sproutboat.local.env" "$ETC/control.env" "$ETC/control.local.env"
+}
+
+# Run the backups CLI the way the units do.
 backups_cli() {
-  ( set -a
-    # shellcheck disable=SC1091
-    [ ! -f "$ETC/sproutboat.env" ] || . "$ETC/sproutboat.env"
-    # shellcheck disable=SC1091
-    [ ! -f "$ETC/control.env" ] || . "$ETC/control.env"
-    set +a
+  ( load_control_env
     cd "$ROOT" && "$ROOT/bun/bin/bun" apps/control/src/backups.ts "$@" )
 }
 
@@ -94,22 +113,19 @@ apply_restored_config() {
         *) chown root:root "$ETC/$rel"; chmod 0600 "$ETC/$rel" ;;
       esac
     done < <(find "$cfg/etc/sproutboat" -type f)
-    for f in control.env sproutboat.env backup.key; do
+    for f in control.env control.local.env sproutboat.env sproutboat.local.env backup.key; do
       [ ! -e "$ETC/$f" ] || { chown root:sproutboat "$ETC/$f"; chmod 0640 "$ETC/$f"; }
     done
-    [ ! -e "$ETC/caddy.env" ] || { chown root:root "$ETC/caddy.env"; chmod 0640 "$ETC/caddy.env"; }
+    for f in caddy.env caddy.local.env; do
+      [ ! -e "$ETC/$f" ] || { chown root:root "$ETC/$f"; chmod 0640 "$ETC/$f"; }
+    done
     [ ! -e "$ETC/install.env" ] || { chown root:root "$ETC/install.env"; chmod 0644 "$ETC/install.env"; }
-    for f in egress.env update.env; do
+    for f in egress.env egress.local.env update.env; do
       [ ! -e "$ETC/$f" ] || { chown root:root "$ETC/$f"; chmod 0600 "$ETC/$f"; }
     done
     printf '  restored %s/ (%s files)\n' "$ETC" "$(find "$cfg/etc/sproutboat" -type f | wc -l | tr -d ' ')"
     if [ -f "$ETC/control.env" ] && [ -f "$ETC/sproutboat.env" ]; then
-      ( set -a
-        # shellcheck disable=SC1091
-        . "$ETC/sproutboat.env"
-        # shellcheck disable=SC1091
-        . "$ETC/control.env"
-        set +a
+      ( load_control_env
         umask 077
         scheme=$(env_value "$ETC/install.env" SB_SCHEME); scheme=${scheme:-https}
         printf 'SPROUTBOAT_API_URL=%s://control.%s\nSPROUTBOAT_TOKEN=%s\n' \
@@ -339,12 +355,7 @@ case "$cmd" in
       config_applied=1
     fi
     if [ "$rc" = 0 ]; then
-      ( set -a
-        # shellcheck disable=SC1091
-        . "$ETC/sproutboat.env"
-        # shellcheck disable=SC1091
-        . "$ETC/control.env"
-        set +a
+      ( load_control_env
         cd "$ROOT" && "$ROOT/bun/bin/bun" apps/control/src/auth-admin.ts reset-password ) || rc=$?
     fi
     # No Caddy to reload on an SB_PROXY=external install.

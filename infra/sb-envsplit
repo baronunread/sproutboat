@@ -1,0 +1,122 @@
+#!/usr/bin/env bash
+#
+# sb-envsplit: keep operator settings out of an env file the installer rewrites.
+#
+#   sb-envsplit <managed-file> <local-file> <key>...
+#
+# install.sh owns <managed-file> (control.env, egress.env, ...) and rewrites it on
+# every install and update. Everything an operator adds belongs in <local-file>
+# (control.local.env, ...), which the systemd units read right after the managed
+# file and which nothing ever rewrites. <key>... are the keys the installer owns.
+#
+# Any other entry found in <managed-file> (a key an operator added there, as the
+# docs used to say) is moved to <local-file>, once:
+#   1. the old file is copied to <managed-file>.bak-<UTC time> (mode 0600);
+#   2. the entries are appended to <local-file> (created 0600 when missing);
+#   3. <managed-file> is rewritten without them.
+# A second run finds nothing to move and changes nothing. If <local-file> already
+# sets a key, its value stays (it is the one systemd reads last), and the entry in
+# <managed-file> is dropped; the copy from step 1 still has it. That is reported as
+# `same` when the line is identical (nothing to worry about) and `kept` when the values differ.
+#
+# An entry is a KEY=VALUE line plus its backslash continuation lines. Comments and
+# blank lines stay where they are. A line that is neither (not valid for systemd
+# either) is moved too, so nothing is thrown away. Values are never printed.
+#
+# stdout, one line per event: `moved <KEY>`, `kept <KEY>` (already in <local-file> with another value),
+# `same <KEY>` (already there, identical),
+# `moved <unrecognized line>`, then `backup <path>`. Exits 0 when the managed file
+# is absent or has nothing foreign.
+set -euo pipefail
+
+die() { printf 'sb-envsplit: %s\n' "$*" >&2; exit 1; }
+[ $# -ge 3 ] || die "usage: sb-envsplit <managed-file> <local-file> <key>..."
+
+managed=$1; local_file=$2; shift 2
+owned=" $* "
+[ -f "$managed" ] || exit 0
+umask 077
+
+keep=$(mktemp); move=$(mktemp)
+trap 'rm -f "$keep" "$move"' EXIT
+
+# "to" is where the current entry goes; a continuation line follows its first line.
+to=keep
+continued=0
+moved_any=0
+report=()
+while IFS= read -r line || [ -n "$line" ]; do
+  if [ "$continued" = 1 ]; then
+    :
+  else
+    stripped=${line#"${line%%[![:space:]]*}"}
+    case "$stripped" in
+      ''|'#'*|';'*) to=keep ;;
+      *)
+        key=${line%%=*}
+        if [[ "$line" == *=* && "$key" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]]; then
+          case "$owned" in *" $key "*) to=keep ;; *) to=move; report+=("$key") ;; esac
+        else
+          to=move; report+=("<unrecognized line>")
+        fi ;;
+    esac
+  fi
+  if [ "$to" = move ]; then printf '%s\n' "$line" >> "$move"; moved_any=1; else printf '%s\n' "$line" >> "$keep"; fi
+  # An odd number of trailing backslashes continues the entry on the next line.
+  trailing=${line##*[!\\]}
+  if [ $(( ${#trailing} % 2 )) = 1 ]; then continued=1; else continued=0; fi
+done < "$managed"
+
+[ "$moved_any" = 1 ] || exit 0
+
+# 1. A copy of the file as it was.
+stamp=$(date -u +%Y%m%dT%H%M%SZ)
+backup=$managed.bak-$stamp
+n=1; while [ -e "$backup" ]; do backup=$managed.bak-$stamp-$n; n=$((n + 1)); done
+cp -p "$managed" "$backup"
+chmod 0600 "$backup"
+
+# 2. The entries, minus any key <local-file> already sets. systemd reads the local
+# file last, so its value is the one in effect; it stays.
+if [ -f "$local_file" ]; then
+  already=$(sed -n 's/^\([A-Za-z_][A-Za-z0-9_]*\)=.*/\1/p' "$local_file" | sort -u)
+else
+  already=
+  : > "$local_file"
+fi
+append=$(mktemp)
+trap 'rm -f "$keep" "$move" "$append"' EXIT
+skipping=0; continued=0
+while IFS= read -r line || [ -n "$line" ]; do
+  if [ "$continued" = 0 ]; then
+    key=${line%%=*}
+    skipping=0
+    if [[ "$line" == *=* && "$key" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]] && printf '%s\n' "$already" | grep -qx -- "$key"; then
+      skipping=1
+      # The very same line already there (a rollback restores the old file, an update moves it
+      # again) is not news; a different value is.
+      if grep -qxF -- "$line" "$local_file"; then printf 'same %s\n' "$key"; else printf 'kept %s\n' "$key"; fi
+    fi
+  fi
+  [ "$skipping" = 1 ] || printf '%s\n' "$line" >> "$append"
+  trailing=${line##*[!\\]}
+  if [ $(( ${#trailing} % 2 )) = 1 ]; then continued=1; else continued=0; fi
+done < "$move"
+
+if [ -s "$append" ]; then
+  [ ! -s "$local_file" ] || [ -z "$(tail -c1 "$local_file")" ] || printf '\n' >> "$local_file"
+  {
+    printf '\n# Moved from %s by install.sh on %s (the old file is %s).\n' \
+      "$(basename "$managed")" "$stamp" "$(basename "$backup")"
+    cat "$append"
+  } >> "$local_file"
+fi
+
+# 3. The managed file without them (cat keeps its owner and mode).
+cat "$keep" > "$managed"
+
+for k in "${report[@]}"; do
+  if [ "$k" = "<unrecognized line>" ]; then printf 'moved %s\n' "$k"
+  elif ! printf '%s\n' "$already" | grep -qx -- "$k"; then printf 'moved %s\n' "$k"; fi
+done | awk '!seen[$0]++'
+printf 'backup %s\n' "$backup"

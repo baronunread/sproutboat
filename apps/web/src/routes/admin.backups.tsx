@@ -100,9 +100,10 @@ function AdminBackups() {
       </Section>
 
       <Banner tone="info">
-        Off-box upload runs when <code>SPROUTBOAT_BACKUP_S3_*</code> is set in <code>/etc/sproutboat/control.env</code>{" "}
-        (any S3-compatible store). To restore, run <code>sudo sbctl restore &lt;archive&gt; --force</code> on the box:
-        it stops the services, restores the archive and starts them again. See <code>infra/README.md</code>.
+        Off-box upload runs when <code>SPROUTBOAT_BACKUP_S3_*</code> is set in{" "}
+        <code>/etc/sproutboat/control.local.env</code> (any S3-compatible store). To restore, run{" "}
+        <code>sudo sbctl restore &lt;archive&gt; --force</code> on the box: it stops the services, restores the archive
+        and starts them again. See <code>infra/README.md</code>.
       </Banner>
     </div>
   );

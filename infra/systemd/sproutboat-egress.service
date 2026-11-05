@@ -14,9 +14,11 @@ StartLimitIntervalSec=0
 Type=simple
 DynamicUser=yes
 WorkingDirectory=/opt/sproutboat
-# SB_EGRESS_TOKEN (and an optional SB_EGRESS_ALLOW), written by install.sh.
-# The edge unit reads the same file, so its brokers carry the token.
+# SB_EGRESS_TOKEN, written by install.sh. The edge unit reads the same file, so its
+# brokers carry the token. Your own settings (SB_EGRESS_ALLOW) go in egress.local.env,
+# read after it and never rewritten by the installer.
 EnvironmentFile=/etc/sproutboat/egress.env
+EnvironmentFile=-/etc/sproutboat/egress.local.env
 ExecStart=/usr/local/lib/sproutboat/bin/sproutboat-egress --host 127.0.0.1 --port 8070
 Restart=always
 RestartSec=2

@@ -5,6 +5,19 @@ Changes to the self-hosted Sproutboat platform are recorded here. Read the
 
 ## [Unreleased]
 
+### Breaking and operator actions
+
+- **Your settings now live in `*.local.env` files, and `sbctl update` no longer wipes them.** The installer rewrites `control.env`, `egress.env`, `sproutboat.env` and `caddy.env` on every run, so any key you added to them (S3 backup settings, `SPROUTBOAT_BACKUP_ENCRYPT=off`, the limit knobs, `SB_EGRESS_ALLOW`) was lost at the next update. The matching `control.local.env`, `egress.local.env`, `sproutboat.local.env` and `caddy.local.env` are read right after them by the units, win over them, and are never rewritten. See "Where settings live" in `infra/README.md`.
+- **The first update moves your existing settings for you.** Any key it finds in a generated file that the installer does not write goes to the matching local file, and the old file is kept as `<name>.env.bak-<UTC time>` (mode 0600; it holds the token, so delete it once you have checked). It prints key names only. A second update changes nothing. Settings an earlier update already dropped are gone: set them again in the local file. Where to set things, from now on: S3 backup and `SPROUTBOAT_BACKUP_ENCRYPT` and the limits in `control.local.env`, `SB_EGRESS_ALLOW` in `egress.local.env`.
+- Rolling back the update that did the move (`sbctl rollback`) restores the generated files from before it, with your old keys still in them, so it works with the release that does not know the local files. Updating again moves them again; a key already in the local file with the same value is dropped, not repeated.
+
+### Fixed
+
+- **`sbctl update` kept losing operator settings in `control.env`** (found by the 1.0.0-rc.1 end-to-end test). Same for `egress.env` (anything but `SB_EGRESS_ALLOW`), `sproutboat.env` and `caddy.env`, where a changed `XDG_DATA_HOME` would have sent Caddy's certificates to a new directory.
+- **GitHub sign-in turned itself off at an update** that was not given `SB_GITHUB_CLIENT_ID` and `SB_GITHUB_CLIENT_SECRET` again. The installer now reads them back like the other secrets.
+- **A box that updates from a fork or mirror went back to the default repository** after one update, because `update.env` was rewritten with the default. The recorded repository is kept.
+- **`sbctl` ran `control.env` as shell** (`backup`, `restore`) instead of reading it as data, so an S3 secret containing `&` or `$` would break or be executed. It parses the files now, the way systemd reads them, and loads `control.local.env` too.
+
 ## [1.0.0-rc.1] - 2026-11-05
 
 The first release candidate of Sproutboat Community 1.0: the single-machine, self-hosted edition. Three things are new: a homelab install mode, an Activity history with webhooks, and the dashboard rebuilt on the open design system `@sproutboat/ikada`.

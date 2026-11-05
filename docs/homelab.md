@@ -262,7 +262,8 @@ sudo SB_MODE=homelab SB_PROXY=caddy SB_CF_TOKEN=... SB_DOMAIN=fn.example.com \
 - Caddy asks Let's Encrypt for certificates over DNS-01, so port 80 can stay
   closed.
 - The token is stored in `/etc/sproutboat/caddy.env` and read back on every
-  update, so `sbctl update` keeps DNS-01.
+  update, so `sbctl update` keeps DNS-01. Other settings for the Caddy process go
+  in `caddy.local.env`, which updates never rewrite.
 - Caddy listens on 80 and 443 of the box. Point your DNS wildcard at the
   address your clients reach (LAN or tailnet).
 - `ufw` stays off unless you set `SB_FIREWALL=ufw`.
@@ -311,7 +312,7 @@ reachable from the LAN. Keep the allow list tight, or filter at the proxy.
 
 `SB_EGRESS_ALLOW` is a different knob. It lets sprouts' `fetch()` reach private
 addresses through the egress service. Add the addresses (comma-separated) to
-`/etc/sproutboat/egress.env` for an app that must talk to a LAN service, and
+`/etc/sproutboat/egress.local.env` for an app that must talk to a LAN service, and
 `systemctl restart sproutboat-egress`. See [Outbound fetch](../infra/README.md#outbound-fetch).
 
 ## (h) Updates, health, backups and restore
@@ -357,4 +358,6 @@ With `ufw` the installer allows `SB_SSH_PORT`, 80 and 443, and installs the
 package only then.
 
 The Cloudflare token is not in this file. It lives in `caddy.env`, which is
-mode 0640, and is read back from there.
+mode 0640, and is read back from there. Neither file takes settings of your own
+beyond the keys above; other settings live in the `*.local.env` files (see
+[Where settings live](../infra/README.md#where-settings-live)).

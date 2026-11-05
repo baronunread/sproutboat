@@ -55,10 +55,19 @@ ROOT=/opt/sproutboat
 STATE=/var/lib/sproutboat
 ETC=/etc/sproutboat
 CADDY_BIN=/usr/local/bin/caddy-sproutboat
+SB_REPO_GIVEN=${SB_REPO:-}
 SB_REPO=${SB_REPO:-https://github.com/baronunread/sproutboat.git}
 # Empty means "newest release"; resolved once git exists (see: locate the source).
 SB_REF=${SB_REF:-}
-if [ "${SB_UPDATE:-0}" = 1 ]; then SB_REF_PINNED=${SB_UPDATE_PINNED_REF-}; else SB_REF_PINNED=$SB_REF; fi
+if [ "${SB_UPDATE:-0}" = 1 ]; then
+  SB_REF_PINNED=${SB_UPDATE_PINNED_REF-}
+  # sbctl update fetched this release from the repository recorded in update.env (a fork
+  # or a mirror). Keep recording it; the default would send the next update elsewhere.
+  if [ -z "$SB_REPO_GIVEN" ]; then
+    _repo=$(sed -n "s/^SPROUTBOAT_UPDATE_REPO=//p" "$ETC/update.env" 2>/dev/null | tail -1)
+    [ -z "$_repo" ] || SB_REPO=$_repo
+  fi
+else SB_REF_PINNED=$SB_REF; fi
 
 # Colours only when stdout is a terminal (never in CI logs / pipes).
 if [ -t 1 ]; then
@@ -170,7 +179,7 @@ pre_update_backup() {
   archive=$(backup_newer_than "$mark")
   rm -f "$mark"
   [ -n "$archive" ] || die "the backup unit finished but wrote no archive under $STATE/backups; nothing was changed"
-  key=$(val_env "$ETC/control.env" SPROUTBOAT_BACKUP_KEY_FILE)
+  key=$(val_env_op "$ETC/control.env" "$ETC/control.local.env" SPROUTBOAT_BACKUP_KEY_FILE)
   [ -z "$key" ] || vargs=(--key "$key")
   "$ROOT/bun/bin/bun" "$SRC/apps/control/src/backups.ts" verify "$archive" "${vargs[@]}" \
     || die "the pre-update backup $archive failed verification; nothing was changed"
@@ -315,6 +324,54 @@ fi
 # Backfill from a previous install so a re-run (`sbctl update`, or piping the
 # script again) is unattended — `ask` no-ops for anything already set.
 val_env() { [ -f "$1" ] || return 0; sed -n "s/^$2=//p" "$1" | head -1; }
+# val_env_op MANAGED LOCAL KEY: the value the services see, an operator-owned LOCAL
+# file winning over the installer-owned MANAGED file (the order their units read them).
+val_env_op() {
+  local v=
+  [ ! -f "$2" ] || v=$(sed -n "s/^$3=//p" "$2" | tail -1)
+  [ -n "$v" ] || v=$(val_env "$1" "$3")
+  printf %s "$v"
+}
+# Operator settings live in <name>.local.env, which this installer never rewrites; the
+# systemd units read it right after <name>.env. env_split moves anything an operator put
+# in the installer-owned file (as the docs used to say) into the local one, after a
+# backup copy. ensure_local_env creates the local file, with a header, when it is missing.
+# See "Where settings live" in infra/README.md.
+env_split() { # env_split NAME KEY...: KEY... are the keys this installer writes to NAME.env
+  local name=$1 out line; shift
+  [ -f "$ETC/$name.env" ] || return 0
+  out=$(bash "$ROOT/infra/sb-envsplit" "$ETC/$name.env" "$ETC/$name.local.env" "$@") \
+    || die "could not move your settings out of $ETC/$name.env into $name.local.env; nothing was rewritten"
+  while IFS= read -r line; do
+    case "$line" in
+      moved\ *) note "$name.env: moved ${line#moved } to $name.local.env" ;;
+      same\ *) note "$name.env: ${line#same } is already in $name.local.env with the same value" ;;
+      kept\ *) warn "$name.env and $name.local.env both set ${line#kept }; keeping the value in $name.local.env (the one the service reads)" ;;
+      backup\ *) ok "the old $name.env is kept as ${line#backup }" ;;
+    esac
+  done <<< "$out"
+}
+# operator_env NAME OWNER:GROUP MODE "what goes here" KEY...: the local file first (with its
+# header), then the move, so a file the move creates still starts with the header.
+operator_env() {
+  local name=$1
+  ensure_local_env "$1" "$2" "$3" "$4"
+  shift 4
+  env_split "$name" "$@"
+}
+ensure_local_env() { # ensure_local_env NAME OWNER:GROUP MODE "what goes here"
+  local f=$ETC/$1.local.env
+  if [ ! -e "$f" ]; then
+    {
+      printf "# Your settings for %s. install.sh never rewrites this file.\n" "$1.env"
+      printf "# %s.env is regenerated on every install and update; put anything of yours here\n" "$1"
+      printf "# instead. The services read this file right after it, so a key set here wins.\n"
+      printf "# One KEY=value per line, no quotes needed. Restart the service to apply a change.\n"
+      printf "# %s\n#\n" "$4"
+    } > "$f"
+    chown "$2" "$f"; chmod "$3" "$f"
+  fi
+}
 SB_DOMAIN=${SB_DOMAIN:-$(val_env "$ETC/sproutboat.env" SPROUTBOAT_DEPLOYMENT_DOMAIN)}
 SB_ADMIN=${SB_ADMIN:-$(val_env "$ETC/control.env" SPROUTBOAT_BOOTSTRAP_USERNAME)}
 SB_ACME_EMAIL=${SB_ACME_EMAIL:-$(val_env "$ETC/caddy.env" ACME_EMAIL)}
@@ -440,8 +497,9 @@ note "domain $SB_DOMAIN · acme $SB_ACME_EMAIL · admin $SB_ADMIN"
 note "mode $SB_MODE · proxy $SB_PROXY · firewall $SB_FIREWALL · scheme $SB_SCHEME · bind $SB_BIND_HOST"
 # The dashboard ships with every install. GitHub sign-in is opt-in via env; the
 # admin always signs in with the bootstrap token.
-SB_GITHUB_CLIENT_ID=${SB_GITHUB_CLIENT_ID:-}
-SB_GITHUB_CLIENT_SECRET=${SB_GITHUB_CLIENT_SECRET:-}
+# Kept across updates like the secrets below: a re-run without them must not turn sign-in off.
+SB_GITHUB_CLIENT_ID=${SB_GITHUB_CLIENT_ID:-$(val_env "$ETC/control.env" GITHUB_CLIENT_ID)}
+SB_GITHUB_CLIENT_SECRET=${SB_GITHUB_CLIENT_SECRET:-$(val_env "$ETC/control.env" GITHUB_CLIENT_SECRET)}
 DASH_URL="$SB_SCHEME://dashboard.$SB_DOMAIN"
 CONTROL_URL="$SB_SCHEME://control.$SB_DOMAIN"
 
@@ -780,7 +838,26 @@ fi
 chown root:sproutboat "$BACKUP_KEY_FILE"; chmod 0640 "$BACKUP_KEY_FILE"
 
 # --- write env BEFORE starting services -----------------------------
-say "Writing $ETC/{install,sproutboat,control}.env"
+say "Writing $ETC/{install,sproutboat,control,egress}.env"
+# Installer-owned files are rewritten below; the operator's settings live in the
+# matching *.local.env, which nothing here rewrites. Move anything an operator put in an
+# installer-owned file into its local file first, with a backup copy of the old file.
+# (install.env, engine.env and update.env have no local file: they hold only the keys
+# listed in their own sections, and each of those is read back before it is rewritten.)
+umask 077
+operator_env sproutboat root:sproutboat 0640 "Settings shared by the control service and the edge." \
+  SPROUTBOAT_DEPLOYMENT_DOMAIN SPROUTBOAT_DASHBOARD_URL SPROUTBOAT_DASHBOARD_DIR
+operator_env control root:sproutboat 0640 "Limits, backups (SPROUTBOAT_BACKUP_S3_*, SPROUTBOAT_BACKUP_ENCRYPT), events, ...: see infra/README.md." \
+  SPROUTBOAT_DATABASE_PATH SPROUTBOAT_ARTIFACTS_DIR SPROUTBOAT_DEPLOYMENTS_PATH \
+  SPROUTBOAT_BOOTSTRAP_USERNAME SPROUTBOAT_BOOTSTRAP_TOKEN SPROUTBOAT_ADMIN_EMAILS \
+  BETTER_AUTH_SECRET BETTER_AUTH_URL SPROUTBOAT_BACKUP_KEY_FILE GITHUB_CLIENT_ID GITHUB_CLIENT_SECRET
+operator_env egress root:root 0600 "Example: SB_EGRESS_ALLOW=10.0.0.5 lets sprouts reach that private address. The egress service, control and the edge all read it." \
+  SB_EGRESS_TOKEN
+if [ "$SB_PROXY" = caddy ]; then
+  operator_env caddy root:root 0640 "Environment for Caddy, for example XDG_DATA_HOME to keep its data (certificates) elsewhere." \
+    ACME_EMAIL CLOUDFLARE_API_TOKEN
+fi
+umask 022
 # install.env holds the mode choices (no secrets) so `sbctl update` keeps them.
 {
   echo "# Written by install.sh; kept across updates. Environment variables override it on a re-run."
@@ -797,6 +874,7 @@ say "Writing $ETC/{install,sproutboat,control}.env"
 chown root:root "$INSTALL_ENV"; chmod 0644 "$INSTALL_ENV"
 umask 077
 {
+  echo "# Generated by install.sh and rewritten on every install and update. Put your own settings in sproutboat.local.env."
   echo "SPROUTBOAT_DEPLOYMENT_DOMAIN=$SB_DOMAIN"
   echo "SPROUTBOAT_DASHBOARD_URL=$DASH_URL"
   # No Caddy to serve the dashboard files: control serves the built SPA itself.
@@ -804,6 +882,7 @@ umask 077
 } > "$ETC/sproutboat.env"
 chown root:sproutboat "$ETC/sproutboat.env"; chmod 0640 "$ETC/sproutboat.env"
 {
+  echo "# Generated by install.sh and rewritten on every install and update. Put your own settings in control.local.env."
   echo "SPROUTBOAT_DATABASE_PATH=$STATE/sproutboat.sqlite"
   echo "SPROUTBOAT_ARTIFACTS_DIR=$STATE/artifacts"
   echo "SPROUTBOAT_DEPLOYMENTS_PATH=$STATE/deployments.json"
@@ -821,18 +900,19 @@ chown root:sproutboat "$ETC/sproutboat.env"; chmod 0640 "$ETC/sproutboat.env"
 chown root:sproutboat "$ETC/control.env"; chmod 0640 "$ETC/control.env"
 
 # #252 — the token brokers present to sproutboat-egress. Kept across upgrades,
-# like the other secrets; so is an operator's SB_EGRESS_ALLOW. Only systemd
-# reads this file, so root-only.
+# like the other secrets. An operator's SB_EGRESS_ALLOW lives in egress.local.env
+# (moved there above if it was found in this file). Only systemd reads this file,
+# so root-only.
 EGRESS_TOKEN=$(val_env "$ETC/egress.env" SB_EGRESS_TOKEN); EGRESS_TOKEN=${EGRESS_TOKEN:-$(randhex)}
-EGRESS_ALLOW=$(val_env "$ETC/egress.env" SB_EGRESS_ALLOW)
 {
+  echo "# Generated by install.sh and rewritten on every install and update. Put your own settings in egress.local.env."
   echo "SB_EGRESS_TOKEN=$EGRESS_TOKEN"
-  [ -n "$EGRESS_ALLOW" ] && echo "SB_EGRESS_ALLOW=$EGRESS_ALLOW"
 } > "$ETC/egress.env"
 chmod 0600 "$ETC/egress.env"
 
 if [ "$SB_PROXY" = caddy ]; then
 {
+  echo "# Generated by install.sh and rewritten on every install and update. Put your own settings in caddy.local.env."
   echo "ACME_EMAIL=$SB_ACME_EMAIL"
   [ -n "${SB_CF_TOKEN:-}" ] && echo "CLOUDFLARE_API_TOKEN=$SB_CF_TOKEN"
 } > "$ETC/caddy.env"
@@ -975,6 +1055,7 @@ install -d -m 0755 /etc/systemd/system/caddy.service.d
 cat > /etc/systemd/system/caddy.service.d/sproutboat.conf <<EOF
 [Service]
 EnvironmentFile=$ETC/caddy.env
+EnvironmentFile=-$ETC/caddy.local.env
 ExecStart=
 ExecStart=$CADDY_BIN run --environ --config /etc/caddy/Caddyfile
 ExecReload=
