@@ -1,0 +1,110 @@
+#!/usr/bin/env bash
+#
+# sb-snapshot: copy the running release to /opt/sproutboat-prev so sb-rollback can
+# put it back. install.sh runs the STAGED copy of this script on `sbctl update`,
+# after the pre-update backup and before it touches /opt/sproutboat.
+#
+#   sb-snapshot --check    only check that the disk can hold the snapshot
+#   sb-snapshot            check, then take the snapshot
+#
+# Layout of /opt/sproutboat-prev (the same paths sb-rollback restores):
+#   tree/   /opt/sproutboat (Bun, node_modules and the built dashboard included)
+#   etc/    /etc/sproutboat, the Caddyfile, the sproutboat and caddy systemd units
+#           and drop-ins, logrotate and journald snippets
+#   usr/    /usr/local/bin/sbctl and caddy-sproutboat, /usr/local/lib/sproutboat
+#           (update, engine, backup-stage, health, rollback and bin/ with the engines)
+#   RELEASE what the snapshot holds (written last; no RELEASE means no usable snapshot)
+#
+# The tree is copied with rsync -a --delete, so a repeat run only copies what changed.
+#
+# Test overrides: SB_ROLLBACK_ROOT (prefix for every host path, default empty),
+# SB_ROLLBACK_PREV (default /opt/sproutboat-prev), SB_SNAPSHOT_SLACK_MIB (200).
+set -euo pipefail
+
+PFX=${SB_ROLLBACK_ROOT:-}
+ROOT=$PFX/opt/sproutboat
+PREV=${SB_ROLLBACK_PREV:-$PFX/opt/sproutboat-prev}
+SLACK_MIB=${SB_SNAPSHOT_SLACK_MIB:-200}
+
+die() { printf 'sb-snapshot: %s\n' "$*" >&2; exit 1; }
+
+# Host paths (relative to /) the snapshot keeps.
+FILES=(
+  etc/caddy/Caddyfile
+  etc/systemd/system/caddy.service
+  etc/systemd/system/sproutboat-control.service
+  etc/systemd/system/sproutboat-edge.service
+  etc/systemd/system/sproutboat-egress.service
+  etc/systemd/system/sproutboat-backup.service
+  etc/systemd/system/sproutboat-backup.timer
+  etc/logrotate.d/sproutboat
+  etc/systemd/journald.conf.d/sproutboat.conf
+  usr/local/bin/sbctl
+  usr/local/bin/caddy-sproutboat
+)
+DIRS=(
+  etc/sproutboat
+  etc/systemd/system/caddy.service.d
+  etc/systemd/system/sproutboat-control.service.d
+  etc/systemd/system/sproutboat-edge.service.d
+  etc/systemd/system/sproutboat-egress.service.d
+  usr/local/lib/sproutboat
+)
+
+kib() { du -sk "$1" 2>/dev/null | cut -f1; }
+
+# Free space on the filesystem that holds the snapshot, in KiB.
+free_kib() {
+  local at=$PREV
+  while [ ! -d "$at" ]; do at=$(dirname "$at"); done
+  df -Pk "$at" | awk 'NR == 2 { print $4 }'
+}
+
+check_disk() {
+  [ -d "$ROOT" ] || die "$ROOT does not exist"
+  local need have held=0
+  need=$(kib "$ROOT")
+  # What an earlier snapshot already holds is reused by rsync, not copied again.
+  [ ! -d "$PREV/tree" ] || held=$(kib "$PREV/tree")
+  need=$(( need - held ))
+  [ "$need" -ge 0 ] || need=0
+  need=$(( need + SLACK_MIB * 1024 ))
+  have=$(free_kib)
+  [ "$have" -ge "$need" ] || die "not enough disk for the previous-release snapshot: $(( have / 1024 )) MiB free where $PREV lives, need $(( need / 1024 )) MiB (the size of $ROOT plus ${SLACK_MIB} MiB). Free some space (for example old backups under /var/lib/sproutboat/backups) and retry"
+  printf 'disk ok: %s MiB free, snapshot needs up to %s MiB\n' "$(( have / 1024 ))" "$(( need / 1024 ))"
+}
+
+env_value() { [ -f "$1" ] && sed -n "s/^$2=//p" "$1" | tail -1 || true; }
+
+take() {
+  local rel
+  rm -f "$PREV/RELEASE"
+  install -d -m 0755 "$PREV" "$PREV/tree"
+  rsync -a --delete "$ROOT/" "$PREV/tree/"
+  rm -rf "${PREV:?}/etc" "${PREV:?}/usr"
+  for rel in "${FILES[@]}"; do
+    [ -e "$PFX/$rel" ] || continue
+    install -d -m 0755 "$PREV/$(dirname "$rel")"
+    cp -a "$PFX/$rel" "$PREV/$rel"
+  done
+  for rel in "${DIRS[@]}"; do
+    [ -d "$PFX/$rel" ] || continue
+    install -d -m 0755 "$PREV/$rel"
+    rsync -a --delete "$PFX/$rel/" "$PREV/$rel/"
+  done
+  local update_env=$PFX/etc/sproutboat/update.env version
+  version=$(sed -n 's/.*"version": *"\([^"]*\)".*/\1/p' "$ROOT/package.json" 2>/dev/null | head -1 || true)
+  {
+    printf 'version=%s\n' "${version:-unknown}"
+    printf 'commit=%s\n' "$(env_value "$update_env" SPROUTBOAT_UPDATE_COMMIT)"
+    printf 'ref=%s\n' "$(env_value "$update_env" SPROUTBOAT_UPDATE_REF)"
+    printf 'date=%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  } > "$PREV/RELEASE.tmp"
+  mv "$PREV/RELEASE.tmp" "$PREV/RELEASE"
+}
+
+case "${1:-}" in
+  --check) check_disk ;;
+  '') check_disk; take; printf 'snapshot of %s taken in %s\n' "$(tr '\n' ' ' < "$PREV/RELEASE")" "$PREV" ;;
+  *) die "usage: sb-snapshot [--check]" ;;
+esac

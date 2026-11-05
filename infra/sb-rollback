@@ -1,0 +1,107 @@
+#!/usr/bin/env bash
+#
+# sb-rollback: put the release that sb-snapshot saved in /opt/sproutboat-prev back.
+# Installed to /usr/local/lib/sproutboat/rollback; `sbctl rollback` runs it, and
+# install.sh runs the staged copy when an update fails. Self-contained: it never
+# reads anything from the (possibly half-installed) new tree.
+#
+#   sb-rollback
+#
+# Files are compared by checksum, not by size and time: a rollback must not trust a
+# quick check.
+# Steps: restore tree/ to /opt/sproutboat (rsync --delete), restore etc/ and usr/
+# (config, units, drop-ins, sbctl, the helper scripts, the engine binaries, the
+# Caddy binary), re-apply the owners and modes the installer sets, daemon-reload,
+# restart the services, then run the health gate. Exits 1 when the host is still
+# unhealthy afterwards. Nothing is stopped first: the restart replaces the processes.
+#
+# A database migration run by the new release stays applied. The previous release
+# tolerates it by policy: a release only adds columns the previous one ignores, or
+# drops columns it re-adds when started (0.14.0 and 0.13.x work this way).
+#
+# Test overrides: SB_ROLLBACK_ROOT (prefix for every host path), SB_ROLLBACK_PREV,
+# SB_SYSTEMCTL (default systemctl; `true` stubs it), SB_HEALTH_BIN (the health gate
+# to run; default is the restored /usr/local/lib/sproutboat/health).
+set -euo pipefail
+
+PFX=${SB_ROLLBACK_ROOT:-}
+ROOT=$PFX/opt/sproutboat
+PREV=${SB_ROLLBACK_PREV:-$PFX/opt/sproutboat-prev}
+SYSTEMCTL=${SB_SYSTEMCTL:-systemctl}
+LIB=$PFX/usr/local/lib/sproutboat
+CADDY_BIN=$PFX/usr/local/bin/caddy-sproutboat
+ETC=$PFX/etc/sproutboat
+
+die() { printf 'sb-rollback: %s\n' "$*" >&2; exit 1; }
+
+[ -n "$PFX" ] || [ "$(id -u)" = 0 ] || die "run as root (sudo sbctl rollback)"
+[ -f "$PREV/RELEASE" ] && [ -f "$PREV/tree/install.sh" ] \
+  || die "no usable snapshot in $PREV (RELEASE or tree/install.sh is missing); restore a backup instead: sbctl restore <archive> --force"
+
+RELEASE=$(tr '\n' ' ' < "$PREV/RELEASE"); RELEASE=${RELEASE% }
+printf 'Rolling back to %s\n' "$RELEASE"
+
+# chown only for the real host: a prefixed run (tests) is unprivileged.
+own() { [ -n "$PFX" ] || chown "$@"; }
+
+caddy_changed=0
+if [ -f "$PREV/usr/local/bin/caddy-sproutboat" ] && ! cmp -s "$PREV/usr/local/bin/caddy-sproutboat" "$CADDY_BIN"; then caddy_changed=1; fi
+
+# 1. The release tree, with Bun, node_modules and the built dashboard.
+rsync -a --checksum --delete "$PREV/tree/" "$ROOT/"
+echo "  restored $ROOT"
+
+# 2. Host files. Plain files and /etc/sproutboat are copied over (nothing the
+# rollback does not know about is deleted there); the helper scripts and the
+# drop-in directories are mirrored, so files the new release added go away. The
+# running scripts (rollback, health) are kept: rsync renames files into place, and
+# a later `sbctl rollback` or `sbctl health` still works after a roll back.
+if [ -d "$PREV/etc" ]; then rsync -a --checksum "$PREV/etc/" "$PFX/etc/"; fi
+if [ -d "$PREV/usr" ]; then
+  rsync -a --checksum --exclude /local/lib/sproutboat "$PREV/usr/" "$PFX/usr/"
+fi
+mirror() { # mirror <relative dir> [rsync args]: dest matches the snapshot, or is removed
+  local rel=$1; shift
+  if [ -d "$PREV/$rel" ]; then
+    install -d -m 0755 "$PFX/$rel"
+    rsync -a --checksum --delete "$@" "$PREV/$rel/" "$PFX/$rel/"
+  else
+    rm -rf "${PFX:?}/$rel"
+  fi
+}
+mirror usr/local/lib/sproutboat --exclude /rollback --exclude /health
+for d in caddy sproutboat-control sproutboat-edge sproutboat-egress; do
+  mirror "etc/systemd/system/$d.service.d"
+done
+echo "  restored config, units, sbctl, helper scripts and engines"
+
+# 3. Owners and modes, as install.sh sets them.
+for f in control.env sproutboat.env backup.key; do
+  [ ! -e "$ETC/$f" ] || { own root:sproutboat "$ETC/$f"; chmod 0640 "$ETC/$f"; }
+done
+[ ! -e "$ETC/caddy.env" ] || { own root:root "$ETC/caddy.env"; chmod 0640 "$ETC/caddy.env"; }
+for f in egress.env update.env; do
+  [ ! -e "$ETC/$f" ] || { own root:root "$ETC/$f"; chmod 0600 "$ETC/$f"; }
+done
+[ ! -e "$ETC/engine.env" ] || { own root:root "$ETC/engine.env"; chmod 0644 "$ETC/engine.env"; }
+own root:root "$ROOT"; chmod 0755 "$ROOT"
+
+# 4. Restart onto the restored code.
+"$SYSTEMCTL" daemon-reload
+"$SYSTEMCTL" restart sproutboat-control sproutboat-egress sproutboat-edge
+# A different Caddy binary needs a real restart; a reload keeps running the old one.
+if [ "$caddy_changed" = 1 ]; then "$SYSTEMCTL" restart caddy; else "$SYSTEMCTL" reload-or-restart caddy; fi
+
+# 5. Health.
+HEALTH=${SB_HEALTH_BIN:-$LIB/health}
+rc=0
+if [ -x "$HEALTH" ]; then "$HEALTH" || rc=$?; else echo "  no health gate at $HEALTH; check by hand: sbctl status" >&2; rc=1; fi
+
+echo "rolled back to $RELEASE"
+echo "note: a database migration run by the new release stays applied. The previous release tolerates it by policy: a release only adds columns the previous one ignores, or drops columns it re-adds."
+if [ "$rc" != 0 ]; then
+  echo "the host is still unhealthy after the rollback." >&2
+  echo "next step: restore the pre-update backup: sbctl backup list, then sbctl restore <archive> --force" >&2
+  exit 1
+fi
+echo "healthy"

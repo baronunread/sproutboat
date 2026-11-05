@@ -16,6 +16,13 @@ Changes to the self-hosted Sproutboat platform are recorded here. Read the
 
 ### Breaking and operator actions
 
+- **`sbctl update` now takes a backup first, keeps the previous release, and rolls itself back.** It runs and
+  verifies a backup (stops with nothing changed if that fails), copies the running release to
+  `/opt/sproutboat-prev` (needs about the size of `/opt/sproutboat` plus 200 MiB free on `/opt`), and after the
+  restart checks the whole host; if the check fails it restores the previous release and exits 1. The first update
+  to this release still runs the old bootstrapper on the box, which is fine: every new step lives in the installer
+  it fetches. `SB_SKIP_BACKUP=1` and `SB_NO_ROLLBACK=1` turn the parts off. See "Updating and rolling back" in
+  `infra/README.md`.
 - **Backups v2: copy `/etc/sproutboat/backup.key` off the box.** `sbctl update` creates it, and new backups are
   encrypted with it (`.tar.gz.enc`). Without the key they cannot be restored. Old `.tar.gz` archives still restore.
   Restoring onto a box that lacks the key needs `sbctl restore <archive> --key FILE`. Set
@@ -59,6 +66,8 @@ Changes to the self-hosted Sproutboat platform are recorded here. Read the
 
 ### Changed
 
+- `sbctl update` and `install.sh` exit non-zero on any failure (backup, verify, disk, memory, build, validation,
+  health, rollback), and a fresh install exits 1 when a unit is not active. Before, a stopped unit only warned.
 - Memory caps on every unit: control 384M, egress 128M on Rust (512M on Bun), caddy 256M, backup 512M (niced, idle I/O), each with a
   `MemoryHigh`. The edge cap is now computed from RAM at install time instead of a fixed 2500M.
 - Control, edge and egress keep retrying every 2 s after crashes (`StartLimitIntervalSec=0`).
@@ -83,6 +92,8 @@ Changes to the self-hosted Sproutboat platform are recorded here. Read the
 
 ### Added
 
+- `sbctl update --check` (installed vs target release and the changelog between them), `sbctl health [--json]`
+  and `sbctl rollback [--yes]`.
 - `sbctl memory`: MemTotal, MemAvailable, and each unit's cap and current use.
 - The update build (`bun install`, dashboard build, auth migration) runs in a 1200M capped scope
   (`SB_BUILD_MEMORY_MAX`).

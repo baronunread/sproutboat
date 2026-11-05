@@ -119,6 +119,72 @@ check_build_memory() {
   fi
 }
 
+# --- safe update --------------------------------------------------------------
+# On `sbctl update` (SB_UPDATE=1): back up, verify the backup, save the running
+# release to /opt/sproutboat-prev, and only then touch /opt/sproutboat. After the
+# restart a health gate decides: any failure from the snapshot on rolls back to the
+# saved release and exits non-zero. See "Updating and rolling back" in infra/README.md.
+# SB_SKIP_BACKUP=1 skips the backup, SB_NO_ROLLBACK=1 keeps a failed update in place
+# for debugging (the exit code is still non-zero), SB_HEALTH_TIMEOUT (45) sets the gate.
+SAFE_UPDATE=0
+if [ "${SB_UPDATE:-0}" = 1 ] && [ "${SB_SKIP_SERVICES:-0}" != 1 ]; then SAFE_UPDATE=1; fi
+PREV_RELEASE=/opt/sproutboat-prev
+PRE_UPDATE_BACKUP=
+
+# The newest backup archive written after file $1 was created.
+backup_newer_than() {
+  find "$STATE/backups" -maxdepth 1 -type f -name 'sproutboat-*.tar.gz*' -newer "$1" 2>/dev/null | sort | tail -n 1
+}
+
+# Take a backup with the INSTALLED code (under the backup unit's own memory cap), then
+# check it with the verifier of the release being installed. Dies before anything has
+# changed when either fails.
+pre_update_backup() {
+  if [ "${SB_SKIP_BACKUP:-0}" = 1 ]; then
+    warn "SB_SKIP_BACKUP=1: no pre-update backup; a failed update cannot be undone for data"
+    return 0
+  fi
+  local mark archive key vargs=()
+  say "Pre-update backup"
+  mark=$(mktemp)
+  systemctl start sproutboat-backup.service \
+    || { rm -f "$mark"; die "the pre-update backup failed (journalctl -u sproutboat-backup); nothing was changed. SB_SKIP_BACKUP=1 skips it"; }
+  archive=$(backup_newer_than "$mark")
+  rm -f "$mark"
+  [ -n "$archive" ] || die "the backup unit finished but wrote no archive under $STATE/backups; nothing was changed"
+  key=$(val_env "$ETC/control.env" SPROUTBOAT_BACKUP_KEY_FILE)
+  [ -z "$key" ] || vargs=(--key "$key")
+  "$ROOT/bun/bin/bun" "$SRC/apps/control/src/backups.ts" verify "$archive" "${vargs[@]}" \
+    || die "the pre-update backup $archive failed verification; nothing was changed"
+  PRE_UPDATE_BACKUP=$archive
+  ok "backup $(basename "$archive") verified"
+  note "this archive is the fallback for data: sbctl restore $archive --force"
+}
+
+# Run on every exit once the snapshot exists. A non-zero exit rolls back, using the
+# STAGED rollback and health scripts (the installed copies may not exist yet).
+rollback_armed() {
+  local rc=$1
+  trap - EXIT
+  trap '' HUP INT TERM
+  [ "$rc" -ne 0 ] || exit 0
+  printf '\n%s ✗%s the update failed (exit %s)\n' "$C_ERR" "$C_0" "$rc" >&2
+  if [ "${SB_NO_ROLLBACK:-0}" = 1 ]; then
+    warn "SB_NO_ROLLBACK=1: leaving the failed update in place. Roll back by hand: sudo bash $SRC/infra/sb-rollback"
+    exit "$rc"
+  fi
+  say "Rolling back to the previous release"
+  SB_HEALTH_BIN="$SRC/infra/sb-health" bash "$SRC/infra/sb-rollback" \
+    || warn "the rollback did not finish cleanly; see the messages above"
+  [ -z "$PRE_UPDATE_BACKUP" ] || warn "data fallback: sbctl restore $PRE_UPDATE_BACKUP --force"
+  exit "$rc"
+}
+
+# Poll the whole host (units, control, edge, egress, caddy) until healthy or timeout.
+health_gate() {
+  SB_HEALTH_TIMEOUT=${SB_HEALTH_TIMEOUT:-45} bash "$SRC/infra/sb-health"
+}
+
 # `curl ... | sudo bash` leaves stdin on the pipe, not the terminal. Prompts and
 # the DNS-wait keypress read from $PROMPT_TTY instead; empty means truly no
 # terminal (CI / cron) and interactive input is impossible.
@@ -163,7 +229,8 @@ if [ "${1:-}" = --uninstall ]; then
   systemctl daemon-reload
   rm -f "$CADDY_BIN" /usr/local/bin/sbctl /etc/sysctl.d/80-sproutboat-userns.conf /root/sproutboat-admin.env \
         /etc/logrotate.d/sproutboat /etc/systemd/journald.conf.d/sproutboat.conf
-  rm -f /usr/local/lib/sproutboat/backup-stage
+  rm -f /usr/local/lib/sproutboat/backup-stage /usr/local/lib/sproutboat/health /usr/local/lib/sproutboat/rollback
+  rm -rf /opt/sproutboat-prev
   # /etc/sproutboat holds caddy.d (operator drop-ins) and goes even with --keep-state: copy it first.
   rm -rf "$ROOT" /usr/local/lib/sproutboat /opt/sproutboat-src /etc/sproutboat /etc/caddy
   [ "$KEEP_STATE" = 1 ] || rm -rf "$STATE"
@@ -316,6 +383,21 @@ install -d -m 0750 -o root -g sproutboat "$ETC"
 
 # Refuse a starved build before the source tree is replaced.
 check_build_memory
+
+# Updates: check the disk, back up and verify, save the running release, then arm
+# the rollback. Nothing below this block runs without a way back.
+if [ "$SAFE_UPDATE" = 1 ]; then
+  say "Preparing a safe update"
+  bash "$SRC/infra/sb-snapshot" --check || die "no room for the previous-release snapshot; nothing was changed"
+  pre_update_backup
+  say "Saving the running release to $PREV_RELEASE"
+  bash "$SRC/infra/sb-snapshot" || die "could not snapshot the running release; nothing was changed"
+  ok "previous release kept in $PREV_RELEASE (sbctl rollback restores it)"
+  trap 'rollback_armed $?' EXIT
+  trap 'exit 129' HUP
+  trap 'exit 130' INT
+  trap 'exit 143' TERM
+fi
 
 # --- sync the tree ------------------------------------------------------
 # --delete keeps $ROOT a clean mirror of the checkout, but must NOT touch the
@@ -755,6 +837,8 @@ install -m 0755 "$ROOT/infra/sb-backup-stage" /usr/local/lib/sproutboat/backup-s
 install -m 0755 "$ROOT/infra/sb-engine" /usr/local/lib/sproutboat/engine
 # Bun-fallback drop-ins (or none, for rust) before systemd re-reads the units.
 SB_ENGINE_NO_RELOAD=1 /usr/local/lib/sproutboat/engine apply
+install -m 0755 "$ROOT/infra/sb-health" /usr/local/lib/sproutboat/health
+install -m 0755 "$ROOT/infra/sb-rollback" /usr/local/lib/sproutboat/rollback
 
 # --- Better Auth schema (dashboard + admin token login) ---------------
 say "Migrating the auth database"
@@ -798,9 +882,17 @@ else
   # A replaced binary needs a real restart; a reload keeps running the old one.
   if [ "$CADDY_REPLACED" = 1 ]; then systemctl restart caddy; else systemctl reload-or-restart caddy; fi
   systemctl start sproutboat-backup.timer
-  for u in "${units[@]}"; do
-    systemctl is-active --quiet "$u" && ok "$u" || warn "$u is not active — check: journalctl -u $u"
-  done
+  if [ "$SAFE_UPDATE" = 1 ]; then
+    # The gate replaces the per-unit lines: it checks the units and the HTTP
+    # endpoints, and a failure rolls the update back (see rollback_armed).
+    say "Health gate (up to ${SB_HEALTH_TIMEOUT:-45} s)"
+    health_gate || die "the health gate failed after the restart"
+    ok "healthy"
+  else
+    for u in "${units[@]}"; do
+      systemctl is-active --quiet "$u" && ok "$u" || warn "$u is not active; check: journalctl -u $u"
+    done
+  fi
 
   # --- engine health probe (fresh installs only) --------------------
   # An update has its own health gate and rollback. On a fresh install, if the Rust
@@ -824,6 +916,15 @@ else
   ( cd "$ROOT" && "$BUN" run --silent runtime:preflight --quiet ) \
     && ok "sandbox ready" \
     || warn "preflight reported problems — run 'sudo sbctl preflight' for detail; deployments need bubblewrap working"
+
+  # A fresh install must not report success with a unit down (after any engine
+  # fallback above). Give a unit that is still restarting a few seconds.
+  if [ "$SAFE_UPDATE" != 1 ]; then
+    for u in "${units[@]}"; do
+      for _ in 1 2 3 4 5 6 7 8 9 10; do systemctl is-active --quiet "$u" && break; sleep 1; done
+      systemctl is-active --quiet "$u" || die "$u is not active after the install; check: journalctl -u $u"
+    done
+  fi
 fi
 
 # Snapshot /etc/sproutboat and Caddy's data for the backups. The nightly unit
@@ -844,6 +945,9 @@ UPDATE_COMMIT=${UPDATE_COMMIT:-unknown}
   printf 'SPROUTBOAT_UPDATE_COMMIT=%s\n' "$UPDATE_COMMIT"
 } > "$ETC/update.env"
 chown root:root "$ETC/update.env"; chmod 0600 "$ETC/update.env"
+
+# Everything that can fail an update has passed: disarm the rollback.
+trap - EXIT HUP INT TERM
 
 printf '\n%s▸ Sproutboat is up%s\n' "$C_OK" "$C_0"
 rule
@@ -866,12 +970,21 @@ say "Deploy from your workstation"
 note "npx sproutboat login --api-url https://control.$SB_DOMAIN --token <token>"
 note "sproutboat init hello && cd hello && sproutboat deploy"
 
+if [ -n "$PRE_UPDATE_BACKUP" ]; then
+  say "This update"
+  note "pre-update backup: $PRE_UPDATE_BACKUP (the fallback for data: sbctl restore <archive> --force)"
+fi
+if [ "$SAFE_UPDATE" = 1 ]; then
+  note "previous release kept in $PREV_RELEASE; undo this update with: sudo sbctl rollback"
+fi
+
 say "Operate  (sudo sbctl <cmd>)"
 note "sbctl status            health of every unit"
 note "sbctl logs [control|edge|caddy]   follow logs"
 note "sbctl down / sbctl up   pause / resume everything"
 note "sbctl engine [rust|bun] show or switch the edge and egress engines (now: edge=$ENGINE_EDGE egress=$ENGINE_EGRESS)"
-note "sbctl update            stage a fresh release, then run its installer"
+note "sbctl update [--check]  stage a fresh release, then run its installer (--check: show what would change)"
+note "sbctl health / rollback check the host / return to the previous release"
 note "sbctl uninstall         remove everything (--keep-state to keep the db)"
 
 say "Backups"

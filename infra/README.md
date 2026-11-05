@@ -324,6 +324,89 @@ Better Auth migration
 (`bunx --bun auth@1.7.1 migrate --config apps/control/src/auth.migrate.ts --yes`)
 for you.
 
+## Updating and rolling back
+
+`sudo sbctl update` is safe to run on a live box: it backs up first, keeps the running
+release, checks the result and undoes itself when the check fails. Order of events:
+
+1. `sbctl update` stages the target release (the newest `vX.Y.Z` tag, or the pin in
+   `/etc/sproutboat/update.env`) and runs that checkout's `install.sh --upgrade`. Every
+   safety step below lives in that new installer, so even the first update to a release
+   that has them is protected, whichever bootstrapper the box still has.
+2. Checks that need nothing changed: memory for the capped build, and free disk for the
+   snapshot (below). A refusal changes nothing.
+3. **Pre-update backup.** `sproutboat-backup.service` runs with the installed code (under
+   its own 512M cap), then the new release's verifier checks the new archive. If either
+   fails the update stops with nothing changed. The installer prints the archive name:
+   it is the fallback for data (`sbctl restore <archive> --force`). `SB_SKIP_BACKUP=1`
+   skips this step.
+4. **Previous release snapshot** in `/opt/sproutboat-prev` (see below).
+5. The rollback is armed. The tree is synced, Bun and Caddy are upgraded if pinned
+   versions changed, dependencies and the dashboard are built (capped), config and units
+   are written, the auth schema is migrated, and the services restart.
+6. **Health gate** (`sb-health`, up to `SB_HEALTH_TIMEOUT` seconds, default 45): control,
+   egress, edge and caddy are active; `127.0.0.1:8787/internal/health` returns
+   `"ok":true`; the edge pool route on `127.0.0.1:8080` returns 200; the egress on
+   `:8070` and Caddy on `:80` answer (401 and a redirect are the normal answers).
+7. If any step from 5 on fails, or the gate does, the installer runs `sb-rollback` from
+   the new release and exits 1. A passing gate ends with exit 0.
+
+`sbctl update` therefore exits non-zero on any failure: backup, verify, disk, memory,
+build, Caddy validation, health or rollback. `SB_NO_ROLLBACK=1 sbctl update` leaves a
+failed update in place for debugging (exit code still non-zero).
+
+### What the update will change: `sbctl update --check`
+
+Prints the installed version, commit and ref, the target ref and commit, and, when they
+differ, the changelog sections between them, taken from the target's `CHANGELOG.md` on
+GitHub. It changes nothing. Read the "Breaking and operator actions" parts first.
+
+### The previous release
+
+`/opt/sproutboat-prev` (root, readable) holds:
+
+| Path      | Content                                                                                                                                       |
+| --------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| `tree/`   | a copy of `/opt/sproutboat`: code, `bun/`, `node_modules/`, the built dashboard                                                               |
+| `etc/`    | `/etc/sproutboat`, the Caddyfile, the sproutboat and caddy units and their drop-ins, logrotate and journald snippets                          |
+| `usr/`    | `sbctl`, the Caddy binary, and `/usr/local/lib/sproutboat` (update, engine, backup-stage, health, rollback, and `bin/` with the Rust engines) |
+| `RELEASE` | version, commit, ref and date of what is saved; written last, so a half-written snapshot is never used                                        |
+
+Disk: about the size of `/opt/sproutboat` (a few hundred MiB, most of it `node_modules`
+and Bun). The installer refuses to start when the free space on `/opt` is less than that
+plus 200 MiB (what an earlier snapshot already holds is not counted again). Each update
+replaces the snapshot, so only one previous release is kept. The tree is copied with
+`rsync`, so later snapshots only copy what changed. Nothing about the layout of
+`/opt/sproutboat` changes: there are no symlinks and no releases directory, so a
+half-finished update is always recoverable.
+
+### Rolling back
+
+Automatic when an update fails. By hand: `sudo sbctl rollback` (prints `RELEASE`, asks
+first; `--yes` skips the question). It restores the tree, config, units, helper scripts,
+engines and Caddy binary from `/opt/sproutboat-prev`, reloads systemd, restarts the
+services and runs the health gate. It exits non-zero when the host is still unhealthy.
+The data in `/var/lib/sproutboat` is not touched.
+
+**Database policy.** The auth and control migrations the new release ran stay applied.
+A release may only add columns the previous release ignores, or drop columns that the
+previous release re-adds when it starts (0.14.0 and 0.13.x work this way). A change that
+cannot meet that rule is called out under "Breaking and operator actions" in the
+changelog, with its own rollback steps.
+
+**When the rollback fails** (no snapshot, or still unhealthy): read
+`sbctl status` and `journalctl -u sproutboat-control -u sproutboat-edge -u caddy`, then
+restore the data from the pre-update backup the failed update printed:
+`sbctl backup list`, `sudo sbctl restore <archive> --force` (see Restore below). If
+`/opt/sproutboat-prev` is gone, re-run the installer of the release you want:
+`SB_REF=v0.13.1 sbctl update`.
+
+### Health at any time: `sbctl health`
+
+Runs the same gate on a running box: one ok/fail line per check, exit 1 when unhealthy,
+`--json` for monitoring. `sbctl health` waits up to `SB_HEALTH_TIMEOUT` seconds
+(default 45); set `SB_HEALTH_TIMEOUT=1` for a one-shot probe.
+
 ## Backups
 
 `sproutboat-backup.timer` runs `apps/control/src/backups.ts` daily, writing one

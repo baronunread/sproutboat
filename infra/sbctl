@@ -12,6 +12,9 @@ STATE=/var/lib/sproutboat
 TOKEN_FILE=/root/sproutboat-admin.env
 UPDATER=/usr/local/lib/sproutboat/update
 STAGER=/usr/local/lib/sproutboat/backup-stage
+HEALTH=/usr/local/lib/sproutboat/health
+ROLLBACK=/usr/local/lib/sproutboat/rollback
+PREV=/opt/sproutboat-prev
 ETC=/etc/sproutboat
 ENGINE=/usr/local/lib/sproutboat/engine
 SERVICES=(sproutboat-control sproutboat-egress sproutboat-edge caddy)
@@ -36,7 +39,10 @@ sbctl — Sproutboat single-VPS control
   sbctl preflight          re-run the runtime sandbox checks
   sbctl engine             show which engine (rust|bun) runs the edge and egress
   sbctl engine rust|bun    switch both, restart them (bun is the fallback; engine.env keeps the choice)
-  sbctl update             stage a fresh release, then run its installer
+  sbctl update             back up, stage a fresh release, run its installer, health-check, roll back on failure
+  sbctl update --check     show the installed and target release and the changelog in between; changes nothing
+  sbctl health [--json]    run the health gate (units and HTTP checks); exits non-zero when unhealthy
+  sbctl rollback [--yes]   return to the release kept in /opt/sproutboat-prev (asks first)
   sbctl backup now|list    take a backup now (prints its name) / list backups
   sbctl backup verify <archive> [--full] [--key FILE]   check an archive (--full: hashes + sqlite integrity)
   sbctl restore <archive> [--force] [--no-config] [--key FILE] [--allow-newer]
@@ -117,6 +123,64 @@ apply_restored_config() {
   fi
 }
 
+# changelog_range FILE VERSION: every release section from the top of the changelog
+# down to (not including) the heading of VERSION. Prints the whole file from the first
+# section when VERSION has no heading.
+changelog_range() {
+  awk -v v="$2" '
+    /^## / {
+      h = $0
+      sub(/^## \[?v?/, "", h)
+      sub(/[] ].*$/, "", h)
+      if (h == v) exit
+      started = 1
+    }
+    started { print }
+  ' "$1"
+}
+
+# env_value FILE KEY: the value of KEY=value (update.env is parsed, never sourced).
+env_value() { [ -f "$1" ] && sed -n "s/^$2=//p" "$1" | tail -1 || true; }
+
+update_check() {
+  local cfg=$ETC/update.env repo pin ref installed commit target tmp
+  [ -f "$cfg" ] || die "$cfg not found: run the installer once"
+  repo=$(env_value "$cfg" SPROUTBOAT_UPDATE_REPO)
+  pin=$(env_value "$cfg" SPROUTBOAT_UPDATE_REF)
+  commit=$(env_value "$cfg" SPROUTBOAT_UPDATE_COMMIT)
+  [ -n "$repo" ] || die "SPROUTBOAT_UPDATE_REPO is missing from $cfg"
+  installed=$(sed -n 's/.*"version": *"\([^"]*\)".*/\1/p' "$ROOT/package.json" | head -1)
+  ref=${SB_REF:-$pin}
+  case "$ref" in
+    -*|*' '*|*'..'*|*'~'*|*'^'*|*':'*|*'?'*|*'['*|*'\\'*) die "invalid update ref" ;;
+  esac
+  if [ -z "$ref" ]; then
+    ref=$(git ls-remote --tags --refs --sort=-v:refname "$repo" 'v*' 2>/dev/null |
+      grep -E 'refs/tags/v[0-9]+\.[0-9]+\.[0-9]+$' | head -1 | sed 's#.*refs/tags/##' || true)
+    [ -n "$ref" ] || die "no stable release tag found for $repo"
+  fi
+  printf '  installed  version %s, commit %s, ref %s\n' "${installed:-unknown}" "${commit:-unknown}" "${pin:-latest}"
+  target=$(git ls-remote "$repo" "refs/tags/$ref" "refs/tags/$ref^{}" "refs/heads/$ref" 2>/dev/null | tail -1 | cut -f1 || true)
+  printf '  target     ref %s, commit %s\n' "$ref" "${target:-unknown}"
+  if [ -n "$target" ] && [ "$target" = "$commit" ]; then
+    printf '  %s✓%s already up to date\n' "$OK" "$Z"
+    return 0
+  fi
+  case "$repo" in
+    https://github.com/*) ;;
+    *) printf '  changelog is only fetched for github.com repositories\n'; return 0 ;;
+  esac
+  tmp=$(mktemp)
+  repo=${repo%.git}
+  if curl -fsSL -m 20 "https://raw.githubusercontent.com/${repo#https://github.com/}/$ref/CHANGELOG.md" -o "$tmp" 2>/dev/null; then
+    printf '\n  Changes from %s to %s (read the "Breaking and operator actions" parts first):\n\n' "${installed:-the installed version}" "$ref"
+    changelog_range "$tmp" "$installed"
+  else
+    printf '  could not download the changelog of %s\n' "$ref"
+  fi
+  rm -f "$tmp"
+}
+
 unit_of() { case "$1" in
   control|edge) echo "sproutboat-$1" ;;
   caddy) echo caddy ;;
@@ -181,8 +245,30 @@ case "$cmd" in
       *) die "usage: sbctl engine [rust|bun]" ;;
     esac ;;
   update)
+    if [ "${1:-}" = --check ]; then update_check; exit 0; fi
     [ -x "$UPDATER" ] || die "$UPDATER missing: re-run the installer once"
     exec "$UPDATER" "$@" ;;
+  health)
+    [ -x "$HEALTH" ] || die "$HEALTH missing: run sbctl update once"
+    exec "$HEALTH" "$@" ;;
+  rollback)
+    yes=0
+    case "${1:-}" in
+      --yes|-y) yes=1 ;;
+      '') ;;
+      *) die "usage: sbctl rollback [--yes]" ;;
+    esac
+    [ -x "$ROLLBACK" ] || die "$ROLLBACK missing: run sbctl update once, or restore a backup (sbctl restore)"
+    [ -f "$PREV/RELEASE" ] || die "no previous release is kept in $PREV (it is written by sbctl update)"
+    printf 'The previous release in %s:\n' "$PREV"
+    sed 's/^/  /' "$PREV/RELEASE"
+    printf 'Rolling back replaces /opt/sproutboat and the config, units and helper scripts, and restarts the services.\nThe database is not touched (a newer schema is tolerated by the previous release).\n'
+    if [ "$yes" = 0 ]; then
+      [ -t 0 ] || die "not a terminal; re-run with: sbctl rollback --yes"
+      read -r -p "Roll back now? [y/N] " answer
+      case "$answer" in y|Y|yes) ;; *) die "aborted" ;; esac
+    fi
+    exec "$ROLLBACK" ;;
   backup)
     sub=${1:-}; [ $# -eq 0 ] || shift
     case "$sub" in
