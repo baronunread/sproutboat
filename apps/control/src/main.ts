@@ -21,7 +21,7 @@ import {
 } from "./deployments";
 import { addDomain, deleteDomain, listDomains, verifyDomain } from "./domains";
 import { listSecrets, putSecret, removeSecret } from "./secrets";
-import { sweepBrokerState } from "./store";
+import { sweepBrokerState, storeDatabase } from "./store";
 import {
   createResourceHandler,
   createResourceOfKind,
@@ -100,6 +100,9 @@ async function activeHostnames(): Promise<Set<string>> {
 
 // Clear broker state left by versions collected before the sweep existed, and
 // by any collection a crash interrupted. Later collections sweep as they go.
+// Open the store now, not on the first request: its migrations (schema, artifact
+// layout) must have run before anything is served or swept.
+storeDatabase();
 void sweepBrokerState().then((removed) => {
   if (removed.length > 0) console.log(`removed broker state for ${removed.length} collected artifact(s)`);
 });
