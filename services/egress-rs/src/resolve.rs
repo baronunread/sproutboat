@@ -7,6 +7,9 @@ use std::future::Future;
 use std::io;
 use std::net::IpAddr;
 use std::pin::Pin;
+use std::sync::{Arc, OnceLock};
+use std::time::Duration;
+use tokio::sync::Semaphore;
 
 /// One answer: the address, and its text as the allow-list and the refusal see it.
 /// `ip` is `None` for text that looks like an address but does not parse (a scoped
@@ -54,6 +57,40 @@ pub fn literal_answer(host: &str) -> Option<Answer> {
     None
 }
 
+/// Longest a system lookup may take before the request is answered with a failure.
+pub const LOOKUP_TIMEOUT: Duration = Duration::from_secs(5);
+/// Lookups in flight at once. A lookup runs on the blocking pool and cannot be
+/// cancelled, so its slot is held until it really finishes, not until it times out.
+pub const MAX_LOOKUPS: usize = 64;
+
+fn lookup_slots() -> &'static Arc<Semaphore> {
+    static SLOTS: OnceLock<Arc<Semaphore>> = OnceLock::new();
+    SLOTS.get_or_init(|| Arc::new(Semaphore::new(MAX_LOOKUPS)))
+}
+
+/// Run `work` holding a slot from `slots`, giving up after `limit` (slot wait included).
+pub async fn bounded<T, F>(slots: Arc<Semaphore>, limit: Duration, work: F) -> io::Result<T>
+where
+    T: Send + 'static,
+    F: Future<Output = io::Result<T>> + Send + 'static,
+{
+    let timed_out = || io::Error::new(io::ErrorKind::TimedOut, "name resolution timed out");
+    let permit = tokio::time::timeout(limit, slots.acquire_owned())
+        .await
+        .map_err(|_| timed_out())?
+        .map_err(|_| timed_out())?;
+    let task = tokio::spawn(async move {
+        let out = work.await;
+        drop(permit);
+        out
+    });
+    match tokio::time::timeout(limit, task).await {
+        Ok(Ok(out)) => out,
+        Ok(Err(e)) => Err(io::Error::other(e)),
+        Err(_) => Err(timed_out()),
+    }
+}
+
 /// The system resolver (getaddrinfo), literals answered without a lookup.
 pub struct SystemResolver;
 
@@ -63,17 +100,22 @@ impl Resolve for SystemResolver {
             if let Some(a) = literal_answer(host) {
                 return Ok(vec![a]);
             }
-            let mut seen: Vec<IpAddr> = Vec::new();
-            for sa in tokio::net::lookup_host((host, 0)).await? {
-                let ip = sa.ip();
-                if !seen.contains(&ip) {
-                    seen.push(ip);
+            let name = host.to_string();
+            let found = bounded(lookup_slots().clone(), LOOKUP_TIMEOUT, async move {
+                let mut seen: Vec<IpAddr> = Vec::new();
+                for sa in tokio::net::lookup_host((name.as_str(), 0)).await? {
+                    let ip = sa.ip();
+                    if !seen.contains(&ip) {
+                        seen.push(ip);
+                    }
                 }
-            }
-            if seen.is_empty() {
+                Ok(seen)
+            })
+            .await?;
+            if found.is_empty() {
                 return Err(io::Error::new(io::ErrorKind::NotFound, "no addresses"));
             }
-            Ok(seen
+            Ok(found
                 .into_iter()
                 .map(|ip| Answer {
                     ip: Some(ip),
@@ -173,6 +215,20 @@ mod tests {
         assert!(a.ip.is_some());
         assert_eq!(literal_answer("fe80::1%eth0").unwrap().ip, None);
         assert_eq!(literal_answer("example.com"), None);
+    }
+
+    #[tokio::test]
+    async fn slow_lookup_times_out() {
+        let slots = Arc::new(Semaphore::new(1));
+        let r = bounded(slots.clone(), Duration::from_millis(100), async {
+            tokio::time::sleep(Duration::from_secs(5)).await;
+            Ok(())
+        })
+        .await;
+        assert_eq!(r.unwrap_err().kind(), io::ErrorKind::TimedOut);
+        // The slot stays taken while the stuck lookup runs, so a second one times out too.
+        let r = bounded(slots, Duration::from_millis(100), async { Ok(()) }).await;
+        assert_eq!(r.unwrap_err().kind(), io::ErrorKind::TimedOut);
     }
 
     #[tokio::test]
