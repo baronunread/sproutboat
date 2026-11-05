@@ -71,6 +71,51 @@ fetch_verified() {
   mv -f "$dest.part" "$dest"
 }
 
+# --- memory budget ---------------------------------------------------------
+# See "Memory budget" in infra/README.md. The edge cgroup (edge + every sprout,
+# broker, bwrap and Bun sidecar) gets half of RAM, rounded down to 64 MiB, never
+# below 512 MiB. Takes MemTotal in kB so it can be unit tested.
+edge_budget_mib() {
+  local mib=$(( $1 / 2 / 1024 / 64 * 64 ))
+  [ "$mib" -ge 512 ] || mib=512
+  echo "$mib"
+}
+mem_total_mib() { awk '/^MemTotal:/ { print int($2 / 1024) }' /proc/meminfo; }
+mem_available_mib() { awk '/^MemAvailable:/ { print int($2 / 1024) }' /proc/meminfo; }
+edge_memory_max_mib() {
+  local override=${SB_EDGE_MEMORY_MAX:-}
+  if [ -n "$override" ]; then
+    case "$override" in
+      *[!0-9]*|0) die "SB_EDGE_MEMORY_MAX must be a number of MiB, got '$override'" ;;
+    esac
+    echo "$override"; return
+  fi
+  edge_budget_mib "$(awk '/^MemTotal:/ { print $2 }' /proc/meminfo)"
+}
+
+# Heavy update steps (bun install, dashboard build, auth migration) run in a
+# transient scope with a memory cap so a build cannot take the box down.
+BUILD_MEMORY_MAX=${SB_BUILD_MEMORY_MAX:-1200M}
+capped() {
+  if [ "${SB_SKIP_SERVICES:-0}" != 1 ] && command -v systemd-run >/dev/null 2>&1; then
+    systemd-run --quiet --scope --collect -p MemoryMax="$BUILD_MEMORY_MAX" -p MemorySwapMax=0 -- "$@"
+  else
+    "$@"
+  fi
+}
+# Refuse to start a capped build when there is less free memory than its cap.
+# Runs before anything is changed on disk. SB_SKIP_MEMCHECK=1 bypasses it.
+check_build_memory() {
+  [ "${SB_UPDATE:-0}" = 1 ] && [ "${SB_SKIP_MEMCHECK:-0}" != 1 ] || return 0
+  local cap=${BUILD_MEMORY_MAX%[Mm]} avail
+  case "$cap" in *[!0-9]*|'') return 0 ;; esac
+  avail=$(mem_available_mib 2>/dev/null || true)
+  [ -n "$avail" ] || return 0
+  if [ "$avail" -lt "$cap" ]; then
+    die "only ${avail} MiB of memory is available, the update build needs up to ${cap} MiB; stop the backup timer (systemctl stop sproutboat-backup.timer) or wait for the backup to finish, then retry (SB_SKIP_MEMCHECK=1 bypasses this check)"
+  fi
+}
+
 # `curl ... | sudo bash` leaves stdin on the pipe, not the terminal. Prompts and
 # the DNS-wait keypress read from $PROMPT_TTY instead; empty means truly no
 # terminal (CI / cron) and interactive input is impossible.
@@ -109,7 +154,7 @@ if [ "${1:-}" = --uninstall ]; then
   rm -f /etc/systemd/system/sproutboat-control.service /etc/systemd/system/sproutboat-edge.service \
         /etc/systemd/system/sproutboat-egress.service \
         /etc/systemd/system/sproutboat-backup.service /etc/systemd/system/sproutboat-backup.timer
-  rm -rf /etc/systemd/system/caddy.service.d
+  rm -rf /etc/systemd/system/caddy.service.d /etc/systemd/system/sproutboat-edge.service.d
   # only remove caddy.service if this installer created it (has our marker path)
   grep -q "$CADDY_BIN" /etc/systemd/system/caddy.service 2>/dev/null && rm -f /etc/systemd/system/caddy.service
   systemctl daemon-reload
@@ -335,21 +380,22 @@ else
   esac
 fi
 
+check_build_memory
 say "Installing application dependencies"
 # The runtime CLI is a moving git ref (sproutboat-cli#main); a frozen lockfile
 # would keep an explicit recovery pull pinned to whatever commit bun.lock last
 # recorded. Normal staged updates use the release's frozen lockfile.
 if [ "${SB_PULL:-0}" = "1" ]; then
-  ( cd "$ROOT" && "$BUN" update --silent sproutboat ) && ok "runtime CLI re-resolved"
+  ( cd "$ROOT" && capped "$BUN" update --silent sproutboat ) && ok "runtime CLI re-resolved"
 fi
-( cd "$ROOT" && "$BUN" install --frozen-lockfile --silent ) && ok "dependencies ready"
+( cd "$ROOT" && capped "$BUN" install --frozen-lockfile --silent ) && ok "dependencies ready"
 # bun install and the dashboard build inherit the caller's umask (the updater
 # runs with a restrictive one to keep its staging tree private). The service
 # users must be able to read and traverse both, regardless of how we were run.
 [ -d "$ROOT/node_modules" ] && chmod -R a+rX "$ROOT/node_modules"
 
 say "Building the dashboard"
-( cd "$ROOT" && "$BUN" run --silent web:build >/dev/null ) && ok "dashboard built -> $ROOT/apps/web/dist"
+( cd "$ROOT" && capped "$BUN" run --silent web:build >/dev/null ) && ok "dashboard built -> $ROOT/apps/web/dist"
 [ -d "$ROOT/apps/web/dist" ] && chmod -R a+rX "$ROOT/apps/web/dist"
 
 # Backups are encrypted at rest with this key (AES-256-GCM, no KDF: it is
@@ -528,6 +574,8 @@ ExecStart=
 ExecStart=$CADDY_BIN run --environ --config /etc/caddy/Caddyfile
 ExecReload=
 ExecReload=$CADDY_BIN reload --config /etc/caddy/Caddyfile --force
+MemoryMax=256M
+MemoryHigh=224M
 EOF
 [ -f /lib/systemd/system/caddy.service ] || [ -f /etc/systemd/system/caddy.service ] || cat > /etc/systemd/system/caddy.service <<EOF
 [Unit]
@@ -540,6 +588,19 @@ Restart=on-failure
 [Install]
 WantedBy=multi-user.target
 EOF
+EDGE_MAX_MIB=$(edge_memory_max_mib)
+EDGE_HIGH_MIB=$(( EDGE_MAX_MIB * 85 / 100 ))
+install -d -m 0755 /etc/systemd/system/sproutboat-edge.service.d
+cat > /etc/systemd/system/sproutboat-edge.service.d/10-sproutboat-memory.conf <<EOF
+# Generated by install.sh and rewritten on every install and update; do not edit.
+# The edge cap is half of RAM (see "Memory budget" in infra/README.md). To
+# override it, add a drop-in that sorts later (for example 50-local.conf), or run
+# the installer with SB_EDGE_MEMORY_MAX=<MiB> set on each update.
+[Service]
+MemoryMax=${EDGE_MAX_MIB}M
+MemoryHigh=${EDGE_HIGH_MIB}M
+EOF
+ok "edge memory cap ${EDGE_MAX_MIB}M (high ${EDGE_HIGH_MIB}M)"
 for u in sproutboat-control sproutboat-edge sproutboat-egress; do
   install -m 0644 "$ROOT/infra/systemd/$u.service" "/etc/systemd/system/$u.service"
 done
@@ -554,7 +615,7 @@ install -m 0755 "$ROOT/infra/sb-backup-stage" /usr/local/lib/sproutboat/backup-s
 say "Migrating the auth database"
 ( cd "$ROOT" && SPROUTBOAT_DATABASE_PATH="$STATE/sproutboat.sqlite" \
     BETTER_AUTH_SECRET="$BETTER_AUTH_SECRET" BETTER_AUTH_URL="$DASH_URL" \
-    "$BUN" x --bun auth@1.7.1 migrate --config apps/control/src/auth.migrate.ts --yes >/dev/null ) && ok "auth schema up to date"
+    capped "$BUN" x --bun auth@1.7.1 migrate --config apps/control/src/auth.migrate.ts --yes >/dev/null ) && ok "auth schema up to date"
 chown sproutboat-control:sproutboat "$STATE"/sproutboat.sqlite* 2>/dev/null || true
 
 # --- move binding data out of logs/ (idempotent) ------------------

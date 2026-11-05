@@ -19,3 +19,6 @@ PrivateTmp=true
 ProtectSystem=strict
 ProtectHome=true
 ReadWritePaths=/var/lib/sproutboat
+MemoryMax=512M
+Nice=10
+IOSchedulingClass=idle

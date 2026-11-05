@@ -31,6 +31,7 @@ sbctl — Sproutboat single-VPS control
   sbctl status             one-line health per unit
   sbctl logs [name] [-n N] follow logs (name: control|edge|caddy|backup; default: all three)
   sbctl token              print the admin API URL + token
+  sbctl memory             memory caps and current use per unit, against MemTotal
   sbctl preflight          re-run the runtime sandbox checks
   sbctl update             stage a fresh release, then run its installer
   sbctl backup now|list    take a backup now (prints its name) / list backups
@@ -120,6 +121,28 @@ unit_of() { case "$1" in
   *) die "unknown service '$1' (control|edge|caddy|backup)" ;;
 esac; }
 
+# MiB from a systemd byte value ("infinity" and "[not set]" pass through).
+mib() { case "$1" in ''|*[!0-9]*) printf '%s' "${1:-n/a}" ;; *) printf '%sM' $(( $1 / 1048576 )) ;; esac; }
+
+memory_report() {
+  local total avail u max high cur sum=0 reserve=400 budget
+  total=$(awk '/^MemTotal:/ { print int($2 / 1024) }' /proc/meminfo)
+  avail=$(awk '/^MemAvailable:/ { print int($2 / 1024) }' /proc/meminfo)
+  printf '  MemTotal      %sM\n  MemAvailable  %sM\n\n' "$total" "$avail"
+  printf '  %-22s %10s %10s %10s\n' unit MemoryMax MemoryHigh MemoryCurrent
+  for u in sproutboat-control sproutboat-edge sproutboat-egress caddy sproutboat-backup; do
+    max=$(systemctl show -p MemoryMax --value "$u" 2>/dev/null || true)
+    high=$(systemctl show -p MemoryHigh --value "$u" 2>/dev/null || true)
+    cur=$(systemctl show -p MemoryCurrent --value "$u" 2>/dev/null || true)
+    printf '  %-22s %10s %10s %10s\n' "$u" "$(mib "$max")" "$(mib "$high")" "$(mib "$cur")"
+    # The backup is a transient nightly job; it is not part of the steady-state sum.
+    case "$max" in ''|*[!0-9]*) ;; *) [ "$u" = sproutboat-backup ] || sum=$(( sum + max / 1048576 )) ;; esac
+  done
+  budget=$(( total - reserve ))
+  printf '\n  sum of MemoryMax (steady state) %sM, MemTotal minus %sM OS reserve %sM: ' "$sum" "$reserve" "$budget"
+  if [ "$sum" -le "$budget" ]; then printf '%sfits%s\n' "$OK" "$Z"; else printf '%sOVER BUDGET%s\n' "$NO" "$Z"; fi
+}
+
 cmd=${1:-status}; shift || true
 case "$cmd" in
   up)      systemctl start "${UNITS[@]}"; exec "$0" status ;;
@@ -142,6 +165,7 @@ case "$cmd" in
   token)
     [ -f "$TOKEN_FILE" ] || die "$TOKEN_FILE not found — is this a Sproutboat host?"
     cat "$TOKEN_FILE" ;;
+  memory) memory_report ;;
   preflight) exec sh -c "cd '$ROOT' && '$ROOT/bun/bin/bun' run runtime:preflight" ;;
   update)
     [ -x "$UPDATER" ] || die "$UPDATER missing: re-run the installer once"

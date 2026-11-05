@@ -2,6 +2,7 @@
 Description=Sproutboat control service
 After=network-online.target
 Wants=network-online.target
+StartLimitIntervalSec=0
 
 [Service]
 Type=simple
@@ -29,6 +30,8 @@ ProtectSystem=strict
 ProtectHome=true
 ReadWritePaths=/var/lib/sproutboat
 UMask=0007
+MemoryMax=384M
+MemoryHigh=320M
 
 [Install]
 WantedBy=multi-user.target

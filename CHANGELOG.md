@@ -40,16 +40,21 @@ Changes to the self-hosted Sproutboat platform are recorded here. Read the
   becomes 2.11.9, each downloaded from its GitHub release and checked against a pinned hash. Caddy is restarted (not
   reloaded) when its binary changed, so expect a brief TLS blip. With `SB_CF_TOKEN` the Cloudflare Caddy build is
   still fetched unverified, and the installer warns. See "Pinned dependencies" in `infra/README.md`.
+- **Every unit now has a memory cap; the edge cap is computed from RAM.** On a 4 GiB box the edge goes from 2500M to
+  1920M (half of RAM, in 64 MiB steps). If a box ran close to the old cap, raise it with a later drop-in or
+  `SB_EDGE_MEMORY_MAX=<MiB> sbctl update` (see "Memory budget" in `infra/README.md`). `sbctl update` also refuses to
+  build when less memory is available than the 1200M build cap; stop the backup timer or wait, or set
+  `SB_SKIP_MEMCHECK=1`.
 
 ### Changed
 
+- Memory caps on every unit: control 384M, egress 512M, caddy 256M, backup 512M (niced, idle I/O), each with a
+  `MemoryHigh`. The edge cap is now computed from RAM at install time instead of a fixed 2500M.
+- Control, edge and egress keep retrying every 2 s after crashes (`StartLimitIntervalSec=0`).
 - Bun on the box is 1.4.4 (was 1.4.0), matching CI and development. `install.sh` no longer pipes `bun.sh/install`
   into bash, and an existing install is upgraded when the pinned version changes.
 - Caddy is pinned to 2.11.9 (security fix release) and verified with SHA-512 instead of downloading the latest
   unverified build.
-
-### Changed
-
 - Backup archives are now `sproutboat-<date>.tar.gz.enc` (AES-256-GCM) by default.
 
 ### Fixed
@@ -66,6 +71,9 @@ Changes to the self-hosted Sproutboat platform are recorded here. Read the
 
 ### Added
 
+- `sbctl memory`: MemTotal, MemAvailable, and each unit's cap and current use.
+- The update build (`bun install`, dashboard build, auth migration) runs in a 1200M capped scope
+  (`SB_BUILD_MEMORY_MAX`).
 - `/etc/sproutboat/caddy.d/*.caddy`: operator Caddy site blocks that survive updates, with a www-to-apex redirect
   example (`infra/caddy/caddy.d/www-redirect.caddy.example`).
 - `sbctl backup now|list|verify`. `verify` checks an archive (add `--full` for hashes and SQLite integrity); every
