@@ -2,11 +2,28 @@
   "name": "@sproutboat/ikada",
   "version": "0.1.0",
   "description": "Sproutboat design system: tokens and React components on Base UI and Tailwind v4.",
-  "license": "Apache-2.0",
+  "keywords": [
+    "base-ui",
+    "design-system",
+    "react",
+    "sproutboat",
+    "tailwindcss",
+    "tokens"
+  ],
+  "homepage": "https://github.com/baronunread/sproutboat/tree/main/packages/ikada#readme",
+  "bugs": "https://github.com/baronunread/sproutboat/issues",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/baronunread/sproutboat.git",
+    "directory": "packages/ikada"
+  },
   "files": [
     "src",
     "DESIGN.md",
-    "INVENTORY.md"
+    "INVENTORY.md",
+    "LICENSE",
+    "README.md"
   ],
   "type": "module",
   "sideEffects": [
@@ -17,6 +34,10 @@
     "./tokens": "./src/tokens.generated.ts",
     "./theme.css": "./src/theme.css",
     "./charts": "./src/charts/index.ts"
+  },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
   },
   "scripts": {
     "tokens": "bun scripts/build-tokens.ts",
