@@ -44,7 +44,7 @@ Community runs your own code on a box you own. The security model follows from t
 **What the sandbox is not.** It is defence in depth for code you trust, not a boundary against hostile code:
 
 - All sprouts share one kernel, and so one kernel attack surface. The seccomp syscall filter is optional: the unit points at `/etc/sproutboat/worker-seccomp.bpf`, the installer does not ship one, and without the file sprouts start without it (`SPROUTBOAT_SPROUT_SECCOMP_REQUIRED=1` refuses instead).
-- All sprouts share the host's loopback interface (the network namespace is not unshared, because the edge reaches each sprout over loopback). A sprout can open connections to other loopback services: control's unauthenticated endpoints, the edge, other sprouts' ports. Services that need a token still ask for one.
+- All sprouts share the host's loopback interface (the network namespace is not unshared, because the edge reaches each sprout over loopback). A sprout can open connections to other loopback services: control's unauthenticated endpoints, the edge, other sprouts' ports. Services that need a token still ask for one. Caddy's admin API is on a root-only unix socket, not a loopback port, and the supervisor checks that a port it waits on is held by the process it started.
 - Resource limits are aggregate. The edge unit has a memory cap, CPU quota and task limit for every sprout and broker together; per-sprout cgroup limits are off by default (`SPROUTBOAT_SPROUT_CGROUP=off`). One runaway sprout can starve the others or get the edge killed.
 - A homelab install with `SB_BIND_HOST` set to a non-loopback address adds the listed ranges to the edge's `IPAddressAllow`, for the edge **and every sprout**. That is a deliberate, documented trade-off (docs/homelab.md).
 

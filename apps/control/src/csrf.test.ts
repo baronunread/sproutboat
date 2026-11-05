@@ -10,8 +10,11 @@ afterEach(() => {
   process.env = { ...saved };
 });
 
-const call = (headers: Record<string, string>, method = "POST", body?: string) =>
-  new Request("https://dash.example.test/api/projects/x/secrets", { method, headers, body });
+const call = (headers: Record<string, string>, method = "POST", body?: string) => {
+  const init: RequestInit = { method, headers };
+  if (method !== "GET" && method !== "HEAD") init.body = body;
+  return new Request("https://dash.example.test/api/projects/x/secrets", init);
+};
 const check = (request: Request) => rejectCrossSite(request, allowedOriginsFor(request));
 const json = { "content-type": "application/json" };
 

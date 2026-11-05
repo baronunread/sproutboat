@@ -5,14 +5,34 @@ Changes to the self-hosted Sproutboat platform are recorded here. Read the
 
 ## [Unreleased]
 
+## [1.0.0-rc.2] - 2026-11-05
+
+Hardening release. Everything below also ships as 0.14.1 for the 0.14 line. Update with `sudo SB_REF=v1.0.0-rc.2 sbctl update`.
+
 ### Breaking and operator actions
 
+- **Caddy's admin API now listens on a root-only unix socket** (`/run/caddy-admin.sock`, mode 0600) instead of `127.0.0.1:2019`. `systemctl reload caddy` and `sbctl` keep working; anything of yours that talked to port 2019 must use the socket as root (`curl --unix-socket /run/caddy-admin.sock http://x/config/`). Drop-ins in `/etc/sproutboat/caddy.d` are unaffected.
+- **Artifacts, broker state and sprout logs are now kept per account.** The first start after the update moves `artifacts/<digest>` to `artifacts/<account>/<digest>`, `brokers/<digest>` to `brokers/<account>-<digest>` and `logs/sprouts/<digest>.log` alongside, one copy per account that uses the digest, and regenerates `routes.json`. Nothing to do; the log shows one line per moved item. The first redeploy of an unchanged project after the update records a new version instead of reporting "unchanged", because `manifest.json` is now part of the artifact digest.
+- **API keys are no longer browser sessions.** A CLI key still works for every CLI route, but routes that need an interactive session (credential management, CLI approval, account deletion) refuse it, and disabling a member (`ban`) now revokes their keys.
+- **Tighter file modes.** `control.env` and `control.local.env` are root-only (0600); `backup.key` belongs to the control service (0400); the control database and the `backups` directory are no longer group-readable. Restoring a plaintext backup on a box that has a backup key needs `--allow-plain`.
+- **Request and connection bounds.** Control refuses non-upload bodies over 1 MiB and JSON bodies over 64 KiB; Caddy caps `/api` bodies at 100 MB; the edge caps WebSocket messages at 4 MiB (was 32 MiB) and open sockets at 2048; the egress and edge bound concurrent connections and the units set `LimitNOFILE`.
+- **Control refuses state-changing requests that arrive with a cookie from another origin.** Browser clients must send the dashboard `Origin` (the dashboard does). Clients using `x-api-key` are unaffected. The session cookie is `SameSite=Strict`.
+- **Rate limits use the socket address.** Behind your own proxy (`SB_PROXY=external`) set `SPROUTBOAT_TRUSTED_PROXIES` in `control.local.env` to the proxy's address so `X-Forwarded-For` is honoured; loopback (Caddy) is trusted by default.
 - **Your settings now live in `*.local.env` files, and `sbctl update` no longer wipes them.** The installer rewrites `control.env`, `egress.env`, `sproutboat.env` and `caddy.env` on every run, so any key you added to them (S3 backup settings, `SPROUTBOAT_BACKUP_ENCRYPT=off`, the limit knobs, `SB_EGRESS_ALLOW`) was lost at the next update. The matching `control.local.env`, `egress.local.env`, `sproutboat.local.env` and `caddy.local.env` are read right after them by the units, win over them, and are never rewritten. See "Where settings live" in `infra/README.md`.
 - **The first update moves your existing settings for you.** Any key it finds in a generated file that the installer does not write goes to the matching local file, and the old file is kept as `<name>.env.bak-<UTC time>` (mode 0600; it holds the token, so delete it once you have checked). It prints key names only. A second update changes nothing. Settings an earlier update already dropped are gone: set them again in the local file. Where to set things, from now on: S3 backup and `SPROUTBOAT_BACKUP_ENCRYPT` and the limits in `control.local.env`, `SB_EGRESS_ALLOW` in `egress.local.env`.
 - Rolling back the update that did the move (`sbctl rollback`) restores the generated files from before it, with your old keys still in them, so it works with the release that does not know the local files. Updating again moves them again; the installer drops a key that the local file already holds with the same value instead of repeating it.
 
 ### Fixed
 
+- The supervisor only trusts a sprout, broker or transfer port once the listening socket belongs to the process it started; a port held by anything else is logged and retried on a fresh one (`/__sb/pool` reports `foreignListeners`). Each sprout runs with an open-file limit (`SPROUTBOAT_SPROUT_NOFILE`, default 1024).
+- Tenant SQL in the bindings broker is screened: `ATTACH`, `DETACH`, `VACUUM INTO` and PRAGMAs outside D1's list are refused, and `trusted_schema` is off.
+- `/internal/tls/allow` answers only to Caddy's own on-demand check on loopback; the public control and dashboard hostnames return 404 for `/internal/tls/*` (`/internal/health` still answers).
+- The certificate-issuance ceiling could be passed by an immediate retry of a refused hostname.
+- A deploy that failed part-way left its upload on disk; uploads are now removed on every path and abandoned ones swept at start. Asset files not listed in `assets.json` are refused.
+- Unverified custom-domain claims expire after 24 hours and a TXT proof by another account supersedes them.
+- The edge drops the `Domain` attribute from cookies a sprout sets and never forwards platform session cookies; `/__sb/pool` ignores requests that carry proxy headers.
+- The egress service enforces its header-read timeout, bounds request-head buffering, concurrent connections and name lookups (5 s, 64 at once).
+- Secrets no longer appear on the sandbox launcher's command line: bubblewrap reads its options from a descriptor and the broker gets its token in the environment.
 - **`sbctl update` kept losing operator settings in `control.env`** (found by the 1.0.0-rc.1 end-to-end test). Same for `egress.env` (anything but `SB_EGRESS_ALLOW`), `sproutboat.env` and `caddy.env`, where a changed `XDG_DATA_HOME` would have sent Caddy's certificates to a new directory.
 - **GitHub sign-in turned itself off at an update** that was not given `SB_GITHUB_CLIENT_ID` and `SB_GITHUB_CLIENT_SECRET` again. The installer now reads them back like the other secrets.
 - **A box that updates from a fork or mirror went back to the default repository** after one update, because `update.env` was rewritten with the default. The recorded repository is kept.
