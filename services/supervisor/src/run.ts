@@ -308,6 +308,16 @@ function declaresDurableObjects(bindingsPath: string): boolean {
   }
 }
 
+/**
+ * Open a sprout log for a child to write to. Mode "w" truncates first, then the
+ * fd is opened with "a" so it is O_APPEND: after logrotate `copytruncate` the
+ * child writes at the new end instead of its old offset (no sparse NUL holes).
+ */
+export function openLogFd(path: string, mode: "w" | "a"): number {
+  if (mode === "w") closeSync(openSync(path, "w"));
+  return openSync(path, "a");
+}
+
 /** What a sprout gets beside the edge's own environment. */
 type SproutEnv = { SB_EDGE_TOKEN: string; SB_BROKER_PORT?: string; SB_BROKER_TOKEN?: string };
 
@@ -339,7 +349,7 @@ function spawnWithBroker(
     if (!sproutLogPath) return "ignore";
     try {
       mkdirSync(dirname(sproutLogPath), { recursive: true });
-      return openSync(sproutLogPath, mode);
+      return openLogFd(sproutLogPath, mode);
     } catch {
       return "ignore";
     }
