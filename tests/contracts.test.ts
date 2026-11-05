@@ -759,3 +759,32 @@ describe("control and supervisor agree on the per-deployment runtime name", () =
     }
   });
 });
+
+describe("the artifact layout migration is wired into the installer", () => {
+  test("install.sh migrates after the auth schema and before the services restart", async () => {
+    const install = await Bun.file("install.sh").text();
+    const auth = install.indexOf("auth.migrate.ts");
+    const layout = install.indexOf("layout_tool migrate");
+    const restart = install.indexOf("systemctl restart sproutboat-control sproutboat-egress sproutboat-edge");
+    expect(auth).toBeGreaterThan(-1);
+    expect(layout).toBeGreaterThan(auth);
+    expect(restart).toBeGreaterThan(layout);
+    expect(install).toContain(
+      'install -m 0644 "$ROOT/apps/control/src/artifact-layout.ts" /usr/local/lib/sproutboat/layout.ts',
+    );
+    expect(install).toMatch(/install -d -m 2770 .*"\$STATE\/logs\/sprouts"/);
+  });
+
+  test("control exits 78 on a legacy layout and systemd does not restart it", async () => {
+    const unit = await Bun.file("infra/systemd/sproutboat-control.service").text();
+    expect(unit).toContain("RestartPreventExitStatus=78");
+  });
+
+  test("the layout tool imports nothing from the tree", async () => {
+    const source = await Bun.file("apps/control/src/artifact-layout.ts").text();
+    const specifiers = [...source.matchAll(/^(?:import|export)\b[^;]*?\bfrom\s+"([^"]+)"/gms)].map((m) => m[1]);
+    expect(specifiers.length).toBeGreaterThan(0);
+    for (const specifier of specifiers) expect(specifier === "bun:sqlite" || specifier?.startsWith("node:")).toBe(true);
+    expect(source).not.toMatch(/\bimport\s*\(|\brequire\s*\(/);
+  });
+});

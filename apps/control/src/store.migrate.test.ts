@@ -97,9 +97,8 @@ test("a database that holds a sproutd project keeps its columns and warns", asyn
 
 // An install from before artifacts were namespaced by owner: one digest directory, one broker-state
 // directory and one log, shared by two accounts that uploaded identical bytes.
-test("shared legacy artifact dirs are split per owner, once", async () => {
-  const { chmod, mkdir, readdir, readFile, stat, writeFile } = await import("node:fs/promises");
-  const log = spyOn(console, "log").mockImplementation(() => {});
+async function legacyInstall(): Promise<{ path: string; digest: string; legacy: string }> {
+  const { chmod, mkdir, writeFile } = await import("node:fs/promises");
   dir = await mkdtemp(join(tmpdir(), "sb-layout-"));
   const path = join(dir, "control.sqlite");
   seed(path, false);
@@ -128,41 +127,55 @@ test("shared legacy artifact dirs are split per owner, once", async () => {
   process.env.SPROUTBOAT_BROKER_STATE_DIR = join(dir, "brokers");
   process.env.SPROUTBOAT_LOG_PATH = join(dir, "logs", "requests.ndjson");
   store = await import("./store");
-  store.projectDeployments("u1", "app"); // opens the store, which migrates
-  await store.syncRoutes(); // queued behind the sync the migration scheduled
+  return { path, digest, legacy };
+}
 
-  const dirs = { u1: store.artifactOwnerDir("u1"), u2: store.artifactOwnerDir("u2") };
+afterEach(() => {
+  delete process.env.SPROUTBOAT_BROKER_STATE_DIR;
+  delete process.env.SPROUTBOAT_LOG_PATH;
+});
+
+test("a legacy artifact layout is refused until the layout tool has run, then served per owner", async () => {
+  const log = spyOn(console, "log").mockImplementation(() => {});
+  const { readFile } = await import("node:fs/promises");
+  const { migrate, pathsFromEnv } = await import("./artifact-layout");
+  const { digest } = await legacyInstall();
+  const opened = store;
+  if (!opened) throw new Error("store not loaded");
+
+  // Twice: the failed open forgets its connection, so the second call checks again.
+  for (let attempt = 0; attempt < 2; attempt++) {
+    let error: unknown;
+    try {
+      opened.projectDeployments("u1", "app");
+    } catch (caught) {
+      error = caught;
+    }
+    expect(error).toBeInstanceOf(opened.LegacyLayoutError);
+    expect(error instanceof opened.LegacyLayoutError && error.deployments).toBe(2);
+  }
+
+  migrate(pathsFromEnv(), () => {});
+  const dirs = { u1: opened.artifactOwnerDir("u1"), u2: opened.artifactOwnerDir("u2") };
   expect(dirs.u1).not.toBe(dirs.u2);
   for (const owner of ["u1", "u2"] as const) {
     const root = join(dir, "artifacts", dirs[owner], digest);
-    expect(await readFile(join(root, "sprout"), "utf8")).toBe("binary");
-    expect(await readFile(join(root, "assets", "a.txt"), "utf8")).toBe("asset");
-    expect((await stat(join(root, "sprout"))).mode & 0o777).toBe(0o555);
-    expect(await readFile(join(dir, "brokers", `${dirs[owner]}-${digest}`, "d1", "x.sqlite"), "utf8")).toBe("state");
-    expect(await readFile(join(dir, "logs", "sprouts", `${dirs[owner]}-${digest}.log`), "utf8")).toBe("shared log\n");
-    expect(store.projectDeployments(owner, "app")[0]?.sproutPath).toBe(join(root, "sprout"));
+    expect(opened.projectDeployments(owner, "app")[0]?.sproutPath).toBe(join(root, "sprout"));
   }
-  // The legacy ones are gone.
-  expect((await readdir(join(dir, "artifacts"))).sort()).toEqual([dirs.u1, dirs.u2].sort());
-  expect((await readdir(join(dir, "brokers"))).sort()).toEqual([`${dirs.u1}-${digest}`, `${dirs.u2}-${digest}`].sort());
-  expect((await readdir(join(dir, "logs", "sprouts"))).sort()).toEqual(
-    [`${dirs.u1}-${digest}.log`, `${dirs.u2}-${digest}.log`].sort(),
-  );
-  // routes.json carries the new paths.
+  await opened.syncRoutes();
   // SAFETY: routes.json is the Route[] snapshot written by syncRoutes.
   const routes = JSON.parse(await readFile(join(dir, "routes.json"), "utf8")) as Array<{ sproutPath: string }>;
   expect(routes.map((route) => route.sproutPath).sort()).toEqual(
     [join(dir, "artifacts", dirs.u1, digest, "sprout"), join(dir, "artifacts", dirs.u2, digest, "sprout")].sort(),
   );
-  // The artifacts table is keyed by owner now, and re-running changes nothing.
-  expect(store.migrateArtifactLayout()).toBe(false);
-  const messages = log.mock.calls.length;
-  store.closeStore();
-  store = await import("./store");
-  store.projectDeployments("u1", "app");
-  expect(log.mock.calls.length).toBe(messages);
-  expect(columns(path, "artifacts")).toEqual(["owner_id", "digest", "created_at"]);
   log.mockRestore();
-  delete process.env.SPROUTBOAT_BROKER_STATE_DIR;
-  delete process.env.SPROUTBOAT_LOG_PATH;
+});
+
+test("the artifacts table ends up keyed by owner and digest", async () => {
+  const { migrate, pathsFromEnv } = await import("./artifact-layout");
+  const { path } = await legacyInstall();
+  migrate(pathsFromEnv(), () => {});
+  store?.projectDeployments("u1", "app");
+  store?.closeStore();
+  expect(columns(path, "artifacts")).toEqual(["owner_id", "digest", "created_at"]);
 });

@@ -315,7 +315,8 @@ test("an existing deployment store gains binary sizes from retained manifests", 
   const oldPath = process.env.SPROUTBOAT_DATABASE_PATH;
   const legacyPath = join(dir, "legacy-size.sqlite");
   const digest = "1".repeat(64);
-  const artifactDir = join(dir, "artifacts", digest);
+  // The installer has already moved the artifact under its owner (artifact-layout.ts); the store refuses a legacy path.
+  const artifactDir = store.artifactDir("legacy-owner", digest);
   await mkdir(artifactDir, { recursive: true });
   await writeFile(
     join(artifactDir, "manifest.json"),

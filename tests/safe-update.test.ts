@@ -1,7 +1,9 @@
+import { Database } from "bun:sqlite";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { chmod, mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
+import { legacySproutPath, migrate, pathsFromEnv } from "../apps/control/src/artifact-layout";
 
 // The safe-update scripts run here unprivileged: sb-snapshot and sb-rollback against a
 // temp prefix (SB_ROLLBACK_ROOT), sb-health against Bun.serve stubs, systemctl stubbed.
@@ -299,6 +301,88 @@ describe("sb-snapshot and sb-rollback", () => {
     expect(r.err).toContain("sbctl restore <archive> --force");
     // The files are back regardless.
     expect(await read("opt/sproutboat/install.sh")).toBe("old installer\n");
+  });
+
+  describe("artifact layout", () => {
+    const TOOL = join(import.meta.dir, "..", "apps/control/src/artifact-layout.ts");
+    const digest = "d".repeat(64);
+    const state = () => join(dir, "var/lib/sproutboat");
+    const layoutPaths = () =>
+      pathsFromEnv({
+        SPROUTBOAT_DATABASE_PATH: join(state(), "sproutboat.sqlite"),
+        SPROUTBOAT_ARTIFACTS_DIR: join(state(), "artifacts"),
+        SPROUTBOAT_BROKER_STATE_DIR: join(state(), "brokers"),
+        SPROUTBOAT_LOG_PATH: join(state(), "logs/requests.ndjson"),
+        SPROUTBOAT_ROUTE_SNAPSHOT: join(state(), "routes.json"),
+      });
+
+    /** An install the update already moved to per-account directories. */
+    async function perAccountInstall() {
+      const paths = layoutPaths();
+      await put(join(paths.artifacts, digest, "sprout"), "binary", 0o555);
+      await put(join(paths.brokers, digest, "d1/x.sqlite"), "state");
+      await put(join(paths.sproutLogs, `${digest}.log`), "log\n");
+      const db = new Database(paths.database);
+      db.exec(`CREATE TABLE deployments (id TEXT PRIMARY KEY, owner_id TEXT, project TEXT, username TEXT,
+        hostname TEXT, artifact_digest TEXT, sprout_path TEXT, deployed_at TEXT, active INTEGER)`);
+      db.run("INSERT INTO deployments VALUES ('d1', 'u1', 'app', 'a', 'h', ?, ?, 'x', 1)", [
+        digest,
+        legacySproutPath(paths, digest),
+      ]);
+      db.close();
+      migrate(paths, () => {});
+      return paths;
+    }
+    const sproutPaths = (database: string): string[] => {
+      const db = new Database(database, { readonly: true });
+      // SAFETY: the query selects one string column.
+      const rows = db.query("SELECT sprout_path FROM deployments").all() as Array<{ sprout_path: string }>;
+      db.close();
+      return rows.map((row) => row.sprout_path);
+    };
+    const layoutEnv = { SB_LAYOUT_BIN: TOOL, SB_BUN: process.execPath };
+
+    test("a release without the layout tool gets the legacy layout back, with the services stopped", async () => {
+      await snapshot();
+      await breakHost();
+      await put(join(dir, "opt/sproutboat/apps/control/src/artifact-layout.ts"), "new tool\n");
+      const paths = await perAccountInstall();
+      expect(sproutPaths(paths.database)).not.toEqual([legacySproutPath(paths, digest)]);
+
+      const r = await rollback(layoutEnv);
+      expect(r.code).toBe(0);
+      expect(await exists("opt/sproutboat/apps/control/src/artifact-layout.ts")).toBe(false);
+      expect(sproutPaths(paths.database)).toEqual([legacySproutPath(paths, digest)]);
+      expect(await read(`var/lib/sproutboat/artifacts/${digest}/sprout`)).toBe("binary");
+      expect(await read(`var/lib/sproutboat/brokers/${digest}/d1/x.sqlite`)).toBe("state");
+      expect(await read(`var/lib/sproutboat/logs/sprouts/${digest}.log`)).toBe("log\n");
+      const calls = (await readFile(log, "utf8")).trim().split("\n");
+      const stop = calls.indexOf("stop sproutboat-edge sproutboat-control");
+      expect(stop).toBeGreaterThanOrEqual(0);
+      expect(stop).toBeLessThan(calls.indexOf("restart sproutboat-control sproutboat-egress sproutboat-edge"));
+    });
+
+    test("a release that has the layout tool leaves the layout alone", async () => {
+      await put(join(dir, "opt/sproutboat/apps/control/src/artifact-layout.ts"), "old tool\n");
+      await snapshot();
+      await breakHost();
+      const paths = await perAccountInstall();
+      const before = sproutPaths(paths.database);
+
+      const r = await rollback(layoutEnv);
+      expect(r.code).toBe(0);
+      expect(sproutPaths(paths.database)).toEqual(before);
+      expect(await exists(`var/lib/sproutboat/artifacts/${digest}`)).toBe(false);
+      expect((await readFile(log, "utf8")).trim().split("\n")).not.toContain("stop sproutboat-edge sproutboat-control");
+    });
+
+    test("the helper-dir mirror keeps layout.ts", async () => {
+      await snapshot();
+      await breakHost();
+      await put(join(dir, "usr/local/lib/sproutboat/layout.ts"), "installed layout tool\n", 0o644);
+      expect((await rollback()).code).toBe(0);
+      expect(await read("usr/local/lib/sproutboat/layout.ts")).toBe("installed layout tool\n");
+    });
   });
 
   test("rollback refuses without a complete snapshot and touches nothing", async () => {
