@@ -265,6 +265,47 @@ describe("migrate", () => {
     expect(Object.values(dbPaths()).some((path) => path.includes(`${paths.artifacts}/${B}/`))).toBe(false);
   });
 
+  test("a target that exists without holding a copy is discarded, not taken for one", () => {
+    world();
+    // Something else put empty names where the per-account entries go: an empty artifact directory (an
+    // artifact is immutable, so anything but an exact copy is wrong), an empty broker directory and an
+    // empty log. None of them holds what the legacy entry holds.
+    mkdirSync(owned("u1", A), { recursive: true, mode: 0o750 });
+    mkdirSync(brokerOf("u1", A), { recursive: true });
+    writeFileSync(logOf("u1", A), "");
+    // A partial artifact copy of the shared digest, missing a file, is wrong too.
+    cpSync(join(paths.artifacts, B), owned("u1", B), { recursive: true });
+    rmSync(join(owned("u1", B), "assets"), { recursive: true });
+
+    expect(
+      pending(paths)
+        .entries.map((entry) => entry.from)
+        .sort(),
+    ).toEqual(
+      [
+        join(paths.artifacts, A),
+        join(paths.brokers, A),
+        join(paths.sproutLogs, `${A}.log`),
+        join(paths.artifacts, B),
+        join(paths.brokers, B),
+        join(paths.sproutLogs, `${B}.log`),
+        join(paths.artifacts, C),
+        join(paths.brokers, C),
+        join(paths.sproutLogs, `${C}.log`),
+      ].sort(),
+    );
+    const before = { artifact: tree(join(paths.artifacts, A)), broker: tree(join(paths.brokers, A)) };
+    migrate(paths, log);
+    expect(lines.some((line) => line.includes("kept legacy"))).toBe(false);
+    expect(tree(owned("u1", A))).toEqual(before.artifact);
+    expect(tree(brokerOf("u1", A))).toEqual(before.broker);
+    expect(readFileSync(logOf("u1", A), "utf8")).not.toBe("");
+    expect(tree(owned("u1", B))).toEqual(tree(owned("u2", B)));
+    expect(exists(join(paths.artifacts, A))).toBe(false);
+    expect(exists(join(paths.artifacts, B))).toBe(false);
+    expect(pending(paths)).toEqual({ rows: [], entries: [] });
+  });
+
   test("a failed copy leaves the previous layout intact, and a re-run finishes", () => {
     world();
     const rowsBefore = dbPaths();
