@@ -15,6 +15,8 @@ export function DropdownMenu({ onOpenChange, ...props }: ComponentProps<typeof M
 }
 export const DropdownMenuTrigger = Menu.Trigger;
 export const DropdownMenuGroup = Menu.Group;
+/** A group of radio items: exactly one is chosen, with `value` and `onValueChange`. */
+export const DropdownMenuRadioGroup = Menu.RadioGroup;
 
 export interface DropdownMenuContentProps extends Omit<ComponentProps<typeof Menu.Popup>, "className"> {
   className?: string;
@@ -94,6 +96,29 @@ export function DropdownMenuCheckboxItem({
       </span>
       {children}
     </Menu.CheckboxItem>
+  );
+}
+
+export function DropdownMenuRadioItem({
+  className,
+  children,
+  ...props
+}: WithClass<ComponentProps<typeof Menu.RadioItem>>) {
+  return (
+    <Menu.RadioItem className={cn(itemStyles, className)} {...props}>
+      <span aria-hidden="true" className="absolute start-2.5 grid size-4 place-items-center">
+        <Menu.RadioItemIndicator
+          className={cn(
+            "flex transition-[opacity,scale] duration-(--sb-duration-hover) ease-out",
+            "data-starting-style:scale-(--sb-scale-icon) data-starting-style:opacity-0",
+            "data-ending-style:scale-(--sb-scale-icon) data-ending-style:opacity-0",
+          )}
+        >
+          <CheckIcon />
+        </Menu.RadioItemIndicator>
+      </span>
+      {children}
+    </Menu.RadioItem>
   );
 }
 
