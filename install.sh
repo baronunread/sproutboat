@@ -386,6 +386,12 @@ bind_dropins() {
     "# and let your proxy be the LAN listener (docs/homelab.md)."
   for c in $allow; do printf 'IPAddressAllow=%s\n' "$c"; done
 }
+# reserved_username NAME: names control refuses as a namespace (identity.ts reservedUsernames).
+# The bootstrap token only authenticates when its username is valid there, so an
+# install with a reserved admin name has an admin token that never works.
+reserved_username() {
+  case "$1" in www|api|admin|status|docs|support|cli|dashboard|sproutboat) return 0 ;; *) return 1 ;; esac
+}
 # url_host ADDR: the host part of a URL that reaches a service bound to ADDR from this box.
 url_host() {
   case "$1" in
@@ -406,7 +412,12 @@ if [ -f "$INSTALL_ENV" ]; then
       [ -n "${!_k:-}" ] || printf -v "$_k" '%s' "$(val_env "$INSTALL_ENV" "$_k")"
     done
   fi
-elif [ -z "$SB_MODE_EXPLICIT" ] && [ "${SB_UPDATE:-0}" != 1 ] && [ -n "$PROMPT_TTY" ]; then
+else
+  # A box installed before install.env existed: its only record of ACME staging is the
+  # Caddyfile the previous installer wrote. Carry it over so an update keeps staging.
+  if [ -z "${SB_ACME_STAGING:-}" ] && grep -q "acme-staging-v02" /etc/caddy/Caddyfile 2>/dev/null; then SB_ACME_STAGING=1; fi
+fi
+if [ ! -f "$INSTALL_ENV" ] && [ -z "$SB_MODE_EXPLICIT" ] && [ "${SB_UPDATE:-0}" != 1 ] && [ -n "$PROMPT_TTY" ]; then
   say "Install mode"
   note "public: a VPS, Caddy serves 80/443 and manages certificates, ufw is configured"
   note "homelab: behind your own proxy, on a LAN or over Tailscale; no Caddy, no ufw changes"
@@ -424,6 +435,7 @@ if [ "$SB_PROXY" = caddy ]; then ask SB_ACME_EMAIL "Email for Let's Encrypt (cer
 else ask SB_ACME_EMAIL "Admin email (you sign in to the dashboard with it)"; fi
 ask SB_ADMIN      "Admin username (3-32 lowercase a-z 0-9 -)" "$(echo "${SUDO_USER:-admin}" | tr -cd 'a-z0-9-' | cut -c1-32)"
 [[ "$SB_ADMIN" =~ ^[a-z0-9]([a-z0-9-]{1,30}[a-z0-9])?$ ]] || die "invalid admin username: $SB_ADMIN"
+! reserved_username "$SB_ADMIN" || die "admin username '$SB_ADMIN' is reserved (control refuses it, so the admin token would never work); pick another, for example your name"
 note "domain $SB_DOMAIN · acme $SB_ACME_EMAIL · admin $SB_ADMIN"
 note "mode $SB_MODE · proxy $SB_PROXY · firewall $SB_FIREWALL · scheme $SB_SCHEME · bind $SB_BIND_HOST"
 # The dashboard ships with every install. GitHub sign-in is opt-in via env; the
