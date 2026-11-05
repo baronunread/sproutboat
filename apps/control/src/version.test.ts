@@ -21,5 +21,6 @@ test("an immutable response passes through instead of throwing", () => {
 
 test("the advertised minimum is a real version string", () => {
   expect(MIN_CLI_VERSION).toMatch(/^\d+\.\d+\.\d+$/);
-  expect(CONTROL_VERSION).toMatch(/^\d+\.\d+\.\d+$/);
+  // The control version may carry a SemVer prerelease (1.0.0-rc.1); the CLI only prints it.
+  expect(CONTROL_VERSION).toMatch(/^\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?$/);
 });
