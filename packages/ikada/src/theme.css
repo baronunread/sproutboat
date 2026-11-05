@@ -141,7 +141,7 @@
   --sb-duration-dialog-in: 220ms;
   --sb-duration-dialog-out: 150ms;
   --sb-duration-slide: 250ms;
-  --sb-duration-toast-in: 360ms;
+  --sb-duration-toast-in: 300ms;
   --sb-duration-toast-out: 200ms;
   --sb-scale-popup: calc(1 - 0.04 * var(--sb-move));
   --sb-scale-dialog: calc(1 - 0.04 * var(--sb-move));

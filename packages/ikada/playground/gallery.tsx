@@ -47,6 +47,7 @@ import { Switch } from "../src/components/switch";
 import { Tabs, TabsList, TabsPanel, TabsTab } from "../src/components/tabs";
 import { toast } from "../src/components/toast";
 import { Tooltip } from "../src/components/tooltip";
+import { ToastLab } from "./toast-lab";
 import { CheckIcon, CopyIcon } from "../src/lib/icons";
 import { clock, DEPLOY_HOUR, errors, p50, p99, requests } from "./data";
 
@@ -428,38 +429,7 @@ function OverlaySection() {
           </DropdownMenuContent>
         </DropdownMenu>
       </Row>
-      <Row label="Toast (one per status; the stack shares the bottom-right corner)">
-        <Button
-          onClick={() =>
-            toast.add({ title: "Deployment ready", description: "v12 is live on all regions.", type: "success" })
-          }
-        >
-          Success
-        </Button>
-        <Button
-          onClick={() =>
-            toast.add({
-              title: "Fell back to supervisor",
-              description: "sproutd refused to load v12; it runs on the supervisor.",
-              type: "warning",
-              timeout: 0,
-            })
-          }
-        >
-          Warning
-        </Button>
-        <Button
-          onClick={() =>
-            toast.add({ title: "Build failed", description: "Fix the error and deploy again.", type: "danger" })
-          }
-        >
-          Danger
-        </Button>
-        <Button onClick={() => toast.add({ title: "Building v13", description: "Step 2 of 4.", type: "info" })}>
-          Info
-        </Button>
-        <Button onClick={() => toast.add({ title: "Copied to clipboard", type: "neutral" })}>Neutral</Button>
-      </Row>
+      <ToastLab />
     </Section>
   );
 }
@@ -644,18 +614,9 @@ function MotionSection() {
           </Tooltip>
         ))}
       </Row>
-      <Row label="Toasts rise 360ms ease-out and leave in 200ms; reduced motion fades in place">
-        <Button onClick={() => toast.add({ title: "Deployment ready", description: "v12 is live.", type: "success" })}>
+      <Row label="Toasts rise 300ms ease-out and leave in 200ms; reduced motion fades in place. Try the buttons under Overlays.">
+        <Button onClick={() => toast.add({ title: "Deployment ready", description: "v12 is live.", tone: "success" })}>
           Push a toast
-        </Button>
-        <Button
-          onClick={() => {
-            toast.add({ title: "Building", type: "info" });
-            toast.add({ title: "Fell back to supervisor", type: "warning" });
-            toast.add({ title: "Ready", type: "success" });
-          }}
-        >
-          Push three
         </Button>
       </Row>
     </Section>

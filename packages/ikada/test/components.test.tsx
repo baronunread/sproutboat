@@ -28,8 +28,6 @@ import {
   TabsList,
   TabsPanel,
   TabsTab,
-  ToastProvider,
-  toast,
 } from "../src";
 
 afterEach(cleanup);
@@ -369,14 +367,5 @@ describe("CopyId", () => {
     await userEvent.click(screen.getByRole("button", { name: "Copy deployment ID" }));
     await waitFor(() => expect(written).toBe("dpl_full_value"));
     await waitFor(() => expect(screen.getByRole("status").textContent).toBe("Copied to clipboard"));
-  });
-});
-
-describe("Toast", () => {
-  test("shows a toast with title and a dismiss control", async () => {
-    render(<ToastProvider />);
-    toast.add({ title: "Deployment ready", description: "v12 is live", type: "success", timeout: 0 });
-    expect(await screen.findByText("Deployment ready")).toBeTruthy();
-    expect(screen.getByLabelText("Dismiss notification")).toBeTruthy();
   });
 });

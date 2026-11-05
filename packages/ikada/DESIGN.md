@@ -326,7 +326,7 @@ Each shadow is a stack: a 1px ring, a contact shadow and an ambient shadow in li
 Rules (Krehel, Kowalski):
 
 - **Curves.** `ease-out` (`cubic-bezier(.23,1,.32,1)`) for everything entering or pressed. `ease-in-out` (`cubic-bezier(.77,0,.175,1)`) only for an indicator that slides across the screen (the tab pill). Hover colour uses plain `ease`. No ease-in.
-- **Durations.** Press 160ms. Tooltip 150 in, 100 out. Menu, select and popover 180 in, 120 out. Dialog 220 in, 150 out. Tab pill 250. Toast 360 in, 200 out.
+- **Durations.** Press 160ms. Tooltip 150 in, 100 out. Menu, select and popover 180 in, 120 out. Dialog 220 in, 150 out. Tab pill 250. Toast 300 in, 200 out.
 - **Scale and origin.** Layers enter from scale 0.96 (never lower) with the origin at the trigger (`origin-(--transform-origin)`). Dialogs scale from their center. Buttons press to 0.97.
 - **Tooltips are warm.** The provider waits 450ms, then neighbours open with no delay and no animation for 300ms.
 - **Keyboard opens do not animate.** A menu, select, popover or dialog opened with a key press (or Enter on a trigger) sets `data-sb-instant` and skips the transition; ⌘K-style palettes do not animate at all.
@@ -346,7 +346,7 @@ Rules (Krehel, Kowalski):
 | `--sb-duration-dialog-in`   | 220ms                             | unchanged (fade stays) |
 | `--sb-duration-dialog-out`  | 150ms                             | unchanged (fade stays) |
 | `--sb-duration-slide`       | 250ms                             | unchanged (fade stays) |
-| `--sb-duration-toast-in`    | 360ms                             | unchanged (fade stays) |
+| `--sb-duration-toast-in`    | 300ms                             | unchanged (fade stays) |
 | `--sb-duration-toast-out`   | 200ms                             | unchanged (fade stays) |
 | `ease-out`                  | `cubic-bezier(0.23, 1, 0.32, 1)`  | unchanged              |
 | `ease-in-out`               | `cubic-bezier(0.77, 0, 0.175, 1)` | unchanged              |
@@ -357,6 +357,20 @@ Rules (Krehel, Kowalski):
 | `--sb-scale-icon`           | 0.25                              | 1 (no scale)           |
 
 <!-- tokens:motion:end -->
+
+## Toasts
+
+One `ToastProvider` near the root, one `toast` object anywhere. A toast is a status (tone) plus a short title; everything else is optional.
+
+- **Deck.** The newest toast sits in front; older ones peek 10px behind it, 5% narrower, up to three. Hover or keyboard focus fans the deck out into a readable history and pauses every timer. Timers also pause while the tab is hidden. Touch: tap to expand.
+- **Dismiss.** Close button, Escape on the focused toast, a swipe past 40px, or a flick (0.4px/ms) either way. A released drag springs back on a damped spring (`linear()` easing, no JavaScript per frame). `Alt+T` (or F6) focuses the newest toast and the region is labelled with the shortcut.
+- **Update in place.** `toast.update(id, patch)` crossfades text and glyph (blur-masked, 300ms ease-out) and animates the height. The progress line (3px, tone colour) shows only while `progress` is a number; `progress: null` ends it.
+- **deployToast.** `deployToast({ name })` returns `queued() building() canary() progress(n) live() fallback(reason) failed(reason)` for one toast that morphs through the deploy. Fallback is amber, failed is red with Retry. Only the end states are not `silent`.
+- **Merging.** Identical toasts (same tone, title, description, or `key`) become one with a ×N counter, move to the front and restart the timer. `merge: false` or an explicit `id` opts out.
+- **Undo.** `toast.undo({ title, onUndo, confirmTitle })`: a plain underlined text action. Clicking it runs `onUndo` and swaps the toast in place to the confirmation. No countdown ring, no time-left bar.
+- **History hook.** `<ToastProvider onToast>` and `toast.subscribe(fn)` receive `add`, `merge`, `update` and `close` events with a plain snapshot (`tone, title, description, count, silent, meta`). The Activity feed and the bell will subscribe to this (both are P1 in INVENTORY.md); neither exists yet.
+- **Accessibility.** Polite live region; `danger` toasts use Base UI priority `high` (assertive alert). Focus ring is the neutral ring. Reduced motion: `--sb-move` is 0, so toasts fade in place and the deck does not slide; the spring and the morph keep their opacity fades.
+- **InlineConfirm.** Copied and Saved are not toasts. `InlineConfirm` puts a small bubble above the control (or a slot beside it) for 1.6s and announces the word; `CopyId` uses it.
 
 ## Z-index layers
 

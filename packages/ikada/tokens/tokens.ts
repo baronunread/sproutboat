@@ -269,7 +269,7 @@ export const motion = {
     "dialog-in": 220,
     "dialog-out": 150,
     slide: 250,
-    "toast-in": 360,
+    "toast-in": 300,
     "toast-out": 200,
   },
   easing: {

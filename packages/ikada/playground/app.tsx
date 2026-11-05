@@ -140,12 +140,17 @@ export function App() {
 function ToastOnLoad() {
   useState(() => {
     queueMicrotask(() => {
-      toast.add({ title: "Deployment ready", description: "v12 is live on all regions.", type: "success", timeout: 0 });
+      toast.add({
+        title: "Deployment ready",
+        description: "v12 is live on all regions.",
+        tone: "success",
+        duration: 0,
+      });
       toast.add({
         title: "Fell back to supervisor",
         description: "sproutd refused to load v12.",
-        type: "warning",
-        timeout: 0,
+        tone: "warning",
+        duration: 0,
       });
     });
   });

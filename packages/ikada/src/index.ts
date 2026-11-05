@@ -51,7 +51,23 @@ export type { Status } from "./components/status";
 export { Switch } from "./components/switch";
 export type { SwitchProps } from "./components/switch";
 export { Tabs, TabsList, TabsPanel, TabsTab } from "./components/tabs";
-export { ToastProvider, toast, useToast } from "./components/toast";
+export { InlineConfirm, useInlineConfirm } from "./components/inline-confirm";
+export type { InlineConfirmProps } from "./components/inline-confirm";
+export { ToastProvider, deployToast, toast, useToast } from "./components/toast";
+export type {
+  DeployToast,
+  DeployToastOptions,
+  ToastAction,
+  ToastActionContext,
+  ToastEvent,
+  ToastListener,
+  ToastOptions,
+  ToastPatch,
+  ToastProviderProps,
+  ToastRecord,
+  ToastTone,
+  UndoOptions,
+} from "./components/toast";
 export { Tooltip, TooltipProvider } from "./components/tooltip";
 export { cn } from "./lib/cn";
 export { PortalContainer } from "./lib/portal";
