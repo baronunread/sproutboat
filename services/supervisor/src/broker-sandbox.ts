@@ -12,7 +12,8 @@ import { RESOURCE_ID, adoptOwnerR2Files, ownerStorageDir, sqliteFileSet, touchFi
  * a bubblewrap sandbox that contains only what this deployment's broker uses.
  *
  * What the broker needs, and nothing more (see `planBrokerSandbox`):
- *   - the bun binary, the repo's node_modules and its own entry file, read only
+ *   - the bun binary, the repo's node_modules, its own entry file and the local
+ *     modules the entry imports (BROKER_ENTRY_MODULES), read only
  *   - the deployment's bindings.json, secrets file and assets, read only
  *   - the deployment's own state directory, read write
  *   - the resource files the app is bound to (and its Durable Object store),
@@ -23,6 +24,13 @@ import { RESOURCE_ID, adoptOwnerR2Files, ownerStorageDir, sqliteFileSet, touchFi
  *     on loopback, and the edge unit's IPAddressDeny keeps both off the network.
  *   - a handful of environment variables and a per-app edge credential
  */
+
+/**
+ * Files beside the broker entry that it imports by relative path. The sandbox binds only named files, so
+ * each one must be listed here or the broker cannot load it under bwrap. A test checks the list against
+ * the entry's imports.
+ */
+export const BROKER_ENTRY_MODULES = ["sqlite-guard.ts"] as const;
 
 export type BrokerSandboxMode = "bwrap" | "none";
 
@@ -109,6 +117,7 @@ export function planBrokerSandbox(input: BrokerPlanInput): Mount[] {
   ro(resolve(input.bun));
   if (input.nodeModules) ro(resolve(input.nodeModules));
   ro(resolve(input.entry));
+  for (const file of BROKER_ENTRY_MODULES) ro(join(dirname(resolve(input.entry)), file));
   ro(resolve(input.bindingsPath));
   if (input.secretsPath) ro(resolve(input.secretsPath));
   if (input.assetsDir) {
