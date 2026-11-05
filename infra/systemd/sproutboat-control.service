@@ -25,6 +25,8 @@ EnvironmentFile=-/etc/sproutboat/control.env
 ExecStart=/opt/sproutboat/bun/bin/bun apps/control/src/main.ts
 Restart=always
 RestartSec=2
+# 78: the artifact layout is not migrated (see apps/control/src/artifact-layout.ts); restarting cannot fix it.
+RestartPreventExitStatus=78
 NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=strict

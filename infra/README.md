@@ -344,13 +344,28 @@ release, checks the result and undoes itself when the check fails. Order of even
 4. **Previous release snapshot** in `/opt/sproutboat-prev` (see below).
 5. The rollback is armed. The tree is synced, Bun and Caddy are upgraded if pinned
    versions changed, dependencies and the dashboard are built (capped), config and units
-   are written, the auth schema is migrated, and the services restart.
+   are written, the auth schema is migrated, the artifact layout is migrated (below), and
+   the services restart.
 6. **Health gate** (`sb-health`, up to `SB_HEALTH_TIMEOUT` seconds, default 45): control,
    egress, edge and caddy are active; `127.0.0.1:8787/internal/health` returns
    `"ok":true`; the edge pool route on `127.0.0.1:8080` returns 200; the egress on
    `:8070` and Caddy on `:80` answer (401 and a redirect are the normal answers).
 7. If any step from 5 on fails, or the gate does, the installer runs `sb-rollback` from
    the new release and exits 1. A passing gate ends with exit 0.
+
+**Artifact layout.** Up to 0.14.0 an artifact lived at `artifacts/<digest>/`, with its
+broker state at `brokers/<digest>/` and its sprout log at `logs/sprouts/<digest>.log`.
+From 0.14.2 they live under the account that deployed them: `artifacts/<account>/<digest>/`,
+`brokers/<account>-<digest>/`, `logs/sprouts/<account>-<digest>.log`. The installer moves
+them (`apps/control/src/artifact-layout.ts`, as root, with control and the edge stopped,
+so nothing routes to a path while it moves) right before the services start: a digest
+several accounts deploy is copied once per extra account, each copy is verified before it
+appears, then every entry switches with one rename and the rows and `routes.json` are
+rewritten. A failure leaves the previous release's paths in place; what did move, the
+rollback puts back. Control itself only checks the layout at boot and refuses to start
+(exit 78, one line in its journal, no restart loop) while any deployment still uses the
+old paths: run `sudo sbctl update` or `sudo bash /opt/sproutboat/install.sh`.
+`sbctl restore` migrates the layout an older archive holds the same way.
 
 `sbctl update` therefore exits non-zero on any failure: backup, verify, disk, memory,
 build, Caddy validation, health or rollback. `SB_NO_ROLLBACK=1 sbctl update` leaves a
@@ -366,12 +381,12 @@ GitHub. It changes nothing. Read the "Breaking and operator actions" parts first
 
 `/opt/sproutboat-prev` (root, readable) holds:
 
-| Path      | Content                                                                                                                                       |
-| --------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
-| `tree/`   | a copy of `/opt/sproutboat`: code, `bun/`, `node_modules/`, the built dashboard                                                               |
-| `etc/`    | `/etc/sproutboat`, the Caddyfile, the sproutboat and caddy units and their drop-ins, logrotate and journald snippets                          |
-| `usr/`    | `sbctl`, the Caddy binary, and `/usr/local/lib/sproutboat` (update, engine, backup-stage, health, rollback, and `bin/` with the Rust engines) |
-| `RELEASE` | version, commit, ref and date of what is saved; written last, so a half-written snapshot is never used                                        |
+| Path      | Content                                                                                                                                                  |
+| --------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `tree/`   | a copy of `/opt/sproutboat`: code, `bun/`, `node_modules/`, the built dashboard                                                                          |
+| `etc/`    | `/etc/sproutboat`, the Caddyfile, the sproutboat and caddy units and their drop-ins, logrotate and journald snippets                                     |
+| `usr/`    | `sbctl`, the Caddy binary, and `/usr/local/lib/sproutboat` (update, engine, backup-stage, health, rollback, layout.ts, and `bin/` with the Rust engines) |
+| `RELEASE` | version, commit, ref and date of what is saved; written last, so a half-written snapshot is never used                                                   |
 
 Disk: about the size of `/opt/sproutboat` (a few hundred MiB, most of it `node_modules`
 and Bun). The installer refuses to start when the free space on `/opt` is less than that
@@ -387,7 +402,12 @@ Automatic when an update fails. By hand: `sudo sbctl rollback` (prints `RELEASE`
 first; `--yes` skips the question). It restores the tree, config, units, helper scripts,
 engines and Caddy binary from `/opt/sproutboat-prev`, reloads systemd, restarts the
 services and runs the health gate. It exits non-zero when the host is still unhealthy.
-The data in `/var/lib/sproutboat` is not touched.
+The data in `/var/lib/sproutboat` is not touched, with one exception: when the restored
+release predates per-account artifact directories (0.14.0 and older), the artifact
+layout is put back for it first, by the same renames the update made, with control and
+the edge stopped (the layout tool is kept in `/usr/local/lib/sproutboat/layout.ts` for
+this). Binding data written while the new release ran goes back with it; a digest two
+accounts deploy keeps one copy under its old shared name.
 
 **Database policy.** The auth and control migrations the new release ran stay applied.
 A release may only add columns the previous release ignores, or drop columns that the

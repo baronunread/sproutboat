@@ -176,7 +176,7 @@ rollback_armed() {
     exit "$rc"
   fi
   say "Rolling back to the previous release"
-  SB_HEALTH_BIN="$SRC/infra/sb-health" bash "$SRC/infra/sb-rollback" \
+  SB_LAYOUT_BIN="$SRC/apps/control/src/artifact-layout.ts" SB_HEALTH_BIN="$SRC/infra/sb-health" bash "$SRC/infra/sb-rollback" \
     || warn "the rollback did not finish cleanly; see the messages above"
   [ -z "$PRE_UPDATE_BACKUP" ] || warn "data fallback: sbctl restore $PRE_UPDATE_BACKUP --force"
   exit "$rc"
@@ -440,13 +440,18 @@ install -d -m 0755 -o root "$ROOT"
 install -d -m 0750 -o sproutboat-control -g sproutboat "$STATE" "$STATE/artifacts"
 install -d -m 0700 -o sproutboat-control -g sproutboat "$STATE/backups"
 install -d -m 0770 -o sproutboat-edge   -g sproutboat "$STATE/logs"
+install -d -m 2770 -o sproutboat-edge   -g sproutboat "$STATE/logs/sprouts"
 install -d -m 2770 -o sproutboat-edge   -g sproutboat "$STATE/brokers"
 install -d -m 2770 -o sproutboat-edge   -g sproutboat "$STATE/resources"
 # #141: control drops activation requests here and the edge answers; both
 # delete them, so both need group write. The sprout sandbox never mounts it.
 install -d -m 2770 -o sproutboat-control -g sproutboat "$STATE/activation"
-# Older binding files may predate shared control-plane administration.
-for _d in brokers resources; do
+# Older installs created some of these as one service alone (binding files from before shared
+# control-plane administration; logs/sprouts by the edge, 0755, with 0660 files). Both services
+# share them through the group: control reads the sprout logs and removes a collected version's.
+for _d in brokers resources logs/sprouts; do
+  chown sproutboat-edge:sproutboat "$STATE/$_d"
+  chmod 2770 "$STATE/$_d"
   chgrp -R sproutboat "$STATE/$_d"
   chmod -R g+rwX "$STATE/$_d"
 done
@@ -868,6 +873,8 @@ install -m 0755 "$ROOT/infra/sb-engine" /usr/local/lib/sproutboat/engine
 SB_ENGINE_NO_RELOAD=1 /usr/local/lib/sproutboat/engine apply
 install -m 0755 "$ROOT/infra/sb-health" /usr/local/lib/sproutboat/health
 install -m 0755 "$ROOT/infra/sb-rollback" /usr/local/lib/sproutboat/rollback
+# The layout tool too: sb-rollback runs it after the tree it came from is gone.
+install -m 0644 "$ROOT/apps/control/src/artifact-layout.ts" /usr/local/lib/sproutboat/layout.ts
 
 # --- Better Auth schema (dashboard + admin token login) ---------------
 say "Migrating the auth database"
@@ -890,6 +897,38 @@ for _d in brokers resources; do
     ok "$STATE/$_d"
   fi
 done
+
+# --- artifact layout: per-account directories (idempotent) ------------
+# Up to 0.14.0 an artifact lived at artifacts/<digest>, with its broker state and sprout
+# log named after the digest alone. The layout tool moves them under the account that
+# deployed them, here, as root, with nothing running: control checks the layout at boot
+# and refuses a legacy one instead of moving it as the service user, and an edge that is
+# not running cannot route to a path mid-move. Copies are verified before they appear
+# and each legacy entry switches with one rename, so a failure here leaves the previous
+# release's paths in place; sb-rollback puts back what did move. Re-running finishes it.
+layout_tool() {
+  SPROUTBOAT_DATABASE_PATH="$STATE/sproutboat.sqlite" SPROUTBOAT_ARTIFACTS_DIR="$STATE/artifacts" \
+    SPROUTBOAT_BROKER_STATE_DIR="$STATE/brokers" SPROUTBOAT_LOG_PATH="$STATE/logs/requests.ndjson" \
+    SPROUTBOAT_ROUTE_SNAPSHOT="$STATE/routes.json" \
+    "$BUN" "$ROOT/apps/control/src/artifact-layout.ts" "$@"
+}
+if [ -f "$STATE/sproutboat.sqlite" ]; then
+  layout_rc=0
+  layout_tool check >/dev/null || layout_rc=$?
+  case "$layout_rc" in
+    0) ;;
+    3)
+      say "Moving artifacts, broker state and sprout logs to per-account directories"
+      [ "$SKIP_SERVICES" = 1 ] || systemctl stop sproutboat-edge sproutboat-control
+      layout_tool migrate || die "the artifact layout migration failed; re-run to finish it, or roll back (sudo sbctl rollback) to put back what it moved"
+      # The tool ran as root: the database (and any -wal/-shm it made) must stay control's.
+      chown sproutboat-control:sproutboat "$STATE"/sproutboat.sqlite* 2>/dev/null || true
+      chmod 0600 "$STATE"/sproutboat.sqlite* 2>/dev/null || true
+      ok "per-account layout"
+      ;;
+    *) die "could not check the artifact layout (exit $layout_rc); see the lines above" ;;
+  esac
+fi
 
 if [ "$SKIP_SERVICES" = 1 ]; then
   say "Services — skipped (SB_SKIP_SERVICES)"
