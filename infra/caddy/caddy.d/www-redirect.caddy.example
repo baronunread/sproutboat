@@ -1,0 +1,16 @@
+# Redirect www to the apex. Caddy obtains a certificate for www.example.com
+# on its own (HTTP-01), so both http:// and https://www work.
+#
+# Prerequisites:
+#   - example.com itself is already served: it is a verified custom domain of a
+#     project (sproutboat domains add / verify).
+#   - The DNS A record for www.example.com points at this box.
+#
+# Activate (replace example.com with your domain first):
+#   sudo cp www-redirect.caddy.example /etc/sproutboat/caddy.d/www.caddy
+#   caddy-sproutboat validate --config /etc/caddy/Caddyfile --adapter caddyfile
+#   sudo systemctl reload caddy
+#
+www.example.com {
+	redir https://example.com{uri} permanent
+}

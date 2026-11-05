@@ -250,4 +250,50 @@ describe("Phase A contracts", () => {
     expect(install).toContain('install -d -m 0755 -o root -g root "$ROOT"');
     expect(install).toContain("--chmod=Du=rwx,Dgo=rx,Fu=rwX,Fgo=rX");
   });
+
+  test("Caddy drop-ins: import line, guarded README, validate before replace", async () => {
+    const install = await Bun.file("install.sh").text();
+    const ref = await Bun.file("infra/caddy/Caddyfile").text();
+    const example = await Bun.file("infra/caddy/caddy.d/www-redirect.caddy.example").text();
+
+    expect(install).toContain("import /etc/sproutboat/caddy.d/*.caddy");
+    expect(ref).toContain("import /etc/sproutboat/caddy.d/*.caddy");
+    expect(install).toContain("install -d -m 0755 /etc/sproutboat/caddy.d");
+    expect(install).toContain(
+      "[ -f /etc/sproutboat/caddy.d/README.caddy ] || cat > /etc/sproutboat/caddy.d/README.caddy",
+    );
+    expect(install).toContain("validate --config /etc/caddy/Caddyfile.new --adapter caddyfile");
+    expect(install).toContain("mv /etc/caddy/Caddyfile.new /etc/caddy/Caddyfile");
+    // validation happens before the live file is replaced and before the reload
+    expect(install.indexOf("validate --config /etc/caddy/Caddyfile.new")).toBeLessThan(
+      install.indexOf("mv /etc/caddy/Caddyfile.new"),
+    );
+    expect(install.indexOf("mv /etc/caddy/Caddyfile.new")).toBeLessThan(
+      install.indexOf("systemctl reload-or-restart caddy"),
+    );
+    expect(install).toContain("systemctl restart sproutboat-control sproutboat-egress sproutboat-edge");
+
+    // the example is a complete site block, tab indented
+    expect(example).toMatch(/^www\.example\.com \{\n\tredir https:\/\/example\.com\{uri\} permanent\n\}\n$/m);
+  });
+
+  test("Caddy drop-ins: reference Caddyfile plus the example validates", async () => {
+    const caddy = Bun.which("caddy");
+    if (!caddy) return; // caddy is not installed on every dev machine; CI-less check
+    const dir = await mkdtemp(join(tmpdir(), "sb-caddy-"));
+    const drop = join(dir, "caddy.d");
+    await Bun.$`mkdir -p ${drop}`;
+    const example = await Bun.file("infra/caddy/caddy.d/www-redirect.caddy.example").text();
+    await Bun.write(join(drop, "www.caddy"), example);
+    const ref = (await Bun.file("infra/caddy/Caddyfile").text()).replace(
+      "/etc/sproutboat/caddy.d/*.caddy",
+      `${drop}/*.caddy`,
+    );
+    await Bun.write(join(dir, "Caddyfile"), ref);
+    const res = await Bun.$`${caddy} validate --config ${join(dir, "Caddyfile")} --adapter caddyfile`
+      .env({ ...process.env, ACME_EMAIL: "ops@example.com" })
+      .quiet()
+      .nothrow();
+    expect(res.exitCode).toBe(0);
+  });
 });
