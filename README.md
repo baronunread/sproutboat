@@ -167,8 +167,8 @@ It symlinks `node_modules/@sproutboat/<pkg>` to the checkout, runs the command, 
 
 ```
 apps/control          control API: auth, projects, artifacts, routes, backups, activity, webhooks
-apps/web              dashboard (React, TanStack Start in SPA mode, built on packages/ikada)
-packages/ikada        @sproutboat/ikada, the open design system the dashboard uses
+apps/web              dashboard (React, TanStack Start in SPA mode, built on @sproutboat/ikada,
+                      the open design system at github.com/baronunread/ikada)
 services/edge         the Bun edge (the fallback engine)
 services/edge-rs      the Rust edge (the default engine)
 services/egress-rs    the Rust egress service (the default engine)

@@ -2,9 +2,6 @@
   "name": "sproutboat",
   "version": "1.0.0-rc.3",
   "private": true,
-  "workspaces": [
-    "packages/ikada"
-  ],
   "type": "module",
   "scripts": {
     "prepare": "lefthook install || true",
@@ -24,17 +21,14 @@
     "style": "style-doctor --quiet",
     "doctor": "react-doctor apps/web --no-telemetry --blocking warning -y",
     "doctor:staged": "react-doctor . --no-telemetry --blocking warning --staged -y",
-    "typecheck": "tsc --noEmit && tsc -p apps/web --noEmit && tsc -p packages/ikada --noEmit",
+    "typecheck": "tsc --noEmit && tsc -p apps/web --noEmit",
     "check": "bun run tools/check.ts",
     "runtime:preflight": "bun run tools/runtime-preflight.ts",
     "sandbox:smoke": "bun run tools/sandbox-smoke.ts",
     "diff": "bun run tools/diff.ts",
     "report": "bun run tools/report.ts",
     "validate": "bun run typecheck && bun run test && bun run tools/check.ts && bun run tools/diff.ts && bun run tools/report.ts",
-    "retest": "bun run validate",
-    "test:ikada": "bun run --cwd packages/ikada test",
-    "tokens": "bun run --cwd packages/ikada tokens",
-    "ikada:playground": "bun run --cwd packages/ikada playground"
+    "retest": "bun run validate"
   },
   "dependencies": {
     "@better-auth/api-key": "^1.7.1",
@@ -43,7 +37,7 @@
     "@sproutboat/artifact": "^0.3.0",
     "@sproutboat/assets": "^0.3.0",
     "@sproutboat/config": "^0.6.0",
-    "@sproutboat/ikada": "workspace:*",
+    "@sproutboat/ikada": "github:baronunread/ikada#86eec51d9a2c4a8d535dd2979e19492d43d436c1",
     "@sproutboat/runtime": "^0.41.0",
     "@sproutboat/toolchain": "^0.21.3",
     "@sproutboat/wire": "^0.21.4",
