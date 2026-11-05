@@ -15,17 +15,17 @@ async function routeHosts(): Promise<Record<string, string>> {
   );
   return Object.fromEntries(list.map((route) => [route.hostname, route.sproutPath]));
 }
-async function deploy(project: string, digest: string, id: string): Promise<string> {
-  const artifactDir = join(dir, "artifacts", digest);
+async function deploy(project: string, digest: string, id: string, ownerId = "user-1"): Promise<string> {
+  const artifactDir = join(dir, "artifacts", store.artifactOwnerDir(ownerId), digest);
   await mkdir(artifactDir, { recursive: true });
   await writeFile(join(artifactDir, "sprout"), "binary");
   const sproutPath = join(artifactDir, "sprout");
   store.recordDeployment({
     id,
-    ownerId: "user-1",
+    ownerId,
     project,
-    username: "alice",
-    hostname: `${project}.alice.test`,
+    username: ownerId === "user-1" ? "alice" : ownerId,
+    hostname: `${project}.${ownerId === "user-1" ? "alice" : ownerId.replace(/\W/g, "")}.test`,
     artifact: digest,
     sproutPath,
     deployedAt: now(),
@@ -73,9 +73,63 @@ test("hostname is globally unique", async () => {
   expect(
     store.addCustomDomain({ hostname: "dup.acme.test", ownerId: "user-1", project: "blog", token: "t" }),
   ).toBeUndefined();
+});
+
+test("a verified hostname stays with its owner", async () => {
+  await deploy("app", "a".repeat(64), "d1");
+  await deploy("web", "b".repeat(64), "d2", "user-2");
+  store.addCustomDomain({ hostname: "mine.acme.test", ownerId: "user-1", project: "app", token: "t1" });
+  expect(store.markCustomDomainVerified("user-1", "app", "mine.acme.test")).toBe(true);
   expect(
-    store.addCustomDomain({ hostname: "dup.acme.test", ownerId: "user-2", project: "x", token: "t" }),
+    store.addCustomDomain({ hostname: "mine.acme.test", ownerId: "user-2", project: "web", token: "t2" }),
   ).toBeUndefined();
+  expect(store.customDomainByHostname("mine.acme.test")?.ownerId).toBe("user-1");
+});
+
+test("an unverified claim lapses after 24 hours and the next claimant replaces it", async () => {
+  await deploy("app", "a".repeat(64), "d1");
+  await deploy("web", "b".repeat(64), "d2", "user-2");
+  store.addCustomDomain({ hostname: "squat.acme.test", ownerId: "user-1", project: "app", token: "t1" });
+  const database = store.storeDatabase();
+  const hoursAgo = (hours: number) => new Date(Date.now() - hours * 3_600_000).toISOString();
+
+  database.run("UPDATE custom_domains SET created_at = ?", [hoursAgo(23)]);
+  expect(store.customDomainByHostname("squat.acme.test")?.ownerId).toBe("user-1");
+
+  database.run("UPDATE custom_domains SET created_at = ?", [hoursAgo(25)]);
+  expect(store.customDomainByHostname("squat.acme.test")).toBeUndefined();
+  const taken = store.addCustomDomain({ hostname: "squat.acme.test", ownerId: "user-2", project: "web", token: "t2" });
+  expect(taken?.ownerId).toBe("user-2");
+  expect(store.projectCustomDomains("user-1", "app")).toEqual([]);
+  expect(store.projectCustomDomains("user-2", "web").map((d) => d.hostname)).toEqual(["squat.acme.test"]);
+});
+
+test("TXT proof by a later owner supersedes another owner's unverified claim", async () => {
+  process.env.SPROUTBOAT_BOOTSTRAP_TOKEN = "tok";
+  process.env.SPROUTBOAT_DEPLOYMENT_DOMAIN = "sb.invalid";
+  await deploy("app", "a".repeat(64), "d1", "bootstrap:alice");
+  await deploy("web", "b".repeat(64), "d2", "bootstrap:bob");
+  const as = (user: string, method: string, body?: { hostname: string }) => {
+    process.env.SPROUTBOAT_BOOTSTRAP_USERNAME = user;
+    return new Request("http://control.test/x", {
+      method,
+      headers: { authorization: "Bearer tok", "content-type": "application/json" },
+      body: body ? JSON.stringify(body) : undefined,
+    });
+  };
+  // alice claims first and never verifies; bob claims inside the 24 hours and proves the record.
+  expect((await domains.addDomain(as("alice", "POST", { hostname: "shop.acme.test" }), "app")).status).toBe(201);
+  const bob = await domains.addDomain(as("bob", "POST", { hostname: "shop.acme.test" }), "web");
+  expect(bob.status).toBe(201);
+  const { verification } = await bob.json();
+  const wrong = await domains.verifyDomain(as("bob", "POST"), "web", "shop.acme.test", async () => [["nope"]]);
+  expect(wrong.status).toBe(400);
+  const ok = await domains.verifyDomain(as("bob", "POST"), "web", "shop.acme.test", async () => [[verification.value]]);
+  expect(ok.status).toBe(200);
+  expect(store.customDomainByHostname("shop.acme.test")).toMatchObject({ ownerId: "bootstrap:bob" });
+  expect(store.projectCustomDomains("bootstrap:alice", "app")).toEqual([]);
+  // The verified owner now blocks a new claim.
+  expect((await domains.addDomain(as("alice", "POST", { hostname: "shop.acme.test" }), "app")).status).toBe(409);
 });
 
 test("a verified domain follows whatever version is active", async () => {

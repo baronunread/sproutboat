@@ -104,7 +104,8 @@ it from the snapshot on the next sync.
 
 Validation: the installer builds the new Caddyfile as `/etc/caddy/Caddyfile.new` and runs `caddy validate` on it before
 replacing the live file. If a drop-in is broken the update stops with the Caddy error and the running config is left
-untouched; fix or remove the file and re-run `sbctl update`. To check by hand:
+untouched; fix or remove the file and re-run `sbctl update`. Caddy's admin API listens on a root-only unix socket at
+`/run/caddy-admin.sock` (not on a TCP port), and `systemctl reload caddy` still works. To check by hand:
 
 ```sh
 caddy-sproutboat validate --config /etc/caddy/Caddyfile --adapter caddyfile
@@ -432,7 +433,7 @@ downloads or deletes an archive. CLI: `sudo sbctl backup now`, `sbctl backup lis
 Archives are encrypted at rest by default and are named
 `sproutboat-<date>.tar.gz.enc`. The key is `/etc/sproutboat/backup.key`: 64 hex
 characters (32 random bytes), created by `install.sh` on first run and kept across
-updates, mode `0640 root:sproutboat` so the backup user can read it.
+updates, mode `0400`, owned by the backup user (`sproutboat-control`) so only it and root can read it.
 `SPROUTBOAT_BACKUP_KEY_FILE` (written to `control.env`) overrides the path.
 
 **Copy `/etc/sproutboat/backup.key` off the box** (password manager, secret
@@ -519,7 +520,7 @@ A fresh install has its own, different `backup.key`, so pass the old one with
 `--key`; once the archive's config is restored, `/etc/sproutboat/backup.key` is the
 old key again. Flags: `--force` (the fresh install already has a
 `sproutboat.sqlite`), `--no-config` (state only), `--key FILE`, `--allow-newer`
-(see below). Plain `sbctl restore <archive> [--force]` still works.
+(see below), `--allow-plain` (accept an unencrypted archive although the install has a backup key; refused otherwise). Plain `sbctl restore <archive> [--force]` still works.
 
 The order, in full:
 

@@ -16,6 +16,7 @@ use std::pin::Pin;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::task::{Context, Poll};
+use std::time::Duration;
 use url::{Position, Url};
 
 pub const EGRESS_URL_HEADER: &str = "x-sb-egress-url";
@@ -361,22 +362,89 @@ fn relay(upstream: Response<crate::upstream::Guarded>, method: &Method) -> Respo
     res
 }
 
+/// Connection-level limits for the HTTP side.
+#[derive(Clone, Copy, Debug)]
+pub struct ServeLimits {
+    /// Time allowed to receive a request head (also bounds an idle keep-alive wait).
+    pub header_read_timeout: Duration,
+    /// Largest buffered request head.
+    pub max_buf_size: usize,
+    /// Concurrent connections served; accepting waits when exhausted.
+    pub max_connections: usize,
+}
+
+impl Default for ServeLimits {
+    fn default() -> Self {
+        ServeLimits {
+            header_read_timeout: Duration::from_secs(30),
+            max_buf_size: 64 * 1024,
+            max_connections: 1024,
+        }
+    }
+}
+
 /// Serve the HTTP side on `listener` until the task is dropped.
 pub async fn serve(egress: Arc<Egress>, listener: tokio::net::TcpListener) {
+    serve_with(egress, listener, ServeLimits::default()).await
+}
+
+pub async fn serve_with(
+    egress: Arc<Egress>,
+    listener: tokio::net::TcpListener,
+    limits: ServeLimits,
+) {
+    let slots = Arc::new(tokio::sync::Semaphore::new(limits.max_connections));
     loop {
+        let Ok(permit) = slots.clone().acquire_owned().await else {
+            return;
+        };
         let Ok((stream, _)) = listener.accept().await else {
             continue;
         };
         let _ = stream.set_nodelay(true);
         let egress = egress.clone();
         tokio::spawn(async move {
+            let _permit = permit;
             let svc = hyper::service::service_fn(move |req| {
                 let egress = egress.clone();
                 async move { Ok::<_, std::convert::Infallible>(handle(egress, req).await) }
             });
             let _ = hyper::server::conn::http1::Builder::new()
+                .timer(hyper_util::rt::TokioTimer::new())
+                .header_read_timeout(limits.header_read_timeout)
+                .max_buf_size(limits.max_buf_size)
                 .serve_connection(hyper_util::rt::TokioIo::new(stream), svc)
                 .await;
         });
+    }
+}
+
+#[cfg(test)]
+mod serve_tests {
+    use super::*;
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+    #[tokio::test]
+    async fn silent_connection_is_closed_after_header_timeout() {
+        let egress = Arc::new(
+            Egress::new(
+                "t",
+                Allow::default(),
+                Box::new(crate::resolve::StaticResolver(vec![])),
+            )
+            .unwrap(),
+        );
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let limits = ServeLimits {
+            header_read_timeout: Duration::from_millis(200),
+            ..ServeLimits::default()
+        };
+        tokio::spawn(serve_with(egress, listener, limits));
+        let mut s = tokio::net::TcpStream::connect(addr).await.unwrap();
+        s.write_all(b"GET / HTTP/1.1\r\n").await.unwrap();
+        let mut buf = Vec::new();
+        let r = tokio::time::timeout(Duration::from_secs(5), s.read_to_end(&mut buf)).await;
+        assert!(r.is_ok(), "connection was not closed");
     }
 }

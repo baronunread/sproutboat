@@ -21,7 +21,7 @@ import {
 } from "./deployments";
 import { addDomain, deleteDomain, listDomains, verifyDomain } from "./domains";
 import { listSecrets, putSecret, removeSecret } from "./secrets";
-import { sweepBrokerState } from "./store";
+import { sweepBrokerState, storeDatabase } from "./store";
 import {
   createResourceHandler,
   createResourceOfKind,
@@ -33,7 +33,9 @@ import {
   updateResourceHandler,
 } from "./resources";
 import { actorFor, profileForUser, reserveUsername, sessionUser } from "./identity";
-import { accountLimits, clientIp, logLimitEvent, rateHit, tlsIssuanceAllowed } from "./limits";
+import { accountLimits, clientIp, logLimitEvent, rateHit, setPeerAddressResolver, tlsIssuanceAllowed } from "./limits";
+import { readJsonBody, rejectOversizeBody } from "./body";
+import { allowedOriginsFor, rejectCrossSite, viaProxy } from "./csrf";
 import {
   approveCliAuthorization,
   createCliAuthorization,
@@ -98,6 +100,9 @@ async function activeHostnames(): Promise<Set<string>> {
 
 // Clear broker state left by versions collected before the sweep existed, and
 // by any collection a crash interrupted. Later collections sweep as they go.
+// Open the store now, not on the first request: its migrations (schema, artifact
+// layout) must have run before anything is served or swept.
+storeDatabase();
 void sweepBrokerState().then((removed) => {
   if (removed.length > 0) console.log(`removed broker state for ${removed.length} collected artifact(s)`);
 });
@@ -105,6 +110,8 @@ void sweepBrokerState().then((removed) => {
 const server = Bun.serve({
   port,
   hostname,
+  // Deploy artifacts are the one large body; everything else is capped in handle().
+  maxRequestBodySize: 100 * 1024 * 1024,
   async fetch(request) {
     // Every API response advertises this control plane's version and the oldest
     // CLI it supports, so a skewed CLI can say "upgrade" instead of failing on a
@@ -113,8 +120,15 @@ const server = Bun.serve({
   },
 });
 
+// Client address comes from the socket, never from a header a caller can set.
+setPeerAddressResolver((request) => server.requestIP(request)?.address);
+
 async function handle(request: Request): Promise<Response> {
   const url = new URL(request.url);
+  const tooLarge = rejectOversizeBody(request);
+  if (tooLarge) return tooLarge;
+  const crossSite = rejectCrossSite(request, allowedOriginsFor(request));
+  if (crossSite) return crossSite;
   if (url.pathname.startsWith("/api/auth/")) {
     // Single-admin box: no self-service registration. The one admin account is
     // seeded by ensureAdminSeeded(); sign-in still works.
@@ -122,7 +136,13 @@ async function handle(request: Request): Promise<Response> {
       return Response.json({ error: "registration is disabled" }, { status: 403 });
     }
     try {
-      return await getAuth().handler!(request);
+      // better-auth's rate limiter reads these; give it the resolved address.
+      const headers = new Headers(request.headers);
+      const ip = clientIp(request);
+      headers.delete("x-real-ip");
+      if (ip === "unknown") headers.delete("x-forwarded-for");
+      else headers.set("x-forwarded-for", ip);
+      return await getAuth().handler!(new Request(request, { headers }));
     } catch (error) {
       return Response.json(
         { error: error instanceof Error ? error.message : "authentication is unavailable" },
@@ -143,7 +163,9 @@ async function handle(request: Request): Promise<Response> {
     return createCliAuthorization();
   }
   if (request.method === "POST" && url.pathname === "/api/cli/authorizations/token") {
-    const body = await request.json().catch(() => null);
+    // Unauthenticated: read with a small cap.
+    // SAFETY: readJsonBody returns parsed JSON or null; parseDeviceCodeBody validates the shape.
+    const body = (await readJsonBody(request)) as JsonValue;
     return exchangeCliAuthorization(parseDeviceCodeBody(body));
   }
   const cliApproval = /^\/api\/cli\/authorizations\/([A-F0-9]{4}-[A-F0-9]{4})\/approve$/.exec(url.pathname);
@@ -196,7 +218,8 @@ async function handle(request: Request): Promise<Response> {
     try {
       const account = await sessionUser(request);
       if (!account) return Response.json({ error: "sign in required" }, { status: 401 });
-      const body = await request.json();
+      // SAFETY: readJsonBody returns parsed JSON or null; parseUsernameBody validates the shape.
+      const body = (await readJsonBody(request)) as JsonValue;
       const username = parseUsernameBody(body);
       if (!username) return Response.json({ error: "username is required" }, { status: 400 });
       return Response.json({ profile: reserveUsername(account.id, username) }, { status: 201 });
@@ -332,6 +355,9 @@ async function handle(request: Request): Promise<Response> {
   if (request.method === "DELETE" && resourceRecord) return deleteResourceHandler(request, resourceRecord[1]);
   if (url.pathname === "/internal/health") return Response.json({ ok: true, service: "control" });
   if (url.pathname === "/internal/tls/allow") {
+    // Caddy's on-demand ask calls control directly on loopback. A request that
+    // arrived through a proxy is not that call; do not reveal the route.
+    if (viaProxy(request)) return new Response("not found", { status: 404 });
     const domain = url.searchParams.get("domain")?.toLowerCase() || "";
     // The route snapshot is the source of truth for "a real active hostname" —
     // it now carries verified custom domains (#2) as well as generated ones.

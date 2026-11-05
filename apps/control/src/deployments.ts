@@ -1,8 +1,8 @@
 import { chmod, mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
-import { basename, dirname, resolve } from "node:path";
+import { dirname, resolve } from "node:path";
 import { createHash, randomUUID } from "node:crypto";
 import { stageCandidate } from "./activation";
-import { validateArtifactDirectory, type ResourceBindingRef } from "./artifact";
+import { listedAssetKeys, validateArtifactDirectory, type ResourceBindingRef } from "./artifact";
 import { actorFor, purgeUser, type Actor } from "./identity";
 import { guardDeploy, guardNewProject, LIMITS } from "./limits";
 import {
@@ -11,6 +11,7 @@ import {
   readLogTailText,
   readSproutLogText,
   routeTraffic,
+  runtimeName,
   sproutLogFile,
   tailLogs,
 } from "./logs";
@@ -18,6 +19,7 @@ import { parseTailFilters, tailEvents } from "./tail";
 import {
   activateDeployment as storeActivate,
   activeProjects,
+  artifactDir,
   candidateRoute,
   collectArtifacts,
   deleteDeployment as storeDeleteDeployment,
@@ -36,11 +38,13 @@ import {
   recordDeployment,
   resourceById,
   syncRoutes,
+  holdArtifact,
+  withArtifactLock,
 } from "./store";
 
 export type { Deployment, ProjectSummary } from "./store";
 
-const artifactRoot = resolve(process.env.SPROUTBOAT_ARTIFACTS_DIR || "/var/lib/sproutboat/artifacts");
+const artifactRoot = () => resolve(process.env.SPROUTBOAT_ARTIFACTS_DIR || "/var/lib/sproutboat/artifacts");
 
 /** #78 — what one row of the Sprouts list needs, beyond the route itself. */
 export type ProjectRow = ProjectSummary & {
@@ -91,7 +95,7 @@ export function isDeploymentHostname(hostname: string): boolean {
 async function activePorfforVersion(ownerId: string, project: string): Promise<string | null> {
   const active = projectDeployments(ownerId, project).find((deployment) => deployment.active);
   if (!active) return null;
-  const validation = await validateArtifactDirectory(resolve(artifactRoot, active.artifact));
+  const validation = await validateArtifactDirectory(artifactDir(ownerId, active.artifact));
   return validation.ok ? validation.value.manifest.porfforVersion : null;
 }
 
@@ -188,7 +192,7 @@ export async function deploymentDetail(request: Request, project: string, id: st
   if (actor instanceof Response) return actor;
   const found = projectDeployment(actor.id, project, id);
   if (!found) return Response.json({ error: "deployment not found" }, { status: 404 });
-  const validation = await validateArtifactDirectory(resolve(artifactRoot, found.artifact));
+  const validation = await validateArtifactDirectory(artifactDir(actor.id, found.artifact));
   return Response.json({
     id: found.id,
     project: found.project,
@@ -306,7 +310,7 @@ export async function projectTail(request: Request, project: string): Promise<Re
   // Deploys can happen while a tail is open; re-resolve the active sprout each poll.
   const sproutLog = () => {
     const active = projectDeployments(actor.id, project).find((deployment) => deployment.active);
-    return active ? sproutLogFile(basename(dirname(active.sproutPath))) : null;
+    return active ? sproutLogFile(runtimeName(active.sproutPath)) : null;
   };
   return tailEvents({ hostname, scriptName: project, sproutLog, filters, signal: request.signal });
 }
@@ -317,7 +321,7 @@ export async function projectSproutLog(request: Request, project: string): Promi
   if (actor instanceof Response) return actor;
   const active = projectDeployments(actor.id, project).find((deployment) => deployment.active);
   if (!active) return Response.json({ error: "no active deployment" }, { status: 404 });
-  const text = await readSproutLogText(basename(dirname(active.sproutPath)));
+  const text = await readSproutLogText(runtimeName(active.sproutPath));
   return new Response(text || "(no sprout output — the deployment has not started, or its handler logs nothing)\n", {
     headers: { "content-type": "text/plain; charset=utf-8" },
   });
@@ -390,7 +394,7 @@ function resolveResourceBindings(refs: ResourceBindingRef[], ownerId: string): s
 
 /**
  * #80 — an artifact's identity is its sprout binary plus the sidecars that ride
- * with it. `assets.json` already carries a hash per asset file, so hashing it
+ * with it (the manifest, so a metadata change is a new version too). `assets.json` already carries a hash per asset file, so hashing it
  * covers the whole tree. Without this, a changed asset tree on an unchanged
  * handler produced the same digest, hit EEXIST on rename, and the new assets
  * were discarded.
@@ -399,7 +403,7 @@ export async function artifactDigest(dir: string, binaryHash: string): Promise<s
   const hash = createHash("sha256");
   hash.update(binaryHash);
   const sidecars = await Promise.all(
-    ["bindings.json", "assets.json"].map(async (name) => ({
+    ["manifest.json", "bindings.json", "assets.json"].map(async (name) => ({
       name,
       body: await readFile(resolve(dir, name)).catch(() => null), // absent for this project
     })),
@@ -446,7 +450,24 @@ export async function deployArtifact(request: Request, project: string): Promise
   if (assetFiles.reduce((sum, file) => sum + file.size, 0) > 64 * 1024 * 1024)
     return Response.json({ error: "assets exceed the 64 MiB limit" }, { status: 413 });
 
-  const temporary = resolve(artifactRoot, `.upload-${randomUUID()}`);
+  if (assetsManifest instanceof File && assetsManifest.size > 2 * 1024 * 1024)
+    return Response.json({ error: "assets.json exceeds 2 MiB" }, { status: 413 });
+  // Every uploaded asset must be listed in assets.json: the listing is what validation hashes, so a part
+  // outside it would ride along unchecked. Parse the listing before anything is written.
+  let listedAssets = new Set<string>();
+  if (assetsManifest instanceof File) {
+    const keys = listedAssetKeys(await assetsManifest.text());
+    if (!keys)
+      return Response.json({ error: "assets_manifest must be a JSON object with a files map" }, { status: 400 });
+    listedAssets = new Set(keys);
+  }
+  const assetKey = (file: File) => (file.name.startsWith("/") ? file.name : `/${file.name}`);
+  for (const file of assetFiles) {
+    if (!listedAssets.has(assetKey(file)))
+      return Response.json({ error: `asset ${file.name} is not listed in assets.json` }, { status: 400 });
+  }
+
+  const temporary = resolve(artifactRoot(), `.upload-${randomUUID()}`);
   await mkdir(temporary, { recursive: true, mode: 0o750 });
   try {
     await Promise.all([
@@ -464,7 +485,7 @@ export async function deployArtifact(request: Request, project: string): Promise
         mode: 0o640,
       });
       for (const file of assetFiles) {
-        const key = file.name.startsWith("/") ? file.name : `/${file.name}`;
+        const key = assetKey(file);
         if (key.includes("..") || key.includes("\0"))
           return Response.json({ error: `invalid asset path: ${file.name}` }, { status: 400 });
         const target = resolve(temporary, "assets", `.${key}`);
@@ -487,7 +508,6 @@ export async function deployArtifact(request: Request, project: string): Promise
       (deployment) => deployment.active && deployment.artifact === digest,
     );
     if (unchanged) {
-      await rm(temporary, { recursive: true, force: true });
       return Response.json(
         {
           id: unchanged.id,
@@ -501,53 +521,81 @@ export async function deployArtifact(request: Request, project: string): Promise
       );
     }
 
-    // #55: capture the outgoing version's Porffor pin before it is replaced.
-    const previousPorffor = await activePorfforVersion(actor.id, project);
-    const destination = resolve(artifactRoot, digest);
-    let placed = false;
-    try {
-      await rename(temporary, destination);
-      placed = true;
-    } catch (error) {
-      if (!(error instanceof Error) || !("code" in error) || (error.code !== "EEXIST" && error.code !== "ENOTEMPTY"))
-        throw error;
-      // Same digest dir already on disk (a prior version of another project, or a
-      // race). Its contents match this digest by construction, so reuse it.
-      await rm(temporary, { recursive: true, force: true });
-    }
     // #74 — every `{ binding, id }` the artifact declares must name a storage
     // resource this account owns, of the matching kind. Reject the deploy
-    // rather than silently spin up an empty store.
+    // before anything is placed, rather than silently spin up an empty store.
     const resolvedResources = resolveResourceBindings(validation.value.resourceBindings, actor.id);
     if (resolvedResources instanceof Response) return resolvedResources;
 
+    // #55: capture the outgoing version's Porffor pin before it is replaced.
+    const previousPorffor = await activePorfforVersion(actor.id, project);
     const hostname = deploymentHostname(project, actor.username);
+    const destination = artifactDir(actor.id, digest);
     const sproutPath = resolve(destination, "sprout");
-    // #141: start it on the edge first. Nothing is recorded or routed unless it
-    // listens, so the previous version keeps serving and there is no
-    // half-activated row to recover after a crash.
-    try {
-      await stageCandidate(await candidateRoute({ hostname, sproutPath, ownerId: actor.id, project }));
-    } catch (error) {
-      if (placed) await rm(destination, { recursive: true, force: true });
-      return Response.json(
-        { error: error instanceof Error ? error.message : "activation failed", activated: false },
-        { status: 409 },
-      );
-    }
-    const deployment = recordDeployment({
-      id: randomUUID(),
-      project,
-      ownerId: actor.id,
-      username: actor.username,
-      hostname,
-      artifact: digest,
-      sproutPath,
-      deployedAt: new Date().toISOString(),
-      binarySize: validation.value.manifest.binarySize,
-      compileMs: validation.value.manifest.compileMs ?? null,
-      resourceIds: resolvedResources,
-    });
+
+    // Placement and the database row each happen under the artifact lock, so a
+    // collection of the same digest (another of this account's versions going away)
+    // cannot remove the directory in between; the candidate start, which can take
+    // seconds, runs outside the lock with the artifact marked in flight instead.
+    const release = holdArtifact({ ownerId: actor.id, digest });
+    let placed = false;
+    const outcome = await (async (): Promise<{ response: Response } | { id: string }> => {
+      try {
+        await withArtifactLock(async () => {
+          await mkdir(dirname(destination), { recursive: true, mode: 0o750 });
+          try {
+            await rename(temporary, destination);
+            placed = true;
+          } catch (error) {
+            if (
+              !(error instanceof Error) ||
+              !("code" in error) ||
+              (error.code !== "EEXIST" && error.code !== "ENOTEMPTY")
+            )
+              throw error;
+            // This account already holds this digest on disk (another of its projects, or a
+            // race). Its contents match the digest by construction, so reuse it.
+          }
+        });
+        // #141: start it on the edge first. Nothing is recorded or routed unless it
+        // listens, so the previous version keeps serving and there is no
+        // half-activated row to recover after a crash.
+        try {
+          await stageCandidate(await candidateRoute({ hostname, sproutPath, ownerId: actor.id, project }));
+        } catch (error) {
+          if (placed) await rm(destination, { recursive: true, force: true });
+          return {
+            response: Response.json(
+              { error: error instanceof Error ? error.message : "activation failed", activated: false },
+              { status: 409 },
+            ),
+          };
+        }
+        const recorded = await withArtifactLock(async () =>
+          recordDeployment({
+            id: randomUUID(),
+            project,
+            ownerId: actor.id,
+            username: actor.username,
+            hostname,
+            artifact: digest,
+            sproutPath,
+            deployedAt: new Date().toISOString(),
+            binarySize: validation.value.manifest.binarySize,
+            compileMs: validation.value.manifest.compileMs ?? null,
+            resourceIds: resolvedResources,
+          }),
+        );
+        return { id: recorded.id };
+      } catch (error) {
+        if (placed) await rm(destination, { recursive: true, force: true }).catch(() => {});
+        throw error;
+      } finally {
+        release();
+      }
+    })();
+    if ("response" in outcome) return outcome.response;
+    const deployment = outcome;
     await syncRoutes();
     // #25 — keep the retained-versions cap; GC any artifact it orphans.
     const orphaned = pruneProjectDeployments(actor.id, project, LIMITS.versionsPerProject());
@@ -562,8 +610,10 @@ export async function deployArtifact(request: Request, project: string): Promise
       { status: 201 },
     );
   } catch (error) {
-    await rm(temporary, { recursive: true, force: true });
     return Response.json({ error: error instanceof Error ? error.message : "deployment failed" }, { status: 500 });
+  } finally {
+    // Every path out (early 400s included) clears the staging dir; after a successful rename it is already gone.
+    await rm(temporary, { recursive: true, force: true }).catch(() => {});
   }
 }
 

@@ -10,10 +10,11 @@ use bytes::Bytes;
 use futures_util::{SinkExt, StreamExt};
 use hyper::header::{HeaderMap, HeaderName};
 use hyper::Method;
+use std::sync::{Arc, OnceLock};
 use std::time::Duration;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
-use tokio::sync::watch;
+use tokio::sync::{watch, OwnedSemaphorePermit, Semaphore};
 use tokio::time::Instant;
 use tokio_tungstenite::tungstenite::handshake::client::generate_key;
 use tokio_tungstenite::tungstenite::handshake::derive_accept_key;
@@ -22,8 +23,24 @@ use tokio_tungstenite::tungstenite::protocol::{CloseFrame, Role, WebSocketConfig
 use tokio_tungstenite::tungstenite::{Error as WsError, Message};
 use tokio_tungstenite::WebSocketStream;
 
-/// Cloudflare's limit for a message, which sprouts accept too.
-pub const WS_MAX_PAYLOAD: usize = 32 * 1024 * 1024;
+/// Largest message (and frame) relayed in either direction.
+pub const WS_MAX_PAYLOAD: usize = 4 * 1024 * 1024;
+/// Relayed sockets open at once, process-wide.
+pub const WS_MAX_SOCKETS: usize = 2048;
+
+fn socket_slots() -> &'static Arc<Semaphore> {
+    static SLOTS: OnceLock<Arc<Semaphore>> = OnceLock::new();
+    SLOTS.get_or_init(|| Arc::new(Semaphore::new(WS_MAX_SOCKETS)))
+}
+
+/// A slot for one more relayed socket, or `None` when the process is at its limit.
+pub fn try_socket_slot() -> Option<OwnedSemaphorePermit> {
+    take_slot(socket_slots())
+}
+
+fn take_slot(slots: &Arc<Semaphore>) -> Option<OwnedSemaphorePermit> {
+    slots.clone().try_acquire_owned().ok()
+}
 /// How long the sprout has to accept the socket.
 pub const WS_CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
 /// A client socket with no frames at all for this long is closed.
@@ -90,6 +107,16 @@ fn config() -> WebSocketConfig {
 /// `Sec-WebSocket-Accept` for a client's key, and the validity of its handshake.
 pub fn accept_key_for(headers: &HeaderMap) -> Option<String> {
     let key = headers.get("sec-websocket-key")?;
+    // A key is 16 random bytes in base64: 24 characters ending in "==".
+    let kb = key.as_bytes();
+    if kb.len() != 24
+        || !kb.ends_with(b"==")
+        || !kb[..22]
+            .iter()
+            .all(|b| b.is_ascii_alphanumeric() || *b == b'+' || *b == b'/')
+    {
+        return None;
+    }
     let version = headers.get("sec-websocket-version")?;
     if version.as_bytes() != b"13" {
         return None;
@@ -442,6 +469,24 @@ mod tests {
     }
 
     #[test]
+    fn socket_slots_run_out() {
+        let slots = Arc::new(Semaphore::new(2));
+        let a = take_slot(&slots);
+        let b = take_slot(&slots);
+        assert!(a.is_some() && b.is_some());
+        assert!(take_slot(&slots).is_none());
+        drop(a);
+        assert!(take_slot(&slots).is_some());
+    }
+
+    #[test]
+    fn frames_and_messages_are_capped_at_4_mib() {
+        let c = server_config();
+        assert_eq!(c.max_message_size, Some(4 * 1024 * 1024));
+        assert_eq!(c.max_frame_size, Some(4 * 1024 * 1024));
+    }
+
+    #[test]
     fn accept_key_needs_a_key_and_version_13() {
         let ok = headers(&[
             ("sec-websocket-key", "dGhlIHNhbXBsZSBub25jZQ=="),
@@ -455,6 +500,16 @@ mod tests {
             accept_key_for(&headers(&[("sec-websocket-key", "k")])),
             None
         );
+        for bad in ["dGhlIHNhbXBsZSBub25jZQ", "dGhlIHNhbXBsZSBub25jZ!==", ""] {
+            assert_eq!(
+                accept_key_for(&headers(&[
+                    ("sec-websocket-key", bad),
+                    ("sec-websocket-version", "13")
+                ])),
+                None,
+                "{bad}"
+            );
+        }
         assert_eq!(
             accept_key_for(&headers(&[
                 ("sec-websocket-key", "k"),

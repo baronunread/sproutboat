@@ -1,4 +1,5 @@
 import { startBroker } from "@sproutboat/wire/broker";
+import { installSqliteGuard } from "./sqlite-guard";
 
 /**
  * Entry point the supervisor runs for each deployment's broker.
@@ -10,6 +11,7 @@ import { startBroker } from "@sproutboat/wire/broker";
  * its pid namespace. Here the supervisor writes `enable` or `disable` lines to
  * the broker's stdin instead. The signals still work for a broker run by hand.
  */
+installSqliteGuard();
 const session = startBroker(process.argv.slice(2));
 process.on("SIGUSR1", session.enableDispatch);
 process.on("SIGUSR2", session.disableDispatch);
