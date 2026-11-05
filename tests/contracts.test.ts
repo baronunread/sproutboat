@@ -385,7 +385,7 @@ describe("Phase A contracts", () => {
     expect(sbctl).toContain('caddy.d/*) install -d -m 0755 -o root -g root "$ETC/$(dirname "$rel")"');
     expect(sbctl).toContain('caddy.d/*|README.caddy) chown root:root "$ETC/$rel"; chmod 0644 "$ETC/$rel"');
     expect(sbctl).toContain('"$STAGER" --print-caddy-dir');
-    expect(sbctl).toContain("SPROUTBOAT_API_URL=https://control.%s");
+    expect(sbctl).toContain("SPROUTBOAT_API_URL=%s://control.%s");
   });
 
   test("updates stage a new installer outside the active release", async () => {
@@ -652,5 +652,77 @@ describe("safe update", () => {
     for (const f of ["install.sh", "infra/sbctl", "infra/sb-health", "infra/sb-rollback", "infra/sb-snapshot"]) {
       expect(Bun.spawnSync(["bash", "-n", f]).exitCode, f).toBe(0);
     }
+  });
+});
+
+describe("install mode", () => {
+  test("install.sh writes install.env and backfills it, so sbctl update keeps the mode", async () => {
+    const install = await Bun.file("install.sh").text();
+    expect(install).toContain("INSTALL_ENV=$ETC/install.env");
+    expect(install).toContain('} > "$INSTALL_ENV"');
+    expect(install).toContain('chown root:root "$INSTALL_ENV"; chmod 0644 "$INSTALL_ENV"');
+    expect(install).toContain('val_env "$INSTALL_ENV" "$_k"');
+    for (const key of [
+      "SB_MODE",
+      "SB_PROXY",
+      "SB_FIREWALL",
+      "SB_SSH_PORT",
+      "SB_SCHEME",
+      "SB_BIND_HOST",
+      "SB_BIND_ALLOW",
+      "SB_ACME_STAGING",
+    ]) {
+      expect(install).toContain(`echo "${key}=$${key}"`);
+    }
+    // Written after the snapshot of a safe update, so the snapshot keeps the old values.
+    expect(install.indexOf('"$SRC/infra/sb-snapshot" ||')).toBeLessThan(install.indexOf('} > "$INSTALL_ENV"'));
+    // The Cloudflare token is read back from caddy.env.
+    expect(install).toContain('val_env "$ETC/caddy.env" CLOUDFLARE_API_TOKEN');
+    expect(install).toContain("--homelab) SB_MODE=homelab");
+    expect(install).toContain("--public) SB_MODE=public");
+  });
+
+  test("an external proxy skips every Caddy step; homelab never touches ufw or ipify", async () => {
+    const install = await Bun.file("install.sh").text();
+    expect(install).toContain('if [ "$SB_PROXY" = external ]; then\n  say "Caddy: skipped');
+    expect(install).toContain('[ "$SB_PROXY" != caddy ] || units+=(caddy)');
+    expect(install).toContain('if [ "$SB_PROXY" = caddy ]; then\n{\n  echo "ACME_EMAIL=');
+    expect(install).toContain('if [ "$SB_PROXY" = caddy ]; then\nsay "Generating /etc/caddy/Caddyfile');
+    expect(install).toContain('[ "$SB_MODE" = homelab ] || PUBLIC_IP=$(curl -fsS4 -m 5 https://api.ipify.org');
+    expect(install).toContain('elif [ "$SB_FIREWALL" != ufw ]; then');
+    expect(install).toContain('for p in "$SB_SSH_PORT" 80 443; do ufw allow');
+    expect(install).toContain('[ "$SB_FIREWALL" != ufw ] || apt-get install -y -qq ufw');
+    expect(install).toContain('echo "SPROUTBOAT_DASHBOARD_DIR=$ROOT/apps/web/dist/client"');
+    expect(install).toContain("Host header unchanged");
+    // /etc/caddy may be the operator's own on an external install.
+    expect(install).toContain("= external ] || rm -rf /etc/caddy");
+  });
+
+  test("control and the edge still bind loopback by default; the drop-in is generated", async () => {
+    const [control, edge, install] = await Promise.all([
+      Bun.file("infra/systemd/sproutboat-control.service").text(),
+      Bun.file("infra/systemd/sproutboat-edge.service").text(),
+      Bun.file("install.sh").text(),
+    ]);
+    expect(control).toContain("Environment=SPROUTBOAT_BIND_HOST=127.0.0.1");
+    expect(edge).toContain("Environment=SPROUTBOAT_BIND_HOST=127.0.0.1");
+    expect(edge).toContain("IPAddressDeny=any\nIPAddressAllow=localhost");
+    expect(install).toContain("20-sproutboat-bind.conf");
+    expect(install).toContain('rm -f "$bind_d/20-sproutboat-bind.conf"');
+  });
+
+  test("sbctl has mode and leaves caddy out when the proxy is external", async () => {
+    const sbctl = await Bun.file("infra/sbctl").text();
+    expect(sbctl).toContain("  mode)");
+    expect(sbctl).toContain('[ "$PROXY" = external ] || SERVICES+=(caddy)');
+    expect(sbctl).toContain("this install has no Caddy (SB_PROXY=external)");
+    expect(await Bun.file("infra/sb-health").text()).toContain('[ "$PROXY" = external ] || UNITS+=(caddy)');
+    expect(await Bun.file("infra/sb-rollback").text()).toContain("= external ]");
+  });
+
+  test("the control server wires the dashboard module", async () => {
+    const main = await Bun.file("apps/control/src/main.ts").text();
+    expect(main).toContain("SPROUTBOAT_DASHBOARD_DIR");
+    expect(main).toContain("serveDashboard(request, dashboardDir)");
   });
 });

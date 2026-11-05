@@ -23,6 +23,14 @@ built by the CLI (Porffor + Zig), never here.
 Non-interactive: set `SB_DOMAIN`, `SB_ACME_EMAIL`, `SB_ADMIN`. GitHub sign-in is
 optional — add `SB_GITHUB_CLIENT_ID` / `SB_GITHUB_CLIENT_SECRET` to enable it.
 
+**Not a public VPS?** `sudo ./install.sh --homelab` (or `SB_MODE=homelab`) installs
+without Caddy and without touching `ufw`, for use behind your own reverse
+proxy, on a LAN, or over Tailscale. The choices are kept in
+`/etc/sproutboat/install.env` (`SB_MODE`, `SB_PROXY`, `SB_FIREWALL`, `SB_SCHEME`,
+`SB_BIND_HOST`, ...) and survive `sbctl update`; `sbctl mode` prints them. Everything
+below describes the default public mode unless it says otherwise. See
+[docs/homelab.md](../docs/homelab.md).
+
 ## Pinned dependencies
 
 `install.sh` installs two third-party binaries at exact, checksum-verified versions:
@@ -48,6 +56,10 @@ checksum-verified or pinned to the version above; the installer prints a warning
 only fetched when the binary is missing or lacks the module.
 
 ## DNS
+
+In homelab mode the installer never looks up the public IP and never waits for
+DNS: point `*.<domain>` at the box's LAN or tailnet address (or at your proxy).
+See [docs/homelab.md](../docs/homelab.md). The rest of this section is the public mode.
 
 **One record:** `*.<domain>` A → host IP, **DNS only** (grey cloud, so
 Let's Encrypt reaches the box directly). Like Coolify and Pangolin, you create
@@ -129,11 +141,19 @@ this box. `install.sh --uninstall` removes `/etc/sproutboat`, drop-ins included,
 
 ## Hosts and binding
 
-`control` (`:8787`) and `edge` (`:8080`) bind `127.0.0.1` only. Caddy is the
-sole public listener (80/443). The **dashboard is a static SPA** (`apps/web`,
-built to `apps/web/dist/client`) that Caddy serves from disk on
+`control` (`:8787`) and `edge` (`:8080`) bind `127.0.0.1` by default. In public
+mode Caddy is the sole public listener (80/443). The **dashboard is a static SPA**
+(`apps/web`, built to `apps/web/dist/client`) that Caddy serves from disk on
 `dashboard.<domain>` — no service, no port. The bare `<domain>` redirects to
 the dashboard; `control.<domain>` is the CLI/API origin.
+
+In homelab mode (`SB_PROXY=external`) there is no Caddy: the listener is your own
+proxy, which forwards `control.<domain>` and `dashboard.<domain>` to `:8787` (control
+serves the SPA itself, from `SPROUTBOAT_DASHBOARD_DIR`) and the deployment hosts to
+`:8080`. `SB_BIND_HOST` can widen the bind in homelab mode only. It also opens the
+edge's `IPAddressDeny=any` filter to `SB_BIND_ALLOW`, which lets sprouts reach those
+ranges directly; read [docs/homelab.md](../docs/homelab.md#g-sb_bind_host-and-sb_bind_allow)
+before using it.
 
 ## Native runtime sandbox
 
