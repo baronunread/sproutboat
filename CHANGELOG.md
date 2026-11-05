@@ -5,8 +5,12 @@ Changes to the self-hosted Sproutboat platform are recorded here. Read the
 
 ## [Unreleased]
 
+## [0.14.0] - 2026-11-05
+
 ### Added
 
+- `packages/ikada` (#341): the open design system foundations (tokens, inventory, P0 primitives) the next dashboard
+  builds on. Not shipped to a box: the dashboard is unchanged in this release.
 - **Release workflow** (`.github/workflows/release.yml`): a `v*` tag builds the Rust edge and egress (musl, x86-64) and attaches them and `SHA256SUMS` to the GitHub Release.
 - **Engines:** `sbctl engine` shows and switches the edge and egress between Rust and Bun; the choice lives in `/etc/sproutboat/engine.env`. `SB_ENGINE_DIR` installs unreleased binaries. See `infra/README.md`, Engines.
 
