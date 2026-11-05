@@ -130,11 +130,18 @@ describe("Table hideBelow", () => {
 });
 
 describe("StatusGlyph outlines", () => {
-  const statuses: Status[] = ["success", "warning", "danger", "info", "neutral"];
+  const statuses: { status: Status; live?: boolean }[] = [
+    { status: "success" },
+    { status: "success", live: true },
+    { status: "warning" },
+    { status: "danger" },
+    { status: "info" },
+    { status: "neutral" },
+  ];
 
-  test("every status has its own distinct shape", () => {
-    const outlines = statuses.map((status) => {
-      const { container } = render(<StatusGlyph status={status} />);
+  test("no two statuses share a shape (Ready and Live differ)", () => {
+    const outlines = statuses.map(({ status, live }) => {
+      const { container } = render(<StatusGlyph status={status} live={live} />);
       const el = container.querySelector("[data-glyph]");
       expect(el?.getAttribute("aria-hidden")).toBe("true");
       return (el?.className ?? "")

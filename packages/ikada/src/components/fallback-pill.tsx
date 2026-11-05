@@ -10,6 +10,8 @@ export interface FallbackPillProps extends Omit<ComponentProps<"button">, "child
   children?: ReactNode;
   /** Opens the tooltip on mount (for docs and screenshots). */
   defaultOpen?: boolean;
+  /** Short "Fell back" text for narrow cells; the accessible name stays "Fell back to supervisor". */
+  compact?: boolean;
   /** When set the pill is a link to the details. */
   href?: string;
 }
@@ -20,7 +22,8 @@ export interface FallbackPillProps extends Omit<ComponentProps<"button">, "child
  */
 export function FallbackPill({
   reason,
-  children = "Fell back to supervisor",
+  compact = false,
+  children = compact ? "Fell back" : "Fell back to supervisor",
   defaultOpen,
   href,
   className,
@@ -35,6 +38,7 @@ export function FallbackPill({
     focusRing,
     className,
   );
+  const label = compact ? { "aria-label": "Fell back to supervisor" } : {};
   const body = (
     <>
       <StatusGlyph status="warning" />
@@ -42,11 +46,11 @@ export function FallbackPill({
     </>
   );
   const trigger = href ? (
-    <a href={href} className={classes}>
+    <a href={href} className={classes} {...label}>
       {body}
     </a>
   ) : (
-    <button ref={ref} type="button" data-tone="warning" className={classes} {...props}>
+    <button ref={ref} type="button" data-tone="warning" className={classes} {...label} {...props}>
       {body}
     </button>
   );

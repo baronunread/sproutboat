@@ -387,6 +387,11 @@ describe("RuntimeChip and FallbackPill", () => {
     expect(screen.getByText("supervisor").className).not.toContain("danger");
     expect(screen.getByText("unknown").className).toContain("bg-neutral-soft");
   });
+  test("compact FallbackPill shows short text but keeps the full accessible name", () => {
+    render(<FallbackPill compact />);
+    const pill = screen.getByRole("button", { name: "Fell back to supervisor" });
+    expect(pill.textContent).toBe("Fell back");
+  });
   test("FallbackPill is amber, never red, focusable, and shows the reason in a tooltip", async () => {
     render(
       <TooltipProvider delay={0}>

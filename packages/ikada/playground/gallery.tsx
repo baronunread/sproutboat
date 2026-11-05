@@ -60,8 +60,9 @@ const regions = [
   { value: "sin", label: "Singapore" },
   { value: "syd", label: "Sydney", disabled: true },
 ];
-const statuses: { status: Status; label: string }[] = [
+const statuses: { status: Status; label: string; live?: boolean }[] = [
   { status: "success", label: "Ready" },
+  { status: "success", label: "Live", live: true },
   { status: "warning", label: "Fell back to supervisor" },
   { status: "danger", label: "Build failed" },
   { status: "info", label: "Building" },
@@ -121,7 +122,7 @@ function Tokens() {
           <div className="rounded-md bg-hover px-3 py-2 text-sm">12 / 8</div>
         </div>
       </Row>
-      <Row label="Status colors, each with its own shape">
+      <Row label="Status colors">
         {status.map((s) => (
           <span key={s} className="inline-flex items-center gap-2 text-sm">
             <span
@@ -308,7 +309,7 @@ function StatusSection() {
     >
       <Row label="Badge with shape">
         {statuses.map((s) => (
-          <Badge key={s.status} tone={s.status} dot>
+          <Badge key={s.label} tone={s.status} live={s.live} dot>
             {s.label}
           </Badge>
         ))}
@@ -322,10 +323,10 @@ function StatusSection() {
       </Row>
       <Row label="StatusDot with label">
         {statuses.map((s) => (
-          <StatusDot key={s.status} status={s.status} label={s.label} />
+          <StatusDot key={s.label} status={s.status} live={s.live} label={s.label} />
         ))}
         <StatusDot status="info" label="Deploying" pulse />
-        <StatusDot status="success" label="Live" pulse />
+        <StatusDot status="success" live label="Live" pulse />
       </Row>
       <Row label="StatusDot, label hidden visually (still announced)">
         <StatusDot status="success" label="Ready" hideLabel />

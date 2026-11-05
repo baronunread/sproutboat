@@ -9,6 +9,8 @@ export interface StatusDotProps extends Omit<ComponentProps<"span">, "children">
   label: string;
   /** Keeps the label for screen readers and hides it visually (dense tables). */
   hideLabel?: boolean;
+  /** Success that is serving traffic ("Live 90%"): its own bullseye shape, not the "Ready" circle. */
+  live?: boolean;
   /** Pulses for in-progress states; the ring stops spinning when motion is reduced. */
   pulse?: boolean;
 }
@@ -17,6 +19,7 @@ export function StatusDot({
   status,
   label,
   hideLabel = false,
+  live = false,
   pulse = false,
   className,
   ref,
@@ -29,7 +32,7 @@ export function StatusDot({
       className={cn("inline-flex items-center gap-2 text-base text-fg", className)}
       {...props}
     >
-      <StatusGlyph status={status} pulse={pulse} />
+      <StatusGlyph status={status} live={live} pulse={pulse} />
       <span className={hideLabel ? "sr-only" : undefined}>{label}</span>
     </span>
   );

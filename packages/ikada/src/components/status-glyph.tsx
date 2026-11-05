@@ -14,22 +14,32 @@ const glyphClass = {
   neutral: "rounded-xs scale-80",
 } satisfies Record<Status, string>;
 
+/**
+ * Live: serving traffic right now. A bullseye (ring with a solid centre), so it differs from the
+ * solid Ready circle and from the half-filled in-progress ring. Only applies to success.
+ */
+const liveClass =
+  "rounded-full border-2 border-brand-dot bg-[radial-gradient(circle,var(--sb-brand-dot)_0_30%,transparent_35%)]";
+
 export interface StatusGlyphProps extends Omit<ComponentProps<"span">, "children"> {
   status: Status;
+  /** Success that is serving traffic ("Live"): a bullseye instead of the solid "Ready" circle. */
+  live?: boolean;
   /** Pulses (a fade) while in progress; the building ring and its wedge spin when motion is allowed. */
   pulse?: boolean;
 }
 
-/** A 10px shape per status (circle, triangle, cross, ring, square). Decorative: always paired with a label. */
-export function StatusGlyph({ status, pulse = false, className, ...props }: StatusGlyphProps) {
+/** A 10px shape per status (circle, bullseye for live, triangle, cross, half ring, square). Decorative: always paired with a label. */
+export function StatusGlyph({ status, live = false, pulse = false, className, ...props }: StatusGlyphProps) {
+  const isLive = live && status === "success";
   return (
     <span
       aria-hidden="true"
-      data-glyph={status}
+      data-glyph={isLive ? "live" : status}
       className={cn(
         "inline-block size-2.5 shrink-0",
-        status === "info" ? "" : dotColor[status],
-        glyphClass[status],
+        status === "info" || isLive ? "" : dotColor[status],
+        isLive ? liveClass : glyphClass[status],
         pulse && (status === "info" ? "motion-safe:animate-spin" : "animate-pulse"),
         className,
       )}

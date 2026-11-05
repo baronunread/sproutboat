@@ -288,6 +288,7 @@ interface Deployment {
   runtime: "sproutd" | "supervisor";
   author: string;
   fellBack?: boolean;
+  live?: boolean;
   age: number;
   ageLabel: string;
 }
@@ -312,6 +313,7 @@ const deployments: Deployment[] = [
     message: "Search v2 ranking weights",
     status: "success",
     statusLabel: "Live 90%",
+    live: true,
     runtime: "sproutd",
     author: "joel",
     age: 120,
@@ -428,14 +430,13 @@ function DeploymentsTable({
                 {d.message}
               </span>
             </TableCell>
-            <TableCell hideBelow="sm">
-              <div className="flex flex-col items-start gap-1 py-1.5">
-                <span>{d.message}</span>
-                {d.fellBack ? <FallbackPill reason={FALLBACK_REASON} /> : null}
-              </div>
-            </TableCell>
+            <TableCell hideBelow="sm">{d.message}</TableCell>
             <TableCell className="whitespace-nowrap">
-              <StatusDot status={d.status} label={d.statusLabel} />
+              {/* Critical status lives in a column that never hides, so the fallback survives at 390px. */}
+              <div className="flex flex-col items-start gap-1 py-1.5">
+                <StatusDot status={d.status} live={d.live} label={d.statusLabel} />
+                {d.fellBack ? <FallbackPill compact reason={FALLBACK_REASON} /> : null}
+              </div>
             </TableCell>
             <TableCell hideBelow="lg">
               <RuntimeChip runtime={d.runtime} />
@@ -801,7 +802,7 @@ export function DashboardPreview() {
               <PageHeader
                 breadcrumbs={<Breadcrumbs items={crumbs} />}
                 title="field-notes"
-                status={<StatusDot status="success" label="Live" />}
+                status={<StatusDot status="success" live label="Live" />}
                 description="notes.fernhill.dev · fernhill/field-notes · main"
                 actions={
                   <>

@@ -30,7 +30,8 @@ const hideBelowClass = {
 export interface HideBelowProps {
   /**
    * Drops this column (set it on its `TableHead` and every `TableCell`) when the table's
-   * container is narrower than the breakpoint. Use it for low-priority columns; the
+   * container is narrower than the breakpoint. Use it for low-priority columns only; never put critical
+   * status (fallback, failure) in a column that can hide; the
    * container still scrolls sideways as the last resort.
    */
   hideBelow?: TableBreakpoint;

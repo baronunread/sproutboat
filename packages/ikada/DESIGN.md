@@ -243,7 +243,7 @@ Rules:
 - Pair every status with a label. `StatusDot` and `Badge` require visible text or an `aria-label`.
 - Text on a status background uses the `*-fg` token on `*-soft`. Solid fills (`brand`, `danger`) take `on-brand` and `on-danger`.
 - Chart colors follow HTTP classes: green 2xx (it is success), sky 3xx, amber 4xx, red 5xx, grey other. Requests are blue, errors red, a second series violet, and the deploy marker a neutral dashed rule. Requests are not green: green means success.
-- Shapes: success is a circle, warning a triangle, danger a cross, info a ring (it spins while building) and neutral a square.
+- Shapes: Ready (success) is a solid circle, Live (success with `live`, serving traffic) a bullseye, warning a triangle, danger a cross, info a half-filled ring (it spins while building) and neutral a square. No two statuses share a shape; a test enforces it. A deployment "Live 90%" is not a build "Ready".
 - One `brand` button per view. If two actions compete, one is `secondary`.
 
 ## Typography
@@ -451,6 +451,7 @@ Use compact for log viewers, resource tables with many rows, and panels the user
 - Icon-only controls require `label`, which becomes `aria-label` and the tooltip text.
 - Loading disables interaction with `aria-busy` and `data-loading`, but keeps the button's width so nothing shifts.
 - Menus with a checkbox or radio item reserve one fixed 1.5rem gutter (`--sb-gutter`) for every item, so item text lines up whether or not a row shows a check. Never pad only the checked row.
+- Tables: `hideBelow` is for low-priority columns only (message, author, age). Never put critical status inside a column that can hide: a fallback, failure or degraded signal goes in the always-visible Status cell (or the version cell), so it survives at 390px. The dashboard preview puts the "Fell back to supervisor" pill under the status for this reason.
 - Charts live in `@sproutboat/ikada/charts`: `TimeseriesChart` (with a dashed deploy marker) and `Sparkline` wrap TanStack Charts and read only the `chart-*` tokens, so they follow the theme with no rebuild.
 - Positioned layers (Tooltip, Popover, Menu, Select) flip and shift inside the viewport and use `collisionPadding`.
 - Dialogs trap focus, restore it on close, and close on Escape. Destructive dialogs focus the cancel action first.
