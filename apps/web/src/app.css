@@ -3,9 +3,11 @@
 @import "@fontsource-variable/figtree";
 @import "@fontsource-variable/jetbrains-mono";
 
-/* Tailwind does not scan node_modules, and ikada is a workspace symlink, so its
-   component classes would be missing from the build without this line. */
-@source "../../../packages/ikada/src";
+/* Tailwind does not scan node_modules, so ikada's component classes would be missing from the
+   build without this line. ikada lives in github.com/baronunread/ikada and ships TypeScript source.
+   TODO(ikada-npm): the dependency is a pinned git commit until @sproutboat/ikada is on npm; then
+   switch package.json to "^0.1.0". This path stays valid for both. */
+@source "../../../node_modules/@sproutboat/ikada/src";
 
 /* ---------------------------------------------------------------------------
  * Theme

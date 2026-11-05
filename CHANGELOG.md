@@ -5,6 +5,10 @@ Changes to the self-hosted Sproutboat platform are recorded here. Read the
 
 ## [Unreleased]
 
+### Changed
+
+- The open design system `@sproutboat/ikada` moved to its own repository, [baronunread/ikada](https://github.com/baronunread/ikada) (history preserved). The dashboard depends on a pinned commit of it until the package is on npm. `packages/ikada` and its publish workflow are gone from this repo.
+
 ## [1.0.0-rc.2] - 2026-11-05
 
 Hardening release. Everything below also ships as 0.14.1 for the 0.14 line. Update with `sudo SB_REF=v1.0.0-rc.2 sbctl update`.
