@@ -17,7 +17,7 @@ use crate::util::{
 };
 use crate::websocket::{
     accept_key_for, connect_upstream, is_websocket_upgrade, offered_protocols, relay,
-    server_config, WS_CONNECT_TIMEOUT,
+    server_config, try_socket_slot, WS_CONNECT_TIMEOUT,
 };
 use bytes::Bytes;
 use http_body_util::BodyExt;
@@ -164,6 +164,63 @@ fn is_local_host(raw: &str) -> bool {
     )
 }
 
+/// Does the request carry any header a forwarding proxy adds?
+fn has_proxy_headers(headers: &HeaderMap) -> bool {
+    [
+        "x-forwarded-for",
+        "x-forwarded-host",
+        "x-forwarded-proto",
+        "forwarded",
+        "via",
+    ]
+    .iter()
+    .any(|name| headers.contains_key(*name))
+}
+
+/// A sprout's `Set-Cookie` lines, made safe to hand to a browser: the `Domain` attribute is
+/// removed (the cookie stays host-only) and platform session cookies are dropped.
+fn clean_set_cookie(value: &str) -> Option<String> {
+    let mut parts = value.split(';');
+    let first = parts.next().unwrap_or("");
+    let name = first
+        .split('=')
+        .next()
+        .unwrap_or("")
+        .trim()
+        .to_ascii_lowercase();
+    if name.starts_with("__secure-better-auth") || name.starts_with("better-auth.") {
+        return None;
+    }
+    let mut out = String::from(first);
+    for attr in parts {
+        let key = attr.split('=').next().unwrap_or("").trim();
+        if key.eq_ignore_ascii_case("domain") {
+            continue;
+        }
+        out.push(';');
+        out.push_str(attr);
+    }
+    Some(out)
+}
+
+fn clean_set_cookies(headers: &mut HeaderMap) {
+    if !headers.contains_key("set-cookie") {
+        return;
+    }
+    let cookies: Vec<HeaderValue> = headers.get_all("set-cookie").iter().cloned().collect();
+    headers.remove("set-cookie");
+    for cookie in cookies {
+        let cleaned = match cookie.to_str() {
+            Ok(text) => clean_set_cookie(text).and_then(|t| HeaderValue::from_str(&t).ok()),
+            // Not text: cannot be inspected, so it is not passed on.
+            Err(_) => None,
+        };
+        if let Some(value) = cleaned {
+            headers.append("set-cookie", value);
+        }
+    }
+}
+
 fn is_transfer_path(path: &str) -> bool {
     let Some(rest) = path.strip_prefix("/__sb/r2/transfer/") else {
         return false;
@@ -279,7 +336,11 @@ async fn handle_request(
     // Answered only to a loopback peer asking by a loopback name: through the proxy (Caddy is a
     // loopback peer too) the Host is a deployment hostname, so this falls through to routing.
     let local_host = header_joined(req.headers(), "host").is_some_and(|h| is_local_host(&h));
-    if pathname == "/__sb/pool" && peer.to_canonical().is_loopback() && local_host {
+    if pathname == "/__sb/pool"
+        && peer.to_canonical().is_loopback()
+        && local_host
+        && !has_proxy_headers(req.headers())
+    {
         return match app.sidecar.stats().await {
             Ok(bytes) => response(200, Some("application/json;charset=utf-8"), full(bytes)),
             Err(error) => {
@@ -804,6 +865,13 @@ async fn websocket(
         );
         text(status, body)
     };
+    // The client's handshake is checked, and a slot taken, before the sprout is bothered.
+    let Some(accept) = accept_key_for(req.headers()) else {
+        return refusal(400, "WebSocket upgrade failed");
+    };
+    let Some(slot) = try_socket_slot() else {
+        return refusal(503, "too many open WebSockets");
+    };
     let upstream = match connect_upstream(
         &authority,
         path_and_query,
@@ -815,10 +883,6 @@ async fn websocket(
     {
         Ok(u) => u,
         Err(_) => return refusal(502, "the sprout did not accept the WebSocket"),
-    };
-    let Some(accept) = accept_key_for(req.headers()) else {
-        drop(upstream);
-        return refusal(400, "WebSocket upgrade failed");
     };
     let on_upgrade = hyper::upgrade::on(&mut req);
     let mut res = Response::new(empty());
@@ -847,6 +911,7 @@ async fn websocket(
     tokio::spawn(async move {
         let _hold: IdleHold = hold;
         let _guard = guard;
+        let _slot = slot;
         let Ok(upgraded) = on_upgrade.await else {
             return;
         };
@@ -1073,6 +1138,7 @@ async fn proxy_http(
     for name in hop {
         headers.remove(name);
     }
+    clean_set_cookies(&mut headers);
     // A callee's error, for the caller's broker only: it carries the message.
     if !binding_call {
         headers.remove("x-sb-uncaught");
@@ -1232,4 +1298,79 @@ fn proxy_failure(
             .str("errorKind", kind),
     );
     text(status, body)
+}
+
+#[cfg(test)]
+mod hardening_tests {
+    use super::*;
+
+    #[test]
+    fn pool_refuses_proxy_headers() {
+        let mut h = HeaderMap::new();
+        h.insert("host", HeaderValue::from_static("localhost"));
+        assert!(!has_proxy_headers(&h));
+        for name in [
+            "x-forwarded-for",
+            "x-forwarded-host",
+            "x-forwarded-proto",
+            "forwarded",
+            "via",
+        ] {
+            let mut with = h.clone();
+            with.insert(name, HeaderValue::from_static("x"));
+            assert!(has_proxy_headers(&with), "{name}");
+        }
+    }
+
+    #[test]
+    fn cookie_domain_is_dropped() {
+        assert_eq!(
+            clean_set_cookie("a=b; Domain=example.com; Path=/; Secure").as_deref(),
+            Some("a=b; Path=/; Secure")
+        );
+        assert_eq!(
+            clean_set_cookie("a=b;path=/;DOMAIN = .example.com ;HttpOnly").as_deref(),
+            Some("a=b;path=/;HttpOnly")
+        );
+        assert_eq!(
+            clean_set_cookie("a=b; Path=/; domain=x.test").as_deref(),
+            Some("a=b; Path=/")
+        );
+        assert_eq!(
+            clean_set_cookie("a=b; Path=/; Max-Age=5").as_deref(),
+            Some("a=b; Path=/; Max-Age=5")
+        );
+    }
+
+    #[test]
+    fn session_cookies_are_dropped() {
+        assert_eq!(
+            clean_set_cookie("__Secure-better-auth.session_token=x; Path=/"),
+            None
+        );
+        assert_eq!(clean_set_cookie("better-auth.session_token=x"), None);
+        assert_eq!(clean_set_cookie(" Better-Auth.x=1; Domain=a.b"), None);
+        assert!(clean_set_cookie("my-better-auth=1").is_some());
+    }
+
+    #[test]
+    fn set_cookie_lines_are_cleaned_in_place() {
+        let mut h = HeaderMap::new();
+        h.append(
+            "set-cookie",
+            HeaderValue::from_static("a=1; Domain=x.test; Path=/"),
+        );
+        h.append(
+            "set-cookie",
+            HeaderValue::from_static("better-auth.session_token=z"),
+        );
+        h.append("set-cookie", HeaderValue::from_static("b=2"));
+        clean_set_cookies(&mut h);
+        let got: Vec<&str> = h
+            .get_all("set-cookie")
+            .iter()
+            .map(|v| v.to_str().unwrap())
+            .collect();
+        assert_eq!(got, ["a=1; Path=/", "b=2"]);
+    }
 }
