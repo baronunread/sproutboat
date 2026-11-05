@@ -41,7 +41,11 @@ Environment=SPROUTBOAT_SPROUT_SECCOMP=/etc/sproutboat/worker-seccomp.bpf
 # Per-worker cgroup scopes need a user manager + linger; the POC instead caps
 # the whole edge+sprouts cgroup below and sets SPROUTBOAT_SPROUT_CGROUP=off.
 Environment=SPROUTBOAT_SPROUT_CGROUP=off
-ExecStart=/opt/sproutboat/bun/bin/bun services/edge/src/main.ts
+# The Rust edge (services/edge-rs), installed by install.sh outside the rsync tree. It runs
+# the Bun supervisor as a sidecar and finds Bun through SPROUTBOAT_BUN (PATH is hardened).
+# `sbctl engine bun` swaps in the Bun edge with a generated drop-in (infra/sb-engine).
+Environment=SPROUTBOAT_BUN=/opt/sproutboat/bun/bin/bun
+ExecStart=/usr/local/lib/sproutboat/bin/sproutboat-edge
 ExecReload=/bin/kill -HUP $MAINPID
 Restart=always
 RestartSec=2

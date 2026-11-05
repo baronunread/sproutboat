@@ -13,6 +13,7 @@ TOKEN_FILE=/root/sproutboat-admin.env
 UPDATER=/usr/local/lib/sproutboat/update
 STAGER=/usr/local/lib/sproutboat/backup-stage
 ETC=/etc/sproutboat
+ENGINE=/usr/local/lib/sproutboat/engine
 SERVICES=(sproutboat-control sproutboat-egress sproutboat-edge caddy)
 UNITS=("${SERVICES[@]}" sproutboat-backup.timer)
 
@@ -33,6 +34,8 @@ sbctl — Sproutboat single-VPS control
   sbctl token              print the admin API URL + token
   sbctl memory             memory caps and current use per unit, against MemTotal
   sbctl preflight          re-run the runtime sandbox checks
+  sbctl engine             show which engine (rust|bun) runs the edge and egress
+  sbctl engine rust|bun    switch both, restart them (bun is the fallback; engine.env keeps the choice)
   sbctl update             stage a fresh release, then run its installer
   sbctl backup now|list    take a backup now (prints its name) / list backups
   sbctl backup verify <archive> [--full] [--key FILE]   check an archive (--full: hashes + sqlite integrity)
@@ -167,6 +170,16 @@ case "$cmd" in
     cat "$TOKEN_FILE" ;;
   memory) memory_report ;;
   preflight) exec sh -c "cd '$ROOT' && '$ROOT/bun/bin/bun' run runtime:preflight" ;;
+  engine)
+    [ -x "$ENGINE" ] || die "$ENGINE missing: re-run the installer once"
+    case "${1:-status}" in
+      status) exec "$ENGINE" status ;;
+      rust|bun)
+        "$ENGINE" set both "$1"
+        systemctl restart sproutboat-egress sproutboat-edge
+        exec "$0" status ;;
+      *) die "usage: sbctl engine [rust|bun]" ;;
+    esac ;;
   update)
     [ -x "$UPDATER" ] || die "$UPDATER missing: re-run the installer once"
     exec "$UPDATER" "$@" ;;

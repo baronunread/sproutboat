@@ -1,4 +1,5 @@
 import { beforeAll, describe, expect, test } from "bun:test";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -193,12 +194,14 @@ describe("Phase A contracts", () => {
     const egressUnit = await Bun.file("infra/systemd/sproutboat-egress.service").text();
     const sandbox = await Bun.file("infra/sandbox/sprout-sandbox.sh").text();
 
-    // The unit runs a script the pinned @sproutboat/wire actually ships, on the
-    // port the edge points its brokers at.
-    const exec = /^ExecStart=\S+ (\S+) --host 127\.0\.0\.1 --port (\d+)$/m.exec(egressUnit);
+    // The Bun fallback (sb-engine) runs a script the pinned @sproutboat/wire actually ships,
+    // on the same port as the Rust unit and the one the edge points its brokers at.
+    const engine = await Bun.file("infra/sb-engine").text();
+    const exec = /node_modules\/@sproutboat\/wire\/src\/egress\.ts --host 127\.0\.0\.1 --port (\d+)/.exec(engine);
     expect(exec).not.toBeNull();
-    expect(await Bun.file(exec![1]).exists()).toBe(true);
-    expect(edgeUnit).toContain(`Environment=SB_EGRESS_URL=http://127.0.0.1:${exec![2]}`);
+    expect(await Bun.file("node_modules/@sproutboat/wire/src/egress.ts").exists()).toBe(true);
+    expect(egressUnit).toContain(`--host 127.0.0.1 --port ${exec![1]}`);
+    expect(edgeUnit).toContain(`Environment=SB_EGRESS_URL=http://127.0.0.1:${exec![1]}`);
     expect(edgeUnit).toContain("EnvironmentFile=-/etc/sproutboat/egress.env");
     expect(egressUnit).toContain("EnvironmentFile=/etc/sproutboat/egress.env");
     // The edge's own deny stays: sprouts must not gain a route.
@@ -215,22 +218,134 @@ describe("Phase A contracts", () => {
     expect(sandbox).not.toContain("SB_EGRESS");
   });
 
-  test("the Rust egress is an opt-in drop-in; the Bun egress stays the default", async () => {
-    const unit = await Bun.file("infra/systemd/sproutboat-egress.service").text();
-    const dropIn = await Bun.file("infra/systemd/sproutboat-egress.service.d/rust.conf.example").text();
-    expect(unit).toMatch(/^ExecStart=\S*\/bun\/bin\/bun node_modules\/@sproutboat\/wire\/src\/egress\.ts /m);
-    // Not a live drop-in: nothing under the unit's .d directory is named *.conf.
-    const live = [...new Bun.Glob("infra/systemd/sproutboat-egress.service.d/*.conf").scanSync(".")];
-    expect(live).toEqual([]);
-    // It replaces ExecStart only, on the port the edge's SB_EGRESS_URL names.
-    const lines = dropIn.split("\n").filter((l) => l && !l.startsWith("#"));
-    expect(lines).toEqual([
-      "[Service]",
-      "ExecStart=",
-      "ExecStart=/opt/sproutboat/bin/sproutboat-egress --host 127.0.0.1 --port 8070",
-    ]);
-    const edgeUnit = await Bun.file("infra/systemd/sproutboat-edge.service").text();
-    expect(edgeUnit).toContain("Environment=SB_EGRESS_URL=http://127.0.0.1:8070");
+  test("the base units run the Rust engines from outside the rsync tree", async () => {
+    const edge = await Bun.file("infra/systemd/sproutboat-edge.service").text();
+    const egress = await Bun.file("infra/systemd/sproutboat-egress.service").text();
+    expect(edge).toMatch(/^ExecStart=\/usr\/local\/lib\/sproutboat\/bin\/sproutboat-edge$/m);
+    expect(edge).toContain("Environment=SPROUTBOAT_BUN=/opt/sproutboat/bun/bin/bun");
+    expect(edge).toContain("ExecReload=/bin/kill -HUP $MAINPID");
+    expect(egress).toMatch(
+      /^ExecStart=\/usr\/local\/lib\/sproutboat\/bin\/sproutboat-egress --host 127\.0\.0\.1 --port 8070$/m,
+    );
+    expect(egress).toContain("MemoryMax=128M");
+    expect(egress).toContain("MemoryHigh=112M");
+    expect(egress).toContain("EnvironmentFile=/etc/sproutboat/egress.env");
+    // The egress port in the edge's SB_EGRESS_URL is the one the unit binds.
+    expect(edge).toContain("Environment=SB_EGRESS_URL=http://127.0.0.1:8070");
+    // The old opt-in drop-in is gone.
+    expect(existsSync("infra/systemd/sproutboat-egress.service.d")).toBe(false);
+  });
+
+  test("sb-engine writes the Bun fallback drop-ins and removes them for rust", async () => {
+    const root = mkdtempSync(join(tmpdir(), "sb-engine-"));
+    const run = (...args: string[]) => {
+      const r = Bun.spawnSync(["bash", "infra/sb-engine", ...args], {
+        env: { ...process.env, SB_ENGINE_ROOT: root, SB_ENGINE_NO_RELOAD: "1" },
+      });
+      return { code: r.exitCode, out: r.stdout.toString(), err: r.stderr.toString() };
+    };
+    const edgeDropIn = join(root, "etc/systemd/system/sproutboat-edge.service.d/10-engine.conf");
+    const egressDropIn = join(root, "etc/systemd/system/sproutboat-egress.service.d/10-engine.conf");
+    try {
+      // No engine.env: rust, so nothing is written.
+      expect(run("apply").code).toBe(0);
+      expect(existsSync(edgeDropIn)).toBe(false);
+      expect(run("status").out).toContain("edge    rust");
+
+      // Setting rust needs the binaries.
+      expect(run("set", "both", "rust").code).not.toBe(0);
+
+      expect(run("set", "both", "bun").code).toBe(0);
+      expect(readFileSync(join(root, "etc/sproutboat/engine.env"), "utf8")).toBe("SB_EDGE=bun\nSB_EGRESS=bun\n");
+      expect(readFileSync(edgeDropIn, "utf8").split("\n").filter(Boolean)).toEqual([
+        "[Service]",
+        "ExecStart=",
+        "ExecStart=/opt/sproutboat/bun/bin/bun services/edge/src/main.ts",
+      ]);
+      expect(readFileSync(egressDropIn, "utf8").split("\n").filter(Boolean)).toEqual([
+        "[Service]",
+        "ExecStart=",
+        "ExecStart=/opt/sproutboat/bun/bin/bun node_modules/@sproutboat/wire/src/egress.ts --host 127.0.0.1 --port 8070",
+        "MemoryMax=512M",
+        "MemoryHigh=448M",
+      ]);
+
+      // Back to rust once the binaries exist; the drop-ins go away.
+      const bin = join(root, "usr/local/lib/sproutboat/bin");
+      mkdirSync(bin, { recursive: true });
+      for (const n of ["sproutboat-edge", "sproutboat-egress"])
+        writeFileSync(join(bin, n), "#!/bin/sh\n", { mode: 0o755 });
+      expect(run("set", "edge", "rust").code).toBe(0);
+      expect(existsSync(edgeDropIn)).toBe(false);
+      expect(existsSync(egressDropIn)).toBe(true);
+      expect(run("status").out).toContain("egress  bun");
+      expect(run("set", "both", "rust").code).toBe(0);
+      expect(existsSync(egressDropIn)).toBe(false);
+      expect(run("set", "edge", "nope").code).not.toBe(0);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  test("install.sh fetches checksummed Rust engines outside the rsync tree and falls back to Bun", async () => {
+    const install = await Bun.file("install.sh").text();
+    const sbctl = await Bun.file("infra/sbctl").text();
+    expect(install).toContain("ENGINE_DIR=/usr/local/lib/sproutboat/bin");
+    expect(install).toContain("install_engines()");
+    expect(install).toContain("SB_ENGINE_DIR");
+    expect(install).toContain("SB_ENGINE_BASE_URL");
+    expect(install).toContain("releases/download");
+    expect(install).toContain("SHA256SUMS");
+    expect(install).toContain('install -m 0755 -o root -g root "$tmp/$(engine_asset "$n")" "$ENGINE_DIR/$n.new"');
+    expect(install).toContain("--exclude /bin");
+    expect(install).toContain('install -m 0755 "$ROOT/infra/sb-engine" /usr/local/lib/sproutboat/engine');
+    expect(install).toContain('if [ "$ENGINE_STATUS" = none ]; then ENGINE_EDGE=bun; ENGINE_EGRESS=bun; fi');
+    expect(install).toContain("engines_healthy 20");
+    expect(install).toContain("/usr/local/lib/sproutboat/engine set both bun");
+    expect(install).toContain("systemctl restart sproutboat-control sproutboat-egress sproutboat-edge");
+    // The engine drop-ins are applied before systemd re-reads the units.
+    expect(install.indexOf("/usr/local/lib/sproutboat/engine apply")).toBeLessThan(
+      install.lastIndexOf("systemctl daemon-reload"),
+    );
+    expect(sbctl).toContain('exec "$ENGINE" status');
+    expect(sbctl).toContain('"$ENGINE" set both "$1"');
+  });
+
+  test("install.sh verifies engine binaries against SHA256SUMS", async () => {
+    const install = await Bun.file("install.sh").text();
+    const from = install.indexOf("ENGINE_DIR=/usr/local");
+    const to = install.indexOf('say "Installing the Rust engines');
+    const dir = mkdtempSync(join(tmpdir(), "sb-engines-"));
+    try {
+      writeFileSync(join(dir, "funcs.sh"), install.slice(from, to));
+      writeFileSync(join(dir, "sproutboat-edge-linux-x64"), "edge");
+      writeFileSync(join(dir, "sproutboat-egress-linux-x64"), "egress");
+      const sums = ["sproutboat-edge-linux-x64", "sproutboat-egress-linux-x64"].map((f) => {
+        const h = new Bun.CryptoHasher("sha256").update(readFileSync(join(dir, f))).digest("hex");
+        return `${h}  ${f}\n`;
+      });
+      writeFileSync(join(dir, "SHA256SUMS"), sums.join(""));
+      const check = () => Bun.spawnSync(["bash", "-c", `source "${dir}/funcs.sh"; verify_engines "${dir}"`]).exitCode;
+      expect(check()).toBe(0);
+      writeFileSync(join(dir, "sproutboat-edge-linux-x64"), "tampered");
+      expect(check()).not.toBe(0);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("the release workflow publishes the engines with checksums", async () => {
+    const wf = await Bun.file(".github/workflows/release.yml").text();
+    expect(wf).toContain('tags: ["v*"]');
+    expect(wf).toContain("contents: write");
+    expect(wf).toContain("x86_64-unknown-linux-musl");
+    expect(wf).toContain("cargo build --locked --release");
+    expect(wf).toContain("sproutboat-edge-linux-x64");
+    expect(wf).toContain("sproutboat-egress-linux-x64");
+    expect(wf).toContain("sha256sum");
+    expect(wf).toContain("gh release upload");
+    expect(wf).toContain("--clobber");
+    expect(wf).toContain("workflow_dispatch");
   });
 
   test("backups v2: key, config snapshot and the restore order are wired", async () => {
@@ -379,7 +494,9 @@ describe("memory caps", () => {
       ["control", "edge", "egress", "backup"].map((u) => read(`sproutboat-${u}`)),
     );
     expect(control).toContain("MemoryMax=384M\nMemoryHigh=320M");
-    expect(egress).toContain("MemoryMax=512M\nMemoryHigh=448M");
+    // Rust is the default engine; the sb-engine Bun drop-in restores the old cap.
+    expect(egress).toContain("MemoryMax=128M\nMemoryHigh=112M");
+    expect(await Bun.file("infra/sb-engine").text()).toContain("'MemoryMax=512M' 'MemoryHigh=448M'");
     expect(edge).toContain("MemoryMax=1536M\nMemoryHigh=1280M");
     expect(edge).toContain("MemorySwapMax=0");
     expect(edge).toContain("CPUQuota=200%");
@@ -399,9 +516,7 @@ describe("memory caps", () => {
     expect(install).toContain("MemoryMax=${EDGE_MAX_MIB}M");
     expect(install).toContain("MemoryHigh=${EDGE_HIGH_MIB}M");
     expect(install).toContain("MemoryMax=256M\nMemoryHigh=224M\nEOF");
-    expect(install.indexOf("10-sproutboat-memory.conf")).toBeLessThan(
-      install.indexOf("systemctl daemon-reload\n\n  # --- start"),
-    );
+    expect(install.indexOf("10-sproutboat-memory.conf")).toBeLessThan(install.indexOf("  # --- start (control first"));
     expect(install).toContain('capped "$BUN" install --frozen-lockfile --silent');
     expect(install).toContain('capped "$BUN" run --silent web:build');
     expect(install).toContain('capped "$BUN" x --bun auth@1.7.1 migrate');

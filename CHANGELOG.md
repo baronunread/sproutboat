@@ -5,6 +5,15 @@ Changes to the self-hosted Sproutboat platform are recorded here. Read the
 
 ## [Unreleased]
 
+### Added
+
+- **Release workflow** (`.github/workflows/release.yml`): a `v*` tag builds the Rust edge and egress (musl, x86-64) and attaches them and `SHA256SUMS` to the GitHub Release.
+- **Engines:** `sbctl engine` shows and switches the edge and egress between Rust and Bun; the choice lives in `/etc/sproutboat/engine.env`. `SB_ENGINE_DIR` installs unreleased binaries. See `infra/README.md`, Engines.
+
+### Changed
+
+- **The Rust edge and egress are the default engines.** Behaviour differences are in `services/edge-rs/DEVIATIONS.md`. The two that matter for safety: `/__sb/pool` only answers on loopback with a loopback `Host` (it used to answer through Caddy on any host), and a bad `routes.json` on SIGHUP no longer kills the edge.
+
 ### Breaking and operator actions
 
 - **Backups v2: copy `/etc/sproutboat/backup.key` off the box.** `sbctl update` creates it, and new backups are
@@ -14,6 +23,7 @@ Changes to the self-hosted Sproutboat platform are recorded here. Read the
   and Caddy's data (certificates), staged by a root step; a dashboard backup has config as of the last nightly run or
   update.
 - **Log rotation and a journal cap are now installed.** `sbctl update` adds `logrotate` (package), `/etc/logrotate.d/sproutboat` and `/etc/systemd/journald.conf.d/sproutboat.conf`, and restarts `systemd-journald` once. The journal is capped at 256M and one month for the whole host. Local overrides: see "Logs" in `infra/README.md`.
+- **The update downloads two binaries** (`sproutboat-edge`, `sproutboat-egress`) from the GitHub Release of the tag, verifies them against `SHA256SUMS` and installs them in `/usr/local/lib/sproutboat/bin`. If that fails the installer warns and keeps what it has (or uses Bun on a fresh install). `sudo sbctl engine bun` switches back to the Bun engines. The egress memory cap is `128M` on Rust (`512M` on Bun).
 - **Sproutboat Community is single machine and supervisor only.** The optional per-project `sproutd` runtime that
   0.13.0 introduced (private, off unless configured) is gone from this repository. Removed: the runtime endpoint
   (`/api/projects/:name/runtime`), `POST /api/admin/sproutd/reconcile`, the `module` and `sproutdRefusal` upload fields
@@ -49,7 +59,7 @@ Changes to the self-hosted Sproutboat platform are recorded here. Read the
 
 ### Changed
 
-- Memory caps on every unit: control 384M, egress 512M, caddy 256M, backup 512M (niced, idle I/O), each with a
+- Memory caps on every unit: control 384M, egress 128M on Rust (512M on Bun), caddy 256M, backup 512M (niced, idle I/O), each with a
   `MemoryHigh`. The edge cap is now computed from RAM at install time instead of a fixed 2500M.
 - Control, edge and egress keep retrying every 2 s after crashes (`StartLimitIntervalSec=0`).
 - Bun on the box is 1.4.4 (was 1.4.0), matching CI and development. `install.sh` no longer pipes `bun.sh/install`

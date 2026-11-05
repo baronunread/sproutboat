@@ -17,7 +17,7 @@ WorkingDirectory=/opt/sproutboat
 # SB_EGRESS_TOKEN (and an optional SB_EGRESS_ALLOW), written by install.sh.
 # The edge unit reads the same file, so its brokers carry the token.
 EnvironmentFile=/etc/sproutboat/egress.env
-ExecStart=/opt/sproutboat/bun/bin/bun node_modules/@sproutboat/wire/src/egress.ts --host 127.0.0.1 --port 8070
+ExecStart=/usr/local/lib/sproutboat/bin/sproutboat-egress --host 127.0.0.1 --port 8070
 Restart=always
 RestartSec=2
 # No IPAddressDeny here on purpose: name resolution goes through the resolver
@@ -35,8 +35,8 @@ RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
 RestrictNamespaces=true
 LockPersonality=true
 CapabilityBoundingSet=
-MemoryMax=512M
-MemoryHigh=448M
+MemoryMax=128M
+MemoryHigh=112M
 TasksMax=256
 
 [Install]
