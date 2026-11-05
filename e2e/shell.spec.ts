@@ -7,7 +7,7 @@ test.describe("signed in", () => {
   test("overview shows the headline numbers and recent deployments", async ({ page }) => {
     await gotoHydrated(page, "/");
     await expect(page.getByRole("heading", { name: "Overview", level: 1 })).toBeVisible();
-    await expect(page.getByRole("group", { name: "Active projects" })).toContainText("3");
+    await expect(page.getByRole("group", { name: "Active projects" })).toContainText(/[23]/);
     await expect(page.getByRole("region", { name: "Recent deployments" }).getByRole("row")).not.toHaveCount(1);
     // The Cloud-only pieces are gone, and so is the namespace claim step.
     await expect(page.getByText(/claim your/i)).toHaveCount(0);
@@ -74,7 +74,8 @@ test.describe("signed in", () => {
   test("the sprouts list searches and sorts", async ({ page }) => {
     await gotoHydrated(page, "/projects");
     const table = page.getByRole("region", { name: "Sprouts", exact: true });
-    await expect(table.getByRole("row")).toHaveCount(4); // header and three sprouts
+    // danger.spec may already have deleted "scratch", so only the lower bound is fixed.
+    await expect(table.getByRole("row").nth(2)).toBeVisible();
     await page.getByRole("searchbox").fill("blo");
     await expect(table.getByRole("row")).toHaveCount(2);
     await page.getByRole("searchbox").fill("zzz");
@@ -82,9 +83,10 @@ test.describe("signed in", () => {
     await page.getByRole("searchbox").fill("");
     await table.getByRole("button", { name: "Name" }).click();
     await expect(table.getByRole("columnheader", { name: "Name" })).toHaveAttribute("aria-sort", "ascending");
+    await expect(table.getByRole("row").nth(1)).toContainText("api");
     await table.getByRole("button", { name: "Name" }).click();
     await expect(table.getByRole("columnheader", { name: "Name" })).toHaveAttribute("aria-sort", "descending");
-    await expect(table.getByRole("row").nth(1)).toContainText("scratch");
+    await expect(table.getByRole("row").last()).toContainText("api");
   });
 
   test("the profile is a read-only account card", async ({ page }) => {
