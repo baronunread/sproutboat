@@ -16,6 +16,7 @@ import { chmod, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { TailEvent, TailFrame } from "../apps/control/src/tail";
+import { ownerDirName } from "../services/supervisor/src/resource-layout";
 
 const OWNER = "alice";
 const TOKEN = "tail-e2e-token";
@@ -99,7 +100,9 @@ beforeAll(async () => {
     PORT: "0",
   };
   await mkdir(join(dir, "logs"), { recursive: true });
-  const artifact = join(dir, "artifacts", DIGEST);
+  // The per-owner layout control expects. A legacy flat artifacts/<digest> would be moved by control's
+  // boot migration while the edge, started alongside it, may still route to the old path.
+  const artifact = join(dir, "artifacts", ownerDirName(`bootstrap:${OWNER}`), DIGEST);
   await mkdir(artifact, { recursive: true });
   await writeFile(join(artifact, "sprout"), SPROUT);
   await chmod(join(artifact, "sprout"), 0o755);
