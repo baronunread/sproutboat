@@ -919,10 +919,12 @@ say "Writing $ETC/{install,sproutboat,control,egress}.env"
 umask 077
 operator_env sproutboat root:sproutboat 0640 "Settings shared by the control service and the edge." \
   SPROUTBOAT_DEPLOYMENT_DOMAIN SPROUTBOAT_DASHBOARD_URL SPROUTBOAT_DASHBOARD_DIR
-operator_env control root:sproutboat 0640 "Limits, backups (SPROUTBOAT_BACKUP_S3_*, SPROUTBOAT_BACKUP_ENCRYPT), events, ...: see infra/README.md." \
+operator_env control root:root 0600 "Limits, backups (SPROUTBOAT_BACKUP_S3_*, SPROUTBOAT_BACKUP_ENCRYPT), events, ...: see infra/README.md." \
   SPROUTBOAT_DATABASE_PATH SPROUTBOAT_ARTIFACTS_DIR SPROUTBOAT_DEPLOYMENTS_PATH \
   SPROUTBOAT_BOOTSTRAP_USERNAME SPROUTBOAT_BOOTSTRAP_TOKEN SPROUTBOAT_ADMIN_EMAILS \
   BETTER_AUTH_SECRET BETTER_AUTH_URL SPROUTBOAT_BACKUP_KEY_FILE GITHUB_CLIENT_ID GITHUB_CLIENT_SECRET
+# Like control.env: it can hold S3 credentials and only root-run readers need it.
+chown root:root "$ETC/control.local.env"; chmod 0600 "$ETC/control.local.env"
 operator_env egress root:root 0600 "Example: SB_EGRESS_ALLOW=10.0.0.5 lets sprouts reach that private address. The egress service, control and the edge all read it." \
   SB_EGRESS_TOKEN
 if [ "$SB_PROXY" = caddy ]; then
