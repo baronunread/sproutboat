@@ -286,7 +286,7 @@ async function main(): Promise<void> {
         const sprout = elfStub(`${user.login}/${spec.project}/${v}`, 256 + v * 64);
         const compileMs = 900 + v * 120;
         const digest = sha256(sprout).slice("sha256:".length);
-        const dir = resolve(process.env.SPROUTBOAT_ARTIFACTS_DIR!, digest);
+        const dir = store.artifactDir(ownerId, digest);
         await mkdir(dir, { recursive: true });
         const builtAt = new Date(Date.now() - (spec.versions - v) * 36 * 3_600_000).toISOString();
         const manifest = {

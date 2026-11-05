@@ -1,9 +1,10 @@
 import { Database } from "bun:sqlite";
-import { readFileSync, renameSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, readFileSync, renameSync, rmSync } from "node:fs";
 import { mkdir, readdir, rename, rm, stat, writeFile } from "node:fs/promises";
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { dirname, resolve } from "node:path";
 import { validateManifest } from "@sproutboat/artifact";
+import { logPath } from "./logs";
 import { decryptSecret, encryptSecret } from "./secrets-crypto";
 
 /**
@@ -19,9 +20,35 @@ import { decryptSecret, encryptSecret } from "./secrets-crypto";
 const dbPath = () => process.env.SPROUTBOAT_DATABASE_PATH || "/var/lib/sproutboat/sproutboat.sqlite";
 const routesPath = () => resolve(process.env.SPROUTBOAT_ROUTE_SNAPSHOT || "/var/lib/sproutboat/routes.json");
 const artifactRoot = () => resolve(process.env.SPROUTBOAT_ARTIFACTS_DIR || "/var/lib/sproutboat/artifacts");
-// The edge keeps each artifact's broker state in `brokers/<digest>/`; same env
-// var it reads, defaulting to where install.sh puts it.
+// The edge keeps each artifact's broker state in `brokers/<ownerDir>-<digest>/`
+// (see runtimeName in logs.ts); same env var it reads, defaulting to where install.sh puts it.
 const brokersDir = () => resolve(process.env.SPROUTBOAT_BROKER_STATE_DIR || resolve(dirname(dbPath()), "brokers"));
+
+/**
+ * Artifacts live at `artifacts/<ownerDir>/<digest>/`, so two accounts that upload identical bytes
+ * never share a directory, a log or broker state. Same hash as `ownerDirName` in
+ * services/supervisor/src/resource-layout.ts: keep the two in step.
+ */
+export const artifactOwnerDir = (ownerId: string): string =>
+  createHash("sha256").update(ownerId).digest("hex").slice(0, 32);
+export const artifactDir = (ownerId: string, digest: string): string =>
+  resolve(artifactRoot(), artifactOwnerDir(ownerId), digest);
+
+/** The pair a deployment's artifact is stored under: the digest alone no longer names a directory. */
+export type ArtifactRef = { ownerId: string; digest: string };
+
+let artifactLock: Promise<unknown> = Promise.resolve();
+/**
+ * Serializes deploy placement against artifact GC and the broker-state sweep,
+ * so a collection can never remove a directory a deploy has just reused but not yet recorded.
+ * Not re-entrant: do not call it from inside `fn`.
+ */
+export function withArtifactLock<T>(fn: () => Promise<T>): Promise<T> {
+  const next = artifactLock.then(fn);
+  artifactLock = next.catch(() => {});
+  return next;
+}
+
 const legacyDeploymentsPath = () =>
   resolve(process.env.SPROUTBOAT_DEPLOYMENTS_PATH || "/var/lib/sproutboat/deployments.json");
 
@@ -115,8 +142,10 @@ function connection(): Database {
   database.exec("PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON; PRAGMA busy_timeout = 5000;");
   database.exec(`
     CREATE TABLE IF NOT EXISTS artifacts (
-      digest TEXT PRIMARY KEY,
-      created_at TEXT NOT NULL
+      owner_id TEXT NOT NULL,
+      digest TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      PRIMARY KEY (owner_id, digest)
     );
     CREATE TABLE IF NOT EXISTS projects (
       owner_id TEXT NOT NULL,
@@ -131,12 +160,13 @@ function connection(): Database {
       project TEXT NOT NULL,
       username TEXT NOT NULL,
       hostname TEXT NOT NULL,
-      artifact_digest TEXT NOT NULL REFERENCES artifacts(digest),
+      artifact_digest TEXT NOT NULL,
       sprout_path TEXT NOT NULL,
       deployed_at TEXT NOT NULL,
       active INTEGER NOT NULL DEFAULT 0,
       binary_size INTEGER,
       compile_ms INTEGER,
+      FOREIGN KEY (owner_id, artifact_digest) REFERENCES artifacts(owner_id, digest),
       FOREIGN KEY (owner_id, project) REFERENCES projects(owner_id, name) ON DELETE CASCADE
     );
     CREATE UNIQUE INDEX IF NOT EXISTS one_active_deployment_per_project
@@ -147,16 +177,19 @@ function connection(): Database {
       owner_id TEXT PRIMARY KEY,
       banned_at TEXT NOT NULL
     );
+    -- Several owners may hold an unverified claim on one hostname (each has its own token); at most one verifies.
     CREATE TABLE IF NOT EXISTS custom_domains (
-      hostname TEXT PRIMARY KEY,
+      hostname TEXT NOT NULL,
       owner_id TEXT NOT NULL,
       project TEXT NOT NULL,
       token TEXT NOT NULL,
       verified_at TEXT,
       created_at TEXT NOT NULL,
+      PRIMARY KEY (hostname, owner_id),
       FOREIGN KEY (owner_id, project) REFERENCES projects(owner_id, name) ON DELETE CASCADE
     );
     CREATE INDEX IF NOT EXISTS custom_domains_by_project ON custom_domains(owner_id, project);
+    CREATE UNIQUE INDEX IF NOT EXISTS custom_domains_one_verified ON custom_domains(hostname) WHERE verified_at IS NOT NULL;
     CREATE TABLE IF NOT EXISTS secrets (
       owner_id TEXT NOT NULL,
       project TEXT NOT NULL,
@@ -193,10 +226,16 @@ function connection(): Database {
   if (!cols.some((column) => column.name === "compile_ms"))
     database.run("ALTER TABLE deployments ADD COLUMN compile_ms INTEGER");
   retireSproutdColumns(database);
+  keyArtifactsByOwner(database);
+  claimCustomDomainsPerOwner(database);
   db = database;
   dbConnectedPath = dbPath();
   importLegacyDeployments();
   if (addedBinarySize) backfillBinarySizes(database);
+  if (migrateArtifactLayout(database)) {
+    // The edge reloads routes.json on change: hand it the new sprout paths.
+    void syncRoutes().catch((error) => console.error("store: route sync after artifact migration failed", error));
+  }
   return database;
 }
 
@@ -236,19 +275,182 @@ function retireSproutdColumns(database: Database): void {
   for (const { table, column } of stale) database.run(`ALTER TABLE ${table} DROP COLUMN ${column}`);
 }
 
+/** custom_domains used to key on hostname alone, so one unverified claim blocked everyone else for good. */
+function claimCustomDomainsPerOwner(database: Database): void {
+  const found = database.query("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'custom_domains'").get();
+  // SAFETY: sqlite_master.sql is the CREATE statement text for an existing table.
+  if (!/hostname TEXT PRIMARY KEY/.test((found as { sql: string } | null)?.sql ?? "")) return;
+  database.transaction(() => {
+    database.exec(`
+      CREATE TABLE custom_domains_rebuilt (
+        hostname TEXT NOT NULL,
+        owner_id TEXT NOT NULL,
+        project TEXT NOT NULL,
+        token TEXT NOT NULL,
+        verified_at TEXT,
+        created_at TEXT NOT NULL,
+        PRIMARY KEY (hostname, owner_id),
+        FOREIGN KEY (owner_id, project) REFERENCES projects(owner_id, name) ON DELETE CASCADE
+      );
+      INSERT INTO custom_domains_rebuilt SELECT hostname, owner_id, project, token, verified_at, created_at FROM custom_domains;
+      DROP TABLE custom_domains;
+      ALTER TABLE custom_domains_rebuilt RENAME TO custom_domains;
+      CREATE INDEX IF NOT EXISTS custom_domains_by_project ON custom_domains(owner_id, project);
+      CREATE UNIQUE INDEX IF NOT EXISTS custom_domains_one_verified ON custom_domains(hostname) WHERE verified_at IS NOT NULL;
+    `);
+  })();
+}
+
+/**
+ * Artifacts were keyed by digest alone, which let two accounts share one row and one directory. Rebuild the
+ * table keyed by (owner_id, digest) with the owner taken from the deployments that reference each digest, and
+ * rebuild `deployments` so its foreign key points at the new key. Rows no deployment references are dropped
+ * (their owner is unknown). SQLite cannot alter a primary key, so this is the documented table rebuild, with
+ * foreign keys off while it runs.
+ */
+function keyArtifactsByOwner(database: Database): void {
+  // SAFETY: PRAGMA table_info rows always expose a string `name` column.
+  const cols = database.query("PRAGMA table_info(artifacts)").all() as Array<{ name: string }>;
+  if (cols.some((column) => column.name === "owner_id")) return;
+  const found = database.query("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'deployments'").get();
+  // SAFETY: sqlite_master.sql is the CREATE statement text for an existing table.
+  const sql = (found as { sql: string } | null)?.sql ?? "";
+  const oldReference = /artifact_digest TEXT NOT NULL REFERENCES artifacts\(digest\)/;
+  const projectKey = "FOREIGN KEY (owner_id, project)";
+  if (!oldReference.test(sql) || !sql.includes(projectKey))
+    throw new Error("store: unrecognised deployments schema; cannot key artifacts by owner");
+  const rebuilt = sql
+    .replace(oldReference, "artifact_digest TEXT NOT NULL")
+    .replace(
+      projectKey,
+      `FOREIGN KEY (owner_id, artifact_digest) REFERENCES artifacts(owner_id, digest),\n      ${projectKey}`,
+    )
+    .replace(/CREATE TABLE (IF NOT EXISTS )?"?deployments"?/, "CREATE TABLE deployments_rebuilt");
+  database.exec("PRAGMA foreign_keys = OFF");
+  try {
+    database.transaction(() => {
+      database.exec(`
+        CREATE TABLE artifacts_rebuilt (
+          owner_id TEXT NOT NULL,
+          digest TEXT NOT NULL,
+          created_at TEXT NOT NULL,
+          PRIMARY KEY (owner_id, digest)
+        );
+        INSERT INTO artifacts_rebuilt (owner_id, digest, created_at)
+          SELECT d.owner_id, d.artifact_digest, MIN(a.created_at)
+            FROM deployments d JOIN artifacts a ON a.digest = d.artifact_digest
+            GROUP BY d.owner_id, d.artifact_digest;
+      `);
+      database.exec(rebuilt);
+      database.exec(`
+        INSERT INTO deployments_rebuilt SELECT * FROM deployments;
+        DROP TABLE deployments;
+        DROP TABLE artifacts;
+        ALTER TABLE artifacts_rebuilt RENAME TO artifacts;
+        ALTER TABLE deployments_rebuilt RENAME TO deployments;
+        CREATE UNIQUE INDEX IF NOT EXISTS one_active_deployment_per_project
+          ON deployments(owner_id, project) WHERE active = 1;
+        CREATE INDEX IF NOT EXISTS deployments_by_owner ON deployments(owner_id);
+        CREATE INDEX IF NOT EXISTS deployments_by_artifact ON deployments(artifact_digest);
+      `);
+    })();
+  } finally {
+    database.exec("PRAGMA foreign_keys = ON");
+  }
+}
+
+/**
+ * Move an existing install's artifacts from `artifacts/<digest>/` to `artifacts/<ownerDir>/<digest>/`, with the
+ * broker state (`brokers/<digest>` -> `brokers/<ownerDir>-<digest>`) and sprout log
+ * (`logs/sprouts/<digest>.log` -> `<ownerDir>-<digest>.log`) that go with them. A directory several accounts
+ * share is copied once per account, then removed. Each copy is skipped when its target already exists and the
+ * legacy source is removed only after every copy is in place, with the database update last, so a crash at
+ * any point is finished by the next start. Returns whether any row was rewritten.
+ */
+export function migrateArtifactLayout(database: Database = connection()): boolean {
+  // SAFETY: SQLite returns exactly the columns selected here.
+  const rows = database.query("SELECT id, owner_id, artifact_digest, sprout_path FROM deployments").all() as Array<{
+    id: string;
+    owner_id: string;
+    artifact_digest: string;
+    sprout_path: string;
+  }>;
+  const legacy = rows.filter(
+    (row) =>
+      /^[a-f0-9]{64}$/.test(row.artifact_digest) &&
+      row.sprout_path === resolve(artifactRoot(), row.artifact_digest, "sprout"),
+  );
+  if (legacy.length === 0) return false;
+  const owners = new Map<string, Set<string>>();
+  for (const row of legacy) {
+    const set = owners.get(row.artifact_digest) ?? new Set<string>();
+    owners.set(row.artifact_digest, set.add(row.owner_id));
+  }
+  const logs = resolve(dirname(logPath()), "sprouts");
+
+  // Copy a legacy path to each target that does not exist yet (via a `.migrating` sibling, so a crash never
+  // leaves a half-copied target), then remove the legacy path.
+  const spread = (from: string, targets: string[], what: string, directory: boolean) => {
+    if (!existsSync(from)) return;
+    for (const to of targets) {
+      if (existsSync(to)) continue;
+      const partial = `${to}.migrating`;
+      mkdirSync(dirname(to), { recursive: true, mode: 0o750 });
+      rmSync(partial, { recursive: true, force: true });
+      cpSync(from, partial, { recursive: directory, preserveTimestamps: true });
+      renameSync(partial, to);
+      console.log(`store: copied ${what} ${from} -> ${to}`);
+    }
+    rmSync(from, { recursive: true, force: true });
+    console.log(`store: removed legacy ${what} ${from}`);
+  };
+
+  for (const [digest, set] of owners) {
+    const ownerIds = [...set];
+    const named = (ownerId: string) => `${artifactOwnerDir(ownerId)}-${digest}`;
+    spread(
+      resolve(artifactRoot(), digest),
+      ownerIds.map((ownerId) => artifactDir(ownerId, digest)),
+      "artifact",
+      true,
+    );
+    spread(
+      resolve(brokersDir(), digest),
+      ownerIds.map((ownerId) => resolve(brokersDir(), named(ownerId))),
+      "broker state",
+      true,
+    );
+    spread(
+      resolve(logs, `${digest}.log`),
+      ownerIds.map((ownerId) => resolve(logs, `${named(ownerId)}.log`)),
+      "sprout log",
+      false,
+    );
+  }
+  const update = database.query("UPDATE deployments SET sprout_path = ? WHERE id = ?");
+  database.transaction(() => {
+    for (const row of legacy) update.run(resolve(artifactDir(row.owner_id, row.artifact_digest), "sprout"), row.id);
+  })();
+  console.log(`store: moved ${legacy.length} deployment(s) to per-owner artifact directories`);
+  return true;
+}
+
+const legacyOrOwnerDir = (ownerId: string, digest: string): string =>
+  existsSync(artifactDir(ownerId, digest)) ? artifactDir(ownerId, digest) : resolve(artifactRoot(), digest);
+
 /** Read each retained artifact once when adding the size column to an old store. */
 function backfillBinarySizes(database: Database): void {
   // SAFETY: SQLite returns exactly the id and artifact_digest columns selected here.
-  const rows = database.query("SELECT id, artifact_digest FROM deployments WHERE binary_size IS NULL").all() as Array<{
-    id: string;
-    artifact_digest: string;
-  }>;
+  const rows = database
+    .query("SELECT id, owner_id, artifact_digest FROM deployments WHERE binary_size IS NULL")
+    .all() as Array<{ id: string; owner_id: string; artifact_digest: string }>;
   const update = database.query("UPDATE deployments SET binary_size = ? WHERE id = ?");
   for (const row of rows) {
     if (!/^[a-f0-9]{64}$/.test(row.artifact_digest)) continue;
     try {
       const manifest = validateManifest(
-        JSON.parse(readFileSync(resolve(artifactRoot(), row.artifact_digest, "manifest.json"), "utf8")),
+        // Still the pre-owner layout at this point in a first open; migrateArtifactLayout moves it right after.
+        JSON.parse(readFileSync(resolve(legacyOrOwnerDir(row.owner_id, row.artifact_digest), "manifest.json"), "utf8")),
       );
       if (manifest.ok) update.run(manifest.value.binarySize, row.id);
     } catch {
@@ -291,7 +493,7 @@ function importLegacyDeployments(): void {
         d.username,
         at,
       );
-      run("INSERT OR IGNORE INTO artifacts (digest, created_at) VALUES (?, ?)", d.artifact, at);
+      run("INSERT OR IGNORE INTO artifacts (owner_id, digest, created_at) VALUES (?, ?, ?)", d.ownerId, d.artifact, at);
       run(
         `INSERT OR IGNORE INTO deployments (id, owner_id, project, username, hostname, artifact_digest, sprout_path, deployed_at, active)
            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
@@ -314,14 +516,20 @@ function importLegacyDeployments(): void {
   }
 }
 
-/** Of the given digests, the ones we still hold a row for that no deployment references. */
-function orphanedAmong(digests: string[]): string[] {
-  return [...new Set(digests)].filter(
-    (digest) =>
-      q1("SELECT 1 FROM artifacts WHERE digest = ?", digest) &&
-      !q1("SELECT 1 FROM deployments WHERE artifact_digest = ? LIMIT 1", digest),
-  );
+/** Of the given artifacts, the ones we still hold a row for that none of the owner's deployments reference. */
+function orphanedAmong(refs: ArtifactRef[]): ArtifactRef[] {
+  const seen = new Set<string>();
+  return refs.filter(({ ownerId, digest }) => {
+    const key = `${ownerId}\0${digest}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return (
+      q1("SELECT 1 FROM artifacts WHERE owner_id = ? AND digest = ?", ownerId, digest) &&
+      !q1("SELECT 1 FROM deployments WHERE owner_id = ? AND artifact_digest = ? LIMIT 1", ownerId, digest)
+    );
+  });
 }
+const refOf = (row: DeploymentRow): ArtifactRef => ({ ownerId: row.owner_id, digest: row.artifact_digest });
 
 // --- reads -----------------------------------------------------------------
 
@@ -359,7 +567,7 @@ export function ownerProjectCount(ownerId: string): number {
  * delete the rest. Returns digests that no deployment references any more so the
  * caller can GC them (`collectArtifacts`).
  */
-export function pruneProjectDeployments(ownerId: string, project: string, keep: number): string[] {
+export function pruneProjectDeployments(ownerId: string, project: string, keep: number): ArtifactRef[] {
   if (!Number.isInteger(keep) || keep < 1) return [];
   return connection().transaction(() => {
     const rows = q<DeploymentRow>(
@@ -369,9 +577,9 @@ export function pruneProjectDeployments(ownerId: string, project: string, keep: 
     );
     const doomed = rows.filter((row) => row.active !== 1).slice(keep);
     if (doomed.length === 0) return [];
-    const digests = doomed.map((row) => row.artifact_digest);
+    const refs = doomed.map(refOf);
     for (const row of doomed) run("DELETE FROM deployments WHERE id = ?", row.id);
-    return orphanedAmong(digests);
+    return orphanedAmong(refs);
   })();
 }
 
@@ -458,7 +666,8 @@ export function recordDeployment(
       deployment.deployedAt,
     );
     run(
-      "INSERT OR IGNORE INTO artifacts (digest, created_at) VALUES (?, ?)",
+      "INSERT OR IGNORE INTO artifacts (owner_id, digest, created_at) VALUES (?, ?, ?)",
+      deployment.ownerId,
       deployment.artifact,
       deployment.deployedAt,
     );
@@ -565,23 +774,23 @@ export function activateDeployment(ownerId: string, project: string, id: string)
   })();
 }
 
-export type ProjectDeletion = { removed: number; hostnames: string[]; orphanedArtifacts: string[] };
+export type ProjectDeletion = { removed: number; hostnames: string[]; orphanedArtifacts: ArtifactRef[] };
 
 /** Deletes one project and all its versions. Returns hostnames to unroute and digests now unreferenced. */
 export function deleteProject(ownerId: string, project: string): ProjectDeletion {
   return connection().transaction(() => {
     const rows = q<DeploymentRow>("SELECT * FROM deployments WHERE owner_id = ? AND project = ?", ownerId, project);
-    const digests = rows.map((row) => row.artifact_digest);
+    const refs = rows.map(refOf);
     run("DELETE FROM projects WHERE owner_id = ? AND name = ?", ownerId, project); // cascades to deployments
     return {
       removed: rows.length,
       hostnames: [...new Set(rows.map((row) => row.hostname))],
-      orphanedArtifacts: orphanedAmong(digests),
+      orphanedArtifacts: orphanedAmong(refs),
     };
   })();
 }
 
-export type DeploymentDeletion = { deleted: boolean; active: boolean; orphanedArtifacts: string[] };
+export type DeploymentDeletion = { deleted: boolean; active: boolean; orphanedArtifacts: ArtifactRef[] };
 
 /**
  * #4: delete one inactive version. Refuses the active version (`deleted: false,
@@ -599,7 +808,7 @@ export function deleteDeployment(ownerId: string, project: string, id: string): 
     if (!row) return undefined;
     if (row.active === 1) return { deleted: false, active: true, orphanedArtifacts: [] };
     run("DELETE FROM deployments WHERE id = ?", id);
-    return { deleted: true, active: false, orphanedArtifacts: orphanedAmong([row.artifact_digest]) };
+    return { deleted: true, active: false, orphanedArtifacts: orphanedAmong([refOf(row)]) };
   })();
 }
 
@@ -623,13 +832,13 @@ export function bannedOwners(): string[] {
 export function deleteOwner(ownerId: string): ProjectDeletion {
   return connection().transaction(() => {
     const rows = q<DeploymentRow>("SELECT * FROM deployments WHERE owner_id = ?", ownerId);
-    const digests = rows.map((row) => row.artifact_digest);
+    const refs = rows.map(refOf);
     run("DELETE FROM projects WHERE owner_id = ?", ownerId);
     run("DELETE FROM resources WHERE owner_id = ?", ownerId);
     return {
       removed: rows.length,
       hostnames: [...new Set(rows.map((row) => row.hostname))],
-      orphanedArtifacts: orphanedAmong(digests),
+      orphanedArtifacts: orphanedAmong(refs),
     };
   })();
 }
@@ -670,42 +879,87 @@ export function projectCustomDomains(ownerId: string, project: string): CustomDo
 }
 
 /** Any owner's claim on `hostname` — hostname is globally unique (the PK). */
-export function customDomainByHostname(hostname: string): CustomDomain | undefined {
-  const row = q1<CustomDomainRow>("SELECT * FROM custom_domains WHERE hostname = ?", hostname);
-  return row ? toCustomDomain(row) : undefined;
+/** An unverified claim older than this no longer holds its hostname. */
+export const DOMAIN_CLAIM_TTL_MS = 24 * 60 * 60_000;
+const claimIsStale = (row: CustomDomainRow): boolean =>
+  row.verified_at === null && Date.parse(row.created_at) < Date.now() - DOMAIN_CLAIM_TTL_MS;
+
+/** Lapsed unverified claims on `hostname`, dropped so the hostname is free for the next claimant. */
+function dropStaleClaims(hostname: string): void {
+  const cutoff = new Date(Date.now() - DOMAIN_CLAIM_TTL_MS).toISOString();
+  run("DELETE FROM custom_domains WHERE hostname = ? AND verified_at IS NULL AND created_at < ?", hostname, cutoff);
 }
 
-/** Claims `hostname` for a project, unverified. Returns undefined if it is
- *  already claimed (by this project or anyone else). */
+/**
+ * Who holds `hostname` right now: its verified owner if there is one, otherwise the newest live unverified claim.
+ * `blocking` is true only for a verified holder, since that is the only claim another account cannot displace.
+ */
+export function customDomainByHostname(hostname: string): CustomDomain | undefined {
+  const rows = q<CustomDomainRow>("SELECT * FROM custom_domains WHERE hostname = ? ORDER BY created_at DESC", hostname);
+  const live = rows.filter((row) => !claimIsStale(row));
+  const row = live.find((entry) => entry.verified_at !== null) ?? live[0];
+  return row ? toCustomDomain(row) : undefined;
+}
+export type ClaimResult =
+  | { claimed: CustomDomain }
+  | { claimed?: undefined; reason: "verified-elsewhere" | "already-yours" };
+
+/**
+ * Claim `hostname` for a project. A verified holder keeps it. Unverified claims by other accounts do not block
+ * the claim (whoever proves the TXT record first wins), and ones older than 24 hours are dropped outright.
+ */
 export function addCustomDomain(input: {
   hostname: string;
   ownerId: string;
   project: string;
   token: string;
 }): CustomDomain | undefined {
-  if (customDomainByHostname(input.hostname)) return undefined;
-  const createdAt = new Date().toISOString();
-  run(
-    "INSERT INTO custom_domains (hostname, owner_id, project, token, verified_at, created_at) VALUES (?, ?, ?, ?, NULL, ?)",
-    input.hostname,
-    input.ownerId,
-    input.project,
-    input.token,
-    createdAt,
-  );
-  return { ...input, verifiedAt: null, createdAt };
+  return claimCustomDomain(input).claimed;
 }
 
-export function markCustomDomainVerified(ownerId: string, project: string, hostname: string): boolean {
-  return (
+export function claimCustomDomain(input: {
+  hostname: string;
+  ownerId: string;
+  project: string;
+  token: string;
+}): ClaimResult {
+  return connection().transaction((): ClaimResult => {
+    dropStaleClaims(input.hostname);
+    if (q1("SELECT 1 FROM custom_domains WHERE hostname = ? AND verified_at IS NOT NULL", input.hostname))
+      return { reason: "verified-elsewhere" };
+    if (q1("SELECT 1 FROM custom_domains WHERE hostname = ? AND owner_id = ?", input.hostname, input.ownerId))
+      return { reason: "already-yours" };
+    const createdAt = new Date().toISOString();
     run(
-      "UPDATE custom_domains SET verified_at = ? WHERE hostname = ? AND owner_id = ? AND project = ? AND verified_at IS NULL",
-      new Date().toISOString(),
-      hostname,
-      ownerId,
-      project,
-    ) > 0
-  );
+      "INSERT INTO custom_domains (hostname, owner_id, project, token, verified_at, created_at) VALUES (?, ?, ?, ?, NULL, ?)",
+      input.hostname,
+      input.ownerId,
+      input.project,
+      input.token,
+      createdAt,
+    );
+    return { claimed: { ...input, verifiedAt: null, createdAt } };
+  })();
+}
+
+/**
+ * Mark a claim verified after its TXT record matched. Any other account's unverified claim on the same
+ * hostname is superseded (removed). Returns false when the claim is gone or another account verified first.
+ */
+export function markCustomDomainVerified(ownerId: string, project: string, hostname: string): boolean {
+  return connection().transaction(() => {
+    if (q1("SELECT 1 FROM custom_domains WHERE hostname = ? AND verified_at IS NOT NULL", hostname)) return false;
+    const marked =
+      run(
+        "UPDATE custom_domains SET verified_at = ? WHERE hostname = ? AND owner_id = ? AND project = ? AND verified_at IS NULL",
+        new Date().toISOString(),
+        hostname,
+        ownerId,
+        project,
+      ) > 0;
+    if (marked) run("DELETE FROM custom_domains WHERE hostname = ? AND owner_id <> ?", hostname, ownerId);
+    return marked;
+  })();
 }
 
 export function deleteCustomDomain(ownerId: string, project: string, hostname: string): boolean {
@@ -1007,52 +1261,71 @@ async function writeRouteSnapshot(): Promise<void> {
 }
 
 /**
- * Removes the on-disk artifact directory for each digest that is no longer
- * referenced, then drops its row. Never throws — returns the digests it could
- * not remove so the caller can report partial failure instead of claiming success.
+ * Removes the on-disk artifact directory for each artifact that is no longer
+ * referenced by any of its owner's deployments, then drops its row. Never throws:
+ * it returns the artifacts it could not remove so the caller can report partial
+ * failure instead of claiming success. Holds the artifact lock, so it cannot
+ * interleave with a deploy placing the same digest.
  */
-export async function collectArtifacts(digests: string[]): Promise<{ removed: string[]; failed: string[] }> {
-  const removed: string[] = [];
-  const failed: string[] = [];
-  for (const digest of new Set(digests)) {
-    if (!/^[a-f0-9]{64}$/.test(digest)) {
-      // junk input is not our problem; a real digest we still hold is
-      if (q1("SELECT 1 FROM artifacts WHERE digest = ?", digest)) failed.push(digest);
-      continue;
+export function collectArtifacts(refs: ArtifactRef[]): Promise<{ removed: string[]; failed: string[] }> {
+  return withArtifactLock(async () => {
+    const removed: string[] = [];
+    const failed: string[] = [];
+    const seen = new Set<string>();
+    for (const { ownerId, digest } of refs) {
+      const key = `${ownerId}\0${digest}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      if (!/^[a-f0-9]{64}$/.test(digest)) {
+        // junk input is not our problem; a real digest we still hold is
+        if (q1("SELECT 1 FROM artifacts WHERE owner_id = ? AND digest = ?", ownerId, digest)) failed.push(digest);
+        continue;
+      }
+      // Drop the row first, and only while none of the owner's deployments references it, then the
+      // bytes. A failed rm leaves the row gone and the dir orphaned for a future sweep, not a broken deployment.
+      const dropped = run(
+        "DELETE FROM artifacts WHERE owner_id = ? AND digest = ? AND NOT EXISTS (SELECT 1 FROM deployments WHERE owner_id = ? AND artifact_digest = ?)",
+        ownerId,
+        digest,
+        ownerId,
+        digest,
+      );
+      if (!dropped) continue;
+      try {
+        await rm(artifactDir(ownerId, digest), { recursive: true, force: true });
+        removed.push(digest);
+      } catch {
+        failed.push(digest);
+      }
     }
-    // Drop the row first, and only while nothing references it — then the bytes.
-    // ponytail: a redeploy of this exact digest landing between this commit and
-    // the rm below could still lose bytes on a single box — acceptable until GC
-    // and deploy share a lock. A failed rm leaves the row gone and the dir
-    // orphaned for a future sweep, not a broken deployment.
-    const dropped = run(
-      "DELETE FROM artifacts WHERE digest = ? AND NOT EXISTS (SELECT 1 FROM deployments WHERE artifact_digest = ?)",
-      digest,
-      digest,
-    );
-    if (!dropped) continue;
-    try {
-      await rm(resolve(artifactRoot(), digest), { recursive: true, force: true });
-      removed.push(digest);
-    } catch {
-      failed.push(digest);
-    }
-  }
-  await sweepBrokerState();
-  return { removed, failed };
+    await sweepBrokerStateLocked();
+    return { removed, failed };
+  });
 }
 
 /**
- * Remove `brokers/<digest>/` for every digest no artifact row holds any more:
+ * Remove `brokers/<ownerDir>-<digest>/` for every artifact no row holds any more:
  * the per-deployment KV / D1 / queue state of a version that can no longer be
  * routed or rolled back to. It used to be kept forever, one copy per deploy.
  * Skips anything changed in the last 10 minutes, because a deploy stages its
- * candidate (which creates this dir) before it records the artifact. Never throws.
+ * candidate (which creates this dir) before it records the artifact. Also clears
+ * abandoned `.upload-*` directories. Never throws.
  */
-export async function sweepBrokerState(): Promise<string[]> {
+export function sweepBrokerState(): Promise<string[]> {
+  return withArtifactLock(sweepBrokerStateLocked);
+}
+
+async function sweepBrokerStateLocked(): Promise<string[]> {
+  await sweepUploads();
   const cutoff = Date.now() - 10 * 60_000;
+  const held = (name: string): boolean => {
+    const [ownerDir, digest] = [name.slice(0, 32), name.slice(33)];
+    return q<{ owner_id: string }>("SELECT owner_id FROM artifacts WHERE digest = ?", digest).some(
+      (row) => artifactOwnerDir(row.owner_id) === ownerDir,
+    );
+  };
   const names = (await readdir(brokersDir()).catch((): string[] => [])).filter(
-    (name) => /^[a-f0-9]{64}$/.test(name) && !q1("SELECT 1 FROM artifacts WHERE digest = ?", name),
+    (name) => /^[a-f0-9]{32}-[a-f0-9]{64}$/.test(name) && !held(name),
   );
   const removed = await Promise.all(
     names.map(async (name) => {
@@ -1066,6 +1339,32 @@ export async function sweepBrokerState(): Promise<string[]> {
     }),
   );
   return removed.filter((name): name is string => name !== null);
+}
+
+/**
+ * Remove `.upload-*` staging directories a crashed or aborted deploy left in the artifacts root. One hour
+ * is far longer than any upload takes. Never throws; returns the names it removed.
+ */
+export async function sweepUploads(maxAgeMs = 60 * 60_000): Promise<string[]> {
+  const cutoff = Date.now() - maxAgeMs;
+  const names = (await readdir(artifactRoot()).catch((): string[] => [])).filter((name) => name.startsWith(".upload-"));
+  const removed = await Promise.all(
+    names.map(async (name) => {
+      const path = resolve(artifactRoot(), name);
+      const info = await stat(path).catch(() => null);
+      if (!info || info.mtimeMs > cutoff) return null;
+      return rm(path, { recursive: true, force: true }).then(
+        () => name,
+        () => null,
+      );
+    }),
+  );
+  return removed.filter((name): name is string => name !== null);
+}
+
+/** The shared connection, for tests that need to age rows. */
+export function storeDatabase(): Database {
+  return connection();
 }
 
 /** Test/ops helper: close and forget the connection. */

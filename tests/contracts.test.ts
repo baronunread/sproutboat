@@ -728,3 +728,30 @@ describe("safe update", () => {
     }
   });
 });
+
+describe("control and supervisor agree on the per-deployment runtime name", () => {
+  const supervisorModule = join(import.meta.dir, "..", "services", "supervisor", "src", "runtime-name.ts");
+  const ownerDir = "0123456789abcdef0123456789abcdef";
+  const digest = "f".repeat(64);
+  const sproutPath = `/var/lib/sproutboat/artifacts/${ownerDir}/${digest}/sprout`;
+
+  test("control derives <ownerDir>-<digest> from the sprout path", async () => {
+    const { runtimeName } = await import("../apps/control/src/logs");
+    expect(runtimeName(sproutPath)).toBe(`${ownerDir}-${digest}`);
+  });
+
+  test("control's artifact owner directory matches the supervisor's resource layout", async () => {
+    const { artifactOwnerDir } = await import("../apps/control/src/store");
+    const { ownerDirName } = await import("../services/supervisor/src/resource-layout");
+    expect(artifactOwnerDir("bootstrap:alice")).toBe(ownerDirName("bootstrap:alice"));
+  });
+
+  test.skipIf(!existsSync(supervisorModule))("the supervisor's runtimeName gives the same name", async () => {
+    const control = await import("../apps/control/src/logs");
+    // SAFETY: the module under test exports `runtimeName(sproutPath: string): string`.
+    const supervisor = (await import(supervisorModule)) as { runtimeName: (path: string) => string };
+    for (const path of [sproutPath, "/tmp/x/artifacts/ab/cd/sprout", "/a/b/sprout"]) {
+      expect(supervisor.runtimeName(path)).toBe(control.runtimeName(path));
+    }
+  });
+});

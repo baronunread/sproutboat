@@ -143,6 +143,24 @@ function bindingsOf(value: Json | undefined): ArtifactBindings {
 }
 
 /** Validate a sidecar `assets.json` and that every file it lists is present under `assets/`. */
+/** The keys of assets.json's `files` map, or null when the text is not an object holding one. */
+export function listedAssetKeys(text: string): string[] | null {
+  const parsed = parseJson(text);
+  return isObj(parsed) && isObj(parsed.files) ? Object.keys(parsed.files) : null;
+}
+
+/** Every file under `root`, as posix paths relative to it with a leading slash. Symlinks are reported as files. */
+async function walkFiles(root: string, prefix: string): Promise<string[]> {
+  const entries = await readdir(resolve(root, `.${prefix}`), { withFileTypes: true }).catch(() => []);
+  const nested = await Promise.all(
+    entries.map(async (entry) => {
+      const path = `${prefix}/${entry.name}`;
+      return entry.isDirectory() ? walkFiles(root, path) : [path];
+    }),
+  );
+  return nested.flat();
+}
+
 async function assetsErrors(directory: string): Promise<string[]> {
   const parsed = parseJson(await readFile(resolve(directory, "assets.json"), "utf8").catch(() => ""));
   if (!isObj(parsed)) return ["assets.json is not a valid JSON object"];
@@ -177,6 +195,11 @@ async function assetsErrors(directory: string): Promise<string[]> {
   for (const check of checks) {
     if (check.error) errors.push(check.error);
     total += check.bytes || 0;
+  }
+  // Nothing may sit in assets/ that assets.json does not list: unlisted files would be served unhashed.
+  const listed = new Set(Object.keys(files));
+  for (const path of await walkFiles(resolve(directory, "assets"), "")) {
+    if (!listed.has(path)) errors.push(`assets${path} is not listed in assets.json`);
   }
   if (total > MAX_ASSET_BYTES) errors.push(`assets total ${total} bytes exceeds the ${MAX_ASSET_BYTES} limit`);
   return errors;
