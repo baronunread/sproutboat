@@ -1,161 +1,147 @@
-import { useCallback, useEffect, useState } from "react";
+import {
+  Badge,
+  Banner,
+  Button,
+  EmptyState,
+  Link,
+  Table,
+  TableBody,
+  TableCell,
+  TableError,
+  TableHead,
+  TableHeader,
+  TableLoading,
+  TableRow,
+  formatBytes,
+  toast,
+} from "@sproutboat/ikada";
 import { createFileRoute } from "@tanstack/react-router";
-import { Button, ConfirmButton, DataTable, Panel, PanelHeading, StatusMessage } from "../components";
-import { mutate, relativeTime } from "../dashboard-data";
-import { buttonVariants } from "@/components/ui/button";
+import { useState } from "react";
+import { ConfirmDialog } from "../confirm-dialog";
+
+import { mutate, relativeTime, useJson } from "../dashboard-data";
+import { Section } from "../page-state";
 
 export const Route = createFileRoute("/admin/backups")({ component: AdminBackups });
 
 type Backup = { name: string; sizeBytes: number; createdAt: string; offsite: boolean };
 
-function humanSize(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`;
-  const units = ["KiB", "MiB", "GiB"];
-  let value = bytes / 1024;
-  let unit = 0;
-  while (value >= 1024 && unit < units.length - 1) {
-    value /= 1024;
-    unit += 1;
-  }
-  return `${value.toFixed(1)} ${units[unit]}`;
-}
-
 function AdminBackups() {
-  const [backups, setBackups] = useState<Backup[]>();
-  const [state, setState] = useState<"loading" | "ready" | "error">("loading");
+  const { data, state, refresh } = useJson<{ backups: Backup[] }>("/api/admin/backups");
   const [busy, setBusy] = useState(false);
-  const [note, setNote] = useState("");
-
-  const load = useCallback(async () => {
-    try {
-      const response = await fetch("/api/admin/backups", { credentials: "include" });
-      if (!response.ok) {
-        setState("error");
-        return;
-      }
-      // SAFETY: a 2xx from /api/admin/backups is the { backups } contract.
-      const body = (await response.json()) as { backups: Backup[] };
-      setBackups(body.backups);
-      setState("ready");
-    } catch {
-      setState("error");
-    }
-  }, []);
-  useEffect(() => {
-    void load();
-  }, [load]);
+  const backups = data?.backups ?? [];
 
   const backUpNow = async () => {
     setBusy(true);
-    setNote("");
     try {
-      const response = await fetch("/api/admin/backups", { method: "POST", credentials: "include" });
-      if (!response.ok) {
-        // SAFETY: an error body from this endpoint is { error: string }.
-        const body = (await response.json().catch(() => ({}))) as { error?: string };
-        setNote(body.error ?? "Backup failed.");
-      } else {
-        await load();
+      const failure = await mutate("/api/admin/backups", { method: "POST" });
+      if (failure) {
+        toast.add({ tone: "danger", title: "Backup failed", description: failure });
+        return;
       }
-    } catch {
-      setNote("Could not reach the control plane.");
+      toast.add({ tone: "success", title: "Backup created" });
+      await refresh();
+    } finally {
+      setBusy(false);
     }
-    setBusy(false);
   };
 
   const remove = async (name: string) => {
-    setNote("");
     const failure = await mutate(`/api/admin/backups/${encodeURIComponent(name)}`, { method: "DELETE" });
-    if (failure) {
-      setNote(failure);
-      return;
-    }
-    await load();
+    if (failure) return failure;
+    toast.add({ tone: "success", title: `Deleted ${name}` });
+    await refresh();
+    return null;
   };
 
   return (
-    <Panel variant="wide">
-      <PanelHeading
+    <div className="flex flex-col gap-6">
+      <Section
         title="Backups"
         description="The control database, binding data (KV, D1, R2, queues, Durable Objects), artifacts, route snapshot and host config, one encrypted archive each. A timer takes one daily; the last seven are kept."
         action={
-          <Button busy={busy} busyLabel="Backing up…" onClick={() => void backUpNow()}>
+          <Button variant="primary" loading={busy} onClick={() => void backUpNow()}>
             Back up now
           </Button>
         }
-      />
+      >
+        {state === "ready" && backups.length === 0 ? (
+          <div className="rounded-xl bg-surface p-4 shadow-card">
+            <EmptyState title="No backups yet" description="Take one now, or wait for the daily timer." />
+          </div>
+        ) : (
+          <Table label="Stored backup archives" aria-busy={state === "loading" || undefined}>
+            <TableHeader>
+              <TableRow className="hover:bg-transparent">
+                <TableHead>Archive</TableHead>
+                <TableHead hideBelow="sm" className="text-end">
+                  Size
+                </TableHead>
+                <TableHead hideBelow="md">Taken</TableHead>
+                <TableHead hideBelow="lg">Off-box</TableHead>
+                <TableHead className="text-end">
+                  <span className="sr-only">Actions</span>
+                </TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {state === "loading" ? (
+                <TableLoading columns={5} />
+              ) : state === "error" ? (
+                <TableError colSpan={5} title="Could not load backups">
+                  Refresh and try again.
+                </TableError>
+              ) : (
+                backups.map((backup) => <BackupRow key={backup.name} backup={backup} onDelete={remove} />)
+              )}
+            </TableBody>
+          </Table>
+        )}
+      </Section>
 
-      {note && <StatusMessage tone="error">{note}</StatusMessage>}
-
-      {state === "loading" && (
-        <p className="min-h-56 px-5 pt-12 text-muted-foreground group-[.is-padded]/panel:px-0" aria-live="polite">
-          Loading backups…
-        </p>
-      )}
-      {state === "error" && <StatusMessage tone="error">Could not load backups. Refresh and try again.</StatusMessage>}
-      {state === "ready" && backups && backups.length === 0 && (
-        <p className="px-5 py-12 text-center text-[0.84rem] leading-relaxed text-muted-foreground group-[.is-padded]/panel:px-0 group-[.is-padded]/panel:py-5 group-[.is-padded]/panel:text-start [&_code]:text-foreground">
-          No backups yet. Take one now, or wait for the daily timer.
-        </p>
-      )}
-      {state === "ready" && backups && backups.length > 0 && (
-        <DataTable
-          caption="Stored backup archives"
-          head={
-            <tr>
-              <th scope="col">Archive</th>
-              <th scope="col" className="text-end tabular-nums">
-                Size
-              </th>
-              <th scope="col">Taken</th>
-              <th scope="col">Off-box</th>
-              <th scope="col" className="text-end">
-                <span className="sr-only">Actions</span>
-              </th>
-            </tr>
-          }
-        >
-          {backups.map((backup) => (
-            <tr key={backup.name}>
-              <td>
-                <code>{backup.name}</code>
-              </td>
-              <td className="text-end tabular-nums">{humanSize(backup.sizeBytes)}</td>
-              <td>{relativeTime(backup.createdAt)}</td>
-              <td>{backup.offsite ? "Uploaded" : "-"}</td>
-              <td className="flex items-center justify-end gap-2 [&_button]:h-8 [&_button]:px-2.5">
-                <a
-                  className={buttonVariants({ variant: "outline", className: "text-[0.82rem]" })}
-                  href={`/api/admin/backups/${encodeURIComponent(backup.name)}`}
-                  download
-                >
-                  Download
-                </a>
-                <ConfirmButton
-                  label="Delete"
-                  busyLabel="Deleting…"
-                  triggerVariant="quiet"
-                  title={`Delete ${backup.name}?`}
-                  description={
-                    <>
-                      This removes the archive from this box{backup.offsite ? " and from off-box storage" : ""}.
-                      Restoring from it will no longer be possible. This cannot be undone.
-                    </>
-                  }
-                  confirmLabel="Delete backup"
-                  onConfirm={() => remove(backup.name)}
-                />
-              </td>
-            </tr>
-          ))}
-        </DataTable>
-      )}
-
-      <p className="mt-3 text-[0.75rem] text-muted-foreground">
+      <Banner tone="info">
         Off-box upload runs when <code>SPROUTBOAT_BACKUP_S3_*</code> is set in <code>/etc/sproutboat/control.env</code>{" "}
-        (any S3-compatible store). To restore, run <code>sudo sbctl restore &lt;archive&gt; --force</code> on the box.
-        It stops the services, restores the archive and starts them again. See <code>infra/README.md</code>.
-      </p>
-    </Panel>
+        (any S3-compatible store). To restore, run <code>sudo sbctl restore &lt;archive&gt; --force</code> on the box:
+        it stops the services, restores the archive and starts them again. See <code>infra/README.md</code>.
+      </Banner>
+    </div>
+  );
+}
+
+function BackupRow({ backup, onDelete }: { backup: Backup; onDelete: (name: string) => Promise<string | null> }) {
+  return (
+    <TableRow>
+      <TableCell className="min-w-48">
+        <code className="break-all">{backup.name}</code>
+      </TableCell>
+      <TableCell hideBelow="sm" className="whitespace-nowrap text-end tabular-nums">
+        {formatBytes(backup.sizeBytes)}
+      </TableCell>
+      <TableCell hideBelow="md" className="whitespace-nowrap text-fg-muted">
+        {relativeTime(backup.createdAt)}
+      </TableCell>
+      <TableCell hideBelow="lg">
+        {backup.offsite ? <Badge tone="success">Uploaded</Badge> : <span className="text-fg-muted">-</span>}
+      </TableCell>
+      <TableCell className="whitespace-nowrap text-end">
+        <span className="inline-flex items-center gap-2">
+          <Link
+            href={`/api/admin/backups/${encodeURIComponent(backup.name)}`}
+            download
+            aria-label={`Download ${backup.name}`}
+          >
+            Download
+          </Link>
+          <ConfirmDialog
+            trigger="Delete"
+            triggerLabel={`Delete ${backup.name}`}
+            title={`Delete ${backup.name}?`}
+            description={`This removes the archive from this box${backup.offsite ? " and from off-box storage" : ""}. Restoring from it will no longer be possible. This cannot be undone.`}
+            confirmLabel="Delete backup"
+            onConfirm={() => onDelete(backup.name)}
+          />
+        </span>
+      </TableCell>
+    </TableRow>
   );
 }

@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { authFile, chooseOption } from "./helpers";
+import { authFile, gotoHydrated } from "./helpers";
 
 test.use({ storageState: authFile("test-admin") });
 
@@ -12,29 +12,51 @@ test("non-admins never see the admin area", async ({ browser }) => {
   await context.close();
 });
 
-test("admin overview shows platform stats", async ({ page }) => {
+test("admin system tab shows platform stats", async ({ page }) => {
   await page.goto("/admin");
   await expect(page.getByRole("heading", { name: "Admin" })).toBeVisible();
-  await expect(page.getByRole("region", { name: "Accounts", exact: true })).toBeVisible();
-  await expect(page.getByRole("region", { name: "Deployments", exact: true })).toBeVisible();
+  await expect(page.getByRole("link", { name: "System" })).toHaveAttribute("aria-current", "page");
+  await expect(page.getByRole("group", { name: "Accounts", exact: true })).toBeVisible();
+  await expect(page.getByRole("group", { name: "Deployments", exact: true })).toBeVisible();
 });
 
-test("ban an account, verify it, then unban", async ({ page }) => {
-  await page.goto("/admin/users");
+test("disable an account, verify it, then enable", async ({ page }) => {
+  await gotoHydrated(page, "/admin/users");
   const memberRow = page
-    .getByRole("list", { name: "User accounts" })
-    .getByRole("listitem")
+    .getByRole("region", { name: "User accounts" })
+    .getByRole("row")
     .filter({ hasText: "member@example.test" });
   await expect(memberRow).toContainText("Active");
 
-  await memberRow.getByRole("button", { name: /^ban$/i }).click();
-  await memberRow.getByLabel("Ban reason").fill("e2e abuse");
-  await chooseOption(page, memberRow.getByRole("combobox", { name: "Duration" }), "7 days");
-  await memberRow.getByRole("button", { name: /ban account/i }).click();
+  await memberRow.getByRole("button", { name: /^disable /i }).click();
+  await page
+    .getByRole("dialog", { name: /^disable member@example.test/i })
+    .getByRole("button", { name: /disable account/i })
+    .click();
 
-  await expect(memberRow).toContainText("Banned");
-  await expect(memberRow).toContainText(/e2e abuse/);
+  await expect(memberRow).toContainText("Disabled");
 
-  await memberRow.getByRole("button", { name: /unban/i }).click();
+  await memberRow.getByRole("button", { name: /^enable /i }).click();
   await expect(memberRow).toContainText("Active");
+});
+
+test("create a user from the dialog and see the starting password", async ({ page }) => {
+  // Accounts outlive a reseed, so each run creates its own.
+  const unique = `e2e-${Date.now().toString(36)}`;
+  await gotoHydrated(page, "/admin/users");
+  await page.getByRole("button", { name: "Create user" }).click();
+  const dialog = page.getByRole("dialog", { name: /^create/i }); // "Create user", then "Created <name>"
+  await dialog.getByLabel("Email").fill(`${unique}@example.test`);
+  await dialog.getByLabel("Namespace").fill(unique);
+  await dialog.getByRole("button", { name: /generate a password/i }).click();
+  await dialog.getByRole("button", { name: /create account/i }).click();
+  await expect(dialog.getByText(`Created ${unique}`)).toBeVisible();
+  await expect(dialog.getByLabel("Starting password")).toHaveValue(/.{10,}/);
+  await dialog.getByRole("button", { name: "Done" }).click();
+  await expect(
+    page
+      .getByRole("region", { name: "User accounts" })
+      .getByRole("row")
+      .filter({ hasText: `${unique}@example.test` }),
+  ).toBeVisible();
 });

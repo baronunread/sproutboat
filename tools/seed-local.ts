@@ -212,6 +212,121 @@ function seedTraffic(hostname: string, lines: string[]): void {
   }
 }
 
+type SeedEvent = {
+  type: string;
+  project?: string;
+  actor: string;
+  summary: string;
+  data: Record<string, string | number | boolean>;
+};
+
+/**
+ * Activity events written straight into the `events` table (rather than through the API) so each
+ * one can carry its own timestamp: the feed groups by day, and the Load older button needs more
+ * than one page. test-admin gets 34 events over about three weeks across blog, api and scratch;
+ * member gets two; the box itself (owner `system`) gets a backup, which only admins see.
+ */
+function seedEvents(db: Database, owners: Array<{ login: string; ownerId: string }>): void {
+  const insert = db.query(
+    "INSERT INTO events (ts, owner_id, project, type, actor, summary, data) VALUES (?, ?, ?, ?, ?, ?, ?)",
+  );
+  const write = (ownerId: string, at: number, event: SeedEvent) =>
+    insert.run(
+      new Date(at).toISOString(),
+      ownerId,
+      event.project ?? null,
+      event.type,
+      event.actor,
+      event.summary,
+      JSON.stringify(event.data),
+    );
+  const admin = owners.find((owner) => owner.login === "test-admin");
+  const member = owners.find((owner) => owner.login === "member");
+  const hour = 3_600_000;
+  const now = Date.now();
+  try {
+    if (admin) {
+      const projects = ["blog", "api", "scratch"];
+      const templates = (project: string, n: number): SeedEvent[] => [
+        {
+          type: "deploy.succeeded",
+          project,
+          actor: "test-admin",
+          summary: `Deployed ${project} (version ${n})`,
+          data: {
+            deploymentId: `seed-${project}-${n}`,
+            hostname: `${project}.test-admin.${domain}`,
+            compileMs: 900 + n,
+          },
+        },
+        {
+          type: "secret.set",
+          project,
+          actor: "test-admin",
+          summary: `Set secret API_KEY on ${project}`,
+          data: { name: "API_KEY" },
+        },
+        {
+          type: "deploy.rolled_back",
+          project,
+          actor: "test-admin",
+          summary: `Rolled ${project} back to version ${Math.max(1, n - 1)}`,
+          data: { from: `seed-${project}-${n}`, to: `seed-${project}-${Math.max(1, n - 1)}` },
+        },
+        {
+          type: "domain.verified",
+          project,
+          actor: "test-admin",
+          summary: `Verified www.example.test for ${project}`,
+          data: { hostname: "www.example.test" },
+        },
+      ];
+      // Oldest first, so ids rise with time. 34 events, spaced 14 hours apart, ending an hour ago.
+      for (let i = 0; i < 34; i++) {
+        const project = projects[i % projects.length] ?? "blog";
+        const options = templates(project, 1 + Math.floor(i / 4));
+        const event = options[i % options.length];
+        if (event) write(admin.ownerId, now - hour - (33 - i) * 14 * hour, event);
+      }
+    }
+    if (member) {
+      write(member.ownerId, now - 5 * hour, {
+        type: "deploy.succeeded",
+        project: "shop",
+        actor: "member",
+        summary: "Deployed shop (version 2)",
+        data: { deploymentId: "seed-shop-2", hostname: `shop.member.${domain}` },
+      });
+      write(member.ownerId, now - 2 * hour, {
+        type: "secret.set",
+        project: "shop",
+        actor: "member",
+        summary: "Set secret STRIPE_KEY on shop",
+        data: { name: "STRIPE_KEY" },
+      });
+    }
+    write("system", now - 30 * 60_000, {
+      type: "backup.created",
+      actor: "system",
+      summary: "Backup sproutboat-seed.tar.age created",
+      data: { name: "sproutboat-seed.tar.age", sizeBytes: 4_200_000, encrypted: true, offsite: false },
+    });
+  } catch {
+    /* events table absent before the Activity migration */
+  }
+}
+
+/** One webhook for test-admin, created through the API so its secret is encrypted the way real ones are. */
+async function seedWebhook(cookie: string | undefined): Promise<void> {
+  if (!cookie) return;
+  const res = await fetchInsecure(`${controlUrl}/api/webhooks`, {
+    method: "POST",
+    headers: { cookie, "content-type": "application/json", origin: dashboardUrl },
+    body: JSON.stringify({ url: "https://example.com/seed-hook", types: ["deploy.*"], format: "json" }),
+  });
+  if (!res.ok && res.status !== 404) console.warn(`  could not seed a webhook: ${res.status}`);
+}
+
 async function main(): Promise<void> {
   await mkdir(stateDir, { recursive: true });
 
@@ -237,6 +352,9 @@ async function main(): Promise<void> {
       "deployment_resources",
       "secrets",
       "custom_domains",
+      "events",
+      "webhook_deliveries",
+      "webhooks",
     ]) {
       try {
         db.run(`DELETE FROM ${table}`);
@@ -255,7 +373,9 @@ async function main(): Promise<void> {
     db.close();
     await rm(process.env.SPROUTBOAT_ARTIFACTS_DIR!, { recursive: true, force: true });
     await writeFile(process.env.SPROUTBOAT_LOG_PATH!, "");
-    console.log("reset: cleared projects, deployments, artifacts, resources, secrets, domains, API keys, edge log");
+    console.log(
+      "reset: cleared projects, deployments, artifacts, resources, secrets, domains, API keys, events, webhooks, edge log",
+    );
   }
 
   const store = await import("../apps/control/src/store");
@@ -389,7 +509,9 @@ async function main(): Promise<void> {
       /* apikey table absent before the admin/api-key migration */
     }
   }
+  seedEvents(db, owners);
   db.close();
+  await seedWebhook(authStates.find((entry) => entry.login === "test-admin")?.cookie);
 
   if (writeAuth) {
     await mkdir(resolve(root, "e2e/.auth"), { recursive: true });

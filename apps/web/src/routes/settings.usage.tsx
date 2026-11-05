@@ -1,15 +1,27 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
-import { DataTable, Panel, PanelHeading, StatusMessage } from "../components";
+import {
+  DescriptionList,
+  EmptyState,
+  Link,
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+  UsageMeter,
+} from "@sproutboat/ikada";
+import { createFileRoute, Link as RouterLink } from "@tanstack/react-router";
 import { useJson } from "../dashboard-data";
-import { cn } from "@/lib/utils";
+import { LoadError, LoadingBlock, Section } from "../page-state";
 
 /**
- * #76 - the caps this box enforces, and how close the account is to each. They
- * were previously invisible until a request came back 429.
+ * The caps this box enforces, and how close the account is to each. They were previously
+ * invisible until a request came back 429. The route keeps its `/settings/usage` path; the
+ * page is called Limits because that is what it is: caps that protect the box, not plan tiers.
  */
-export const Route = createFileRoute("/settings/usage")({ component: Usage });
+export const Route = createFileRoute("/settings/usage")({ component: Limits });
 
-type Limits = {
+type LimitsData = {
   limits: {
     projectsPerAccount: number;
     versionsPerProject: number;
@@ -26,129 +38,83 @@ type Limits = {
   };
 };
 
-function Meter({ label, used, cap, detail }: { label: string; used: number; cap: number; detail?: string }) {
-  const percent = cap > 0 ? Math.min(100, Math.round((used / cap) * 100)) : 0;
-  const tone = percent >= 90 ? "danger" : percent >= 70 ? "warn" : "ok";
-  return (
-    <div role="group" aria-label={label}>
-      <div className="flex items-baseline justify-between text-[0.8rem] [&_strong]:tabular-nums">
-        <span>{label}</span>
-        <strong>
-          {used.toLocaleString()} / {cap.toLocaleString()} <span className="sr-only">used ({percent}%)</span>
-        </strong>
-      </div>
-      {/* The count above carries the value; the bar is its visual echo. */}
-      <div className="mt-2 h-[0.45rem] overflow-hidden rounded-full bg-secondary" aria-hidden="true">
-        <div
-          className={cn(
-            "h-full min-w-0.5 rounded-[inherit] transition-[width] duration-200",
-            tone === "danger" ? "bg-coral" : tone === "warn" ? "bg-warn" : "bg-sky",
-          )}
-          style={{ width: `${percent}%` }}
-        />
-      </div>
-      {detail && <p className="mt-3 text-[0.75rem] text-muted-foreground">{detail}</p>}
-    </div>
-  );
-}
+function Limits() {
+  const { data, state, refresh } = useJson<LimitsData>("/api/limits");
 
-function Usage() {
-  const { data, state } = useJson<Limits>("/api/limits");
-
-  if (state === "loading")
-    return (
-      <Panel variant="bare" className="min-h-56 px-5 pt-12 text-muted-foreground" aria-live="polite">
-        Loading limits…
-      </Panel>
-    );
-  if (state === "error" || !data)
-    return <StatusMessage tone="error">Could not load limits. Refresh and try again.</StatusMessage>;
+  if (state === "loading") return <LoadingBlock label="limits" />;
+  if (state === "error" || !data) return <LoadError what="limits" onRetry={() => void refresh()} />;
 
   const { limits, usage } = data;
   return (
-    <>
-      <Panel variant="wide">
-        <PanelHeading
-          title="Account"
-          description="Enforced by the control plane. An operator can raise these with environment variables."
-        />
-        <div className="mt-5 grid grid-cols-[repeat(auto-fit,minmax(15rem,1fr))] gap-6">
-          <Meter label="Projects" used={usage.projects} cap={limits.projectsPerAccount} />
-          <Meter
-            label="Storage resources"
-            used={usage.resources}
-            cap={limits.resourcesPerAccount}
-            detail="KV namespaces, D1 databases, R2 buckets and queues combined."
-          />
+    <div className="flex flex-col gap-6">
+      <Section
+        title="Account"
+        description="These caps protect the box, not a plan: they keep one account from starving the rest. An operator can raise them with environment variables."
+      >
+        <div className="grid gap-6 sm:grid-cols-2">
+          <UsageMeter label="Projects" used={usage.projects} limit={limits.projectsPerAccount} />
+          <UsageMeter label="Storage resources" used={usage.resources} limit={limits.resourcesPerAccount} />
         </div>
-        <dl className="mt-5 grid grid-cols-[repeat(auto-fit,minmax(16rem,1fr))] gap-x-8 gap-y-4 [&_code]:text-[0.78rem] [&_dd]:mt-1 [&_dd]:text-[0.85rem] [&_dd]:[overflow-wrap:anywhere] [&_dt]:text-[0.72rem] [&_dt]:tracking-wide [&_dt]:text-muted-foreground [&_dt]:uppercase">
-          <div>
-            <dt>Deploy rate</dt>
-            <dd>
-              {limits.deployPerAccountPerMinute} per minute per account · {limits.deployPerIpPerMinute} per minute per
-              source IP
-            </dd>
-          </div>
-          <div>
-            <dt>Retained versions</dt>
-            <dd>{limits.versionsPerProject} per project - older inactive versions are pruned automatically</dd>
-          </div>
-        </dl>
-      </Panel>
+        <p className="text-sm text-fg-muted">KV namespaces, D1 databases, R2 buckets and queues count together.</p>
+        <DescriptionList
+          items={[
+            {
+              id: "rate",
+              term: "Deploy rate",
+              details: `${limits.deployPerAccountPerMinute} per minute per account, ${limits.deployPerIpPerMinute} per minute per source IP`,
+            },
+            {
+              id: "versions",
+              term: "Retained versions",
+              details: `${limits.versionsPerProject} per project; older inactive versions are pruned automatically`,
+            },
+          ]}
+        />
+      </Section>
 
-      <Panel variant="wide">
-        <PanelHeading title="Per project" description="Versions retained, secrets set, and custom domains attached." />
+      <Section title="Per project" description="Versions retained, secrets set, and custom domains attached.">
         {usage.byProject.length === 0 ? (
-          <p className="px-5 py-12 text-center text-[0.84rem] leading-relaxed text-muted-foreground group-[.is-padded]/panel:px-0 group-[.is-padded]/panel:py-5 group-[.is-padded]/panel:text-start [&_code]:text-foreground">
-            No projects yet.{" "}
-            <Link className="text-[0.8rem] text-sky underline-offset-2 hover:underline" to="/projects">
-              Deploy one
-            </Link>{" "}
-            to see its usage here.
-          </p>
-        ) : (
-          <DataTable
-            caption="Per-project usage against the limits"
-            head={
-              <tr>
-                <th scope="col">Project</th>
-                <th scope="col" className="text-end tabular-nums">
-                  Versions
-                </th>
-                <th scope="col" className="text-end tabular-nums">
-                  Secrets
-                </th>
-                <th scope="col" className="text-end tabular-nums">
-                  Domains
-                </th>
-              </tr>
+          <EmptyState
+            title="No projects yet"
+            description={
+              <>
+                <Link render={<RouterLink to="/projects" />}>Deploy one</Link> to see its usage here.
+              </>
             }
-          >
-            {usage.byProject.map((project) => (
-              <tr key={project.name}>
-                <td>
-                  <Link
-                    className="text-[0.8rem] text-sky underline-offset-2 hover:underline"
-                    to="/projects/$name"
-                    params={{ name: project.name }}
-                  >
-                    {project.name}
-                  </Link>
-                </td>
-                <td className="text-end tabular-nums">
-                  {project.versions} / {limits.versionsPerProject}
-                </td>
-                <td className="text-end tabular-nums">
-                  {project.secrets} / {limits.secretsPerProject}
-                </td>
-                <td className="text-end tabular-nums">
-                  {project.domains} / {limits.domainsPerProject}
-                </td>
-              </tr>
-            ))}
-          </DataTable>
+          />
+        ) : (
+          <Table label="Per-project usage against the limits">
+            <TableHeader>
+              <TableRow className="hover:bg-transparent">
+                <TableHead>Project</TableHead>
+                <TableHead className="text-end">Versions</TableHead>
+                <TableHead className="text-end">Secrets</TableHead>
+                <TableHead className="text-end">Domains</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {usage.byProject.map((project) => (
+                <TableRow key={project.name}>
+                  <TableCell>
+                    <Link render={<RouterLink to="/projects/$name" params={{ name: project.name }} />}>
+                      {project.name}
+                    </Link>
+                  </TableCell>
+                  <TableCell className="text-end tabular-nums">
+                    {project.versions} / {limits.versionsPerProject}
+                  </TableCell>
+                  <TableCell className="text-end tabular-nums">
+                    {project.secrets} / {limits.secretsPerProject}
+                  </TableCell>
+                  <TableCell className="text-end tabular-nums">
+                    {project.domains} / {limits.domainsPerProject}
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
         )}
-      </Panel>
-    </>
+      </Section>
+    </div>
   );
 }

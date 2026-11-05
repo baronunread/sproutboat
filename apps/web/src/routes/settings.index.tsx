@@ -1,57 +1,52 @@
-import { useEffect, useState } from "react";
+import { DescriptionList, SegmentedControl } from "@sproutboat/ikada";
 import { createFileRoute } from "@tanstack/react-router";
+import { useSyncExternalStore } from "react";
 import { DeleteAccount } from "../account";
-import { Panel, PanelHeading } from "../components";
 import { useAccount } from "../dashboard-data";
+import { Section } from "../page-state";
+import { isTheme, setTheme, subscribeTheme, themePref, themePrefOnServer } from "../theme-store";
 
 export const Route = createFileRoute("/settings/")({ component: General });
 
 const THEMES = [
-  ["dark", "Dark"],
-  ["light", "Light"],
+  { value: "system", label: "System" },
+  { value: "light", label: "Light" },
+  { value: "dark", label: "Dark" },
 ] as const;
 
 function General() {
   const { account } = useAccount();
-  // The theme is applied by an inline script before hydration, so read it back
-  // from the element rather than keeping a second source of truth.
-  const [theme, setThemeState] = useState<string>("dark");
-  useEffect(() => {
-    setThemeState(document.documentElement.dataset.theme ?? "dark");
-  }, []);
-
-  const choose = (next: string) => {
-    document.documentElement.dataset.theme = next;
-    localStorage.setItem("sproutboat-theme", next);
-    setThemeState(next);
-  };
+  // The same store the account menu in the shell reads, so a change here updates it and vice versa.
+  const theme = useSyncExternalStore(subscribeTheme, themePref, themePrefOnServer);
+  const username = account?.profile?.username;
 
   return (
-    <>
-      <Panel>
-        <PanelHeading
-          title="Theme"
-          description="Choose the workspace appearance that works best for your environment. This preference stays on this browser."
-        />
-        <div
-          className="mt-5 inline-flex gap-0.5 rounded-[7px] border border-border p-0.5"
-          role="group"
+    <div className="flex max-w-2xl flex-col gap-6">
+      <Section
+        title="Appearance"
+        description="Choose the workspace appearance that works best for your environment. This preference stays on this browser."
+      >
+        <SegmentedControl
           aria-label="Theme"
-        >
-          {THEMES.map(([value, label]) => (
-            <button
-              key={value}
-              type="button"
-              className="min-h-8 rounded-[5px] border-0 bg-transparent px-3.5 text-[0.8rem] text-muted-foreground transition-[background,color] duration-150 hover:text-foreground aria-pressed:bg-secondary aria-pressed:font-medium aria-pressed:text-foreground"
-              aria-pressed={theme === value}
-              onClick={() => choose(value)}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
-      </Panel>
-      <DeleteAccount username={account?.profile?.username} />
-    </>
+          className="max-w-sm"
+          options={THEMES}
+          value={theme}
+          onValueChange={(next) => {
+            if (isTheme(next)) setTheme(next);
+          }}
+        />
+      </Section>
+      <Section title="Account">
+        <DescriptionList
+          items={[
+            { id: "namespace", term: "Namespace", details: username ?? "Not assigned", mono: Boolean(username) },
+            { id: "name", term: "Name", details: account?.user?.name ?? "Not set" },
+            { id: "email", term: "Email", details: account?.user?.email ?? "Not set" },
+            { id: "role", term: "Role", details: account?.isAdmin ? "Admin" : "Member" },
+          ]}
+        />
+      </Section>
+      <DeleteAccount username={username} />
+    </div>
   );
 }

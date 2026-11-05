@@ -19,7 +19,6 @@ export const PRODUCTS = {
     nextStep: "Add the generated namespace id to a KV binding in sproutboat.jsonc.",
     idPrefix: "kv",
     bindingExample: '"bindings": {\n  "kv": {\n    "SESSIONS": { "id": "kv_…" }\n  }\n}',
-    icon: "kv",
   },
   d1: {
     segment: "d1",
@@ -31,7 +30,6 @@ export const PRODUCTS = {
     nextStep: "Add the generated database id to a D1 binding, then run your migrations.",
     idPrefix: "d1",
     bindingExample: '"bindings": {\n  "d1": {\n    "DB": { "id": "d1_…" }\n  }\n}',
-    icon: "d1",
   },
   r2: {
     segment: "r2",
@@ -43,7 +41,6 @@ export const PRODUCTS = {
     nextStep: "Add the generated bucket id to an R2 binding before uploading objects.",
     idPrefix: "r2",
     bindingExample: '"bindings": {\n  "r2": {\n    "MEDIA": { "id": "r2_…" }\n  }\n}',
-    icon: "r2",
   },
   queues: {
     segment: "queues",
@@ -55,6 +52,5 @@ export const PRODUCTS = {
     nextStep: "Add the generated queue id to a producer or consumer binding in your project.",
     idPrefix: "queue",
     bindingExample: '"bindings": {\n  "queues": {\n    "JOBS": { "id": "queue_…" }\n  }\n}',
-    icon: "queues",
   },
 } as const satisfies Record<string, Product>;

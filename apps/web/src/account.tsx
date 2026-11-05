@@ -1,6 +1,30 @@
-import { useState, type FormEvent } from "react";
-import { Button, ConfirmButton, FORM, FORM_ACTIONS, Panel, PanelHeading, StatusMessage, TextField } from "./components";
+import {
+  Button,
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogTitle,
+  DialogTrigger,
+  EmptyState,
+  Field,
+  Input,
+  Table,
+  TableBody,
+  TableCell,
+  TableError,
+  TableHead,
+  TableHeader,
+  TableLoading,
+  TableRow,
+  toast,
+} from "@sproutboat/ikada";
+import { useState } from "react";
+import type { FormEvent } from "react";
+import { ConfirmDialog } from "./confirm-dialog";
 import { mutate, relativeTime, useJson } from "./dashboard-data";
+import { Section } from "./page-state";
 
 type Credential = {
   id: string;
@@ -20,105 +44,125 @@ type Credential = {
  */
 export function CliCredentials() {
   const { data, state, refresh } = useJson<{ credentials: Credential[] }>("/api/account/credentials");
-  const [note, setNote] = useState<{ text: string; tone: "success" | "error" } | null>(null);
   const items = data?.credentials ?? [];
 
   const revoke = async (id: string, label: string) => {
     const failure = await mutate(`/api/account/credentials/${encodeURIComponent(id)}`, { method: "DELETE" });
-    setNote({ text: failure ?? `Revoked “${label}”.`, tone: failure ? "error" : "success" });
+    if (failure) return failure;
+    toast.add({ tone: "success", title: `Revoked ${label}` });
     await refresh();
+    return null;
   };
 
   const revokeAll = async () => {
     const response = await fetch("/api/account/credentials", { method: "DELETE", credentials: "include" }).catch(
       () => null,
     );
-    if (!response?.ok) {
-      setNote({ text: "Could not revoke the credentials. Try again.", tone: "error" });
-      return;
-    }
+    if (!response?.ok) return "Could not revoke the credentials. Try again.";
     // SAFETY: a 2xx from the revoke-all endpoint is { revoked: number }.
     const body = (await response.json()) as { revoked: number };
-    setNote({ text: `Revoked ${body.revoked} credential${body.revoked === 1 ? "" : "s"}.`, tone: "success" });
+    toast.add({ tone: "success", title: `Revoked ${body.revoked} credential${body.revoked === 1 ? "" : "s"}` });
     await refresh();
+    return null;
   };
 
   return (
-    <Panel variant="wide">
-      <PanelHeading
-        title="API tokens"
-        description={
-          <>
-            Keys created by <code>sproutboat login</code>. Your browser session is separate and stays signed in.
-          </>
-        }
-        action={
-          state === "ready" && items.length > 0 ? (
-            <ConfirmButton
-              label="Revoke all"
-              busyLabel="Revoking…"
-              title="Revoke every API token?"
-              description={
-                <>
-                  Every machine using one must run <code>sproutboat login</code> again. Your browser session is
-                  unaffected.
-                </>
-              }
-              confirmLabel="Revoke all tokens"
-              onConfirm={revokeAll}
-            />
-          ) : undefined
-        }
-      />
-      {note && <StatusMessage tone={note.tone}>{note.text}</StatusMessage>}
-      {state === "loading" ? (
-        <p className="min-h-56 px-5 pt-12 text-muted-foreground group-[.is-padded]/panel:px-0" aria-live="polite">
-          Loading tokens…
-        </p>
-      ) : state === "error" ? (
-        <StatusMessage tone="error">Could not load tokens. Refresh and try again.</StatusMessage>
-      ) : items.length === 0 ? (
-        <p className="px-5 py-12 text-center text-[0.84rem] leading-relaxed text-muted-foreground group-[.is-padded]/panel:px-0 group-[.is-padded]/panel:py-5 group-[.is-padded]/panel:text-start [&_code]:text-foreground">
-          No API tokens yet. Run <code>sproutboat login</code> on a machine to create one.
-        </p>
+    <Section
+      title="API tokens"
+      description={
+        <>
+          Keys created by <code>sproutboat login</code>. Your browser session is separate and stays signed in.
+        </>
+      }
+      action={
+        state === "ready" && items.length > 0 ? (
+          <ConfirmDialog
+            trigger="Revoke all"
+            title="Revoke every API token?"
+            description={
+              <>
+                Every machine using one must run <code>sproutboat login</code> again. Your browser session is
+                unaffected.
+              </>
+            }
+            confirmLabel="Revoke all tokens"
+            onConfirm={revokeAll}
+          />
+        ) : undefined
+      }
+    >
+      {state === "ready" && items.length === 0 ? (
+        <EmptyState
+          title="No API tokens yet"
+          description={
+            <>
+              Run <code>sproutboat login</code> on a machine to create one.
+            </>
+          }
+        />
       ) : (
-        <ul
-          className="m-0 mt-4 list-none p-0 [&>li]:flex [&>li]:flex-wrap [&>li]:items-center [&>li]:gap-x-4 [&>li]:gap-y-2 [&>li]:border-t [&>li]:border-border [&>li]:py-3.5 [&>li:first-child]:border-t-0 [&>li>*]:flex-none [&>li>:first-child]:min-w-0 [&>li>:first-child]:flex-[1_1_14rem] [&_small]:mt-1 [&_small]:block [&_small]:text-[0.74rem] [&_small]:text-muted-foreground [&_span]:text-[0.74rem] [&_span]:text-muted-foreground [&_strong]:block [&_strong]:text-[0.85rem] [&_strong]:font-medium"
-          aria-label="API tokens"
-        >
-          {items.map((credential) => {
-            const label = credential.name || credential.start || credential.id.slice(0, 8);
-            return (
-              <li key={credential.id}>
-                <div>
-                  <strong>{label}</strong>
-                  <small>
-                    {credential.start ?? credential.prefix ?? "sproutboat_…"} · created{" "}
-                    {relativeTime(credential.createdAt)}
-                  </small>
-                </div>
-                <span>{credential.lastUsedAt ? `Last used ${relativeTime(credential.lastUsedAt)}` : "Never used"}</span>
-                <span>{credential.expiresAt ? `Expires ${credential.expiresAt.slice(0, 10)}` : "No expiry"}</span>
-                <ConfirmButton
-                  label="Revoke"
-                  busyLabel="Revoking…"
-                  triggerVariant="quiet"
-                  title={`Revoke “${label}”?`}
-                  description={
-                    <>
-                      Any machine using this token must run <code>sproutboat login</code> again. This takes effect
-                      immediately.
-                    </>
-                  }
-                  confirmLabel="Revoke token"
-                  onConfirm={() => revoke(credential.id, label)}
-                />
-              </li>
-            );
-          })}
-        </ul>
+        <Table label="API tokens" aria-busy={state === "loading" || undefined}>
+          <TableHeader>
+            <TableRow className="hover:bg-transparent">
+              <TableHead>Name</TableHead>
+              <TableHead hideBelow="md">Created</TableHead>
+              <TableHead hideBelow="lg">Last used</TableHead>
+              <TableHead hideBelow="xl">Expires</TableHead>
+              <TableHead className="text-end">
+                <span className="sr-only">Actions</span>
+              </TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {state === "loading" ? (
+              <TableLoading columns={5} />
+            ) : state === "error" ? (
+              <TableError colSpan={5} title="Could not load tokens">
+                Refresh and try again.
+              </TableError>
+            ) : (
+              items.map((credential) => {
+                const label = credential.name || credential.start || credential.id.slice(0, 8);
+                return (
+                  <TableRow key={credential.id}>
+                    <TableCell className="min-w-48">
+                      <span className="block break-all font-semibold">{label}</span>
+                      <code className="text-sm text-fg-muted">
+                        {credential.start ?? credential.prefix ?? "sproutboat_…"}
+                      </code>
+                    </TableCell>
+                    <TableCell hideBelow="md" className="whitespace-nowrap text-fg-muted">
+                      {relativeTime(credential.createdAt)}
+                    </TableCell>
+                    <TableCell hideBelow="lg" className="whitespace-nowrap text-fg-muted">
+                      {credential.lastUsedAt ? relativeTime(credential.lastUsedAt) : "Never used"}
+                    </TableCell>
+                    <TableCell hideBelow="xl" className="whitespace-nowrap text-fg-muted">
+                      {credential.expiresAt ? credential.expiresAt.slice(0, 10) : "No expiry"}
+                    </TableCell>
+                    <TableCell className="text-end">
+                      <ConfirmDialog
+                        trigger="Revoke"
+                        triggerLabel={`Revoke ${label}`}
+                        title={`Revoke ${label}?`}
+                        description={
+                          <>
+                            Any machine using this token must run <code>sproutboat login</code> again. This takes effect
+                            immediately.
+                          </>
+                        }
+                        confirmLabel="Revoke token"
+                        onConfirm={() => revoke(credential.id, label)}
+                      />
+                    </TableCell>
+                  </TableRow>
+                );
+              })
+            )}
+          </TableBody>
+        </Table>
       )}
-    </Panel>
+    </Section>
   );
 }
 
@@ -129,14 +173,25 @@ export function CliCredentials() {
  * CLI-token caller, but is handled for completeness.
  */
 export function DeleteAccount({ username }: { username?: string }) {
+  const [open, setOpen] = useState(false);
   const [confirm, setConfirm] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const expected = username ?? "";
   const mismatch = confirm !== "" && confirm !== expected;
 
+  function onOpenChange(next: boolean) {
+    if (busy) return;
+    setOpen(next);
+    if (!next) {
+      setConfirm("");
+      setError("");
+    }
+  }
+
   const submit = async (event: FormEvent) => {
     event.preventDefault();
+    if (!expected || confirm !== expected) return;
     setError("");
     setBusy(true);
     try {
@@ -158,37 +213,45 @@ export function DeleteAccount({ username }: { username?: string }) {
   };
 
   return (
-    <Panel className="[&_h2]:text-destructive">
-      <PanelHeading
-        title="Delete account"
-        description="This permanently removes your namespace, every project and deployment, all routed hostnames, and every issued API token. Active routes stop serving immediately and you are signed out. This cannot be undone."
-      />
-      <form className={FORM} onSubmit={submit}>
-        <TextField
-          label={`Type ${expected || "your username"} to confirm`}
-          value={confirm}
-          onChange={(event) => {
-            setConfirm(event.target.value);
-            setError("");
-          }}
-          autoComplete="off"
-          spellCheck={false}
-          placeholder={expected}
-          disabled={!expected}
-          error={mismatch ? "That does not match your username." : error || null}
-        />
-        <div data-slot="form-actions" className={FORM_ACTIONS}>
-          <Button
-            type="submit"
-            variant="danger"
-            busy={busy}
-            busyLabel="Deleting…"
-            disabled={!expected || confirm !== expected}
-          >
-            Delete account
-          </Button>
-        </div>
-      </form>
-    </Panel>
+    <Section
+      title="Danger zone"
+      danger
+      description="Deleting your account permanently removes your namespace, every project and deployment, all routed hostnames, and every issued API token. Active routes stop serving immediately and you are signed out."
+    >
+      <div>
+        <Dialog open={open} onOpenChange={onOpenChange}>
+          <DialogTrigger render={<Button variant="danger" disabled={!expected} />}>Delete account</DialogTrigger>
+          <DialogContent>
+            <form onSubmit={(event) => void submit(event)} className="flex flex-col gap-4">
+              <div>
+                <DialogTitle>Delete your account?</DialogTitle>
+                <DialogDescription>This cannot be undone. Type your username to confirm.</DialogDescription>
+              </div>
+              <Field
+                label={`Type ${expected} to confirm`}
+                error={mismatch ? "That does not match your username." : error || undefined}
+              >
+                <Input
+                  value={confirm}
+                  placeholder={expected}
+                  autoComplete="off"
+                  spellCheck={false}
+                  onChange={(event) => {
+                    setConfirm(event.target.value);
+                    setError("");
+                  }}
+                />
+              </Field>
+              <DialogFooter className="mt-2">
+                <DialogClose render={<Button disabled={busy} />}>Cancel</DialogClose>
+                <Button type="submit" variant="danger" loading={busy} disabled={confirm !== expected}>
+                  Delete my account
+                </Button>
+              </DialogFooter>
+            </form>
+          </DialogContent>
+        </Dialog>
+      </div>
+    </Section>
   );
 }

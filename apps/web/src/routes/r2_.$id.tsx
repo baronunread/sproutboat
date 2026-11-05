@@ -1,8 +1,27 @@
+import {
+  Breadcrumbs,
+  DescriptionList,
+  EmptyState,
+  Field,
+  Input,
+  Link,
+  PageHeader,
+  Pagination,
+  Table,
+  TableBody,
+  TableCell,
+  TableEmpty,
+  TableHead,
+  TableHeader,
+  TableLoading,
+  TableRow,
+  UsageMeter,
+  formatBytes,
+} from "@sproutboat/ikada";
+import { createFileRoute, Link as RouterLink } from "@tanstack/react-router";
 import { useState } from "react";
-import { createFileRoute, Link } from "@tanstack/react-router";
-import { ArrowLeft, Box } from "lucide-react";
-import { ActionsTh, DataTable, EmptyState, Panel, StatusMessage, TextField, FILTER_SEARCH } from "../components";
 import { relativeTime, useJson } from "../dashboard-data";
+import { LoadError } from "../page-state";
 
 export const Route = createFileRoute("/r2_/$id")({
   component: R2ObjectBrowser,
@@ -28,41 +47,49 @@ type R2Usage = {
   rejectedSize: number;
 };
 
-const UNITS = ["B", "KB", "MB", "GB"] as const;
-/** No formatting library for one call site — 1024-based, one decimal past KB. */
-function formatBytes(bytes: number): string {
-  let value = bytes;
-  let unit = 0;
-  while (value >= 1024 && unit < UNITS.length - 1) {
-    value /= 1024;
-    unit++;
-  }
-  return `${unit === 0 ? value : value.toFixed(1)} ${UNITS[unit]}`;
-}
+/** Rows per table page. The API pages by cursor, so more rows are fetched as the reader walks forward. */
+const PAGE_SIZE = 25;
 
 /**
- * #183 — read-only: list objects, download one. No upload/delete/rename here,
- * same as #136's KV/D1 explorer milestone leaves those out for its own kinds.
+ * #183: read-only: list objects, download one. No upload, delete or rename here.
+ * The list endpoint is cursor-based, so the pagination below counts the pages loaded so far and
+ * adds one more while a cursor remains; stepping onto that page fetches it.
  */
 function R2ObjectBrowser() {
   const { id } = Route.useParams();
   const [prefix, setPrefix] = useState("");
-  const [pages, setPages] = useState<R2Object[][]>([]);
+  const [more, setMore] = useState<R2Object[]>([]);
   const [cursor, setCursor] = useState<string | null>(null);
+  const [fetchedMore, setFetchedMore] = useState(false);
+  const [page, setPage] = useState(1);
   const [loadingMore, setLoadingMore] = useState(false);
+  const [moreFailed, setMoreFailed] = useState(false);
   const listUrl = `/api/r2/${encodeURIComponent(id)}/objects${prefix ? `?prefix=${encodeURIComponent(prefix)}` : ""}`;
-  const { data, state } = useJson<ObjectsPage>(listUrl);
+  const { data, state, refresh } = useJson<ObjectsPage>(listUrl);
   const { data: usage } = useJson<R2Usage>("/api/r2/usage");
 
-  const objects = data ? [...pages.flat(), ...(pages.length === 0 ? data.objects : [])] : [];
-  // pages accumulates only what "Load more" fetched; the first page comes
-  // straight from useJson and is re-fetched whenever the prefix changes, so
-  // reset pages/cursor for a new filter rather than mixing pages across it.
-  const effectiveCursor = pages.length === 0 ? (data?.cursor ?? null) : cursor;
+  const objects = data ? [...data.objects, ...more] : [];
+  const effectiveCursor = fetchedMore ? cursor : (data?.cursor ?? null);
+  const loadedPages = Math.max(1, Math.ceil(objects.length / PAGE_SIZE));
+  const pageCount = loadedPages + (effectiveCursor ? 1 : 0);
+  const visible = objects.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
 
-  const loadMore = async () => {
+  const resetPaging = () => {
+    setMore([]);
+    setCursor(null);
+    setFetchedMore(false);
+    setPage(1);
+    setMoreFailed(false);
+  };
+
+  const goTo = async (next: number) => {
+    if (next <= loadedPages) {
+      setPage(next);
+      return;
+    }
     if (!effectiveCursor) return;
     setLoadingMore(true);
+    setMoreFailed(false);
     try {
       const response = await fetch(
         `/api/r2/${encodeURIComponent(id)}/objects?limit=100&cursor=${encodeURIComponent(effectiveCursor)}${
@@ -70,140 +97,163 @@ function R2ObjectBrowser() {
         }`,
         { credentials: "include" },
       );
-      if (!response.ok) return;
+      if (!response.ok) {
+        setMoreFailed(true);
+        return;
+      }
       // SAFETY: response.ok above is listR2Objects' own contract for this shape.
-      const page = (await response.json()) as ObjectsPage;
-      setPages((prior) => [...prior, page.objects]);
-      setCursor(page.cursor);
+      const body = (await response.json()) as ObjectsPage;
+      setMore((prior) => [...prior, ...body.objects]);
+      setCursor(body.cursor);
+      setFetchedMore(true);
+      setPage(next);
+    } catch {
+      setMoreFailed(true);
     } finally {
       setLoadingMore(false);
     }
   };
 
   return (
-    <div className="mx-auto max-w-[64rem]">
-      <Link
-        className="mb-7 inline-flex min-h-10 items-center gap-2 rounded-lg px-2 text-[0.82rem] font-medium text-muted-foreground no-underline transition-colors hover:bg-accent hover:text-foreground"
-        to="/r2"
-      >
-        <ArrowLeft className="size-4" aria-hidden="true" strokeWidth={1.5} />
-        Back to R2 buckets
-      </Link>
-
-      <header className="mb-8 flex items-start gap-4">
-        <div className="grid size-12 shrink-0 place-items-center rounded-xl bg-brand/12 ring-1 ring-brand/25 [&_svg]:size-6">
-          <Box className="size-6 text-brand" aria-hidden="true" strokeWidth={1.5} />
-        </div>
-        <div>
-          <h1 className="m-0 text-[2rem] leading-tight font-bold tracking-[-0.04em] max-[480px]:text-[1.7rem]">
-            Objects
-          </h1>
-          <p className="mt-2 max-w-[42rem] text-[0.9rem] leading-relaxed text-muted-foreground">
-            Read-only: browse and download what's stored in <code>{id}</code>.
-          </p>
-        </div>
-      </header>
-
-      {usage && (
-        <Panel className="mb-5" variant="bare">
-          <dl className="grid gap-px bg-border text-sm sm:grid-cols-4">
-            <div className="bg-background px-5 py-4">
-              <dt className="text-muted-foreground">Account storage</dt>
-              <dd className="mt-1 font-semibold">
-                {formatBytes(usage.usedBytes)} / {formatBytes(usage.quotaBytes)}
-              </dd>
-            </div>
-            <div className="bg-background px-5 py-4">
-              <dt className="text-muted-foreground">Reserved by uploads</dt>
-              <dd className="mt-1 font-semibold">{formatBytes(usage.reservedBytes)}</dd>
-            </div>
-            <div className="bg-background px-5 py-4">
-              <dt className="text-muted-foreground">Transfer tickets</dt>
-              <dd className="mt-1 font-semibold">{usage.ticketsIssued}</dd>
-            </div>
-            <div className="bg-background px-5 py-4">
-              <dt className="text-muted-foreground">Rejected transfers</dt>
-              <dd className="mt-1 font-semibold">{usage.rejectedQuota + usage.rejectedDisk + usage.rejectedSize}</dd>
-            </div>
-          </dl>
-        </Panel>
-      )}
-
-      <Panel variant="bare">
-        <div className="flex flex-wrap items-end gap-2.5 px-5 py-[1.1rem]">
-          <TextField
-            label="Filter by key prefix"
-            hideLabel
-            type="search"
-            fieldClassName={FILTER_SEARCH}
-            placeholder="Filter by key prefix…"
-            value={prefix}
-            autoComplete="off"
-            spellCheck={false}
-            onChange={(event) => {
-              setPrefix(event.target.value);
-              setPages([]);
-              setCursor(null);
-            }}
+    <div className="flex flex-col gap-6">
+      <PageHeader
+        breadcrumbs={
+          <Breadcrumbs
+            items={[
+              { id: "r2", label: "R2 buckets", render: <RouterLink to="/r2" /> },
+              { id: "bucket", label: <code className="font-mono text-sm">{id}</code>, text: id },
+            ]}
           />
-        </div>
-
-        {state === "loading" ? (
-          <p className="min-h-56 px-5 pt-12 text-muted-foreground group-[.is-padded]/panel:px-0" aria-live="polite">
-            Loading objects…
-          </p>
-        ) : state === "error" ? (
-          <StatusMessage tone="error">Could not load objects. Refresh and try again.</StatusMessage>
-        ) : objects.length === 0 ? (
-          <EmptyState title={prefix ? `Nothing matches "${prefix}"` : "No objects yet"}>
-            <p>Objects land here once a deployment writes to this bucket.</p>
-          </EmptyState>
-        ) : (
+        }
+        title="Objects"
+        description={
           <>
-            <DataTable
-              caption={`Objects in ${id}`}
-              head={
-                <tr>
-                  <th scope="col">Key</th>
-                  <th scope="col">Size</th>
-                  <th scope="col">Content type</th>
-                  <th scope="col">Uploaded</th>
-                  <ActionsTh />
-                </tr>
-              }
-            >
-              {objects.map((object) => (
-                <tr key={object.key}>
-                  <td>
-                    <code title={object.key}>{object.key}</code>
-                  </td>
-                  <td>{formatBytes(object.size)}</td>
-                  <td>{object.httpMetadata?.contentType || "-"}</td>
-                  <td>{relativeTime(object.uploaded)}</td>
-                  <td className="text-end">
-                    <a
-                      className="text-[0.8rem] text-sky underline-offset-2 hover:underline"
-                      href={`/api/r2/${encodeURIComponent(id)}/objects/${encodeURIComponent(object.key)}`}
-                    >
-                      Download
-                    </a>
-                  </td>
-                </tr>
-              ))}
-            </DataTable>
-            {effectiveCursor && (
-              <button
-                type="button"
-                className="mt-3 text-[0.82rem] font-medium text-muted-foreground hover:text-foreground disabled:opacity-60"
-                onClick={() => void loadMore()}
-                disabled={loadingMore}
-              >
-                {loadingMore ? "Loading…" : "Load more"}
-              </button>
-            )}
+            Read-only: browse and download what is stored in <code>{id}</code>.
           </>
-        )}
-      </Panel>
+        }
+      />
+
+      {usage ? (
+        <section
+          aria-label="Bucket storage"
+          className="grid gap-6 rounded-xl bg-surface p-5 shadow-card md:grid-cols-2"
+        >
+          <UsageMeter
+            label="Account storage"
+            used={usage.usedBytes}
+            limit={usage.quotaBytes}
+            formatValue={(n) => formatBytes(n)}
+          />
+          <DescriptionList
+            items={[
+              { id: "reserved", term: "Reserved by uploads", details: formatBytes(usage.reservedBytes) },
+              { id: "tickets", term: "Transfer tickets", details: String(usage.ticketsIssued) },
+              {
+                id: "rejected",
+                term: "Rejected transfers",
+                details: String(usage.rejectedQuota + usage.rejectedDisk + usage.rejectedSize),
+              },
+            ]}
+          />
+        </section>
+      ) : null}
+
+      {state === "error" ? (
+        <LoadError what="objects" onRetry={() => void refresh()} />
+      ) : state === "ready" && objects.length === 0 && !prefix ? (
+        <div className="rounded-xl bg-surface p-4 shadow-card">
+          <EmptyState title="No objects yet" description="Objects land here once a deployment writes to this bucket." />
+        </div>
+      ) : (
+        <>
+          <div className="w-full max-w-md">
+            <Field label="Filter by key prefix" className="[&>label]:sr-only">
+              <Input
+                type="search"
+                placeholder="Filter by key prefix…"
+                value={prefix}
+                autoComplete="off"
+                spellCheck={false}
+                onChange={(event) => {
+                  setPrefix(event.target.value);
+                  resetPaging();
+                }}
+              />
+            </Field>
+          </div>
+          <Table label={`Objects in ${id}`} aria-busy={state === "loading" || undefined}>
+            <TableHeader>
+              <TableRow className="hover:bg-transparent">
+                <TableHead>Key</TableHead>
+                <TableHead className="text-end">Size</TableHead>
+                <TableHead hideBelow="md">Content type</TableHead>
+                <TableHead hideBelow="lg">Uploaded</TableHead>
+                <TableHead className="text-end">
+                  <span className="sr-only">Actions</span>
+                </TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {state === "loading" ? (
+                <TableLoading columns={5} />
+              ) : visible.length === 0 ? (
+                <TableEmpty colSpan={5}>
+                  <span className="text-fg-muted">Nothing matches “{prefix}”.</span>
+                </TableEmpty>
+              ) : (
+                visible.map((object) => (
+                  <TableRow key={object.key}>
+                    <TableCell className="min-w-48">
+                      <code className="break-all" title={object.key}>
+                        {object.key}
+                      </code>
+                    </TableCell>
+                    <TableCell className="whitespace-nowrap text-end tabular-nums">
+                      {formatBytes(object.size)}
+                    </TableCell>
+                    <TableCell hideBelow="md" className="text-fg-muted">
+                      {object.httpMetadata?.contentType || "-"}
+                    </TableCell>
+                    <TableCell hideBelow="lg" className="whitespace-nowrap text-fg-muted tabular-nums">
+                      {relativeTime(object.uploaded)}
+                    </TableCell>
+                    <TableCell className="text-end">
+                      <Link
+                        href={`/api/r2/${encodeURIComponent(id)}/objects/${encodeURIComponent(object.key)}`}
+                        aria-label={`Download ${object.key}`}
+                      >
+                        Download
+                      </Link>
+                    </TableCell>
+                  </TableRow>
+                ))
+              )}
+            </TableBody>
+          </Table>
+          {moreFailed ? (
+            <p role="alert" className="text-sm text-danger-fg">
+              Could not load more objects. Try the next page again.
+            </p>
+          ) : null}
+          {pageCount > 1 ? (
+            <div className="flex justify-center" aria-busy={loadingMore || undefined}>
+              <Pagination
+                className="max-sm:hidden"
+                page={page}
+                pageCount={pageCount}
+                onPageChange={(next) => void goTo(next)}
+              />
+              <Pagination
+                className="sm:hidden"
+                compact
+                page={page}
+                pageCount={pageCount}
+                onPageChange={(next) => void goTo(next)}
+              />
+            </div>
+          ) : null}
+        </>
+      )}
     </div>
   );
 }
