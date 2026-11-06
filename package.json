@@ -39,7 +39,7 @@
     "@sproutboat/config": "^0.6.0",
     "@sproutboat/ikada": "github:baronunread/ikada#bf34cdd57dc3dde77e84e75faadb41001eaa1a59",
     "@sproutboat/runtime": "^0.41.0",
-    "@sproutboat/toolchain": "^0.21.3",
+    "@sproutboat/toolchain": "^0.22.0",
     "@sproutboat/wire": "^0.21.4",
     "@tanstack/charts": "1.2.1",
     "@tanstack/react-router": "^1.170.32",
