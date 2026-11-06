@@ -13,7 +13,7 @@
         "@sproutboat/config": "^0.6.0",
         "@sproutboat/ikada": "github:baronunread/ikada#bf34cdd57dc3dde77e84e75faadb41001eaa1a59",
         "@sproutboat/runtime": "^0.41.0",
-        "@sproutboat/toolchain": "^0.21.3",
+        "@sproutboat/toolchain": "^0.22.0",
         "@sproutboat/wire": "^0.21.4",
         "@tanstack/charts": "1.2.1",
         "@tanstack/react-router": "^1.170.32",
@@ -408,7 +408,7 @@
 
     "@sproutboat/runtime": ["@sproutboat/runtime@0.41.0", "", {}, "sha512-HEvLE24U1WwqGwZ5nwvGE6irvL9eWtv+Ltl4cPbYhvKef34y64KalYR6jXVdi/u4KrAXOAYK+kN9wUt4Sgvqlw=="],
 
-    "@sproutboat/toolchain": ["@sproutboat/toolchain@0.21.3", "", {}, "sha512-OTB0tBiJGf1EBCAUg02S5wc8+eiSG6Lm5y0ZJfamzblFjhpbm1G+pawMAvR6o2tlymL4PY+fYoOpk747fAUhVQ=="],
+    "@sproutboat/toolchain": ["@sproutboat/toolchain@0.22.0", "", {}, "sha512-OrJo2ykldwgryxx0SJvVtCcILSjVZE5uA/NU0YcYexd3rX2qU4HAo5u/kAdRHLgYNieYHX9VEcVvCcIgyusFpw=="],
 
     "@sproutboat/wire": ["@sproutboat/wire@0.21.4", "", { "dependencies": { "@sproutboat/assets": "^0.3.0", "@sproutboat/runtime": "^0.41.0" } }, "sha512-nmGeTDQyMo70XuoJsGw6Pz/mIgaDmKS7ePN+1qxvnLItXW62rbsKhiIQLUntRgBMPGU3lGXvI9jCKBr0RCCGhQ=="],
 
