@@ -215,15 +215,18 @@ impl Backend {
 
     /// Read the snapshot and every manifest it names. A bad manifest logs and its hostname is
     /// left out (so it is forwarded); a bad snapshot is an error and the old one stays.
-    async fn read(&self, path: &Path) -> Result<(Hosts, Loaded), String> {
+    /// The `Loaded` is `None` when a manifest failed: the stamp is then not recorded, so the
+    /// poll reads the snapshot again next tick and a manifest that appears later recovers its host.
+    async fn read(&self, path: &Path) -> Result<(Hosts, Option<Loaded>), String> {
         let stamp = reload::stamp_of(path).await?;
         if !stamp.exists {
-            return Ok((Hosts::new(), Loaded::default()));
+            return Ok((Hosts::new(), Some(Loaded::default())));
         }
         let bytes = tokio::fs::read(path).await.map_err(|e| e.to_string())?;
         let text = std::str::from_utf8(&bytes).map_err(|e| e.to_string())?;
         let mut hosts = Hosts::new();
         let mut used: Vec<PathBuf> = Vec::new();
+        let mut failed = false;
         for app in parse_snapshot(text)? {
             match self.manifest(&app.manifest).await {
                 Ok(manifest) => {
@@ -231,19 +234,26 @@ impl Backend {
                     let blobs = app.blobs;
                     hosts.insert(app.hostname, Arc::new(HostAssets { manifest, blobs }));
                 }
-                Err(error) => eprintln!(
-                    "asset manifest load failed for {} ({}): {error}",
-                    app.hostname, app.app_id
-                ),
+                Err(error) => {
+                    failed = true;
+                    eprintln!(
+                        "asset manifest load failed for {} ({}): {error}",
+                        app.hostname, app.app_id
+                    );
+                }
             }
         }
+        // Only manifests that parsed are ever cached, and a parsed one stays while it is named.
         lock(&self.manifests).retain(|p, _| used.contains(p));
-        Ok((hosts, reload::loaded(stamp, &bytes, now_ms())))
+        let loaded = (!failed).then(|| reload::loaded(stamp, &bytes, now_ms()));
+        Ok((hosts, loaded))
     }
 
-    fn swap(&self, hosts: Hosts, loaded: Loaded) {
+    fn swap(&self, hosts: Hosts, loaded: Option<Loaded>) {
         *self.hosts.write().unwrap_or_else(|e| e.into_inner()) = Arc::new(hosts);
-        *lock(&self.loaded) = loaded;
+        if let Some(loaded) = loaded {
+            *lock(&self.loaded) = loaded;
+        }
     }
 
     /// SIGHUP and startup: reload unconditionally; a missing file means no assets.
@@ -489,7 +499,30 @@ async fn serve(
     };
     let range_header = header_joined(headers, "range");
     let accept = header_joined(headers, "accept-encoding");
-    let enc = select_encoding(entry, accept.as_deref(), range_header.is_some());
+    let mut enc = select_encoding(entry, accept.as_deref(), range_header.is_some());
+    let variant_hash = |enc: Enc| match enc {
+        Enc::Identity => Some(entry.hash.as_str()),
+        Enc::Br => entry.br.as_ref().map(|v| v.hash.as_str()),
+        Enc::Gz => entry.gz.as_ref().map(|v| v.hash.as_str()),
+    };
+    // A variant named by the manifest but absent from disk: serve the identity bytes instead.
+    if enc != Enc::Identity {
+        let vh = variant_hash(enc).unwrap_or("");
+        let present = backend.cache_get(vh, enc).is_some()
+            || blob_path(&assets.blobs, vh)
+                .and_then(|p| std::fs::metadata(p).ok())
+                .is_some_and(|m| m.is_file());
+        if !present {
+            c.log(
+                c.event(200, c.elapsed())
+                    .num("reqBytes", c.req_bytes)
+                    .str("error", "asset variant file missing")
+                    .str("errorKind", "asset-variant-missing")
+                    .str("hash", vh),
+            );
+            enc = Enc::Identity;
+        }
+    }
     let (hash, suffix, coding) = match enc {
         Enc::Identity => (entry.hash.as_str(), "", None),
         Enc::Br => (
@@ -548,7 +581,12 @@ async fn serve(
             return missing();
         };
         if !head && backend.cacheable(len) {
-            let Ok(bytes) = read_small(p, 0, len) else {
+            let read = if len <= SMALL_ASSET_BYTES {
+                read_small(p, 0, len)
+            } else {
+                tokio::fs::read(p).await
+            };
+            let Ok(bytes) = read else {
                 return missing();
             };
             let bytes = Bytes::from(bytes);
@@ -576,7 +614,28 @@ async fn serve(
         let name = key.rsplit('/').next().unwrap_or("");
         put_header(h, "content-disposition", &format!("filename=\"{name}\""));
     }
-    apply_header_rules(h, &assets.manifest.headers, rules_path);
+    apply_header_rules(h, &assets.manifest.headers, rules_path, true);
+    if varies {
+        // A rule may have replaced or dropped it: a cache must still key on the encoding.
+        let current = h
+            .get_all("vary")
+            .iter()
+            .filter_map(|v| v.to_str().ok())
+            .collect::<Vec<_>>()
+            .join(", ");
+        let listed = current.split(',').any(|t| {
+            let t = t.trim();
+            t == "*" || t.eq_ignore_ascii_case("accept-encoding")
+        });
+        if !listed {
+            let value = if current.is_empty() {
+                "accept-encoding".to_string()
+            } else {
+                format!("{current}, accept-encoding")
+            };
+            put_header(h, "vary", &value);
+        }
+    }
 
     let range = if status == 200 {
         parse_range(range_header.as_deref(), size)
@@ -962,6 +1021,9 @@ mod tests {
         put_blob(root, "ikada404", b"ikada missing");
         put_blob(root, "root0404", b"root missing");
         put_blob(root, "docsidx1", b"docs index");
+        put_blob(root, "rul00001", b"rules identity");
+        put_blob(root, "rulbr001", b"RULES-BR");
+        put_blob(root, "novar001", b"no variant on disk");
         std::fs::write(root.join("blobs/big00001"), vec![7u8; 300_000]).unwrap();
         let file = |hash: &str, ty: &str, more: &str| {
             format!(r#"{{"hash":"{hash}","size":1,"type":"{ty}"{more}}}"#)
@@ -976,9 +1038,13 @@ mod tests {
               "/ikada/404.html":{},
               "/404.html":{},
               "/big.bin":{},
-              "/ghost.txt":{}
+              "/ghost.txt":{},
+              "/rules.html":{},
+              "/novar.html":{}
             }},
-            "headers":[{{"pattern":"/data.txt","set":[["x-custom","yes"]],"unset":[]}}],
+            "headers":[{{"pattern":"/data.txt","set":[["x-custom","yes"]],"unset":[]}},
+              {{"pattern":"/rules.html","set":[["Vary","Origin"],["Content-Encoding","gzip"],["x-rule","1"]],"unset":[]}},
+              {{"pattern":"/rules.html","set":[],"unset":["Content-Encoding"]}}],
             "redirects":[{{"from":"/old","to":"/data.txt","status":301}}]}}"#,
             file(
                 "idx00001",
@@ -992,6 +1058,8 @@ mod tests {
             file("root0404", HTML, ""),
             file("big00001", "application/octet-stream", ""),
             file("ghost001", "text/plain", ""),
+            file("rul00001", HTML, r#","br":{"hash":"rulbr001","size":8}"#),
+            file("novar001", HTML, r#","br":{"hash":"nobr00001","size":8}"#),
         );
         let spa = format!(
             r#"{{"notFound":"single-page-application","runSproutFirst":false,"files":{{"/index.html":{},"/docs/index.html":{}}}}}"#,
@@ -1224,6 +1292,35 @@ mod tests {
             .cache_get("big00001", Enc::Identity)
             .is_none());
 
+        // _headers cannot replace the encoding or the Vary of a precompressed response
+        let r = get("main.test", "/rules.html", &[("Accept-Encoding", "br")]).await;
+        assert_eq!(
+            (r.text(), r.h("content-encoding")),
+            ("RULES-BR".to_string(), Some("br"))
+        );
+        assert_eq!(
+            (r.h("vary"), r.h("x-rule")),
+            (Some("Origin, accept-encoding"), Some("1"))
+        );
+        let r = get("main.test", "/rules.html", &[]).await;
+        assert_eq!(
+            (r.text(), r.h("content-encoding")),
+            ("rules identity".to_string(), None)
+        );
+        assert_eq!(r.h("vary"), Some("Origin, accept-encoding"));
+
+        // a variant named by the manifest but missing on disk falls back to the identity bytes
+        let r = get("main.test", "/novar.html", &[("Accept-Encoding", "br")]).await;
+        assert_eq!(
+            (r.status, r.text()),
+            (200, "no variant on disk".to_string())
+        );
+        assert_eq!(
+            (r.h("content-encoding"), r.h("vary")),
+            (None, Some("accept-encoding"))
+        );
+        assert_eq!(r.h("etag"), Some("\"novar001\""));
+
         // a blob that is not on disk
         let r = get("main.test", "/ghost.txt", &[]).await;
         assert_eq!((r.status, r.text()), (500, "asset missing".to_string()));
@@ -1306,6 +1403,38 @@ mod tests {
             (r.status, r.text()),
             (502, "backend unavailable".to_string())
         );
+    }
+
+    #[tokio::test]
+    async fn a_manifest_that_appears_later_recovers_its_host() {
+        let backend = echo_backend().await;
+        let edge = start_edge(backend, &[]).await;
+        let root = edge.dir.path();
+        let later = root.join("manifests/later.json");
+        let blobs = root.join("blobs").display().to_string();
+        let path = root.join("routes.json");
+        std::fs::write(
+            &path,
+            format!(r#"{{"version":1,"apps":[{{"hostname":"late.test","app_id":"l","manifest":"{}","blobs":"{blobs}"}}]}}"#, later.display()),
+        )
+        .unwrap();
+        edge.app.reload_routes().await.unwrap();
+        let backend_state = edge.app.backend.as_ref().unwrap();
+        assert!(backend_state.assets_for("late.test").is_none());
+        let r = send(edge.addr, "GET", "/index.html", "late.test", &[], "").await;
+        assert!(r.text().starts_with("backend GET"), "{}", r.text());
+        std::fs::write(
+            &later,
+            r#"{"notFound":"none","runSproutFirst":false,"files":{"/index.html":{"hash":"idx00001","size":1,"type":"text/html"}}}"#,
+        )
+        .unwrap();
+        // the snapshot file itself did not change: the poll still retries it
+        for _ in 0..3 {
+            backend_state.last_check_ms.store(0, Ordering::Release);
+            backend_state.refresh(&path).await.unwrap();
+        }
+        assert!(backend_state.assets_for("late.test").is_some());
+        assert!(lock(&backend_state.manifests).contains_key(&later));
     }
 
     #[tokio::test]

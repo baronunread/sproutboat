@@ -251,19 +251,27 @@ pub(crate) fn put_header(h: &mut HeaderMap, name: &str, value: &str) {
 }
 
 /// Every matching `_headers` block, in file order: a later rule overrides or unsets an earlier one.
-pub(crate) fn apply_header_rules(h: &mut HeaderMap, rules: &[HeaderRule], pathname: &str) {
+/// `protect_encoding` (backend mode) also keeps a rule from setting or unsetting `content-encoding`.
+pub(crate) fn apply_header_rules(
+    h: &mut HeaderMap,
+    rules: &[HeaderRule],
+    pathname: &str,
+    protect_encoding: bool,
+) {
+    let protected =
+        |n: &HeaderName| is_framing_header(n) || (protect_encoding && n == "content-encoding");
     for rule in match_headers(rules, pathname) {
         // Framing headers belong to the edge: a rule cannot change or drop them.
         for name in &rule.unset {
             if let Ok(n) = HeaderName::from_bytes(name.to_lowercase().as_bytes()) {
-                if !is_framing_header(&n) {
+                if !protected(&n) {
                     h.remove(n);
                 }
             }
         }
         for (name, value) in &rule.set {
             let lower = name.to_lowercase();
-            if HeaderName::from_bytes(lower.as_bytes()).is_ok_and(|n| is_framing_header(&n)) {
+            if HeaderName::from_bytes(lower.as_bytes()).is_ok_and(|n| protected(&n)) {
                 continue;
             }
             put_header(h, &lower, value);
@@ -538,7 +546,7 @@ async fn handle_request(
                     let name = key.rsplit('/').next().unwrap_or("");
                     put(h, "content-disposition", &format!("filename=\"{name}\""));
                 }
-                apply_header_rules(h, &manifest.headers, &decoded);
+                apply_header_rules(h, &manifest.headers, &decoded, false);
 
                 let range = parse_range(header_joined(req.headers(), "range").as_deref(), size);
                 let (mut status, mut start, mut length) = (200u16, 0u64, size);
@@ -1150,12 +1158,22 @@ async fn proxy_http(
                     }
                 }
                 abort.armed = false;
-                eprintln!("sprout failure for {host}: {error}");
+                let noun = if target.is_backend() {
+                    "backend"
+                } else {
+                    "sprout"
+                };
+                eprintln!("{noun} failure for {host}: {error}");
                 return proxy_failure(&c, &target, 502, error_body, error_log_text, "proxy");
             }
             Err(_) => {
                 abort.armed = false;
-                eprintln!("sprout timed out for {host}: the operation timed out");
+                let noun = if target.is_backend() {
+                    "backend"
+                } else {
+                    "sprout"
+                };
+                eprintln!("{noun} timed out for {host}: the operation timed out");
                 return proxy_failure(
                     &c,
                     &target,
