@@ -546,12 +546,12 @@ Not part of the Bun contract above: a second mode of the Rust edge, used by Spro
 
 **Environment**
 
-| Variable | Meaning |
-| --- | --- |
-| `SPROUTBOAT_EDGE_BACKEND` | `http://127.0.0.1:8600`. Must be an `http` URL on a loopback host (`127.0.0.0/8`, `::1`, `localhost`) with no credentials, path or query; anything else is a startup error. Switches the whole process into backend mode. |
-| `SPROUTBOAT_ROUTE_SNAPSHOT` | The asset snapshot (below), not `routes.json`. A missing file means no assets. |
-| `SPROUTBOAT_ASSET_CACHE_BYTES` | Size of the in-memory asset cache. Default 64 MiB; `0` turns it off. |
-| `SPROUTBOAT_ASSET_CACHE_ENTRY_BYTES` | Largest blob the cache keeps. Default 256 KiB; larger blobs stream from disk in 64 KiB chunks. |
+| Variable                             | Meaning                                                                                                                                                                                                                   |
+| ------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `SPROUTBOAT_EDGE_BACKEND`            | `http://127.0.0.1:8600`. Must be an `http` URL on a loopback host (`127.0.0.0/8`, `::1`, `localhost`) with no credentials, path or query; anything else is a startup error. Switches the whole process into backend mode. |
+| `SPROUTBOAT_ROUTE_SNAPSHOT`          | The asset snapshot (below), not `routes.json`. A missing file means no assets.                                                                                                                                            |
+| `SPROUTBOAT_ASSET_CACHE_BYTES`       | Size of the in-memory asset cache. Default 64 MiB; `0` turns it off.                                                                                                                                                      |
+| `SPROUTBOAT_ASSET_CACHE_ENTRY_BYTES` | Largest blob the cache keeps. Default 256 KiB; larger blobs stream from disk in 64 KiB chunks.                                                                                                                            |
 
 `PORT`, `SPROUTBOAT_BIND_HOST`, `SPROUTBOAT_LOG_PATH`, `SPROUTBOAT_REQUEST_TIMEOUT_MS`, `SPROUTBOAT_RESPONSE_MAX_BYTES`, `SPROUTBOAT_EDGE_MAX_BODY_BYTES` behave as before. The startup line ends with `backend mode -> <url>`.
 
