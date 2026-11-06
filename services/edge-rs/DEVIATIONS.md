@@ -42,3 +42,4 @@ The sidecar script is found in this order: (1) `SPROUTBOAT_SIDECAR_SCRIPT` (take
 - Rust error strings in stderr and in `route snapshot reload failed: ...` differ from JavaScript's for I/O and JSON syntax errors; `invalid route snapshot` is identical.
 - The edge skips a `_headers` rule with an invalid header name or value (Bun would throw and answer 500). An invalid `runSproutFirst` glob never matches.
 - The edge refuses (502) a WebSocket upstream that picks a subprotocol the client did not offer, like a spec-compliant client.
+- Backend mode (`SPROUTBOAT_EDGE_BACKEND`, Rust only, off by default) serves static assets from a route snapshot and forwards the rest to a loopback backend; it has no Bun counterpart. See `docs/edge-rs-behaviour.md` section 14.

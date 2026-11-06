@@ -3,6 +3,7 @@
 //! upstream HTTP client.
 
 use crate::assets::Manifest;
+use crate::backend::Backend;
 use crate::body::{BoxError, RBody};
 use crate::cache::EdgeCache;
 use crate::config::Config;
@@ -71,6 +72,8 @@ pub struct App {
     routes_loaded: Mutex<Loaded>,
     last_route_check_ms: AtomicU64,
     pub cache: Option<Mutex<EdgeCache>>,
+    /// Backend mode state (snapshot, asset LRU); `None` for the Community edge.
+    pub backend: Option<Backend>,
     manifests: Mutex<HashMap<String, Option<Arc<Manifest>>>>,
     pub log: LogSink,
     pub sidecar: Sidecar,
@@ -111,13 +114,17 @@ fn build_client() -> UpstreamClient {
 
 impl App {
     pub fn new(cfg: Config, routes: Routes, loaded: Loaded, log: LogSink) -> Arc<App> {
-        let cache = cfg.cache_enabled.then(|| Mutex::new(EdgeCache::default()));
+        // Backend mode has no response cache: the backend's answers are the dynamic tier.
+        let cache =
+            (cfg.cache_enabled && cfg.backend.is_none()).then(|| Mutex::new(EdgeCache::default()));
+        let backend = Backend::new(&cfg);
         Arc::new(App {
             cfg,
             routes: RwLock::new(Arc::new(routes)),
             routes_loaded: Mutex::new(loaded),
             last_route_check_ms: AtomicU64::new(0),
             cache,
+            backend,
             manifests: Mutex::new(HashMap::new()),
             log,
             sidecar: Sidecar::new(),
@@ -206,6 +213,9 @@ impl App {
     /// inode / size / ctime and, while the loaded snapshot is still racy, by content hash). Throttled
     /// to once per 250 ms and triggered per request, belt-and-braces to SIGHUP (the authoritative path).
     pub async fn refresh_routes(self: &Arc<Self>) -> Result<(), String> {
+        if let Some(backend) = &self.backend {
+            return backend.refresh(&self.cfg.routes_path).await;
+        }
         let now = now_ms();
         let last = self.last_route_check_ms.load(Ordering::Acquire);
         if now.saturating_sub(last) < 250
@@ -235,6 +245,9 @@ impl App {
 
     /// SIGHUP: reload unconditionally; a missing file means no routes.
     pub async fn reload_routes(self: &Arc<Self>) -> Result<(), String> {
+        if let Some(backend) = &self.backend {
+            return backend.reload(&self.cfg.routes_path).await;
+        }
         let (next, loaded) = if reload::stamp_of(&self.cfg.routes_path).await?.exists {
             read_snapshot(&self.cfg.routes_path).await?
         } else {

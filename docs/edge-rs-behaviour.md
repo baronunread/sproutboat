@@ -540,6 +540,35 @@ Decision: Bun gets no hotfix; the Rust edge fixes these instead of copying them.
 
 Everything else in sections 3-12 stays the contract. Items in section 12 that describe Bun-only artefacts (header casing, `Date` missing on HEAD, `User-Agent: Bun/x`, chunked vs Content-Length choice, idle-timer granularity) are likewise not required to match.
 
+## 14. Backend mode (Rust edge only)
+
+Not part of the Bun contract above: a second mode of the Rust edge, used by Sproutboat Cloud, that serves static assets from a host copy and forwards everything else to a loopback backend (sproutd). It is on only when `SPROUTBOAT_EDGE_BACKEND` is set; with it unset nothing in this section applies and sections 1-13 are unchanged.
+
+**Environment**
+
+| Variable | Meaning |
+| --- | --- |
+| `SPROUTBOAT_EDGE_BACKEND` | `http://127.0.0.1:8600`. Must be an `http` URL on a loopback host (`127.0.0.0/8`, `::1`, `localhost`) with no credentials, path or query; anything else is a startup error. Switches the whole process into backend mode. |
+| `SPROUTBOAT_ROUTE_SNAPSHOT` | The asset snapshot (below), not `routes.json`. A missing file means no assets. |
+| `SPROUTBOAT_ASSET_CACHE_BYTES` | Size of the in-memory asset cache. Default 64 MiB; `0` turns it off. |
+| `SPROUTBOAT_ASSET_CACHE_ENTRY_BYTES` | Largest blob the cache keeps. Default 256 KiB; larger blobs stream from disk in 64 KiB chunks. |
+
+`PORT`, `SPROUTBOAT_BIND_HOST`, `SPROUTBOAT_LOG_PATH`, `SPROUTBOAT_REQUEST_TIMEOUT_MS`, `SPROUTBOAT_RESPONSE_MAX_BYTES`, `SPROUTBOAT_EDGE_MAX_BODY_BYTES` behave as before. The startup line ends with `backend mode -> <url>`.
+
+**Snapshot.** `{"version":1,"apps":[{"hostname","app_id","manifest","blobs"}]}`: `manifest` is the absolute path of an `assets.json`-format manifest, `blobs` the directory holding `<hash>` files. The 1 s mtime poll, the per-request check and SIGHUP reload it as for `routes.json`. A broken snapshot keeps the one loaded (at startup it is fatal); a missing one means no assets. Each manifest is parsed on load and kept by path (manifests are content-addressed), so an unchanged path is not parsed again. A manifest that is missing or invalid is logged on stderr and its hostname is left out, so it is forwarded.
+
+**Manifest.** The CLI's `assets.json` (`runSproutFirst`, `files`, `headers`, `redirects`) plus `notFound` (`none` | `single-page-application` | `404-page`, absent = `none`; Community mode still ignores it) and optional `br` / `gz` `{hash,size}` per file naming precompressed blobs.
+
+**Request flow.** A WebSocket upgrade, a method other than GET and HEAD, and a host with no snapshot entry go to the backend. For GET and HEAD on a host with assets: (1) `_redirects`; (2) `runSproutFirst` matched against the request path: forward; (3) `resolveAssetKey` (exact, `/` to `index.html`, extensionless to `.html` then `/index.html`): serve; (4) a miss follows `notFound`: `404-page` serves the nearest `404.html` walking up the directories with status 404, `single-page-application` the nearest `index.html` with 200, `none` (or no such page) forwards. Forwarded requests keep Host, path and query, drop hop-by-hop headers and the edge-only `x-sb-*` credentials, and do not go through the cookie cleaning of Community mode. A connect or transport error is `502 backend unavailable` (`errorKind` `backend-unavailable` for connect errors); the request timeout applies; the response cap and request body cap are the same as in Community mode.
+
+**Serving an asset.** `etag` is `"<hash>"` (`"<hash>-br"`, `"<hash>-gz"` for a variant, `<hash>` being the file's own). `If-None-Match` is a list; `W/` tags and `*` match; the 304 carries `etag`, `cache-control` and `vary`. A 404 stand-in page is never answered 304. `cache-control`: fingerprinted file name `public, max-age=31536000, immutable`; else `text/html` `public, max-age=0, must-revalidate`; else `public, max-age=86400`. `_headers` rules apply after (framing headers stay protected); they match the request path for a hit and the page's own key for a fallback page. When the entry has `br`/`gz`, the request has no `Range` and `Accept-Encoding` lists the coding with q > 0, the variant blob is sent (`br` preferred) with `content-encoding`; every response of such an entry, identity and 304 included, carries `vary: accept-encoding`. A single `bytes=` range gives 206, an unsatisfiable one 416, several ranges the whole file; `accept-ranges: bytes` is on 200 identity, 206 and 416. `content-type` is the manifest's, verbatim; `application/octet-stream` gets `content-disposition`; HEAD sends headers only; there is no `last-modified`. A blob absent from disk is `500 asset missing`, logged with `errorKind:"asset-missing"` and the `hash`.
+
+**Memory.** One LRU keyed by (hash, encoding), bounded in bytes, behind a mutex. Keys are content hashes, so reloads do not purge it. Blobs over the entry cap are never held.
+
+**Log.** Lines are as in section 9. `cacheStatus` is `asset` for hits, redirects and fallback pages and `dynamic` for every forward (WebSocket lines carry none).
+
+**Off in this mode.** The Bun sidecar and its script lookup, supervisor routes, the activation spool, `/__sb/pool`, the GET response cache (`SPROUTBOAT_EDGE_CACHE` is ignored), `sb-cache` headers, the apex-to-dashboard 302, and service-binding vouching.
+
 ## Appendix A. Verified-by-run checklist
 
 Probe coverage: startup/exit/signals, routing and Host edge cases, apex 302, pool endpoint, header forwarding/stripping, uncaught signature and marker, cpu header, cookies, status passthrough, HEAD/OPTIONS/custom methods, path normalisation, malformed percent-encoding, body limit (CL and chunked), declared and streamed response caps, deadline (headers and body), client abort (before headers and mid-stream), upstream crash and respawn, cache matrix (hit/miss/bypass/dynamic, statuses, size, expiry, key), assets (redirects, etag/304, HEAD, range, headers rules, sprout-first, missing file), reload matrix (swap, older mtime, deleted, invalid, SIGHUP), route validation matrix (26 cases), WebSocket (relay, refusal, POST not upgrade, 101 headers), timed bindings, activation spool, idle timeout, log-path failure modes, env parsing, port conflicts, shutdown with an in-flight request.
