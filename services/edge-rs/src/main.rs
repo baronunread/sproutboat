@@ -5,6 +5,7 @@
 mod activation;
 mod app;
 mod assets;
+mod backend;
 mod body;
 mod cache;
 mod config;
@@ -52,16 +53,22 @@ async fn run() -> i32 {
             return 1;
         }
     };
-    let (routes, loaded) = match initial_routes(&cfg).await {
-        Ok(r) => r,
-        Err(error) => {
-            eprintln!("{error}");
-            return 1;
+    let backend_mode = cfg.backend.is_some();
+    // Backend mode has no supervisor routes: its snapshot is loaded by the backend module below.
+    let (routes, loaded) = if backend_mode {
+        (Routes::default(), reload::Loaded::default())
+    } else {
+        match initial_routes(&cfg).await {
+            Ok(r) => r,
+            Err(error) => {
+                eprintln!("{error}");
+                return 1;
+            }
         }
     };
     // Routes need the Bun sidecar script. Say so now rather than on the first request;
     // it is not fatal because a snapshot with no routes never starts it.
-    if routes.iter().next().is_some() {
+    if !backend_mode && routes.iter().next().is_some() {
         if let Err(error) = sidecar::sidecar_script() {
             eprintln!("warning: {error}");
         }
@@ -82,8 +89,15 @@ async fn run() -> i32 {
     };
     let port = listener.local_addr().map_or(cfg.port, |a| a.port());
     let bind_host = cfg.bind_host.clone();
-    let activation_dir = cfg.activation_dir.clone();
+    let activation_dir = cfg.activation_dir.clone().filter(|_| !backend_mode);
+    let backend_url = cfg.backend.clone();
     let app = App::new(cfg, routes, loaded, log);
+    if let Some(backend) = &app.backend {
+        if let Err(error) = backend.reload(&app.cfg.routes_path).await {
+            eprintln!("{error}");
+            return 1;
+        }
+    }
 
     // #48 - service bindings are forwarded back through this server, so every broker the
     // sidecar spawns needs our own address. Set before any sprout starts.
@@ -91,9 +105,16 @@ async fn run() -> i32 {
         .set_edge_url(format!("http://127.0.0.1:{port}/"));
 
     // Start only active timer-driven routes after the edge can accept broker callbacks.
-    app.reconcile_timed();
+    if !backend_mode {
+        app.reconcile_timed();
+    }
 
-    println!("Sproutboat edge router listening on http://{bind_host}:{port}");
+    match &backend_url {
+        Some(url) => println!(
+            "Sproutboat edge router listening on http://{bind_host}:{port}, backend mode -> {url}"
+        ),
+        None => println!("Sproutboat edge router listening on http://{bind_host}:{port}"),
+    }
 
     let (stop_timers, _) = tokio::sync::watch::channel(false);
     // Deployments update routes.json atomically. HTTP requests and SIGHUP reload it promptly
@@ -177,7 +198,9 @@ async fn run() -> i32 {
         _ = async {
             app.in_flight.drain(Duration::from_secs(30)).await;
             app.log.flush().await;
-            app.sidecar.shutdown().await;
+            if !backend_mode {
+                app.sidecar.shutdown().await;
+            }
         } => {}
         // A second signal means "now".
         _ = int.recv() => {}

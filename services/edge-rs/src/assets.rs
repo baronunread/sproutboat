@@ -14,6 +14,27 @@ pub struct AssetEntry {
     pub size: u64,
     #[serde(rename = "type")]
     pub content_type: String,
+    /// Backend mode: precompressed variants (blobs of their own). Community ignores them.
+    #[serde(default)]
+    pub br: Option<Variant>,
+    #[serde(default)]
+    pub gz: Option<Variant>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct Variant {
+    pub hash: String,
+    #[allow(dead_code)] // the blob on disk decides the length served
+    pub size: u64,
+}
+
+/// What a miss does (the manifest's `notFound`). Only backend mode reads it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum NotFound {
+    #[default]
+    None,
+    SinglePageApplication,
+    Page404,
 }
 
 #[derive(Debug, Clone, Deserialize, PartialEq)]
@@ -43,6 +64,9 @@ pub enum RunSproutFirst {
 #[serde(rename_all = "camelCase")]
 struct RawManifest {
     run_sprout_first: RunSproutFirst,
+    /// Left untyped: Community mode never looks at it, so it can never fail a parse there.
+    #[serde(default)]
+    not_found: Option<serde_json::Value>,
     files: HashMap<String, AssetEntry>,
     #[serde(default)]
     headers: Option<Vec<HeaderRule>>,
@@ -60,11 +84,21 @@ pub struct Manifest {
     pub files: HashMap<String, AssetEntry>,
     pub headers: Vec<HeaderRule>,
     pub redirects: Vec<RedirectRule>,
+    pub not_found: NotFound,
     sprout_first: SproutFirst,
 }
 
 impl Manifest {
     pub fn parse(text: &str) -> Result<Manifest, String> {
+        Manifest::parse_with(text, false)
+    }
+
+    /// Backend mode: the same format, and `notFound` is honoured (absent means `none`).
+    pub fn parse_backend(text: &str) -> Result<Manifest, String> {
+        Manifest::parse_with(text, true)
+    }
+
+    fn parse_with(text: &str, backend: bool) -> Result<Manifest, String> {
         let raw: RawManifest = serde_json::from_str(text).map_err(|e| e.to_string())?;
         let sprout_first = match raw.run_sprout_first {
             RunSproutFirst::All(b) => SproutFirst::All(b),
@@ -77,10 +111,21 @@ impl Manifest {
                     .collect(),
             ),
         };
+        let not_found = match (backend, raw.not_found.as_ref()) {
+            (false, _) | (true, None) | (true, Some(serde_json::Value::Null)) => NotFound::None,
+            (true, Some(serde_json::Value::String(v))) => match v.as_str() {
+                "none" => NotFound::None,
+                "single-page-application" => NotFound::SinglePageApplication,
+                "404-page" => NotFound::Page404,
+                other => return Err(format!("unknown notFound: {other}")),
+            },
+            (true, Some(_)) => return Err("notFound must be a string".to_string()),
+        };
         Ok(Manifest {
             files: raw.files,
             headers: raw.headers.unwrap_or_default(),
             redirects: raw.redirects.unwrap_or_default(),
+            not_found,
             sprout_first,
         })
     }
@@ -241,6 +286,20 @@ pub fn cache_control_for(asset_key: &str) -> &'static str {
     }
 }
 
+/// `Cache-Control` in backend mode: fingerprinted names are immutable, HTML always revalidates
+/// (the page may change under a stable name), everything else keeps for a day.
+pub fn cache_control_backend(asset_key: &str, content_type: &str) -> &'static str {
+    if is_fingerprinted(asset_key) {
+        return "public, max-age=31536000, immutable";
+    }
+    let essence = content_type.split(';').next().unwrap_or("").trim();
+    if essence.eq_ignore_ascii_case("text/html") {
+        "public, max-age=0, must-revalidate"
+    } else {
+        "public, max-age=86400"
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -266,6 +325,73 @@ mod tests {
         ] {
             assert_eq!(cache_control_for(key), forever, "{key}");
         }
+    }
+
+    #[test]
+    fn backend_html_revalidates() {
+        let html = "text/html; charset=utf-8";
+        assert_eq!(
+            cache_control_backend("/ikada/index.html", html),
+            "public, max-age=0, must-revalidate"
+        );
+        assert_eq!(
+            cache_control_backend("/a", "TEXT/HTML"),
+            "public, max-age=0, must-revalidate"
+        );
+        assert_eq!(
+            cache_control_backend("/logo.svg", "image/svg+xml"),
+            "public, max-age=86400"
+        );
+        assert_eq!(
+            cache_control_backend("/_astro/index.Ke7awTe2.css", "text/css"),
+            "public, max-age=31536000, immutable"
+        );
+        assert_eq!(
+            cache_control_backend("/page.a1b2c3d4.html", html),
+            "public, max-age=31536000, immutable"
+        );
+    }
+
+    #[test]
+    fn not_found_is_read_in_backend_mode_only() {
+        let text = |nf: &str| {
+            format!(
+                r#"{{"notFound":{nf},"runSproutFirst":false,"files":{{"/a":{{"hash":"h","size":1,"type":"t","br":{{"hash":"b","size":1}}}}}}}}"#
+            )
+        };
+        assert_eq!(
+            Manifest::parse_backend(&text(r#""404-page""#))
+                .unwrap()
+                .not_found,
+            NotFound::Page404
+        );
+        assert_eq!(
+            Manifest::parse_backend(&text(r#""single-page-application""#))
+                .unwrap()
+                .not_found,
+            NotFound::SinglePageApplication
+        );
+        assert_eq!(
+            Manifest::parse_backend(&text(r#""none""#))
+                .unwrap()
+                .not_found,
+            NotFound::None
+        );
+        assert!(Manifest::parse_backend(&text(r#""sometimes""#)).is_err());
+        assert!(Manifest::parse_backend(&text("3")).is_err());
+        let absent = r#"{"runSproutFirst":false,"files":{}}"#;
+        assert_eq!(
+            Manifest::parse_backend(absent).unwrap().not_found,
+            NotFound::None
+        );
+        // Community never reads it, so it cannot fail there.
+        let m = Manifest::parse(&text("3")).unwrap();
+        assert_eq!(m.not_found, NotFound::None);
+        assert_eq!(
+            m.files["/a"].br.as_ref().map(|v| v.hash.as_str()),
+            Some("b")
+        );
+        assert!(m.files["/a"].gz.is_none());
     }
 
     #[test]

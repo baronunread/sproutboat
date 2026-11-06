@@ -4,7 +4,7 @@
 //! vouching, WebSockets, and the timed, capped, logged reverse proxy).
 
 use crate::app::App;
-use crate::assets::{cache_control_for, match_headers, parse_range, ByteRange};
+use crate::assets::{cache_control_for, match_headers, parse_range, ByteRange, HeaderRule};
 use crate::body::{empty, full, End, Fill, Held, LimitedBody, ProxyBody, RBody};
 use crate::cache::{cache_request_eligible, cache_response_eligible, EdgeCache};
 use crate::idle::{IdleControl, IdleHold};
@@ -34,7 +34,7 @@ use tokio_tungstenite::tungstenite::protocol::Role;
 use tokio_tungstenite::WebSocketStream;
 
 /// The edge's service-binding headers (#48), which only the edge may set toward a sprout.
-const INTERNAL_REQUEST_HEADERS: [&str; 4] = [
+pub(crate) const INTERNAL_REQUEST_HEADERS: [&str; 4] = [
     "x-sb-edge-secret",
     "x-sb-edge-token",
     "x-sb-binding-call",
@@ -71,24 +71,24 @@ impl Cold {
 
 /// What every log line of one request shares.
 #[derive(Clone)]
-struct ReqCtx {
-    app: Arc<App>,
-    started: Instant,
-    host: String,
-    method: Method,
-    req_bytes: f64,
-    path: Option<String>,
+pub(crate) struct ReqCtx {
+    pub(crate) app: Arc<App>,
+    pub(crate) started: Instant,
+    pub(crate) host: String,
+    pub(crate) method: Method,
+    pub(crate) req_bytes: f64,
+    pub(crate) path: Option<String>,
 }
 
 impl ReqCtx {
-    fn elapsed(&self) -> u64 {
+    pub(crate) fn elapsed(&self) -> u64 {
         (self.started.elapsed().as_secs_f64() * 1000.0).round() as u64
     }
-    fn log(&self, event: Event) {
+    pub(crate) fn log(&self, event: Event) {
         self.app.log.write(&event, self.path.as_deref());
     }
     /// `{hostname, method, status, durationMs}`, the start of nearly every event.
-    fn event(&self, status: u16, duration_ms: u64) -> Event {
+    pub(crate) fn event(&self, status: u16, duration_ms: u64) -> Event {
         Event::new()
             .str("hostname", &self.host)
             .str("method", self.method.as_str())
@@ -107,7 +107,7 @@ fn response(status: u16, content_type: Option<&str>, body: RBody) -> Response<RB
         .unwrap_or_else(|_| Response::new(empty()))
 }
 
-fn text(status: u16, body: &'static str) -> Response<RBody> {
+pub(crate) fn text(status: u16, body: &'static str) -> Response<RBody> {
     response(status, Some(TEXT), full(body))
 }
 
@@ -119,7 +119,7 @@ fn something_went_wrong() -> Response<RBody> {
 /// A request refused before routing: a small plain-text answer (never an HTML error page)
 /// and a log line. `close` drops the connection afterwards (an unread oversized body).
 #[allow(clippy::too_many_arguments)]
-fn reject(
+pub(crate) fn reject(
     app: &Arc<App>,
     started: Instant,
     req: &Request<Incoming>,
@@ -238,10 +238,85 @@ fn is_transfer_path(path: &str) -> bool {
 }
 
 /// Assets up to this size are read in one go instead of streamed.
-const SMALL_ASSET_BYTES: u64 = 256 * 1024;
+pub(crate) const SMALL_ASSET_BYTES: u64 = 256 * 1024;
+
+/// Set a response header, skipping a name or value that is not valid.
+pub(crate) fn put_header(h: &mut HeaderMap, name: &str, value: &str) {
+    if let (Ok(n), Ok(v)) = (
+        HeaderName::from_bytes(name.as_bytes()),
+        HeaderValue::from_str(value),
+    ) {
+        h.insert(n, v);
+    }
+}
+
+/// Every matching `_headers` block, in file order: a later rule overrides or unsets an earlier one.
+/// `protect_encoding` (backend mode) also keeps a rule from setting or unsetting `content-encoding`.
+pub(crate) fn apply_header_rules(
+    h: &mut HeaderMap,
+    rules: &[HeaderRule],
+    pathname: &str,
+    protect_encoding: bool,
+) {
+    let protected =
+        |n: &HeaderName| is_framing_header(n) || (protect_encoding && n == "content-encoding");
+    for rule in match_headers(rules, pathname) {
+        // Framing headers belong to the edge: a rule cannot change or drop them.
+        for name in &rule.unset {
+            if let Ok(n) = HeaderName::from_bytes(name.to_lowercase().as_bytes()) {
+                if !protected(&n) {
+                    h.remove(n);
+                }
+            }
+        }
+        for (name, value) in &rule.set {
+            let lower = name.to_lowercase();
+            if HeaderName::from_bytes(lower.as_bytes()).is_ok_and(|n| protected(&n)) {
+                continue;
+            }
+            put_header(h, &lower, value);
+        }
+    }
+}
+
+/// A `_redirects` answer.
+pub(crate) fn redirect_response(status: u16, location: &str) -> Response<RBody> {
+    let mut res = Response::new(empty());
+    *res.status_mut() = StatusCode::from_u16(status).unwrap_or(StatusCode::FOUND);
+    // Bun sends header text as latin1 bytes when it can.
+    let bytes: Vec<u8> = if location.chars().all(|c| (c as u32) < 256) {
+        location.chars().map(|c| c as u32 as u8).collect()
+    } else {
+        location.as_bytes().to_vec()
+    };
+    match HeaderValue::from_bytes(&bytes) {
+        Ok(v) => {
+            res.headers_mut().insert("location", v);
+            res
+        }
+        Err(_) => something_went_wrong(),
+    }
+}
+
+/// The next `length` bytes of an opened file as a streamed body (64 KiB chunks).
+pub(crate) fn file_body(file: tokio::fs::File, length: u64) -> RBody {
+    let stream = tokio_util::io::ReaderStream::with_capacity(
+        tokio::io::AsyncReadExt::take(file, length),
+        64 * 1024,
+    );
+    http_body_util::StreamBody::new(futures_util::TryStreamExt::map_ok(
+        futures_util::TryStreamExt::map_err(stream, |e| -> crate::body::BoxError { Box::new(e) }),
+        hyper::body::Frame::data,
+    ))
+    .boxed_unsync()
+}
 
 /// `length` bytes of the file from `start`.
-fn read_small(path: &std::path::Path, start: u64, length: u64) -> std::io::Result<Vec<u8>> {
+pub(crate) fn read_small(
+    path: &std::path::Path,
+    start: u64,
+    length: u64,
+) -> std::io::Result<Vec<u8>> {
     use std::io::{Read, Seek};
     let mut file = std::fs::File::open(path)?;
     if start > 0 {
@@ -332,6 +407,10 @@ async fn handle_request(
     if let Err(error) = app.refresh_routes().await {
         eprintln!("route snapshot reload failed: {error}");
     }
+    // Backend mode: assets from the snapshot, everything else to the backend. No pool, no sprouts.
+    if app.backend.is_some() {
+        return crate::backend::handle(c, &ctl, req, pathname, search).await;
+    }
     // #30 - runtime-lifecycle gauges, loopback only (edge binds 127.0.0.1).
     // Answered only to a loopback peer asking by a loopback name: through the proxy (Caddy is a
     // loopback peer too) the Host is a deployment hostname, so this falls through to routing.
@@ -413,21 +492,7 @@ async fn handle_request(
                         .int("resBytes", 0)
                         .str("cacheStatus", "asset"),
                 );
-                let mut res = Response::new(empty());
-                *res.status_mut() = StatusCode::from_u16(status).unwrap_or(StatusCode::FOUND);
-                // Bun sends header text as latin1 bytes when it can.
-                let bytes: Vec<u8> = if location.chars().all(|c| (c as u32) < 256) {
-                    location.chars().map(|c| c as u32 as u8).collect()
-                } else {
-                    location.clone().into_bytes()
-                };
-                return match HeaderValue::from_bytes(&bytes) {
-                    Ok(v) => {
-                        res.headers_mut().insert("location", v);
-                        res
-                    }
-                    Err(_) => something_went_wrong(),
-                };
+                return redirect_response(status, &location);
             }
             let key = manifest.resolve_key(&decoded);
             let entry = key
@@ -472,14 +537,7 @@ async fn handle_request(
                 let size = meta.len();
                 let mut res = Response::new(empty());
                 let h = res.headers_mut();
-                let put = |h: &mut HeaderMap, name: &str, value: &str| {
-                    if let (Ok(n), Ok(v)) = (
-                        HeaderName::from_bytes(name.as_bytes()),
-                        HeaderValue::from_str(value),
-                    ) {
-                        h.insert(n, v);
-                    }
-                };
+                let put = put_header;
                 put(h, "content-type", &entry.content_type);
                 put(h, "etag", &etag);
                 put(h, "content-length", &size.to_string());
@@ -488,26 +546,7 @@ async fn handle_request(
                     let name = key.rsplit('/').next().unwrap_or("");
                     put(h, "content-disposition", &format!("filename=\"{name}\""));
                 }
-                // Every matching `_headers` block, in file order: a later rule overrides or unsets an earlier one.
-                for rule in match_headers(&manifest.headers, &decoded) {
-                    // Framing headers belong to the edge: a rule cannot change or drop them.
-                    for name in &rule.unset {
-                        if let Ok(n) = HeaderName::from_bytes(name.to_lowercase().as_bytes()) {
-                            if !is_framing_header(&n) {
-                                h.remove(n);
-                            }
-                        }
-                    }
-                    for (name, value) in &rule.set {
-                        let lower = name.to_lowercase();
-                        if HeaderName::from_bytes(lower.as_bytes())
-                            .is_ok_and(|n| is_framing_header(&n))
-                        {
-                            continue;
-                        }
-                        put(h, &lower, value);
-                    }
-                }
+                apply_header_rules(h, &manifest.headers, &decoded, false);
 
                 let range = parse_range(header_joined(req.headers(), "range").as_deref(), size);
                 let (mut status, mut start, mut length) = (200u16, 0u64, size);
@@ -569,18 +608,7 @@ async fn handle_request(
                     let _ = file.seek(std::io::SeekFrom::Start(start)).await;
                 }
                 log_asset(status, length);
-                let stream = tokio_util::io::ReaderStream::with_capacity(
-                    tokio::io::AsyncReadExt::take(file, length),
-                    64 * 1024,
-                );
-                *res.body_mut() =
-                    http_body_util::StreamBody::new(futures_util::TryStreamExt::map_ok(
-                        futures_util::TryStreamExt::map_err(stream, |e| -> crate::body::BoxError {
-                            Box::new(e)
-                        }),
-                        hyper::body::Frame::data,
-                    ))
-                    .boxed_unsync();
+                *res.body_mut() = file_body(file, length);
                 return res;
             }
         }
@@ -654,7 +682,7 @@ async fn handle_request(
     }
     let target = Target {
         base: base.unwrap_or_default().trim_end_matches('/').to_string(),
-        route: route.clone(),
+        route: Some(route.clone()),
         cold: Some(Cold::of(&endpoint)),
         edge_token: endpoint.edge_token.clone(),
         direct_transfer,
@@ -780,16 +808,73 @@ impl Drop for TransferGuard {
 
 struct Target {
     base: String,
-    route: Arc<Route>,
+    /// The supervisor route; `None` for the backend of backend mode.
+    route: Option<Arc<Route>>,
     cold: Option<Cold>,
     edge_token: Option<String>,
     direct_transfer: bool,
 }
 
 impl Target {
-    fn error_texts(&self) -> (&'static str, &'static str) {
-        ("sprout failure", "sprout failed")
+    fn is_backend(&self) -> bool {
+        self.route.is_none()
     }
+
+    fn error_texts(&self) -> (&'static str, &'static str) {
+        if self.is_backend() {
+            ("backend unavailable", "backend unavailable")
+        } else {
+            ("sprout failure", "sprout failed")
+        }
+    }
+}
+
+/// Backend mode: relay the request (HTTP or WebSocket) to the backend with the client's Host and
+/// path, answering 502 `backend unavailable` when it cannot be reached.
+pub(crate) async fn forward_to_backend(
+    c: ReqCtx,
+    ctl: &IdleControl,
+    req: Request<Incoming>,
+    pathname: &str,
+    search: &str,
+) -> Response<RBody> {
+    let Some(base) = c.app.cfg.backend.clone() else {
+        return text(502, "backend unavailable");
+    };
+    let target = Target {
+        base,
+        route: None,
+        cold: None,
+        edge_token: None,
+        direct_transfer: false,
+    };
+    if is_websocket_upgrade(req.method(), req.headers()) {
+        let mut forwarded = req.headers().clone();
+        for name in INTERNAL_REQUEST_HEADERS {
+            forwarded.remove(name);
+        }
+        return websocket(
+            &c,
+            ctl,
+            req,
+            &target,
+            &target_string(pathname, search),
+            forwarded,
+        )
+        .await;
+    }
+    proxy_http(
+        c,
+        req,
+        target,
+        pathname,
+        search,
+        None,
+        false,
+        None,
+        Vec::new(),
+    )
+    .await
 }
 
 /// Logs a 499 if the client went away before the upstream answered (the handler future is
@@ -882,6 +967,7 @@ async fn websocket(
     .await
     {
         Ok(u) => u,
+        Err(_) if target.is_backend() => return refusal(502, "backend unavailable"),
         Err(_) => return refusal(502, "the sprout did not accept the WebSocket"),
     };
     let on_upgrade = hyper::upgrade::on(&mut req);
@@ -906,7 +992,7 @@ async fn websocket(
     let hold = ctl.hold();
     let guard = app.in_flight.enter();
     let shutdown = app.shutdown.subscribe();
-    let keep_alive = Some((app.clone(), target.route.clone()));
+    let keep_alive = target.route.clone().map(|route| (app.clone(), route));
     let c = c.clone();
     tokio::spawn(async move {
         let _hold: IdleHold = hold;
@@ -1026,19 +1112,26 @@ async fn proxy_http(
             Ok(Ok(response)) => break response,
             Ok(Err(error)) => {
                 let connect = error.is_connect();
-                if connect {
-                    app.endpoints.invalidate(&target.route.key).await;
+                if connect && target.is_backend() {
+                    abort.armed = false;
+                    eprintln!("backend unavailable for {host}: {error}");
+                    return proxy_failure(
+                        &c,
+                        &target,
+                        502,
+                        error_body,
+                        error_log_text,
+                        "backend-unavailable",
+                    );
+                }
+                if let (true, Some(route)) = (connect, target.route.clone()) {
+                    app.endpoints.invalidate(&route.key).await;
                     // The sprout may have just died; nothing was sent, so a body-less request can re-resolve once.
                     if bodyless && attempt == 0 {
                         attempt += 1;
                         match app
                             .endpoints
-                            .begin(
-                                &app.sidecar,
-                                &target.route.key,
-                                &target.route.sprout_path,
-                                &target.route.runtime,
-                            )
+                            .begin(&app.sidecar, &route.key, &route.sprout_path, &route.runtime)
                             .wait()
                             .await
                         {
@@ -1065,12 +1158,22 @@ async fn proxy_http(
                     }
                 }
                 abort.armed = false;
-                eprintln!("sprout failure for {host}: {error}");
+                let noun = if target.is_backend() {
+                    "backend"
+                } else {
+                    "sprout"
+                };
+                eprintln!("{noun} failure for {host}: {error}");
                 return proxy_failure(&c, &target, 502, error_body, error_log_text, "proxy");
             }
             Err(_) => {
                 abort.armed = false;
-                eprintln!("sprout timed out for {host}: the operation timed out");
+                let noun = if target.is_backend() {
+                    "backend"
+                } else {
+                    "sprout"
+                };
+                eprintln!("{noun} timed out for {host}: the operation timed out");
                 return proxy_failure(
                     &c,
                     &target,
@@ -1110,8 +1213,11 @@ async fn proxy_http(
     let cache_policy = cache_key
         .as_ref()
         .and_then(|_| cache_response_eligible(&rparts.headers, now_ms()));
-    let cache_status: Option<&'static str> = (parts.method == Method::GET).then(|| {
-        if cache_key.is_some() {
+    let backend = target.is_backend();
+    let cache_status: Option<&'static str> = (parts.method == Method::GET || backend).then(|| {
+        if backend {
+            "dynamic"
+        } else if cache_key.is_some() {
             if cache_policy.is_none() {
                 "dynamic"
             } else {
@@ -1138,7 +1244,10 @@ async fn proxy_http(
     for name in hop {
         headers.remove(name);
     }
-    clean_set_cookies(&mut headers);
+    // Cookie hygiene is Community's; a backend's cookies go through as they are.
+    if !backend {
+        clean_set_cookies(&mut headers);
+    }
     // A callee's error, for the caller's broker only: it carries the message.
     if !binding_call {
         headers.remove("x-sb-uncaught");
@@ -1149,7 +1258,7 @@ async fn proxy_http(
             headers.insert("x-sb-cpu-ms", v);
         }
     }
-    if let Some(status) = cache_status {
+    if let Some(status) = cache_status.filter(|_| !backend) {
         headers.insert(
             "sb-cache",
             HeaderValue::from_static(if status == "dynamic" {
@@ -1176,10 +1285,11 @@ async fn proxy_http(
             Some(Fill::new(move |buffered: Bytes| {
                 // A route reload purges before it swaps. Do not let an old, in-flight response
                 // repopulate that new deployment's cache.
-                let current = app
-                    .routes()
-                    .get(&host)
-                    .is_some_and(|r| Arc::ptr_eq(r, &route));
+                let current = route.as_ref().is_some_and(|route| {
+                    app.routes()
+                        .get(&host)
+                        .is_some_and(|r| Arc::ptr_eq(r, route))
+                });
                 let now = now_ms();
                 if current && (now as f64) < policy.expires_at {
                     if let Some(cache) = &app.cache {
