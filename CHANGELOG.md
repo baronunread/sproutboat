@@ -8,6 +8,7 @@ Changes to the self-hosted Sproutboat platform are recorded here. Read the
 ### Added
 
 - `sproutboat-edge` backend mode, for Sproutboat Cloud: with `SPROUTBOAT_EDGE_BACKEND=http://127.0.0.1:<port>` the Rust edge serves static assets from a route snapshot (ETag, Cache-Control, Range, precompressed variants, `_headers`, `_redirects`, a 404 page or SPA fallback, a bounded in-memory cache set by `SPROUTBOAT_ASSET_CACHE_BYTES` and `SPROUTBOAT_ASSET_CACHE_ENTRY_BYTES`) and forwards everything else, WebSockets included, to the backend. Off unless the variable is set; self-hosted installs are unchanged.
+- Backend mode: snapshot entries may carry a `path` prefix (`/docs`), so several apps share one hostname; the longest matching prefix picks the app's manifest, the bare hostname is the catch-all, and a path with no match is forwarded. Community mode is unchanged.
 
 ### Changed
 
