@@ -40,20 +40,64 @@ struct RawApp {
     hostname: String,
     #[serde(default)]
     app_id: String,
+    #[serde(default)]
+    path: Option<String>,
     manifest: String,
     blobs: String,
 }
 
-/// One hostname of the snapshot: where its manifest and its blobs are.
+/// One route of the snapshot: a hostname, optionally a path prefix, and where its manifest and
+/// its blobs are.
 #[derive(Debug, PartialEq)]
 pub struct SnapshotApp {
     pub hostname: String,
+    /// `None` is the bare hostname (every path); otherwise a valid prefix (`/docs`).
+    pub path: Option<String>,
     pub app_id: String,
     pub manifest: PathBuf,
     pub blobs: PathBuf,
 }
 
-/// `{version:1, apps:[{hostname, app_id, manifest, blobs}]}`.
+/// Whether `prefix` is a valid route prefix: one to eight `/segment`s, at most 200 bytes, no
+/// trailing slash; a segment is `[A-Za-z0-9._~%-]+` (not `.` or `..`) and `%` only as `%XX`.
+pub fn valid_route_prefix(prefix: &str) -> bool {
+    let Some(rest) = prefix.strip_prefix('/') else {
+        return false;
+    };
+    if prefix.len() > 200 {
+        return false;
+    }
+    let mut count = 0;
+    for segment in rest.split('/') {
+        count += 1;
+        let b = segment.as_bytes();
+        if count > 8 || b.is_empty() || segment == "." || segment == ".." {
+            return false;
+        }
+        let mut i = 0;
+        while i < b.len() {
+            match b[i] {
+                b'%' => {
+                    if i + 2 >= b.len()
+                        || !b[i + 1].is_ascii_hexdigit()
+                        || !b[i + 2].is_ascii_hexdigit()
+                    {
+                        return false;
+                    }
+                    i += 3;
+                    continue;
+                }
+                c if c.is_ascii_alphanumeric() || matches!(c, b'.' | b'_' | b'~' | b'-') => {}
+                _ => return false,
+            }
+            i += 1;
+        }
+    }
+    true
+}
+
+/// `{version:1, apps:[{hostname, path?, app_id, manifest, blobs}]}`. An entry whose `path` is
+/// not a valid prefix (or whose whole key is over 255 bytes) is logged and skipped.
 pub fn parse_snapshot(text: &str) -> Result<Vec<SnapshotApp>, String> {
     let raw: RawSnapshot =
         serde_json::from_str(text).map_err(|e| format!("invalid route snapshot: {e}"))?;
@@ -72,23 +116,57 @@ pub fn parse_snapshot(text: &str) -> Result<Vec<SnapshotApp>, String> {
                     "invalid route snapshot: an app needs hostname, manifest and blobs".into(),
                 );
             }
-            Ok(SnapshotApp {
+            if let Some(path) = &app.path {
+                if !valid_route_prefix(path) || hostname.len() + path.len() > 255 {
+                    eprintln!(
+                        "route snapshot: skipping {hostname}{path} ({}): invalid path prefix",
+                        app.app_id
+                    );
+                    return Ok(None);
+                }
+            }
+            Ok(Some(SnapshotApp {
                 hostname,
+                path: app.path,
                 app_id: app.app_id,
                 manifest: PathBuf::from(app.manifest),
                 blobs: PathBuf::from(app.blobs),
-            })
+            }))
         })
+        .filter_map(|r| r.transpose())
         .collect()
 }
 
-/// What the edge serves for one hostname.
+/// What the edge serves for one route (a hostname, or a hostname and a path prefix).
 pub struct HostAssets {
     pub manifest: Arc<Manifest>,
     pub blobs: PathBuf,
 }
 
-type Hosts = HashMap<String, Arc<HostAssets>>;
+/// The route table: hostname -> its entries, the bare one (`None`) and the path-prefixed ones.
+type Hosts = HashMap<String, Vec<(Option<String>, Arc<HostAssets>)>>;
+
+/// The entry for a request path: the longest matching prefix, else the bare entry. The path is
+/// the raw request path (no query, not decoded). A prefix matches when the path equals it or
+/// continues with `/`; candidates are tried from the full path up one segment at a time.
+fn match_route<'a, T>(entries: &'a [(Option<String>, T)], path: &str) -> Option<&'a T> {
+    let find = |prefix: Option<&str>| {
+        entries
+            .iter()
+            .find(|(p, _)| p.as_deref() == prefix)
+            .map(|(_, v)| v)
+    };
+    if entries.iter().any(|(p, _)| p.is_some()) {
+        let mut candidate = path.trim_end_matches('/');
+        while !candidate.is_empty() {
+            if let Some(found) = find(Some(candidate)) {
+                return Some(found);
+            }
+            candidate = &candidate[..candidate.rfind('/').unwrap_or(0)];
+        }
+    }
+    find(None)
+}
 
 // --------------------------------------------------------------------- LRU
 
@@ -196,9 +274,10 @@ impl Backend {
         })
     }
 
-    pub fn assets_for(&self, host: &str) -> Option<Arc<HostAssets>> {
+    /// The entry serving `path` (raw, without query) on `host`, if any.
+    pub fn assets_for(&self, host: &str, path: &str) -> Option<Arc<HostAssets>> {
         let hosts = self.hosts.read().unwrap_or_else(|e| e.into_inner()).clone();
-        hosts.get(host).cloned()
+        match_route(hosts.get(host)?, path).cloned()
     }
 
     async fn manifest(&self, path: &Path) -> Result<Arc<Manifest>, String> {
@@ -232,7 +311,11 @@ impl Backend {
                 Ok(manifest) => {
                     used.push(app.manifest);
                     let blobs = app.blobs;
-                    hosts.insert(app.hostname, Arc::new(HostAssets { manifest, blobs }));
+                    let entries = hosts.entry(app.hostname).or_default();
+                    // an exactly shared route keeps its first app
+                    if !entries.iter().any(|(p, _)| *p == app.path) {
+                        entries.push((app.path, Arc::new(HostAssets { manifest, blobs })));
+                    }
                 }
                 Err(error) => {
                     failed = true;
@@ -433,7 +516,7 @@ pub async fn handle(
             if (method == Method::GET || method == Method::HEAD)
                 && !is_websocket_upgrade(&method, req.headers()) =>
         {
-            b.assets_for(&c.host)
+            b.assets_for(&c.host, &pathname)
         }
         _ => None,
     };
@@ -725,6 +808,7 @@ mod tests {
             apps,
             [SnapshotApp {
                 hostname: "sproutboat.com".into(),
+                path: None,
                 app_id: "a_1".into(),
                 manifest: "/m/x.json".into(),
                 blobs: "/b".into()
@@ -741,6 +825,97 @@ mod tests {
         )
         .is_err());
         assert!(parse_snapshot(r#"{"version":1,"apps":[{"hostname":"a"}]}"#).is_err());
+    }
+
+    #[test]
+    fn snapshot_paths() {
+        let entry = |path: &str| {
+            format!(r#"{{"hostname":"H.test","app_id":"a","manifest":"m","blobs":"b"{path}}}"#)
+        };
+        let one = |path: &str| {
+            parse_snapshot(&format!(
+                r#"{{"version":1,"apps":[{}]}}"#,
+                entry(&format!(r#","path":"{path}""#))
+            ))
+            .unwrap()
+        };
+        // valid: kept as written (case-sensitive), absent = bare
+        assert_eq!(one("/docs")[0].path.as_deref(), Some("/docs"));
+        assert_eq!(
+            one("/Docs/a.b_c~d-e%2F")[0].path.as_deref(),
+            Some("/Docs/a.b_c~d-e%2F")
+        );
+        let bare = parse_snapshot(&format!(r#"{{"version":1,"apps":[{}]}}"#, entry(""))).unwrap();
+        assert_eq!(
+            (bare[0].hostname.as_str(), bare[0].path.clone()),
+            ("h.test", None)
+        );
+        // invalid: logged and skipped, the other entries stay
+        for bad in [
+            "",
+            "/",
+            "docs",
+            "/docs/",
+            "//x",
+            "/a//b",
+            "/./x",
+            "/../x",
+            "/a b",
+            "/a?b",
+            "/%zz",
+            "/%2",
+            "/%",
+            "/a/b/c/d/e/f/g/h/i",
+            "/é",
+        ] {
+            assert!(one(bad).is_empty(), "{bad:?} should be skipped");
+        }
+        assert_eq!(one("/a/b/c/d/e/f/g/h").len(), 1);
+        assert!(one(&format!("/{}", "a".repeat(200))).is_empty());
+        assert_eq!(one(&format!("/{}", "a".repeat(199))).len(), 1);
+        let mixed = parse_snapshot(&format!(
+            r#"{{"version":1,"apps":[{},{},{}]}}"#,
+            entry(r#","path":"/ok""#),
+            entry(r#","path":"/bad/""#),
+            entry("")
+        ))
+        .unwrap();
+        let paths: Vec<_> = mixed.iter().map(|a| a.path.as_deref()).collect();
+        assert_eq!(paths, [Some("/ok"), None]);
+    }
+
+    #[test]
+    fn longest_prefix_matching() {
+        let table = |names: &[Option<&str>]| -> Vec<(Option<String>, String)> {
+            names
+                .iter()
+                .map(|p| (p.map(String::from), p.unwrap_or("bare").to_string()))
+                .collect()
+        };
+        let full = table(&[Some("/docs/api"), None, Some("/docs")]);
+        let at = |path: &str| match_route(&full, path).map(String::as_str);
+        assert_eq!(at("/"), Some("bare"));
+        assert_eq!(at("/x"), Some("bare"));
+        assert_eq!(at("/docs"), Some("/docs"));
+        assert_eq!(at("/docs/"), Some("/docs"));
+        assert_eq!(at("/docs/a"), Some("/docs"));
+        assert_eq!(at("/docs/api"), Some("/docs/api"));
+        assert_eq!(at("/docs/api/x"), Some("/docs/api"));
+        assert_eq!(at("/docs/apix"), Some("/docs"));
+        assert_eq!(at("/docsx"), Some("bare"));
+        assert_eq!(at("/doc"), Some("bare"));
+        assert_eq!(at("/Docs"), Some("bare"));
+        assert_eq!(at("/x/docs"), Some("bare"));
+        // not decoded
+        assert_eq!(at("/%64ocs"), Some("bare"));
+        let no_bare = table(&[Some("/docs"), Some("/docs/api")]);
+        assert_eq!(match_route(&no_bare, "/x"), None);
+        assert_eq!(match_route(&no_bare, "/"), None);
+        assert_eq!(match_route(&no_bare, "/docsx"), None);
+        assert_eq!(
+            match_route(&no_bare, "/docs/x").map(String::as_str),
+            Some("/docs")
+        );
     }
 
     #[test]
@@ -1021,6 +1196,9 @@ mod tests {
         put_blob(root, "ikada404", b"ikada missing");
         put_blob(root, "root0404", b"root missing");
         put_blob(root, "docsidx1", b"docs index");
+        put_blob(root, "pathroot", b"path root app");
+        put_blob(root, "pathdocs", b"path docs app");
+        put_blob(root, "docs0404", b"docs missing");
         put_blob(root, "rul00001", b"rules identity");
         put_blob(root, "rulbr001", b"RULES-BR");
         put_blob(root, "novar001", b"no variant on disk");
@@ -1070,7 +1248,20 @@ mod tests {
             r#"{{"notFound":"none","runSproutFirst":false,"files":{{"/index.html":{}}}}}"#,
             file("idx00001", HTML, ""),
         );
+        let path_root = format!(
+            r#"{{"notFound":"404-page","runSproutFirst":false,"files":{{"/other":{},"/404.html":{},"/docsx":{}}}}}"#,
+            file("pathroot", HTML, ""),
+            file("root0404", HTML, ""),
+            file("pathroot", HTML, ""),
+        );
+        let path_docs = format!(
+            r#"{{"notFound":"404-page","runSproutFirst":false,"files":{{"/docs/x":{},"/docs/404.html":{}}}}}"#,
+            file("pathdocs", HTML, ""),
+            file("docs0404", HTML, ""),
+        );
         let m = |n: &str| root.join("manifests").join(n).display().to_string();
+        std::fs::write(m("path-root.json"), path_root).unwrap();
+        std::fs::write(m("path-docs.json"), path_docs).unwrap();
         std::fs::write(m("main.json"), main).unwrap();
         std::fs::write(m("spa.json"), spa).unwrap();
         std::fs::write(m("none.json"), none).unwrap();
@@ -1081,13 +1272,20 @@ mod tests {
                 r#"{{"hostname":"{host}","app_id":"{host}_1","manifest":"{manifest}","blobs":"{blobs}"}}"#
             )
         };
+        let path_entry = |path: &str, manifest: String| {
+            format!(
+                r#"{{"hostname":"paths.test","path":"{path}","app_id":"p{path}","manifest":"{manifest}","blobs":"{blobs}"}}"#
+            )
+        };
         let snapshot = format!(
-            r#"{{"version":1,"apps":[{},{},{},{},{}]}}"#,
+            r#"{{"version":1,"apps":[{},{},{},{},{},{},{}]}}"#,
             app_entry("main.test", m("main.json")),
             app_entry("spa.test", m("spa.json")),
             app_entry("none.test", m("none.json")),
             app_entry("bad.test", m("bad.json")),
             app_entry("gone.test", m("nothing.json")),
+            app_entry("paths.test", m("path-root.json")),
+            path_entry("/docs", m("path-docs.json")),
         );
         let routes = root.join("routes.json");
         std::fs::write(&routes, snapshot).unwrap();
@@ -1325,6 +1523,23 @@ mod tests {
         let r = get("main.test", "/ghost.txt", &[]).await;
         assert_eq!((r.status, r.text()), (500, "asset missing".to_string()));
 
+        // path routes: two manifests on one host, the longest prefix picks the manifest
+        let r = get("paths.test", "/docs/x", &[]).await;
+        assert_eq!((r.status, r.text()), (200, "path docs app".to_string()));
+        let r = get("paths.test", "/other", &[]).await;
+        assert_eq!((r.status, r.text()), (200, "path root app".to_string()));
+        let r = get("paths.test", "/docs/nope", &[]).await;
+        assert_eq!((r.status, r.text()), (404, "docs missing".to_string()));
+        let r = get("paths.test", "/docsx", &[]).await;
+        assert_eq!((r.status, r.text()), (200, "path root app".to_string()));
+        let r = get("paths.test", "/nope", &[]).await;
+        assert_eq!((r.status, r.text()), (404, "root missing".to_string()));
+        let r = get("paths.test", "/docs/x?q=/other", &[]).await;
+        assert_eq!((r.status, r.text()), (200, "path docs app".to_string()));
+        // the prefix is not stripped: the docs manifest has no /x
+        let r = get("paths.test", "/x", &[]).await;
+        assert_eq!(r.status, 404);
+
         // forwards: runSproutFirst path, POST with its body, unknown host, bad manifests, hop-by-hop
         let r = get("main.test", "/api/users?x=1", &[]).await;
         assert!(
@@ -1420,7 +1635,7 @@ mod tests {
         .unwrap();
         edge.app.reload_routes().await.unwrap();
         let backend_state = edge.app.backend.as_ref().unwrap();
-        assert!(backend_state.assets_for("late.test").is_none());
+        assert!(backend_state.assets_for("late.test", "/").is_none());
         let r = send(edge.addr, "GET", "/index.html", "late.test", &[], "").await;
         assert!(r.text().starts_with("backend GET"), "{}", r.text());
         std::fs::write(
@@ -1433,7 +1648,7 @@ mod tests {
             backend_state.last_check_ms.store(0, Ordering::Release);
             backend_state.refresh(&path).await.unwrap();
         }
-        assert!(backend_state.assets_for("late.test").is_some());
+        assert!(backend_state.assets_for("late.test", "/").is_some());
         assert!(lock(&backend_state.manifests).contains_key(&later));
     }
 
@@ -1442,8 +1657,8 @@ mod tests {
         let backend = echo_backend().await;
         let edge = start_edge(backend, &[]).await;
         let backend_state = edge.app.backend.as_ref().unwrap();
-        assert!(backend_state.assets_for("main.test").is_some());
-        assert!(backend_state.assets_for("bad.test").is_none());
+        assert!(backend_state.assets_for("main.test", "/").is_some());
+        assert!(backend_state.assets_for("bad.test", "/").is_none());
         let path = edge.dir.path().join("routes.json");
         let manifest = edge
             .dir
@@ -1459,8 +1674,8 @@ mod tests {
         .unwrap();
         edge.app.reload_routes().await.unwrap();
         let backend_state = edge.app.backend.as_ref().unwrap();
-        assert!(backend_state.assets_for("main.test").is_none());
-        assert!(backend_state.assets_for("new.test").is_some());
+        assert!(backend_state.assets_for("main.test", "/").is_none());
+        assert!(backend_state.assets_for("new.test", "/").is_some());
         // a broken snapshot keeps what is loaded; a missing one means no assets
         std::fs::write(&path, "{").unwrap();
         assert!(edge.app.reload_routes().await.is_err());
@@ -1469,7 +1684,7 @@ mod tests {
             .backend
             .as_ref()
             .unwrap()
-            .assets_for("new.test")
+            .assets_for("new.test", "/")
             .is_some());
         std::fs::remove_file(&path).unwrap();
         edge.app.reload_routes().await.unwrap();
@@ -1478,7 +1693,7 @@ mod tests {
             .backend
             .as_ref()
             .unwrap()
-            .assets_for("new.test")
+            .assets_for("new.test", "/")
             .is_none());
     }
 }
