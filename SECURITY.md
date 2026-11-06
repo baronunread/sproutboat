@@ -19,7 +19,7 @@ From 1.0 the 1.x line is in maintenance mode (see [docs/versioning.md](docs/vers
 Please report privately and do not open a public issue.
 
 1. **Preferred:** use GitHub private vulnerability reporting: [report a vulnerability](https://github.com/baronunread/sproutboat/security/advisories/new) (the repository's **Security** tab, then **Report a vulnerability**).
-2. **Email:** `<SECURITY-CONTACT-EMAIL: PLACEHOLDER, the maintainer must fill this in before release>`.
+2. **Email:** [security@sproutboat.com](mailto:security@sproutboat.com).
 
 Include the version (`grep '"version"' /opt/sproutboat/package.json`, or the commit), the install mode (`sbctl mode`), what you did, what you expected and what happened, and a proof of concept if you have one. Do not include real secrets or other people's data.
 
