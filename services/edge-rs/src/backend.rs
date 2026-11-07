@@ -1154,11 +1154,15 @@ mod tests {
                             String::from_utf8_lossy(&body),
                             names.join(",")
                         );
+                        // x-test-cookies: "a=1|b=2" is answered as one Set-Cookie line each
+                        let mut res = Response::builder().header("x-backend", "1");
+                        if let Some(lines) = parts.headers.get("x-test-cookies") {
+                            for line in lines.to_str().unwrap_or("").split('|') {
+                                res = res.header("set-cookie", line);
+                            }
+                        }
                         Ok::<_, std::convert::Infallible>(
-                            Response::builder()
-                                .header("x-backend", "1")
-                                .body(Full::new(Bytes::from(said)))
-                                .unwrap_or_default(),
+                            res.body(Full::new(Bytes::from(said))).unwrap_or_default(),
                         )
                     });
                     let _ = http1::Builder::new()
@@ -1595,6 +1599,46 @@ mod tests {
         // the deployment domain is not special here
         let r = get("sproutboat.local", "/", &[]).await;
         assert!(r.text().starts_with("backend GET /"), "{}", r.text());
+    }
+
+    impl Reply {
+        fn all(&self, name: &str) -> Vec<&str> {
+            self.headers
+                .iter()
+                .filter(|(n, _)| n.eq_ignore_ascii_case(name))
+                .map(|(_, v)| v.as_str())
+                .collect()
+        }
+    }
+
+    #[tokio::test]
+    async fn cookie_guard_through_the_proxy() {
+        let backend = echo_backend().await;
+        let cookies = "a=1; Domain=sproutboat.app|b=2; Domain=.acme.sproutboat.app; Path=/|c=3; Domain=other.sproutboat.app|d=4; HttpOnly";
+        let get = |edge: &Edge, host: &'static str| {
+            let addr = edge.addr;
+            async move {
+                let extra: &[(&str, &str)] = &[("x-test-cookies", cookies)];
+                send(addr, "GET", "/api/x", host, extra, "").await
+            }
+        };
+        let on = start_edge(
+            backend,
+            &[("SPROUTBOAT_EDGE_APPS_DOMAIN", "sproutboat.app".into())],
+        )
+        .await;
+        let r = get(&on, "blog.acme.sproutboat.app").await;
+        assert_eq!(
+            r.all("set-cookie"),
+            ["b=2; Domain=.acme.sproutboat.app; Path=/", "d=4; HttpOnly"]
+        );
+        // a custom domain is untouched
+        let r = get(&on, "main.test").await;
+        assert_eq!(r.all("set-cookie").len(), 4);
+        // unconfigured: nothing is stripped anywhere
+        let off = start_edge(backend, &[]).await;
+        let r = get(&off, "blog.acme.sproutboat.app").await;
+        assert_eq!(r.all("set-cookie").len(), 4);
     }
 
     #[tokio::test]

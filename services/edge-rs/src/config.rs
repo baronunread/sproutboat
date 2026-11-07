@@ -24,6 +24,10 @@ pub struct Config {
     pub asset_cache_bytes: u64,
     /// Backend mode: the largest single blob the LRU keeps.
     pub asset_cache_entry_bytes: u64,
+    /// Backend mode: the Cloud apps domain (`sproutboat.app`). When set, `Set-Cookie` lines on
+    /// hosts under it may not name a `Domain` wider than their own account
+    /// (`<account>.<apps domain>`). `None` (unset) is off.
+    pub apps_domain: Option<String>,
 }
 
 /// A non-negative whole number; unset, empty and garbage fall back, and an explicit 0 stays 0.
@@ -126,6 +130,10 @@ impl Config {
             Some(raw) => Some(backend_base(&raw)?),
             None => None,
         };
+        let apps_domain = env_or_empty(&get, "SPROUTBOAT_EDGE_APPS_DOMAIN")
+            .map(|raw| raw.trim().trim_matches('.').to_lowercase())
+            .filter(|d| !d.is_empty())
+            .filter(|_| backend.is_some());
         Ok(Config {
             port,
             bind_host: env_or_empty(&get, "SPROUTBOAT_BIND_HOST")
@@ -145,6 +153,7 @@ impl Config {
             dashboard_url,
             activation_dir: env_or_empty(&get, "SPROUTBOAT_ACTIVATION_DIR"),
             backend,
+            apps_domain,
             asset_cache_bytes: bytes_or(&get, "SPROUTBOAT_ASSET_CACHE_BYTES", 64 * 1024 * 1024),
             asset_cache_entry_bytes: bytes_or(
                 &get,
@@ -215,6 +224,23 @@ mod tests {
         assert!(!c.cache_enabled);
         let c = config(&[("SPROUTBOAT_DASHBOARD_URL", "https://dash.example/app/")]).unwrap();
         assert_eq!(c.dashboard_url, "https://dash.example/app");
+    }
+
+    #[test]
+    fn apps_domain_is_backend_mode_only_and_normalised() {
+        let apps = |pairs: &[(&str, &str)]| config(pairs).unwrap().apps_domain;
+        let b = ("SPROUTBOAT_EDGE_BACKEND", "http://127.0.0.1:8600");
+        assert_eq!(apps(&[b]), None);
+        assert_eq!(apps(&[b, ("SPROUTBOAT_EDGE_APPS_DOMAIN", "")]), None);
+        assert_eq!(
+            apps(&[b, ("SPROUTBOAT_EDGE_APPS_DOMAIN", " .SproutBoat.app. ")]).as_deref(),
+            Some("sproutboat.app")
+        );
+        // without a backend the guard is off, so Community behaviour cannot change
+        assert_eq!(
+            apps(&[("SPROUTBOAT_EDGE_APPS_DOMAIN", "sproutboat.app")]),
+            None
+        );
     }
 
     #[test]

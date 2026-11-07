@@ -9,6 +9,7 @@ mod backend;
 mod body;
 mod cache;
 mod config;
+mod cookie_guard;
 mod idle;
 mod logs;
 mod proxy;

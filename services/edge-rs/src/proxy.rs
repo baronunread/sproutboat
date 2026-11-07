@@ -1244,9 +1244,13 @@ async fn proxy_http(
     for name in hop {
         headers.remove(name);
     }
-    // Cookie hygiene is Community's; a backend's cookies go through as they are.
+    // Cookie hygiene is Community's; a backend's cookies go through as they are, except that on
+    // Cloud app hosts a cookie may not reach beyond its own account (see cookie_guard).
+    let mut cookies_stripped = 0;
     if !backend {
         clean_set_cookies(&mut headers);
+    } else if let Some(apps) = &app.cfg.apps_domain {
+        cookies_stripped = crate::cookie_guard::guard_set_cookies(&mut headers, &host, apps);
     }
     // A callee's error, for the caller's broker only: it carries the message.
     if !binding_call {
@@ -1368,6 +1372,9 @@ async fn proxy_http(
                 event = event.bool("uncaught", true);
             }
             event = event.undef_str("cacheStatus", cache_status);
+            if cookies_stripped > 0 {
+                event = event.int("cookiesStripped", cookies_stripped);
+            }
             c.log(event);
         }
     };
