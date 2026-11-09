@@ -1,6 +1,6 @@
 {
   "name": "sproutboat",
-  "version": "1.0.0-rc.3",
+  "version": "1.0.0-rc.4",
   "private": true,
   "type": "module",
   "scripts": {
@@ -38,9 +38,9 @@
     "@sproutboat/assets": "^0.3.0",
     "@sproutboat/config": "^0.6.0",
     "@sproutboat/ikada": "github:baronunread/ikada#bf34cdd57dc3dde77e84e75faadb41001eaa1a59",
-    "@sproutboat/runtime": "^0.41.0",
-    "@sproutboat/toolchain": "^0.21.3",
-    "@sproutboat/wire": "^0.21.4",
+    "@sproutboat/runtime": "^0.43.0",
+    "@sproutboat/toolchain": "^0.24.2",
+    "@sproutboat/wire": "^0.22.3",
     "@tanstack/charts": "1.2.1",
     "@tanstack/react-router": "^1.170.32",
     "@tanstack/react-start": "^1.168.49",

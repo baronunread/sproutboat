@@ -5,13 +5,25 @@ Changes to the self-hosted Sproutboat platform are recorded here. Read the
 
 ## [Unreleased]
 
+## [1.0.0-rc.4] - 2026-11-09
+
+Adopts `@sproutboat/runtime` 0.43.0, `@sproutboat/wire` 0.22.3 and `@sproutboat/toolchain` 0.24.2 (from 0.41.0, 0.21.4 and 0.21.3), the versions CLI 0.53.0 builds with. Update with `sudo SB_REF=v1.0.0-rc.4 sbctl update`; a release candidate is not picked up by plain `sbctl update`.
+
+### Breaking and operator actions
+
+- **Rebuild your apps with CLI 0.53.0** to get the runtime fixes below; they are in the compiled app, so deployed apps keep running as built. There are no migrations, new units, env files or secrets.
+- **Security: bytes written right after `socket.startTls()` could leave unencrypted** (runtime 0.42.2). Apps built before it can send such a write in plaintext; rebuild any app that uses `connect()` with `secureTransport: "starttls"`.
+- `MIN_CLI_VERSION` stays `0.0.0`: the control API gained no routes. `sproutboat tail --file`, `sproutboat run` and the new `dev` secret rules are CLI-side and need CLI 0.53.0.
+
 ### Added
 
+- **Runtime 0.42.0 to 0.43.0, through the dependency pins:** `connect()` from `cloudflare:sockets` from compatibility date 2026-11-17; `TCP_NODELAY` on outbound sockets (about 44 ms off every fresh HTTPS `fetch()`); more reserved address ranges refused by `fetch()` and `connect()`; and, off by default, `SB_LOG=json`, which makes a standalone binary write one JSON line per request and per uncaught error to stderr (`sproutboat tail --file` follows it).
 - `sproutboat-edge` backend mode, for Sproutboat Cloud: with `SPROUTBOAT_EDGE_BACKEND=http://127.0.0.1:<port>` the Rust edge serves static assets from a route snapshot (ETag, Cache-Control, Range, precompressed variants, `_headers`, `_redirects`, a 404 page or SPA fallback, a bounded in-memory cache set by `SPROUTBOAT_ASSET_CACHE_BYTES` and `SPROUTBOAT_ASSET_CACHE_ENTRY_BYTES`) and forwards everything else, WebSockets included, to the backend. Off unless the variable is set; self-hosted installs are unchanged.
 - Backend mode: snapshot entries may carry a `path` prefix (`/docs`), so several apps share one hostname; the longest matching prefix picks the app's manifest, the bare hostname is the catch-all, and a path with no match is forwarded. Community mode is unchanged.
 
 ### Changed
 
+- The toolchain pin moves to 0.24.2, which adds the Porffor alpha 22 channel and four miscompile fixes in its patch chain. The platform's own tools (`tools/compile.ts`, `bun run check`) still use the default channel.
 - The open design system `@sproutboat/ikada` moved to its own repository, [baronunread/ikada](https://github.com/baronunread/ikada) (history preserved). The dashboard depends on a pinned commit of it until the package is on npm. `packages/ikada` and its publish workflow are gone from this repo.
 
 ## [1.0.0-rc.3] - 2026-11-05

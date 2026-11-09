@@ -74,7 +74,7 @@ const hook = (over: Partial<Parameters<typeof hooks.createWebhook>[0]> = {}) =>
 const only = (webhookId: string) => hooks.listDeliveries(webhookId, 50);
 
 async function startEgress(env: Record<string, string>): Promise<string> {
-  const child = Bun.spawn(["bun", egressScript, "--port", "0"], {
+  const child = Bun.spawn(["bun", egressScript, "--port", "0", "--tcp-port", "0"], {
     env: { ...process.env, SB_EGRESS_TOKEN: EGRESS_TOKEN, ...env },
     stdout: "pipe",
     stderr: "pipe",
