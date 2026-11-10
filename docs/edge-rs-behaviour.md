@@ -552,6 +552,7 @@ Not part of the Bun contract above: a second mode of the Rust edge, used by Spro
 | `SPROUTBOAT_ROUTE_SNAPSHOT`          | The asset snapshot (below), not `routes.json`. A missing file means no assets.                                                                                                                                            |
 | `SPROUTBOAT_ASSET_CACHE_BYTES`       | Size of the in-memory asset cache. Default 64 MiB; `0` turns it off.                                                                                                                                                      |
 | `SPROUTBOAT_ASSET_CACHE_ENTRY_BYTES` | Largest blob the cache keeps. Default 256 KiB; larger blobs stream from disk in 64 KiB chunks.                                                                                                                            |
+| `SPROUTBOAT_EDGE_APPS_DOMAIN`        | The Cloud apps domain (`sproutboat.app`). Unset or empty = off (and ignored without a backend). When set, see **Cookie guard**.                                                                                           |
 
 `PORT`, `SPROUTBOAT_BIND_HOST`, `SPROUTBOAT_LOG_PATH`, `SPROUTBOAT_REQUEST_TIMEOUT_MS`, `SPROUTBOAT_RESPONSE_MAX_BYTES`, `SPROUTBOAT_EDGE_MAX_BODY_BYTES` behave as before. The startup line ends with `backend mode -> <url>`.
 
@@ -568,6 +569,8 @@ Not part of the Bun contract above: a second mode of the Rust edge, used by Spro
 **Memory.** One LRU keyed by (hash, encoding), bounded in bytes, behind a mutex. Keys are content hashes, so reloads do not purge it. Blobs over the entry cap are never held.
 
 **Log.** Lines are as in section 9. `cacheStatus` is `asset` for hits, redirects and fallback pages and `dynamic` for every forward (WebSocket lines carry none).
+
+**Cookie guard.** With `SPROUTBOAT_EDGE_APPS_DOMAIN` set, a response to a request whose Host is `<app>.<account>.<apps domain>` has its `Set-Cookie` lines inspected (the account is the label right below the apps domain). A line without `Domain` passes. One with `Domain` passes only if, lowercased with one leading dot removed, it is `<account>.<apps domain>` or a suffix of the request host that stays inside it; otherwise the whole cookie is dropped (the apps domain itself, another account, an unrelated domain, an empty or malformed value, a non-text header; a repeated `Domain` must pass every time). `__Host-`/`__Secure-` prefixes are not inspected, and hosts outside the apps domain (custom domains) are untouched. The request log line carries `cookiesStripped` (a count, never names or values) when it is above 0. A cookie a page sets with `document.cookie` does not pass through the edge and is not covered.
 
 **Off in this mode.** The Bun sidecar and its script lookup, supervisor routes, the activation spool, `/__sb/pool`, the GET response cache (`SPROUTBOAT_EDGE_CACHE` is ignored), `sb-cache` headers, the apex-to-dashboard 302, and service-binding vouching.
 
