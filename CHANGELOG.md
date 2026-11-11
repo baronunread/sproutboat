@@ -5,7 +5,7 @@ Changes to the self-hosted Sproutboat platform are recorded here. Read the
 
 ## [Unreleased]
 
-## [1.0.0-rc.5] - 2026-11-10
+## [1.0.0-rc.5] - 2026-11-11
 
 Adds a cross-account cookie guard to the Rust edge's backend mode (Sproutboat Cloud). Nothing else changes from rc.4: same runtime, wire, toolchain and CLI versions. Update with `sudo SB_REF=v1.0.0-rc.5 sbctl update`; a release candidate is not picked up by plain `sbctl update`.
 
