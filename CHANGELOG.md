@@ -5,6 +5,18 @@ Changes to the self-hosted Sproutboat platform are recorded here. Read the
 
 ## [Unreleased]
 
+## [1.0.0-rc.5] - 2026-11-11
+
+Adds a cross-account cookie guard to the Rust edge's backend mode (Sproutboat Cloud). Nothing else changes from rc.4: same runtime, wire, toolchain and CLI versions. Update with `sudo SB_REF=v1.0.0-rc.5 sbctl update`; a release candidate is not picked up by plain `sbctl update`.
+
+### Breaking and operator actions
+
+- None. No migrations, units, env files or app rebuilds are needed. The guard is off unless `SPROUTBOAT_EDGE_APPS_DOMAIN` is set, so self-hosted installs behave as in rc.4.
+
+### Added
+
+- Backend mode: `SPROUTBOAT_EDGE_APPS_DOMAIN` (off when unset) turns on a cross-account cookie guard for Cloud app hosts `<app>.<account>.<apps domain>`: a `Set-Cookie` whose `Domain` is wider than its own account (`<account>.<apps domain>`) or names another account is dropped, and the log line counts them as `cookiesStripped`. Cookies set by page script (`document.cookie`) are not covered.
+
 ## [1.0.0-rc.4] - 2026-11-09
 
 Adopts `@sproutboat/runtime` 0.43.0, `@sproutboat/wire` 0.22.3 and `@sproutboat/toolchain` 0.24.2 (from 0.41.0, 0.21.4 and 0.21.3), the versions CLI 0.53.0 builds with. Update with `sudo SB_REF=v1.0.0-rc.4 sbctl update`; a release candidate is not picked up by plain `sbctl update`.
@@ -18,7 +30,6 @@ Adopts `@sproutboat/runtime` 0.43.0, `@sproutboat/wire` 0.22.3 and `@sproutboat/
 ### Added
 
 - **Runtime 0.42.0 to 0.43.0, through the dependency pins:** `connect()` from `cloudflare:sockets` from compatibility date 2026-11-17; `TCP_NODELAY` on outbound sockets (about 44 ms off every fresh HTTPS `fetch()`); more reserved address ranges refused by `fetch()` and `connect()`; and, off by default, `SB_LOG=json`, which makes a standalone binary write one JSON line per request and per uncaught error to stderr (`sproutboat tail --file` follows it).
-- Backend mode: `SPROUTBOAT_EDGE_APPS_DOMAIN` (off when unset) turns on a cross-account cookie guard for Cloud app hosts `<app>.<account>.<apps domain>`: a `Set-Cookie` whose `Domain` is wider than its own account (`<account>.<apps domain>`) or names another account is dropped, and the log line counts them as `cookiesStripped`. Cookies set by page script (`document.cookie`) are not covered.
 - `sproutboat-edge` backend mode, for Sproutboat Cloud: with `SPROUTBOAT_EDGE_BACKEND=http://127.0.0.1:<port>` the Rust edge serves static assets from a route snapshot (ETag, Cache-Control, Range, precompressed variants, `_headers`, `_redirects`, a 404 page or SPA fallback, a bounded in-memory cache set by `SPROUTBOAT_ASSET_CACHE_BYTES` and `SPROUTBOAT_ASSET_CACHE_ENTRY_BYTES`) and forwards everything else, WebSockets included, to the backend. Off unless the variable is set; self-hosted installs are unchanged.
 - Backend mode: snapshot entries may carry a `path` prefix (`/docs`), so several apps share one hostname; the longest matching prefix picks the app's manifest, the bare hostname is the catch-all, and a path with no match is forwarded. Community mode is unchanged.
 
