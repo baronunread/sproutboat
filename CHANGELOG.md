@@ -5,6 +5,19 @@ Changes to the self-hosted Sproutboat platform are recorded here. Read the
 
 ## [Unreleased]
 
+## [1.0.0] - 2026-11-12
+
+The first stable release of Sproutboat Community. It is `1.0.0-rc.5` plus one change: the new Sproutboat logo. Nothing else differs from rc.5: same runtime, wire, toolchain and CLI versions, same behaviour, no migrations. Update with `sudo sbctl update`; the release is a plain `vX.Y.Z` tag, so `sbctl update` and the installer pick it up. If you pinned a release candidate with `SB_REF`, remove `SPROUTBOAT_UPDATE_REF` from `/etc/sproutboat/update.env` first (see [docs/versioning.md](docs/versioning.md)).
+
+### Breaking and operator actions
+
+- **Coming from 0.14.x, read the 1.0.0-rc.1 to 1.0.0-rc.5 entries below.** This release adds nothing to them. In short: three new database tables (additive, created at first start), the control unit reads `/etc/sproutboat/egress.env`, `/etc/sproutboat/install.env` is new, the installer refuses reserved admin usernames, and the dashboard's namespace claim flow is gone. Rebuild apps with CLI 0.53.0 to pick up the runtime fixes from rc.4.
+- Coming from any 1.0.0 release candidate: none. No migrations, units, env files or app rebuilds.
+
+### Changed
+
+- **New logo: "Afloat".** Two leaves cut by a waterline, whose bases form a hull; it replaces the single-stem sprout. The dashboard shows it in the sidebar, the mobile header, the sign-in page and the CLI authorization page, in the green that suits the surface (`#17803F` on light, `#5BD97A` on dark), next to the lowercase wordmark `sproutboat`. The tab icon is now `favicon.svg` (light and dark aware) with a `favicon.ico` fallback, plus an `apple-touch-icon.png`. `docs/logo-light.svg` and `docs/logo-dark.svg` are the new lockups.
+
 ## [1.0.0-rc.5] - 2026-11-11
 
 Adds a cross-account cookie guard to the Rust edge's backend mode (Sproutboat Cloud). Nothing else changes from rc.4: same runtime, wire, toolchain and CLI versions. Update with `sudo SB_REF=v1.0.0-rc.5 sbctl update`; a release candidate is not picked up by plain `sbctl update`.
