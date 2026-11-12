@@ -76,7 +76,7 @@ function Login() {
         className="inline-flex items-center gap-2.5 rounded-md text-xl font-bold outline-hidden focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
       >
         <SproutboatMark />
-        <span>Sproutboat</span>
+        <span>sproutboat</span>
       </Link>
       <section className="w-full max-w-sm rounded-xl bg-surface p-6 shadow-card sm:p-8">
         <h1 className="text-xl font-bold">Sign in to your workspace</h1>

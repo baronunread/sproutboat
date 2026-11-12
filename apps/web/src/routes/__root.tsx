@@ -56,8 +56,10 @@ function Root() {
         <meta charSet="utf-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1" />
         <meta name="theme-color" content="#1a1d24" />
-        {/* The sprout from sproutboat.com. Served from apps/web/public. */}
+        {/* The Afloat mark. Served from apps/web/public. */}
+        <link rel="icon" href="/favicon.ico" sizes="48x48" />
         <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+        <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
         <script dangerouslySetInnerHTML={{ __html: BOOT }} />
         <HeadContent />
       </head>
