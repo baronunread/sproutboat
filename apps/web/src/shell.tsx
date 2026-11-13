@@ -44,20 +44,17 @@ import { useAccount, useJson } from "./dashboard-data";
 import type { Overview } from "./dashboard-data";
 import { isTheme, setTheme, subscribeTheme, themePref, themePrefOnServer } from "./theme-store";
 
-/** The sprout from sproutboat.com: same geometry as the site's logo.svg and favicon, so the dashboard, the site and the tab icon are one mark. */
+/** The Sproutboat mark ("Afloat"): two leaves cut by a waterline, the bases forming a hull. Same geometry as favicon.svg.
+ *  #17803F on light surfaces, #5BD97A on dark (ikada's `dark:` variant); the wordmark next to it stays foreground. */
 export function SproutboatMark({ className }: { className?: string }) {
   return (
-    <svg className={cn("size-8 shrink-0", className)} viewBox="3 6 24 25" fill="none" aria-hidden="true">
-      <path d="M16 29V15" stroke="#5BD97A" strokeWidth="2.6" strokeLinecap="round" />
-      <path
-        d="M16 16.5c0-4.7-3.8-8.5-8.5-8.5C6.7 8 6 8.7 6 9.5 6 14.2 9.8 18 14.5 18c.8 0 1.5-.7 1.5-1.5Z"
-        fill="#5BD97A"
-      />
-      <path
-        d="M16 15c0-4 3.2-7.2 7.2-7.2.7 0 1.3.6 1.3 1.3C24.5 12.8 21.3 16 17.3 16c-.7 0-1.3-.6-1.3-1Z"
-        fill="#5BD97A"
-        fillOpacity="0.72"
-      />
+    <svg
+      className={cn("size-6 shrink-0 text-[#17803F] dark:text-[#5BD97A]", className)}
+      viewBox="0 0 24 24"
+      fill="currentColor"
+      aria-hidden="true"
+    >
+      <path d="M1.92 15A8.4 8.4 0 0 1 2.8 8.4A11 11 0 0 1 10.73 15ZM11.36 15A16 16 0 0 1 20.8 3.2A11.5 11.5 0 0 1 21.28 15ZM11.4 21A8.4 8.4 0 0 1 2.51 16.5L11.23 16.5A11 11 0 0 1 11.4 21ZM11.4 21A16 16 0 0 1 11.16 16.5L20.31 16.5A11.5 11.5 0 0 1 11.4 21ZM11.4 21L11.23 16.5L11.16 16.5Z" />
     </svg>
   );
 }
@@ -285,8 +282,8 @@ export function Shell({ children }: { children: ReactNode }) {
               to="/"
               className="inline-flex min-w-0 items-center gap-2 rounded-md px-1 text-md font-bold outline-hidden focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
             >
-              <SproutboatMark className="size-7" />
-              <span className="truncate">Sproutboat</span>
+              <SproutboatMark />
+              <span className="truncate">sproutboat</span>
             </Link>
           )}
           <SidebarToggle collapsed={collapsed} onCollapsedChange={setNavCollapsed} />
@@ -316,8 +313,8 @@ export function Shell({ children }: { children: ReactNode }) {
         <header className="sticky top-0 z-(--sb-z-sticky) flex h-14 items-center gap-3 bg-canvas/90 px-4 shadow-[inset_0_-1px_0_var(--sb-hairline)] backdrop-blur sm:px-8">
           <SidebarTrigger className="md:hidden" onClick={() => setDrawer(true)} />
           <Link to="/" className="inline-flex items-center gap-2 text-md font-bold md:hidden">
-            <SproutboatMark className="size-6" />
-            <span className="max-[400px]:sr-only">Sproutboat</span>
+            <SproutboatMark />
+            <span className="max-[400px]:sr-only">sproutboat</span>
           </Link>
           <div className="ms-auto flex items-center gap-3">
             <Button
