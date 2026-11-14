@@ -1072,6 +1072,8 @@ async fn proxy_http(
     let direct_transfer = target.direct_transfer;
     let (parts, incoming) = req.into_parts();
     let bodyless = parts.method == Method::GET || parts.method == Method::HEAD;
+    // Nothing to replay: a GET/HEAD, or any method whose body is empty. Only such a request can be sent again.
+    let empty_body = bodyless || hyper::body::Body::is_end_stream(&incoming);
     let mut body =
         (!bodyless).then(|| LimitedBody::new(incoming, app.cfg.max_body_bytes).boxed_unsync());
     let timeout_ms = if direct_transfer {
@@ -1088,6 +1090,8 @@ async fn proxy_http(
     };
     let path_and_query = format!("{pathname}{search}");
     let mut attempt = 0;
+    // One retry on a fresh connection when a pooled one was dead (see `stale_pool_retry`).
+    let mut fresh = false;
 
     let upstream = loop {
         let headers = upstream_request_headers(
@@ -1108,10 +1112,28 @@ async fn proxy_http(
         *request.method_mut() = parts.method.clone();
         *request.uri_mut() = uri;
         *request.headers_mut() = headers;
-        match tokio::time::timeout_at(deadline, app.client.request(request)).await {
+        let client = if fresh {
+            &app.fresh_client
+        } else {
+            &app.client
+        };
+        match tokio::time::timeout_at(deadline, client.request(request)).await {
             Ok(Ok(response)) => break response,
             Ok(Err(error)) => {
                 let connect = error.is_connect();
+                if !fresh && empty_body && stale_pool_retry(&parts.method, connect, &error) {
+                    // The upstream closed a kept-alive connection the pool still held (a generation
+                    // handover, an idle timeout racing the request) and no response byte came back.
+                    // Send it once more on a connection of its own.
+                    fresh = true;
+                    let noun = if target.is_backend() {
+                        "backend"
+                    } else {
+                        "sprout"
+                    };
+                    eprintln!("{noun} connection for {host} was closed: {error}; retrying on a fresh connection");
+                    continue;
+                }
                 if connect && target.is_backend() {
                     abort.armed = false;
                     eprintln!("backend unavailable for {host}: {error}");
@@ -1397,6 +1419,38 @@ async fn proxy_http(
     res
 }
 
+/// Whether a failed send is safe to repeat once on a fresh connection. The connection was taken from
+/// the pool and failed before any response byte arrived (a connect error is not that: nothing was pooled).
+/// Repeating is safe when the method is idempotent (RFC 9110 9.2.2: the upstream may have seen the request,
+/// doing it twice is the same as once), or when hyper says the request was canceled before a byte of it
+/// was written. The caller also needs a body it can send again (`empty_body`).
+fn stale_pool_retry(
+    method: &Method,
+    connect: bool,
+    error: &(dyn std::error::Error + 'static),
+) -> bool {
+    if connect {
+        return false;
+    }
+    let idempotent = matches!(
+        *method,
+        Method::GET | Method::HEAD | Method::OPTIONS | Method::PUT | Method::DELETE | Method::TRACE
+    );
+    idempotent || never_written(error)
+}
+
+/// hyper reports `canceled` for a request it dropped before writing any of it.
+fn never_written(error: &(dyn std::error::Error + 'static)) -> bool {
+    let mut cause = Some(error);
+    while let Some(e) = cause {
+        if let Some(h) = e.downcast_ref::<hyper::Error>() {
+            return h.is_canceled();
+        }
+        cause = e.source();
+    }
+    false
+}
+
 fn proxy_failure(
     c: &ReqCtx,
     target: &Target,
@@ -1489,5 +1543,241 @@ mod hardening_tests {
             .map(|v| v.to_str().unwrap())
             .collect();
         assert_eq!(got, ["a=1; Path=/", "b=2"]);
+    }
+}
+
+/// A kept-alive upstream connection that dies at the moment a request is sent on it: the 502 of a
+/// generation handover (journal: `backend failure ...: client error (SendRequest)`).
+#[cfg(test)]
+mod stale_pool_tests {
+    use crate::app::App;
+    use crate::config::Config;
+    use crate::logs::LogSink;
+    use crate::reload::Loaded;
+    use crate::routes::Routes;
+    use std::net::SocketAddr;
+    use std::sync::{Arc, Mutex};
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    use tokio::net::{TcpListener, TcpStream};
+
+    #[derive(Clone, Copy, PartialEq)]
+    enum Act {
+        Answer,
+        /// Read the whole request, then close the socket without a byte of response.
+        Drop,
+    }
+
+    /// (connection number from 1, request number on that connection from 1, method)
+    type Seen = Arc<Mutex<Vec<(usize, usize, String)>>>;
+
+    /// An upstream that keeps connections alive and decides per request whether to answer or to
+    /// drop the connection after reading it.
+    async fn upstream(decide: fn(usize, usize, &str) -> Act) -> (SocketAddr, Seen) {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let seen: Seen = Arc::default();
+        let log = seen.clone();
+        tokio::spawn(async move {
+            let mut conn = 0;
+            while let Ok((stream, _)) = listener.accept().await {
+                conn += 1;
+                let (conn, log) = (conn, log.clone());
+                tokio::spawn(async move { serve_conn(stream, conn, log, decide).await });
+            }
+        });
+        (addr, seen)
+    }
+
+    async fn serve_conn(
+        mut stream: TcpStream,
+        conn: usize,
+        log: Seen,
+        decide: fn(usize, usize, &str) -> Act,
+    ) {
+        let mut buf: Vec<u8> = Vec::new();
+        for nth in 1.. {
+            let head_end = loop {
+                if let Some(i) = buf.windows(4).position(|w| w == b"\r\n\r\n") {
+                    break i + 4;
+                }
+                let mut chunk = [0u8; 4096];
+                match stream.read(&mut chunk).await {
+                    Ok(0) | Err(_) => return,
+                    Ok(n) => buf.extend_from_slice(&chunk[..n]),
+                }
+            };
+            let head = String::from_utf8_lossy(&buf[..head_end]).to_lowercase();
+            let method = head.split(' ').next().unwrap().to_uppercase();
+            let length: usize = head
+                .lines()
+                .find_map(|l| l.strip_prefix("content-length:"))
+                .map_or(0, |v| v.trim().parse().unwrap());
+            while buf.len() < head_end + length {
+                let mut chunk = [0u8; 4096];
+                match stream.read(&mut chunk).await {
+                    Ok(0) | Err(_) => return,
+                    Ok(n) => buf.extend_from_slice(&chunk[..n]),
+                }
+            }
+            buf.drain(..head_end + length);
+            log.lock().unwrap().push((conn, nth, method.clone()));
+            if decide(conn, nth, &method) == Act::Drop {
+                return; // the socket closes here
+            }
+            let body = format!("conn {conn} request {nth}");
+            let reply = format!(
+                "HTTP/1.1 200 OK\r\ncontent-length: {}\r\nconnection: keep-alive\r\n\r\n{body}",
+                body.len()
+            );
+            if stream.write_all(reply.as_bytes()).await.is_err() {
+                return;
+            }
+        }
+    }
+
+    async fn edge(backend: SocketAddr) -> SocketAddr {
+        let dir = tempfile::tempdir().unwrap();
+        let snapshot = dir.path().join("routes.json").display().to_string();
+        let cfg = Config::from_lookup(|n| match n {
+            "PORT" => Some("0".into()),
+            "SPROUTBOAT_EDGE_BACKEND" => Some(format!("http://{backend}")),
+            "SPROUTBOAT_ROUTE_SNAPSHOT" => Some(snapshot.clone()),
+            _ => None,
+        })
+        .unwrap();
+        let app = App::new(
+            cfg,
+            Routes::default(),
+            Loaded::default(),
+            LogSink::disabled(),
+        );
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(crate::server::serve(app, listener));
+        addr
+    }
+
+    /// One request to the edge on its own connection; (status, body).
+    async fn send(edge: SocketAddr, method: &str, body: &str) -> (u16, String) {
+        let mut req = format!("{method} /x HTTP/1.1\r\nHost: stale.test\r\nConnection: close\r\n");
+        if !body.is_empty() {
+            req += &format!("Content-Length: {}\r\n", body.len());
+        }
+        req += &format!("\r\n{body}");
+        let mut stream = TcpStream::connect(edge).await.unwrap();
+        stream.write_all(req.as_bytes()).await.unwrap();
+        let mut raw = Vec::new();
+        stream.read_to_end(&mut raw).await.unwrap();
+        let text = String::from_utf8_lossy(&raw).into_owned();
+        let status = text.split(' ').nth(1).unwrap().parse().unwrap();
+        let body = text
+            .split_once("\r\n\r\n")
+            .map_or("", |(_, b)| b)
+            .to_string();
+        (status, body)
+    }
+
+    /// The first request on connection 1 is answered (so the edge pools it); the next request sent on
+    /// that connection is read and then the socket closes. Everything else is answered.
+    fn pooled_connection_dies(conn: usize, nth: usize, _method: &str) -> Act {
+        if conn == 1 && nth == 2 {
+            Act::Drop
+        } else {
+            Act::Answer
+        }
+    }
+
+    #[tokio::test]
+    async fn a_get_on_a_dead_pooled_connection_is_retried_on_a_fresh_one() {
+        let (backend, seen) = upstream(pooled_connection_dies).await;
+        let edge = edge(backend).await;
+        assert_eq!(
+            send(edge, "GET", "").await,
+            (200, "conn 1 request 1".into())
+        );
+        // This one reuses the pooled connection, which the upstream closes: no 502.
+        assert_eq!(
+            send(edge, "GET", "").await,
+            (200, "conn 2 request 1".into())
+        );
+        let seen = seen.lock().unwrap().clone();
+        let methods: Vec<_> = seen.iter().map(|(c, n, m)| (*c, *n, m.as_str())).collect();
+        assert_eq!(methods, [(1, 1, "GET"), (1, 2, "GET"), (2, 1, "GET")]);
+    }
+
+    #[tokio::test]
+    async fn an_idempotent_method_with_an_empty_body_is_retried_too() {
+        let (backend, seen) = upstream(pooled_connection_dies).await;
+        let edge = edge(backend).await;
+        assert_eq!(send(edge, "GET", "").await.0, 200);
+        assert_eq!(
+            send(edge, "DELETE", "").await,
+            (200, "conn 2 request 1".into())
+        );
+        assert_eq!(seen.lock().unwrap().len(), 3);
+    }
+
+    #[tokio::test]
+    async fn a_post_that_may_have_reached_the_upstream_is_never_sent_twice() {
+        let (backend, seen) = upstream(pooled_connection_dies).await;
+        let edge = edge(backend).await;
+        assert_eq!(send(edge, "GET", "").await.0, 200);
+        let (status, body) = send(edge, "POST", "payload").await;
+        assert_eq!((status, body.as_str()), (502, "backend unavailable"));
+        let posts = seen
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|(_, _, m)| m == "POST")
+            .count();
+        assert_eq!(
+            posts, 1,
+            "the POST reached the upstream once and was not replayed"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_body_that_was_streamed_cannot_be_replayed_even_for_an_idempotent_method() {
+        let (backend, seen) = upstream(pooled_connection_dies).await;
+        let edge = edge(backend).await;
+        assert_eq!(send(edge, "GET", "").await.0, 200);
+        assert_eq!(send(edge, "PUT", "payload").await.0, 502);
+        let puts = seen
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|(_, _, m)| m == "PUT")
+            .count();
+        assert_eq!(puts, 1);
+    }
+
+    #[tokio::test]
+    async fn only_one_retry_then_the_502_stands() {
+        // Every request is read and dropped, fresh connection or not.
+        let (backend, seen) = upstream(|_, _, _| Act::Drop).await;
+        let edge = edge(backend).await;
+        assert_eq!(send(edge, "GET", "").await.0, 502);
+        assert_eq!(seen.lock().unwrap().len(), 2, "the first try and one retry");
+    }
+
+    #[test]
+    fn which_failures_may_be_repeated() {
+        use super::stale_pool_retry;
+        use hyper::Method;
+        let boom = std::io::Error::other("closed");
+        for m in [
+            Method::GET,
+            Method::HEAD,
+            Method::OPTIONS,
+            Method::PUT,
+            Method::DELETE,
+        ] {
+            assert!(stale_pool_retry(&m, false, &boom), "{m}");
+        }
+        for m in [Method::POST, Method::PATCH] {
+            assert!(!stale_pool_retry(&m, false, &boom), "{m}");
+        }
+        // a failed connect is not a stale pooled connection
+        assert!(!stale_pool_retry(&Method::GET, true, &boom));
     }
 }

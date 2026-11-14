@@ -79,6 +79,8 @@ pub struct App {
     pub sidecar: Sidecar,
     pub endpoints: EndpointCache,
     pub client: UpstreamClient,
+    /// Never reuses a connection: the one retry of a request whose pooled connection turned out dead (proxy_http).
+    pub fresh_client: UpstreamClient,
     pub shutdown: watch::Sender<bool>,
     pub in_flight: Arc<InFlight>,
 }
@@ -101,14 +103,15 @@ pub async fn read_routes(path: &std::path::Path) -> Result<Routes, String> {
     load_routes(&text)
 }
 
-fn build_client() -> UpstreamClient {
+fn build_client(pooled: bool) -> UpstreamClient {
     let mut connector = HttpConnector::new();
     connector.set_nodelay(true);
     connector.set_connect_timeout(Some(Duration::from_secs(10)));
     Client::builder(TokioExecutor::new())
         // Sprouts are loopback servers that may close idle keep-alive connections early.
         .pool_idle_timeout(Duration::from_secs(4))
-        .pool_max_idle_per_host(256)
+        // No idle slots at all: every request opens its own connection (the retry after a stale one).
+        .pool_max_idle_per_host(if pooled { 256 } else { 0 })
         .build(connector)
 }
 
@@ -129,7 +132,8 @@ impl App {
             log,
             sidecar: Sidecar::new(),
             endpoints: EndpointCache::new(),
-            client: build_client(),
+            client: build_client(true),
+            fresh_client: build_client(false),
             shutdown: watch::channel(false).0,
             in_flight: Arc::new(InFlight::default()),
         })
