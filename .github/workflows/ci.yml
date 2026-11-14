@@ -2,11 +2,13 @@ name: CI
 
 on:
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
   push:
     branches: [main]
 
 jobs:
   check:
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -28,6 +30,7 @@ jobs:
   # emulator, all on plain http ports (SPROUTBOAT_E2E_PLAIN, see tools/dev-local.ts) because a
   # runner cannot give Portless :443 or a trusted certificate.
   e2e:
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
     runs-on: ubuntu-latest
     timeout-minutes: 20
     env:
@@ -69,6 +72,7 @@ jobs:
   # The Rust egress service (services/egress-rs). Same shape as edge-rs; the
   # differential job runs the Bun egress from node_modules against the Rust one.
   egress-rs:
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -87,6 +91,7 @@ jobs:
       - run: cargo test --locked
 
   egress-rs-diff:
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
     needs: egress-rs
     runs-on: ubuntu-latest
     steps:
@@ -114,6 +119,7 @@ jobs:
   # Static release binaries for the two architectures the installer supports.
   # Workflow artifacts only: install.sh and `sbctl update` do not fetch them.
   egress-rs-release:
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
     needs: egress-rs
     strategy:
       matrix:
@@ -147,6 +153,7 @@ jobs:
   # The Rust edge (services/edge-rs). Kept separate from the Bun job so neither
   # waits on the other; the cache keys on the lockfile.
   edge-rs:
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -167,6 +174,7 @@ jobs:
   # Uploaded as workflow artifacts only: install.sh and `sbctl update` do not
   # fetch them yet (see docs/edge-rs-behaviour.md, deployment section).
   edge-rs-release:
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
     needs: edge-rs
     strategy:
       matrix:
