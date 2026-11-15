@@ -2,6 +2,7 @@
 //! same environment, same routes.json, same request log. The supervisor pool
 //! stays in Bun, behind a lazily started sidecar (see `sidecar.rs`).
 
+mod acme;
 mod activation;
 mod app;
 mod assets;
@@ -17,6 +18,7 @@ mod reload;
 mod routes;
 mod server;
 mod sidecar;
+mod tls;
 mod util;
 mod websocket;
 
@@ -175,6 +177,24 @@ async fn run() -> i32 {
                 }
             }
         });
+    }
+
+    // SPIKE: the edge's own TLS listener (and port 80). Off unless SPROUTBOAT_TLS_LISTEN is set;
+    // the plain listener above keeps running, so Caddy and this can be tried side by side.
+    match tls::Settings::from_env() {
+        Ok(Some(settings)) => {
+            let app = app.clone();
+            tokio::spawn(async move {
+                if let Err(error) = tls::run(app, settings).await {
+                    eprintln!("{error}");
+                }
+            });
+        }
+        Ok(None) => {}
+        Err(error) => {
+            eprintln!("{error}");
+            return 1;
+        }
     }
 
     let serving = tokio::spawn(server::serve(app.clone(), listener));
