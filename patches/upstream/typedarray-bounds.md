@@ -2,8 +2,8 @@
 
 **Not filed.** Investigation notes for review (see the [README](README.md)).
 Patched locally in `@sproutboat/toolchain`: reads in 0.4.22 (`TA_GET_MARKER`,
-baronunread/sproutboat#238), writes in sproutboat-packages#71
-(`TA_SET_BOUNDS_MARKER`, baronunread/sproutboat#241).
+sproutboat/sproutboat#238), writes in sproutboat/packages#71
+(`TA_SET_BOUNDS_MARKER`, sproutboat/sproutboat#241).
 
 Tested alpha-13 (`547c7815`), unpatched.
 

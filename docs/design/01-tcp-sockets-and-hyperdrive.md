@@ -1,6 +1,6 @@
 # 01. TCP sockets (`cloudflare:sockets`) and a Hyperdrive binding
 
-Status: design, not implemented. Paths are relative to the repo named in the prefix (`pkgs` = sproutboat-packages at wt-pkgs-main 9fa3a2d; `cli` = wt-cli-release 6733145; `sd` = sproutd at wt-sproutd-cur b4abbef).
+Status: design, not implemented. Paths are relative to the repo named in the prefix (`pkgs` = sproutboat/packages at wt-pkgs-main 9fa3a2d; `cli` = wt-cli-release 6733145; `sd` = sproutd at wt-sproutd-cur b4abbef).
 
 ## Summary
 

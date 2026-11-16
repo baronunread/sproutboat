@@ -4,7 +4,7 @@
 needs explicit human approval and a contributor-written description (see the
 [README](README.md)). Patched locally in `@sproutboat/toolchain` 0.4.17
 (`PROMISE_NULL_MARKER` in `packages/toolchain/src/patch.ts`), which closed
-baronunread/sproutboat#168.
+sproutboat/sproutboat#168.
 
 Tested alpha-13 (`547c7815`), unpatched upstream source, native fetch build.
 

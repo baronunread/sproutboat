@@ -1,7 +1,7 @@
 # Private class fields are enumerable own properties
 
 **Not filed.** Worked around in `@sproutboat/toolchain` (`patchPrivateFieldsHidden`,
-baronunread/sproutboat#286).
+sproutboat/sproutboat#286).
 
 Tested alpha-17 (`731f1b2a`) and alpha-18 (`deda4945`), unpatched.
 

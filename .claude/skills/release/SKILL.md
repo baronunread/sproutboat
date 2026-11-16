@@ -122,7 +122,7 @@ git push origin vX.Y.Z
 Then create a GitHub Release with that section's notes, so the tag isn't bare:
 
 ```bash
-gh release create vX.Y.Z --repo baronunread/sproutboat \
+gh release create vX.Y.Z --repo sproutboat/sproutboat \
   --title "vX.Y.Z" --notes-file <(sed -n '/^## \[X.Y.Z\]/,/^## \[/p' CHANGELOG.md | sed '$d')
 ```
 

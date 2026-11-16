@@ -2,7 +2,7 @@
 
 2026-10-30, re-run 2026-10-31 on the released build. Question: do the HTTP and WebSocket database clients run unmodified on a Sproutboat standalone binary, with workerd (`wrangler dev`) as the reference?
 
-Short answer: with the published CLI, two of five compile and one of those runs. With the packages change (sproutboat-packages #224, released as runtime 0.39.0 and toolchain 0.21.3, CLI 0.48.0), all five compile and run, and the comparisons with workerd that do not match are the wording of a network error. The first run (96 of 98) was on runtime 0.36.0; the re-run on the rebased build, with the Supabase and Upstash default-entry variants, matches 113 of 117 (neon 24/24, libsql 19/19, planetscale 18/18, supabase 17/18, upstash `/cloudflare` 18/19, upstash default 17/19).
+Short answer: with the published CLI, two of five compile and one of those runs. With the packages change (sproutboat/packages #224, released as runtime 0.39.0 and toolchain 0.21.3, CLI 0.48.0), all five compile and run, and the comparisons with workerd that do not match are the wording of a network error. The first run (96 of 98) was on runtime 0.36.0; the re-run on the rebased build, with the Supabase and Upstash default-entry variants, matches 113 of 117 (neon 24/24, libsql 19/19, planetscale 18/18, supabase 17/18, upstash `/cloudflare` 18/19, upstash default 17/19).
 
 ## Setup
 
@@ -92,7 +92,7 @@ Number 4 is not filed upstream; another agent is drafting the Porffor issues.
 
 ## Changes in the packages PR
 
-Merged as `baronunread/sproutboat-packages` #224. The CLI needs only a dependency bump to reach it (`sproutboat` 0.48.0).
+Merged as `sproutboat/packages` #224. The CLI needs only a dependency bump to reach it (`sproutboat` 0.48.0).
 
 | Change                                                                                                         | Where                                                                                | Gate                                                                                       |
 | -------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------ |
@@ -115,7 +115,7 @@ By clients stopped, before the PR:
 
 1. Build check on feature-tested Node globals: 4 of 5 clients (fixed, gated).
 2. Everything else costs one client each: `fetch()` promise (libsql), null-body responses (Supabase), typed array dispatch (Neon WebSocket), `Error.captureStackTrace` (Neon WebSocket).
-3. Fixed from compatibility date 2026-11-16; before it affected all five as latency: the standalone host blocks on `fetch()`. A page that makes `n` HTTP queries in parallel pays `n` times the latency. Fixed in sproutboat-packages #232 (runtime 0.40.0), from compatibility date 2026-11-16 (`http:concurrent-20` for Neon: 2.2 s blocking, 0.6 s with it, workerd 0.6 s).
+3. Fixed from compatibility date 2026-11-16; before it affected all five as latency: the standalone host blocks on `fetch()`. A page that makes `n` HTTP queries in parallel pays `n` times the latency. Fixed in sproutboat/packages #232 (runtime 0.40.0), from compatibility date 2026-11-16 (`http:concurrent-20` for Neon: 2.2 s blocking, 0.6 s with it, workerd 0.6 s).
 4. Cosmetic: network error text.
 
 After the PRs nothing stops a client; what is left is item 4, and the untested parts (Supabase Realtime and auth).

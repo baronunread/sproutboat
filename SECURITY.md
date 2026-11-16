@@ -1,6 +1,6 @@
 # Security policy
 
-This policy covers Sproutboat Community, the code in this repository: the control API, the dashboard, the edge, the egress service, the supervisor and sandbox launcher, the installer, `sbctl` and the update, backup and restore tooling. The CLI has its own repository, [sproutboat-cli](https://github.com/baronunread/sproutboat-cli); report CLI problems the same way, naming that repository. Sproutboat Cloud is a separate, closed product and is not covered here.
+This policy covers Sproutboat Community, the code in this repository: the control API, the dashboard, the edge, the egress service, the supervisor and sandbox launcher, the installer, `sbctl` and the update, backup and restore tooling. The CLI has its own repository, [sproutboat/cli](https://github.com/sproutboat/cli); report CLI problems the same way, naming that repository. Sproutboat Cloud is a separate, closed product and is not covered here.
 
 ## Supported versions
 
@@ -18,7 +18,7 @@ From 1.0 the 1.x line is in maintenance mode (see [docs/versioning.md](docs/vers
 
 Please report privately and do not open a public issue.
 
-1. **Preferred:** use GitHub private vulnerability reporting: [report a vulnerability](https://github.com/baronunread/sproutboat/security/advisories/new) (the repository's **Security** tab, then **Report a vulnerability**).
+1. **Preferred:** use GitHub private vulnerability reporting: [report a vulnerability](https://github.com/sproutboat/sproutboat/security/advisories/new) (the repository's **Security** tab, then **Report a vulnerability**).
 2. **Email:** [security@sproutboat.com](mailto:security@sproutboat.com).
 
 Include the version (`grep '"version"' /opt/sproutboat/package.json`, or the commit), the install mode (`sbctl mode`), what you did, what you expected and what happened, and a proof of concept if you have one. Do not include real secrets or other people's data.

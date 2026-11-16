@@ -2,7 +2,7 @@
 
 **Not filed.** Investigation notes for review (see the [README](README.md)).
 Patched locally in `@sproutboat/toolchain` 0.4.22 (`TA_SET_OFFSET_MARKER`),
-part of baronunread/sproutboat#238.
+part of sproutboat/sproutboat#238.
 
 Tested alpha-13 (`547c7815`), unpatched, interpreted and native.
 

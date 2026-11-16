@@ -2,7 +2,7 @@
 #
 # Sproutboat single-VPS installer. SSH into a fresh Linux box and:
 #
-#   curl -fsSL https://raw.githubusercontent.com/baronunread/sproutboat/main/install.sh | sudo bash
+#   curl -fsSL https://raw.githubusercontent.com/sproutboat/sproutboat/main/install.sh | sudo bash
 #   # or, from a checkout:  sudo ./install.sh
 #
 # It asks a few questions up front, then runs unattended: packages, Caddy,
@@ -56,7 +56,7 @@ STATE=/var/lib/sproutboat
 ETC=/etc/sproutboat
 CADDY_BIN=/usr/local/bin/caddy-sproutboat
 SB_REPO_GIVEN=${SB_REPO:-}
-SB_REPO=${SB_REPO:-https://github.com/baronunread/sproutboat.git}
+SB_REPO=${SB_REPO:-https://github.com/sproutboat/sproutboat.git}
 # Empty means "newest release"; resolved once git exists (see: locate the source).
 SB_REF=${SB_REF:-}
 if [ "${SB_UPDATE:-0}" = 1 ]; then
@@ -775,7 +775,7 @@ fetch_engines() {
     ENGINE_NOTE="'${tag:-no ref}' is not a vX.Y.Z release, so there are no published engine binaries (use SB_ENGINE_DIR for a local build)"
     return 1
   fi
-  base=${SB_ENGINE_BASE_URL:-https://github.com/baronunread/sproutboat/releases/download}/$tag
+  base=${SB_ENGINE_BASE_URL:-https://github.com/sproutboat/sproutboat/releases/download}/$tag
   curl -fsSL --retry 2 -m 60 "$base/SHA256SUMS" -o "$dest/SHA256SUMS" || { ENGINE_NOTE="could not download $base/SHA256SUMS"; return 1; }
   if engines_match "$dest/SHA256SUMS"; then return 0; fi
   for n in "${ENGINE_FILES[@]}"; do

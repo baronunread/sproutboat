@@ -3,7 +3,7 @@
 **Not filed.** Investigation notes for review; filing at `CanadaHonk/porffor`
 needs explicit human approval and a contributor-written description (see the
 [README](README.md)). Patched locally in `@sproutboat/toolchain` 0.4.21
-(`TA_STORE_MARKER`), part of baronunread/sproutboat#238.
+(`TA_STORE_MARKER`), part of sproutboat/sproutboat#238.
 
 Tested alpha-13 (`547c7815`), unpatched, interpreted and native.
 

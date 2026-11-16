@@ -1,7 +1,7 @@
 # `Map.groupBy` is missing
 
 **Not filed.** Worked around in `@sproutboat/toolchain` by adding the builtin
-(`patchMapGroupBy`, baronunread/sproutboat#286).
+(`patchMapGroupBy`, sproutboat/sproutboat#286).
 
 Tested alpha-17 (`731f1b2a`) and alpha-18 (`deda4945`), unpatched. `Object.groupBy`
 exists; `Map.groupBy` does not.

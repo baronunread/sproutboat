@@ -1,7 +1,7 @@
 # Egress service: behaviour and security contract
 
 Subject: `sproutboat-egress` (this crate), a one-for-one replacement for the Bun egress service,
-`@sproutboat/wire/src/egress.ts` (HTTP) and, from sproutboat-packages main, `tcp.ts`
+`@sproutboat/wire/src/egress.ts` (HTTP) and, from sproutboat/packages main, `tcp.ts`
 (`listenTunnelService`, the TCP tunnel behind `connect()`). Address policy comes from
 `@sproutboat/runtime`'s `egress.ts` (`BLOCKED_RANGES`, `egressRefusal`).
 
@@ -186,7 +186,7 @@ INTENTIONAL):
 
 | #   | Difference                                                                                                                                                                                                                   | Why                                                                                                 |
 | --- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
-| D1  | The whole address table is on by default (section 6.1: eight more ranges). `SB_EGRESS_STRICT=0` restores the old 22. The same ranges are added to the shared TS table in sproutboat-packages#240, after which the two agree. | Reserved space with no public service (finding F2, closed).                                         |
+| D1  | The whole address table is on by default (section 6.1: eight more ranges). `SB_EGRESS_STRICT=0` restores the old 22. The same ranges are added to the shared TS table in sproutboat/packages#240, after which the two agree. | Reserved space with no public service (finding F2, closed).                                         |
 | D2  | `fetch()` to destination port 25 is refused.                                                                                                                                                                                 | Workers blocks it, the tunnel already did (F4, closed for 25; there is still no wider port policy). |
 | D3  | The destination is vetted before the request body is read; the body is then streamed (at most 256 KiB held in memory); the 128 MiB cap stays.                                                                                | A refused or hostile destination no longer costs a buffered upload (F6, closed).                    |
 | D4  | `SB_EGRESS_ALLOW` parses its entries: CIDR ranges, any spelling of an address (so allowing `127.0.0.1` also allows `::ffff:127.0.0.1`, the same destination); invalid entries stop the service at startup.                   | Exact text matching surprised operators (F5, closed).                                               |
@@ -232,7 +232,7 @@ address at all (including a scoped IPv6 such as `fe80::1%eth0`) is refused as `u
 
 ### 6.2 The eight added ranges (default; `SB_EGRESS_STRICT=0` drops them)
 
-The last eight entries of the table, added after the Bun service shipped (sproutboat-packages#240 adds them to the shared TS
+The last eight entries of the table, added after the Bun service shipped (sproutboat/packages#240 adds them to the shared TS
 table, the Bun egress and the C client): `192.31.196.0/24` (AS112), `192.52.193.0/24`, `192.88.99.0/24` (6to4 relay anycast),
 `192.175.48.0/24`, `::ffff:0:0:0/96` (SIIT: carries an IPv4 that the mapped rule does not see), `2001::/23` (IETF protocol
 assignments, includes Teredo `2001::/32`), `3fff::/20` (documentation), `5f00::/16` (SRv6). Plain table entries: the same
@@ -272,7 +272,7 @@ that will be connected to.
 
 ### 6.6 Findings (status after D1 to D6)
 
-- **F1 (Bun, availability, `tcp.ts` on sproutboat-packages main).** A `tcp.open` frame whose JSON is malformed but contains
+- **F1 (Bun, availability, `tcp.ts` on sproutboat/packages main).** A `tcp.open` frame whose JSON is malformed but contains
   the text `"op":"tcp.open"` throws an uncaught `SyntaxError` inside the listener and the egress process exits. No token is
   needed (the head is parsed before the token check) and sprouts share loopback, so a sprout could take egress down for every
   app. Rust answers an error frame. Not in the released 0.21.4 (no tunnel there yet): fix before it ships.
