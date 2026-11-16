@@ -44,4 +44,4 @@ methods, latency, TTFB, cold starts + startup percentiles, and transfer.
 - **Subrequests** — a `http-sync-v0` handler has no outbound `fetch`; hard
   capability boundary, not "yet". Tied to #17.
 - **Requests by colo / region** — single server. The analog is "requests by
-  node", which only exists if sproutboat-cloud#1 happens.
+  node", which only exists if sproutboat/cloud#1 happens.

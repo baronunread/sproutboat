@@ -15,7 +15,7 @@ jobs:
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: "1.4.4"
-      # Pulls the sproutboat CLI package (github:baronunread/sproutboat-cli#main,
+      # Installs the pinned dependencies, incl. the ikada design system (github:sproutboat/ikada,
       # public); bun.lock pins the resolved commit.
       - run: bun install --frozen-lockfile
       - run: bun run typecheck

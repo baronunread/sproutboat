@@ -6,7 +6,7 @@ is switched on, and the installer looks up the public IP. Homelab mode drops
 all of that.
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/baronunread/sproutboat/main/install.sh | sudo bash -s -- --homelab
+curl -fsSL https://raw.githubusercontent.com/sproutboat/sproutboat/main/install.sh | sudo bash -s -- --homelab
 # or: sudo SB_MODE=homelab ./install.sh
 ```
 

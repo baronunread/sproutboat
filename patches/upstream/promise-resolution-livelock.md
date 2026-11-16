@@ -3,7 +3,7 @@
 This records the original investigation and local patch (`patchPromiseTs` in
 `@sproutboat/toolchain`'s `patch.ts`, applied to `compiler/builtins/promise.ts`).
 The root cause was not `Date`-specific; see the correction below and the
-[CLI standalone guide](https://github.com/baronunread/sproutboat-cli/blob/main/docs/standalone.md).
+[CLI standalone guide](https://github.com/sproutboat/cli/blob/main/docs/standalone.md).
 `__Porffor_promise_resolve`'s `.then` duck-type probe spun on a
 prototype-chain fixed point instead of terminating. The patch adds the same
 `lastProto` guard `_internal_object.ts`'s own prototype walks already use.
@@ -16,7 +16,7 @@ debugger-confirmed root cause and its resolution upstream in alpha-6.
 
 **Version:** `alpha-5` @ `1f4ae4ae`, `porf native`, native-fetch standalone build,
 darwin-arm64 host target. Tracked downstream as
-[sproutboat#168](https://github.com/baronunread/sproutboat/issues/168), confirmed
+[sproutboat#168](https://github.com/sproutboat/sproutboat/issues/168), confirmed
 reproducing against the pinned commit 2026-09-12.
 
 ## Problem

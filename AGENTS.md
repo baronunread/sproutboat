@@ -9,7 +9,7 @@ irreversible (closing it after the fact still leaves the noise): always stop
 and ask a human first, immediately before the `gh issue create` call, even if
 asked earlier in the same conversation to "file it" or "write it up for
 upstream." An agent did this once without that final check
-(`baronunread/sproutboat`, 2026-09-13) and the issue had to be closed with an
+(`sproutboat/sproutboat`, 2026-09-13) and the issue had to be closed with an
 apology comment; don't repeat it.
 
 ## Writing: no em dashes

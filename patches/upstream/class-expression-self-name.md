@@ -2,7 +2,7 @@
 
 **Filed** as CanadaHonk/porffor#400 (2026-10-05).
 Worked around in `@sproutboat/toolchain` by a parse-time rewrite
-(`CLASS_SELF_MARKER`, baronunread/sproutboat#256).
+(`CLASS_SELF_MARKER`, sproutboat/sproutboat#256).
 
 Tested alpha-13 (`547c7815`) and alpha-15 (`72d048d7`), unpatched.
 

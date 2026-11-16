@@ -73,7 +73,7 @@ issue we hit: sproutboat's own runtime passes already-decoded-off-disk bytes
 into `Response` as a `bytestring` string (Porffor's Latin-1-range string
 representation, one byte per code unit) to keep them wire-safe for `#176`,
 and has to work around `.text()`/`.json()` not decoding that case itself
-(`@sproutboat/runtime`, not Porffor; see `baronunread/sproutboat#181`)
+(`@sproutboat/runtime`, not Porffor; see `sproutboat/sproutboat#181`)
 because Porffor has no real byte-body type to hand it instead. Real
 `Uint8Array`/`ArrayBuffer` support in `Request`/`Response`: UTF-8-encode a
 string body at construction (already correct), accept and store bytes

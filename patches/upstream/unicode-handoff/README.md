@@ -80,7 +80,7 @@ path or promoting only when needed. Separate unrelated escaping and trailing
 input fixes where possible. Check Test262 JSON results before and after, plus
 native regression vectors and memory/allocation boundaries.
 
-Local implementation: sibling sproutboat-packages repository,
+Local implementation: sibling sproutboat/packages repository,
 packages/toolchain/src/unicode.ts. Tests: unicode.test.ts and
 unicode-native.test.ts in the same directory. The native test exercises the
 full locally patched Sproutboat integration, not these two diffs in isolation.

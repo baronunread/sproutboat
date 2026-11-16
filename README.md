@@ -1,14 +1,14 @@
 # Sproutboat Community
 
-[![CI](https://github.com/baronunread/sproutboat/actions/workflows/ci.yml/badge.svg)](https://github.com/baronunread/sproutboat/actions/workflows/ci.yml)
+[![CI](https://github.com/sproutboat/sproutboat/actions/workflows/ci.yml/badge.svg)](https://github.com/sproutboat/sproutboat/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-[![Release](https://img.shields.io/github/v/release/baronunread/sproutboat?include_prereleases)](https://github.com/baronunread/sproutboat/releases)
+[![Release](https://img.shields.io/github/v/release/sproutboat/sproutboat?include_prereleases)](https://github.com/sproutboat/sproutboat/releases)
 
 **Sproutboat Community is the single-machine, self-hosted edition of Sproutboat: Workers-style HTTP handlers, compiled on your laptop to native binaries, running on one Linux box you own, for personal projects and homelabs.**
 
 https://sproutboat.com
 
-You write `export default { fetch }`. The [CLI](https://github.com/baronunread/sproutboat-cli) compiles it with [Porffor](https://porffor.dev) and Zig into a single `linux-x86_64` executable and uploads an artifact: a manifest, one `sprout` binary, and any binding or asset sidecars. No source, no `node_modules` and no bundler config leaves your machine. This repository is the server side: it verifies, stores, routes and runs those artifacts under a sandbox. It never builds anything.
+You write `export default { fetch }`. The [CLI](https://github.com/sproutboat/cli) compiles it with [Porffor](https://porffor.dev) and Zig into a single `linux-x86_64` executable and uploads an artifact: a manifest, one `sprout` binary, and any binding or asset sidecars. No source, no `node_modules` and no bundler config leaves your machine. This repository is the server side: it verifies, stores, routes and runs those artifacts under a sandbox. It never builds anything.
 
 ## What Community is
 
@@ -44,7 +44,7 @@ For production workloads, scale, or more than one machine, use **Sproutboat Clou
 ### On a public VPS
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/baronunread/sproutboat/main/install.sh | sudo bash
+curl -fsSL https://raw.githubusercontent.com/sproutboat/sproutboat/main/install.sh | sudo bash
 ```
 
 That installs the newest stable release (`main` only if no release exists). It asks for a deployment domain, an email for Let's Encrypt and an admin name (set `SB_DOMAIN`, `SB_ACME_EMAIL` and `SB_ADMIN` to skip the questions), then runs unattended: user-namespace sysctls, Caddy (pinned and checksum-verified), bubblewrap, a default-deny `ufw`, the dashboard build, one admin identity, the Rust edge and egress engines, and the systemd services.
@@ -61,7 +61,7 @@ That one record covers `control.`, `dashboard.` and every `<project>.<admin>.exa
 ### In a homelab
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/baronunread/sproutboat/main/install.sh | sudo bash -s -- --homelab
+curl -fsSL https://raw.githubusercontent.com/sproutboat/sproutboat/main/install.sh | sudo bash -s -- --homelab
 ```
 
 Homelab mode installs no Caddy and leaves `ufw` alone. Control (`:8787`) and the edge (`:8080`) listen on loopback unless you say otherwise; you point your own proxy (nginx, Traefik, Caddy elsewhere) at them, or use Tailscale. The choices are kept in `/etc/sproutboat/install.env`, and `sbctl update` keeps them. The recipes, DNS-01 through Cloudflare and the trade-offs of widening the bind address are in [docs/homelab.md](docs/homelab.md). The full operator runbook is [infra/README.md](infra/README.md).
@@ -157,7 +157,7 @@ CI runs those checks, the dashboard component tests, a Playwright end-to-end sui
 
 `dev:local` serves the stack over local TLS; trust Portless's CA on first run, sign in at `https://dashboard.sproutboat.localhost/`, and deploy to it with `sproutboat login --api-url https://control.sproutboat.localhost`. To reset, stop it and remove `.local/sproutboat` and `~/.config/sproutboat`.
 
-To try unreleased `@sproutboat/{wire,runtime,toolchain}` changes, point this checkout at a local [sproutboat-packages](https://github.com/baronunread/sproutboat-packages) checkout (with its own `bun install` done) for the length of one command:
+To try unreleased `@sproutboat/{wire,runtime,toolchain}` changes, point this checkout at a local [sproutboat/packages](https://github.com/sproutboat/packages) checkout (with its own `bun install` done) for the length of one command:
 
 ```sh
 bun tools/with-local-packages.ts ../sproutboat-packages -- bun test services/supervisor
@@ -168,7 +168,7 @@ It symlinks `node_modules/@sproutboat/<pkg>` to the checkout, runs the command, 
 ```
 apps/control          control API: auth, projects, artifacts, routes, backups, activity, webhooks
 apps/web              dashboard (React, TanStack Start in SPA mode, built on @sproutboat/ikada,
-                      the open design system at github.com/baronunread/ikada)
+                      the open design system at github.com/sproutboat/ikada)
 services/edge         the Bun edge (the fallback engine)
 services/edge-rs      the Rust edge (the default engine)
 services/egress-rs    the Rust egress service (the default engine)
@@ -179,7 +179,7 @@ tests/                contract and installer tests, the Porffor capability suite
 docs/                 homelab guide, versioning, engine behaviour, compatibility notes
 ```
 
-Pull requests are welcome; please file an issue first for anything larger than a fix. Commit messages use a lowercase scope, a short imperative summary and the issue or PR number in parentheses (see `git log`). Report bugs on [the issue tracker](https://github.com/baronunread/sproutboat/issues), and CLI bugs on [sproutboat-cli](https://github.com/baronunread/sproutboat-cli/issues). Security problems go through [SECURITY.md](SECURITY.md), not the tracker.
+Pull requests are welcome; please file an issue first for anything larger than a fix. Commit messages use a lowercase scope, a short imperative summary and the issue or PR number in parentheses (see `git log`). Report bugs on [the issue tracker](https://github.com/sproutboat/sproutboat/issues), and CLI bugs on [sproutboat/cli](https://github.com/sproutboat/cli/issues). Security problems go through [SECURITY.md](SECURITY.md), not the tracker.
 
 ## Legal
 

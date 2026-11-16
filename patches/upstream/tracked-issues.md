@@ -26,7 +26,7 @@ live URLSearchParams iteration to the runtime. Standard Router still fails
 around labelled iterator breaks. Better Auth's crypto and framework requirements
 remain a separate evaluation.
 
-See the complete [alpha-16 audit](https://github.com/baronunread/sproutboat-packages/blob/main/packages/toolchain/PORFFOR_ALPHA16.md).
+See the complete [alpha-16 audit](https://github.com/sproutboat/packages/blob/main/packages/toolchain/PORFFOR_ALPHA16.md).
 
 ## Web Crypto (#347), and what we ship meanwhile
 
@@ -50,7 +50,7 @@ drop a vendored pure-JS SHA-256. Verified against NIST vectors on both
 transports. Keep the surface exactly standard so it deletes when upstream lands
 Web Crypto.
 
-**Asymmetric and AES `crypto.subtle` (sproutboat-packages, from a new compatibility date).**
+**Asymmetric and AES `crypto.subtle` (sproutboat/packages, from a new compatibility date).**
 RSASSA-PKCS1-v1_5, RSA-PSS, RSA-OAEP, ECDSA, ECDH, Ed25519, X25519, AES-GCM/CBC/CTR/KW,
 HKDF, all-hash PBKDF2, `jwk`/`spki`/`pkcs8` import and export and wrap/unwrap follow workerd.
 The primitives are BearSSL's (MIT) plus Monocypher's (BSD-2-Clause or CC0, vendored, for
@@ -79,7 +79,7 @@ the development machine. Production adapters, OAuth and plugins are untested.
 The unreleased upstream TextEncoder commit 0342e06 passes our native Unicode
 regression without the encoder patch, so that patch can be reconsidered when
 it ships. Alpha 17 still needs the stream ponyfill scope adaptation.
-See the [Alpha 17 audit](https://github.com/baronunread/sproutboat-packages/blob/main/packages/toolchain/PORFFOR_ALPHA17.md).
+See the [Alpha 17 audit](https://github.com/sproutboat/packages/blob/main/packages/toolchain/PORFFOR_ALPHA17.md).
 
 ## Porffor gaps found by the `connect()` work (not filed)
 
