@@ -61,7 +61,7 @@ jobs:
       # second seed straight after would hit Better Auth's sign-in rate limit.
       - run: bun run e2e
       - if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: e2e-report
           path: |
@@ -110,7 +110,7 @@ jobs:
       - run: cargo build --locked --release --manifest-path services/egress-rs/Cargo.toml
       - run: bun test tools/egress-diff/ts-suite.test.ts
       - if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: egress-diff-report
           path: egress-diff-report.md
@@ -144,7 +144,7 @@ jobs:
       - run: cargo build --locked --release --target ${{ matrix.target }}
         working-directory: services/egress-rs
       - run: file services/egress-rs/target/${{ matrix.target }}/release/sproutboat-egress && ls -l services/egress-rs/target/${{ matrix.target }}/release/sproutboat-egress
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: sproutboat-egress-linux-${{ matrix.arch }}
           path: services/egress-rs/target/${{ matrix.target }}/release/sproutboat-egress
@@ -199,7 +199,7 @@ jobs:
       - run: cargo build --locked --release --target ${{ matrix.target }}
         working-directory: services/edge-rs
       - run: file services/edge-rs/target/${{ matrix.target }}/release/sproutboat-edge && ls -l services/edge-rs/target/${{ matrix.target }}/release/sproutboat-edge
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: sproutboat-edge-linux-${{ matrix.arch }}
           path: services/edge-rs/target/${{ matrix.target }}/release/sproutboat-edge
